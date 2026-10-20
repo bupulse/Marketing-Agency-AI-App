@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "title": "Extruded 3D product name reveal with confetti and sparkles",
+  "canvas": {
+    "ratio": "9:16",
+    "quality": "540p",
+    "fps": 24,
+    "samples": 16
+  },
+  "duration": 4,
+  "seed": 23,
+  "background": {
+    "kind": "gradient",
+    "colors": [
+      "#2a0f4d",
+      "#7a1f7a"
+    ],
+    "floor": {
+      "color": "#12061f",
+      "reflect": 0.8
+    },
+    "light": {
+      "preset": "dramatic",
+      "intensity": 1.1,
+      "rim": "#ff7ad9",
+      "side": "right"
+    }
+  },
+  "camera": {
+    "move": "dollyIn",
+    "intensity": 0.6,
+    "ease": "out",
+    "target": [
+      0,
+      0,
+      2.2
+    ],
+    "distance": 9.5,
+    "height": 1.3,
+    "lens": 45
+  },
+  "product": null,
+  "texts": [
+    {
+      "text": "A56",
+      "font": "anton",
+      "size": 2.0,
+      "position": [
+        0,
+        0,
+        3.25
+      ],
+      "depth": 0.6,
+      "bevel": 0.7,
+      "material": "metal",
+      "color": "#e8b43a",
+      "enter": "spinIn",
+      "enterAt": 0.15,
+      "enterFor": 1.1,
+      "idle": "float",
+      "face": 0.5
+    },
+    {
+      "text": "SAMSUNG GALAXY",
+      "font": "anton",
+      "size": 0.62,
+      "position": [
+        0,
+        -0.4,
+        1.45
+      ],
+      "depth": 0.45,
+      "bevel": 0.6,
+      "material": "gloss",
+      "color": "#ffffff",
+      "enter": "rise",
+      "enterAt": 0.8,
+      "enterFor": 0.9,
+      "idle": "float",
+      "face": 0.5
+    },
+    {
+      "text": "Nova Phones Kigali",
+      "font": "poppins",
+      "size": 0.32,
+      "position": [
+        0,
+        -0.7,
+        0.6
+      ],
+      "depth": 0.1,
+      "bevel": 0.3,
+      "material": "neon",
+      "color": "#ffd1f2",
+      "enter": "scale",
+      "enterAt": 1.6,
+      "enterFor": 0.6,
+      "idle": "none",
+      "face": 0.7
+    }
+  ],
+  "props": [
+    {
+      "kind": "ring",
+      "position": [
+        0,
+        0.9,
+        3.25
+      ],
+      "size": 3.6,
+      "material": "metal",
+      "color": "#e8b43a",
+      "enter": "pop",
+      "enterAt": 0.0,
+      "enterFor": 1.0,
+      "idle": "swing",
+      "angle": 18,
+      "spin": 0.5
+    }
+  ],
+  "particles": [
+    {
+      "kind": "confetti",
+      "count": 70,
+      "colors": [
+        "#e8b43a",
+        "#ff5fa2",
+        "#7ad3ff",
+        "#ffffff"
+      ],
+      "center": [
+        0,
+        -0.5,
+        3.2
+      ],
+      "area": [
+        6,
+        3,
+        6.5
+      ],
+      "speed": 1,
+      "size": 1.2
+    },
+    {
+      "kind": "sparkles",
+      "count": 30,
+      "colors": [
+        "#fff1c2"
+      ],
+      "center": [
+        0,
+        0.8,
+        2.8
+      ],
+      "area": [
+        6,
+        2,
+        5
+      ],
+      "speed": 1
+    }
+  ],
+  "look": {
+    "contrast": "punchy",
+    "exposure": 0,
+    "bloom": 0.5
+  }
+}

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { paddleApi } from "@/lib/billing/paddle";
 import { serviceInfo, type ServiceId } from "./service-catalog";
 import { scrubSecrets } from "./scrub";
+import { loadServiceKeys } from "./service-keys";
 
 // One cheap "Test now" per service. Each is a free (or almost free) call that proves the key works; OAuth-only services
 // check that their configuration is present. Messages are scrubbed before they are stored or shown.
@@ -11,6 +12,8 @@ import { scrubSecrets } from "./scrub";
 export type ProbeResult = { ok: boolean; message: string };
 const TIMEOUT_MS = 8_000;
 const env = (name: string) => process.env[name] || "";
+/** BytePlus ModelArk, international (Singapore) region; SEEDANCE_BASE_URL for another region. */
+export const SEEDANCE_DEFAULT_BASE = "https://ark.ap-southeast.bytepluses.com/api/v3";
 
 const missing = (id: ServiceId) => serviceInfo(id).env.filter((n) => !env(n));
 
@@ -22,7 +25,7 @@ const configOnly = (id: ServiceId): Probe => async () => {
   const names = serviceInfo(id).env;
   if (names.length === 0) return { ok: true, message: "Nothing to test here: each client connects with their own keys." };
   const gone = missing(id);
-  return gone.length ? { ok: false, message: `Missing in the environment: ${gone.join(", ")}` } : { ok: true, message: "Configured. Sign-in with this service is only exercised by a client connecting." };
+  return gone.length ? { ok: false, message: `Not set: ${gone.join(", ")}` } : { ok: true, message: "Configured. Sign-in with this service is only exercised by a client connecting." };
 };
 
 type Probe = () => Promise<ProbeResult>;
@@ -81,6 +84,30 @@ const PROBES: Partial<Record<ServiceId, Probe>> = {
     const res = await get(`https://graph.facebook.com/v21.0/${encodeURIComponent(env("WHATSAPP_PHONE_NUMBER_ID"))}?fields=display_phone_number,quality_rating`, { authorization: `Bearer ${env("WHATSAPP_CLOUD_TOKEN")}` });
     return res.ok ? { ok: true, message: "Meta accepted the WhatsApp token and phone number id." } : { ok: false, message: `Meta returned ${res.status} for the WhatsApp phone number.` };
   },
+  seedance: async () => {
+    // Listing the account's video tasks is free and needs a valid ModelArk key (making a video costs money).
+    const base = (env("SEEDANCE_BASE_URL") || SEEDANCE_DEFAULT_BASE).replace(/\/+$/, "");
+    const res = await get(`${base}/contents/generations/tasks?page_num=1&page_size=1`, { authorization: `Bearer ${env("SEEDANCE_API_KEY")}` });
+    if (res.ok) return { ok: true, message: "BytePlus ModelArk accepted the key (video tasks list)." };
+    if (res.status === 401 || res.status === 403) return { ok: false, message: `BytePlus ModelArk rejected the key (${res.status}).` };
+    return { ok: false, message: `BytePlus ModelArk returned ${res.status}.` };
+  },
+  veo: async () => {
+    // Reading the Veo model's card is free and proves the Gemini key can see it (a clip costs money; billing is only
+    // confirmed by the first clip).
+    const model = env("VEO_MODEL") || "veo-3.1-lite-generate-preview";
+    const res = await get(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`, { "x-goog-api-key": env("GEMINI_API_KEY") });
+    if (res.ok) return { ok: true, message: `Google accepted the Gemini key and it can see ${model}.` };
+    if (res.status === 404) return { ok: false, message: `The Gemini key cannot see ${model} (404). Check VEO_MODEL.` };
+    if (res.status === 400 || res.status === 401 || res.status === 403) return { ok: false, message: `Google rejected the Gemini key for Veo (${res.status}).` };
+    return { ok: false, message: `Google returned ${res.status}.` };
+  },
+  composio: async () => {
+    const res = await get("https://backend.composio.dev/api/v3/toolkits?limit=1", { "x-api-key": env("COMPOSIO_API_KEY") });
+    if (res.ok) return { ok: true, message: "Composio accepted the key (toolkits list)." };
+    if (res.status === 401 || res.status === 403) return { ok: false, message: `Composio rejected the key (${res.status}).` };
+    return { ok: false, message: `Composio returned ${res.status}.` };
+  },
   cloudflare: async () => {
     const res = await get("https://api.cloudflare.com/client/v4/ips");
     return res.ok ? { ok: true, message: "Cloudflare's API is reachable (each client uses their own token)." } : { ok: false, message: `Cloudflare's API returned ${res.status}.` };
@@ -89,6 +116,7 @@ const PROBES: Partial<Record<ServiceId, Probe>> = {
 
 /** Runs the probe for one service and returns a scrubbed result with how long it took. Never throws. */
 export async function runProbe(id: ServiceId): Promise<ProbeResult & { latencyMs: number }> {
+  await loadServiceKeys();
   const started = Date.now();
   const info = serviceInfo(id);
   const absent = missing(id);
@@ -96,7 +124,7 @@ export async function runProbe(id: ServiceId): Promise<ProbeResult & { latencyMs
   let result: ProbeResult;
   try {
     if (absent.length && inUse && info.env.length) {
-      result = { ok: false, message: `Missing in the environment: ${absent.join(", ")}` };
+      result = { ok: false, message: `Not set: ${absent.join(", ")}. Add it on this card or in the hosting environment.` };
     } else {
       result = await (PROBES[id] ?? configOnly(id))();
     }

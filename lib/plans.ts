@@ -1,13 +1,22 @@
 import { BUILT_APP_FEATURE_KEYS, sortFeatureKeys, type FeatureKey } from "@/lib/features";
 
-export type UsageMetric = "text" | "image" | "videos" | "voiceCharacters" | "chat";
-export const USAGE_METRICS: UsageMetric[] = ["text", "image", "videos", "voiceCharacters", "chat"];
+// "videoCredits": Video Studio credits a month (PLAN_VIDEO_CREDITS below; prices in lib/video-engine/credits.ts).
+export type UsageMetric = "text" | "image" | "videos" | "voiceCharacters" | "chat" | "videoCredits";
+export const USAGE_METRICS: UsageMetric[] = ["text", "image", "videos", "voiceCharacters", "chat", "videoCredits"];
 
 /** A plan key (PlanDefinition.key): TRIAL, STANDARD, PRO, or any plan the admin creates. */
 export type Plan = string;
 
 /** The one plan that is the free trial. It cannot be deleted, retired or turned into a paid plan. */
 export const TRIAL_PLAN_KEY = "TRIAL";
+
+/**
+ * Video Studio credits a plan includes each month (owner decision, 17 October 2026, provisional; prices in
+ * lib/video-engine/credits.ts): unused credits do not roll over. The trial's 50 pay for one Motion video with a
+ * voice-over. Plans not listed get none until Admin → Plans sets them. Migration 20261022100000_video_studio wrote these
+ * into PlanDefinition.limits.videoCredits.
+ */
+export const PLAN_VIDEO_CREDITS: Readonly<Record<string, number>> = { TRIAL: 50, STARTER: 100, STANDARD: 100, BUSINESS: 500, PRO: 1500 };
 
 /**
  * The two plan "capabilities" from before the feature registry (lib/features.ts). They are feature keys now; the
@@ -89,9 +98,11 @@ export function videosLeftNow(usage: { used: { videos: number }; limits: { video
  * Every built feature of the app except the API and videos: what the trial and Standard had before plans carried
  * features. Videos came later (docs/CONTENT_VISUALS.md) and come with videos a month, which only Pro has.
  */
-export const CORE_FEATURES: FeatureKey[] = BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice");
+/** Features added after the plan builder (October 2026): plans get them from their own migrations, never from these seeds. */
+const LATER_FEATURES: FeatureKey[] = ["inbox", "automations"];
+export const CORE_FEATURES: FeatureKey[] = BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice" && !LATER_FEATURES.includes(k));
 /** Every built feature of the app plus the client's own Composio account: Pro. (Managed by BuPulse is sold apart.) */
-export const PRO_FEATURES: FeatureKey[] = sortFeatureKeys([...BUILT_APP_FEATURE_KEYS, "ownComposio"]);
+export const PRO_FEATURES: FeatureKey[] = sortFeatureKeys([...BUILT_APP_FEATURE_KEYS.filter((k) => !LATER_FEATURES.includes(k)), "ownComposio"]);
 
 /**
  * The plans as they were when the plan builder was introduced (9 October 2026). They are the seed of the PlanDefinition
@@ -111,7 +122,7 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     priceUsdMonthly: 0,
     priceUsdYearly: 0,
     // One 30 s sample video, whatever plan was chosen (docs/CONTENT_VISUALS.md).
-    limits: { text: 10, image: 5, videos: TRIAL_VIDEOS, voiceCharacters: TRIAL_VOICE_CHARACTERS, chat: 50, seats: 1, postsPerAppPerDay: 1 },
+    limits: { text: 10, image: 5, videos: TRIAL_VIDEOS, voiceCharacters: TRIAL_VOICE_CHARACTERS, chat: 50, videoCredits: PLAN_VIDEO_CREDITS.TRIAL, seats: 1, postsPerAppPerDay: 1 },
     highlights: [],
     features: sortFeatureKeys([...CORE_FEATURES, "video", "voice"]),
     aiMonthlyUsd: 1,
@@ -125,7 +136,7 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     highlight: false,
     priceUsdMonthly: 49,
     priceUsdYearly: 490,
-    limits: { text: 100, image: 30, videos: 0, voiceCharacters: 0, chat: 1000, seats: 3, postsPerAppPerDay: 1 },
+    limits: { text: 100, image: 30, videos: 0, voiceCharacters: 0, chat: 1000, videoCredits: PLAN_VIDEO_CREDITS.STANDARD, seats: 3, postsPerAppPerDay: 1 },
     highlights: ["100 AI text generations a month", "30 AI images a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"],
     features: CORE_FEATURES,
     aiMonthlyUsd: 2,
@@ -139,7 +150,7 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     highlight: true,
     priceUsdMonthly: 99,
     priceUsdYearly: 990,
-    limits: { text: 300, image: 100, videos: VIDEO_PLAN_VIDEOS, voiceCharacters: VOICE_PLAN_CHARACTERS, chat: 5000, seats: 10, postsPerAppPerDay: 3 },
+    limits: { text: 300, image: 100, videos: VIDEO_PLAN_VIDEOS, voiceCharacters: VOICE_PLAN_CHARACTERS, chat: 5000, videoCredits: PLAN_VIDEO_CREDITS.PRO, seats: 10, postsPerAppPerDay: 3 },
     highlights: ["300 AI text generations a month", "100 AI images a month", "Everything in Standard", "App connectors and API access", "Use your own Composio account", "Video and voiceover when released"],
     features: PRO_FEATURES,
     aiMonthlyUsd: 6,

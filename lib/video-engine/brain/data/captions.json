@@ -1,0 +1,428 @@
+{
+  "platforms": [
+    {
+      "platform": "tiktok",
+      "status": "researched",
+      "length": "One or two lines (median 25 words, 184 characters), then the hashtags.",
+      "mustInclude": ["the offer or the product in the first line", "the route to order (WhatsApp, call, DM, the app)", "the area in the city", "4 to 6 hashtags with the city"],
+      "formulas": [
+        {
+          "id": "page-post",
+          "name": "Page post: one friendly line",
+          "pattern": "{one friendly line about the moment or the place} {0 to 3 tags: city, brand}",
+          "examples": ["A new look. A fresh experience. #IjuruatOnomo #OnomoHotels #OnomoKigali", "Happy Customer Service Week from the RwandAir family!", "#SimbaSuperMarket now restocked with fresh groceries. Come and experience great customer service."],
+          "sectors": ["any"],
+          "evidence": ["fb-155", "fb-141", "fb-144"],
+          "purposes": ["post"],
+          "weak": true,
+          "note": "From Facebook page reels; not yet observed on this platform."
+        },
+        {
+          "id": "offer-then-route",
+          "name": "Offer first, then how to order",
+          "pattern": "{offer} at {business} {emoji} {phone} | {area}",
+          "examples": ["Wednesday Promotion 🍔Buy One Burger, Get One Free!", "Buy one pizza. Get one FREE. Every Tuesday at Cave Coffee 🍕Save this so you don’t forget 👀🛵 Order on @vubavubarw 📞 Call us: +250 791 448 670"],
+          "sectors": ["restaurant", "events", "any"],
+          "evidence": ["tt-090", "tt-093"],
+          "weak": true
+        },
+        {
+          "id": "price-list-caption",
+          "name": "Price list in the caption",
+          "pattern": "📍{product}: {price} 📍{product}: {price} 📍 DM {phone} on WhatsApp to order",
+          "examples": ["📍Vintage shirt: 14,000 📍Greg shirt: 25,000 📍Swiss shirt: 22,500📍knit shirt: 18,500 📍Dm ... on WhatsApp to make a purchase."],
+          "sectors": ["fashion", "shop", "phone-shop"],
+          "evidence": ["tt-064"],
+          "note": "Seen once, on a seller with a Nigerian number; no Rwandan TikTok price-list caption yet.",
+          "weak": true
+        },
+        {
+          "id": "available-now",
+          "name": "Available now at, with delivery",
+          "pattern": "{product}: {claim}. Available now at {business} 📞 {phone} 🚚 {offer}",
+          "examples": ["✨ AQUOS Sense 9 — compact, powerful and seriously impressive. Available now at KIBO Electronics 📱📞 0780624432🚚 fast and easy delivery", "Aquos Sense 7 available at MPS 📱Clean design + powerful performance ⚡DM now before stock ends 👀"],
+          "sectors": ["phone-shop", "shop"],
+          "evidence": ["tt-099", "tt-100"],
+          "weak": true
+        },
+        {
+          "id": "question-then-offer",
+          "name": "Question, then the offer",
+          "pattern": "{problem}? {offer}. DM us or call {phone}",
+          "examples": ["Need your nails done to perfection?✨ Your next nail appointment is calling… 💅🏽✨ … 📍 Kigali, Rwanda / 📩 DM us to book your next set.", "Tired of uneven, darker-looking knuckles? This treatment helps improve the appearance of dark, dry areas…"],
+          "sectors": ["any"],
+          "evidence": ["ig-062", "ig-065"],
+          "note": "Examples from Kigali Instagram captions; no Rwandan TikTok caption in the corpus opens with a question.",
+          "weak": true
+        },
+        {
+          "id": "book-service",
+          "name": "Book the service",
+          "pattern": "{claim} 😌 Book your appointment on WhatsApp {phone}",
+          "examples": ["Let Milani transform your hair game 😌🔥Book your appointment What’sApp ..."],
+          "sectors": ["salon", "services", "clinic"],
+          "evidence": ["tt-102"],
+          "note": "Seen once, on a Johannesburg salon; no Rwandan TikTok booking caption yet.",
+          "weak": true
+        }
+      ],
+      "hashtags": {
+        "count": [4, 6],
+        "practice": ["Median 5: #Kigali or #KigaliTikTok, #RwandaBusiness, one sector tag, one brand tag, #fyp if wanted.", "Never a stack of 10 or more; hashtags alone are a weak caption."],
+        "local": ["#kigalitiktok", "#rwandatiktok", "#KigaliRwanda", "#KigaliBusiness", "#KigaliShopping", "#RwandaBusiness", "#tiktokrwanda"],
+        "examples": ["#RwandaTikTok #KigaliTikTok #KigaliRwanda #KigaliShopping #RwandaBusiness", "#ShopSmartWithMPS #aquosrwanda #phoneshop #rwandamarketplace"]
+      },
+      "language": "English for products and prices; Kinyarwanda for the hook and the invitation where the audience is local.",
+      "evidence": ["tt-079", "tt-090", "tt-093", "tt-099", "tt-100", "tt-064", "cp-111", "cp-112", "cp-116"]
+    },
+    {
+      "platform": "facebook",
+      "status": "researched",
+      "length": "Facebook ad captions: median 48 words (316 characters), 7 lines. One fact per line with an icon for property, clinic and school; a single line for a plain product. 150 to 350 characters for shops and food, 250 to 500 for property and services, rarely over 600 (school, clinic, service and property captions run to 1,000).",
+      "mustInclude": ["the product and the price or offer in the first 60 characters", "the phone or WhatsApp number labelled 'Call/WhatsApp:' (a second number is fine)", "the area and a landmark on a 📍 line", "the delivery line when the owner delivers", "0 to 3 hashtags (the city plus the sector)"],
+      "formulas": [
+        {
+          "id": "page-post",
+          "name": "Page post: one friendly line",
+          "pattern": "{one friendly line about the moment or the place} {0 to 3 tags: city, brand}",
+          "examples": ["A new look. A fresh experience. #IjuruatOnomo #OnomoHotels #OnomoKigali", "Happy Customer Service Week from the RwandAir family!", "#SimbaSuperMarket now restocked with fresh groceries. Come and experience great customer service."],
+          "sectors": ["any"],
+          "evidence": ["fb-155", "fb-141", "fb-144"],
+          "purposes": ["post"]
+        },
+        {
+          "id": "model-shop",
+          "name": "Shop: product and price, features, delivery, place, number",
+          "pattern": "🔥 {product} kuri {price} gusa\n✅ {claim} · {claim}\n🚚 {offer}\n📍 {area}\n📞 Call/WhatsApp: {phone}\n#Kigali #{sector}",
+          "examples": ["Jumpsuit Diras kuri 18k gusa .Different sizes and colors available .0795578202", "Strong portable wardrobe 0786550503 Price 65000frw Free delivery"],
+          "sectors": ["shop", "fashion", "phone-shop"],
+          "evidence": ["cp-023", "cp-083", "cp-028", "cp-038"],
+          "model": true
+        },
+        {
+          "id": "model-restaurant",
+          "name": "Restaurant: dish and price, the day, a Kinyarwanda line, delivery areas, numbers",
+          "pattern": "🍔 {product} for only {price} {day}\nAbakiriya bacu barishimye 😍 ntucikwe!\n🚚 Delivery in {area}\n📍 {area}, {landmark}\n📲 Order: {phone}\n#KigaliFood #{business}",
+          "examples": ["🔥 PROMO DISCOUNT 37.5% OFF! 🔥5K Abakiriya bacu barishimye 😍 nawe ntucikwe!", "Wednesday Promotion 🍔Buy One Burger, Get One Free!"],
+          "sectors": ["restaurant", "events"],
+          "evidence": ["cp-025", "cp-012", "cp-111"]
+        },
+        {
+          "id": "model-real-estate",
+          "name": "Property checklist in Kinyarwanda",
+          "pattern": "🏡 INZU NZIZA IGURISHWA I {area}, KIGALI\n💰 Igiciro: {price} | Kiraganirwaho\n🛏️ Ibyumba {count} · 🚿 Ubwogero {count}\n📍 {area} · {landmark}\n✅ Ibyangombwa birahari\n📞 Duhamagare cyangwa utwandikire kuri WhatsApp: {phone}",
+          "examples": ["🏡 INZU NZIZA IGURISHWA I KABEZA, KIGALI 💰 Igiciro: 130,000,000 RWF | Kiraganirwaho", "⚠️IBIBANZA 28 BIGURISHWA ⚠️ 📍KICUKIRO-MASAKA (CYERU)"],
+          "sectors": ["real-estate"],
+          "evidence": ["cp-044", "cp-047", "cp-048"]
+        },
+        {
+          "id": "model-salon",
+          "name": "Salon: services and prices, hours, place, book on WhatsApp",
+          "pattern": "✨ {product} at {business}, {area}\n💆 {product} {price} · {product} {price}\n🕘 Open {claim}\n📍 {landmark}, {area}\n📲 Book on WhatsApp: {phone}\nMurakaza neza! 💕",
+          "examples": ["Get Salon-Perfect Nails at Home!", "hurry! hurry! for dope hairstyle 💯💯💯🔥🔥🔥🔥only @ spot hair studio roysambu lumumba drive"],
+          "sectors": ["salon", "clinic"],
+          "evidence": ["cp-056", "cp-095", "cp-094"],
+          "model": true
+        },
+        {
+          "id": "model-school",
+          "name": "School: intake, what you get, fee, campus, call to enrol",
+          "pattern": "🎓 {product} intake open: starts {day}\n{one line on what the course or school is}\n✅ {claim}\n✅ {claim}\n✅ {claim}\n💰 Fee: {price} (only if the owner gives it)\n🗓️ {day}: classes, schedule or deadline\n📍 {area}, {landmark}\n📞 Call/WhatsApp to enrol: {phone}\n(real Rwandan school captions run 445 to 990 characters over 17 to 19 short lines)",
+          "examples": ["GERMAN CLASSES – NOVEMBER INTAKE OPEN! 🇩🇪", "Master the skills of a professional mechanic"],
+          "sectors": ["school"],
+          "evidence": ["cp-073", "cp-071", "cp-008"],
+          "model": true
+        },
+        {
+          "id": "price-tel-address",
+          "name": "Product, price, tel, address",
+          "pattern": "{product} PRICE: {price} TEL: {phone} ADDRESS: {area}",
+          "examples": ["COMMERCIAL BLENDER PRICE: 48,000RWF TEL: 0784695549 / 0789307951 ADDRESS: KIGALI CITY,  T2000 HOUSE,  ROOM 213B", "Galaxy light projector in Kigali Rwanda Price: 40,000RWF +Free delivery"],
+          "sectors": ["shop", "phone-shop"],
+          "evidence": ["fb-011", "fb-012", "fb-049"]
+        },
+        {
+          "id": "spec-list",
+          "name": "Emoji spec list (property, cars)",
+          "pattern": "🏡 {product} 📍 {area} 💰 {price} 📞 Call/WhatsApp: {phone}",
+          "examples": ["🏡✨ FULLY FURNISHED HOUSE FOR RENT! 🛏️ 1 Bedroom 📍 Gasogi, Kigali City 🧺 Washing Machine Access 🌇 Rooftop Access 💰 400K RWF | Month 📞 Call/WhatsApp: ...", "🏡 INZU NZIZA IGURISHWA I KABEZA, KIGALI 💰 Igiciro: 130,000,000 RWF", "⚠️IBIBANZA 28 BIGURISHWA ⚠️ 📍KICUKIRO-MASAKA (CYERU) ✅Site iri hafi n’Amashuri ya Cyeru ✅Quartier Nziza irimo Amazi n’umuriro"],
+          "sectors": ["real-estate", "car-rental"],
+          "evidence": ["fb-029", "fb-007", "fb-068", "fb-067"]
+        },
+        {
+          "id": "promo-urgency",
+          "name": "Promo with a real end",
+          "pattern": "🔥 {offer} 🔥 {claim} for as low as {price}! {phone}",
+          "examples": ["🔥 PROMO DISCOUNT 37.5% OFF! 🔥5K Abakiriya bacu barishimye 😍 nawe ntucikwe! ... for as low as 5K only! Hurry before the promo ends! 📲 0788218567 📲 0795579050"],
+          "sectors": ["restaurant", "shop"],
+          "evidence": ["fb-006"],
+          "weak": true
+        },
+        {
+          "id": "now-available-cod",
+          "name": "Now available, free delivery, pay after delivery",
+          "pattern": "🇷🇼 Now available in Rwanda! 🇷🇼 {product} ✅ {claim} 🚚 {offer} 👉 {phone}",
+          "examples": ["🇺🇬 Now Available in Uganda! 🇺🇬 Cordless pressure washer! ... 🚚 Free Delivery Across Uganda 🇺🇬 Pay After Delivery!", "🇹🇿 Sasa inapatikana Tanzania 🇹🇿"],
+          "sectors": ["shop", "phone-shop"],
+          "evidence": ["fb-019", "fb-017", "fb-021"],
+          "model": true
+        },
+        {
+          "id": "story-proof",
+          "name": "Customer story, then where to find us",
+          "pattern": "From {problem} to {result}! ... {business} is located at {area}. Call or WhatsApp {phone}",
+          "examples": ["From confusion to confidence! Annick’s skin journey wasn’t easy, but it was worth it. ... Derma Skin Clinic is located at Gishushu-Lemigo Hotel, Kigali, Rwanda. Call or WhatsApp ..."],
+          "sectors": ["clinic", "salon", "school", "services"],
+          "evidence": ["fb-002"],
+          "weak": true
+        },
+        {
+          "id": "price-ladder",
+          "name": "Price ladder (old to new)",
+          "pattern": "🎉 {offer} 🎉 🍗 {old_price} → {price} 🍗 {old_price} → {price} ... 📲 {phone}",
+          "examples": ["🎉🔥 PROMO! - HAPPY 3RD ANNIVERSARY 🔥🎉 ... 🍗 35K → 27K 🍗 24.5K → 20K 🍗 20K → 15K"],
+          "sectors": ["restaurant", "shop"],
+          "evidence": ["fb-051"],
+          "weak": true
+        },
+        {
+          "id": "dm-delivery-price",
+          "name": "DM, delivery, price in one line",
+          "pattern": "DM us to order | {offer} 💰 Price: {price}",
+          "examples": ["DM us to order | Free delivery in Kigali 💰 Price: 62,000 rwf", "Dm: 0780267970 Payment after delivery Delivery anywhere in Rwanda"],
+          "sectors": ["fashion", "shop"],
+          "evidence": ["fb-054", "fb-055", "fb-041"]
+        },
+        {
+          "id": "stock-list",
+          "name": "Stock list with prices",
+          "pattern": "💻 {business} STOCK 🔹 {product} 💰 {price} 🔹 {product} 💰 {price}",
+          "examples": ["💻 MICROSOFT SURFACE STOCK — LA PAIX TECHNOLOGY 🔹 Surface Pro 4 — i5 6th | 8/256 | 12.3” Touch 💰 450,000 RWF"],
+          "sectors": ["phone-shop", "shop"],
+          "evidence": ["fb-073"],
+          "weak": true
+        },
+        {
+          "id": "bilingual-twice",
+          "name": "The same caption in English, then Kinyarwanda",
+          "pattern": "{claim} (English) ... {claim} (Kinyarwanda)",
+          "examples": ["Rugs do more than cover the floor—they transform your entire space! ... Amatapi akora byinshi kuruta gusa ..."],
+          "sectors": ["any"],
+          "evidence": ["fb-048"],
+          "weak": true
+        },
+        {
+          "id": "branches",
+          "name": "Branches and their numbers",
+          "pattern": "{claim} at {business}. 📍 {area}: {phone} 📍 {area}: {phone}",
+          "examples": ["Master the skills of a professional mechanic ... (CHIC, Musanze, Remera branch phones)"],
+          "sectors": ["school", "clinic", "services"],
+          "evidence": ["fb-059"],
+          "weak": true
+        }
+      ],
+      "hashtags": {
+        "count": [0, 3],
+        "practice": ["Facebook business captions mostly skip hashtags: median 1, 49% of ads use none.", "When used: the city plus the sector (#Kigali #KigaliFood), at the end; never a stack of 10 or more.", "#MadeInRwanda appeared in none of 125 captions: only for goods made in Rwanda."],
+        "local": ["#Kigali", "#Rwanda", "#KigaliRwanda", "#RwandaBusiness", "#KigaliFood", "#KigaliHomes", "#KigaliRealEstate"],
+        "examples": ["#Kigali #KigaliFood", "#carrental #kigali #kigalirwanda"]
+      },
+      "language": "Rwanda: 13 of 51 captions in Kinyarwanda, most English, French on 1. Property and cheap-goods ads lean Kinyarwanda; hotels, clinics, tech and beauty lean English. Tanzania: Swahili. Kenya and Uganda: English. Numbers as people write them (38,000 RWF, 48K, 400K, 350M RWF).",
+      "evidence": ["fb-011", "fb-012", "fb-029", "fb-007", "fb-006", "fb-002", "fb-019", "fb-051", "fb-054", "fb-068", "fb-048", "fb-062", "fb-069", "cp-044", "cp-023", "cp-025", "cp-059"],
+      "findings": ["Caption corpus (125 captions, 111 Rwandan): phone or WhatsApp in 63%, a place in 77%, a price or offer in 58%, a call to action in 71%, a delivery promise in 30%; all four of phone, price, place and call to action in 29 rows.", "Hashtags: Facebook ads median 1 (49% none; 5 when used), Facebook reels 0, TikTok 5.", "Numbers: mostly 10-digit local with no spaces (0788218567); 22 with +250 and spaces; two numbers are common; the label is 'Call/WhatsApp:'.", "Prices: '20,000 RWF', '48,000RWF', '38000FRW', '18k gusa', 'Price:3.5M', '35K → 27K'; the currency comes as RWF, FRW, Rwf, rfw, frw.", "Language (Rwandan rows): English 77, mixed 19, Kinyarwanda 14, French 1. Kinyarwanda for plots, houses, cheap goods and baby products; mixed for food, phones and fashion; English for hotels, clinics, tech and beauty.", "Kinyarwanda calls to action: Duhamagare, Twandikire, uhamagare kuri, twandikire cg uduhamagare; 'kuri {price} gusa' before a price.", "Addresses are landmarks, not streets: 'Next to DELIGHT HOTEL', 'opposite IPRC traffic lights', 'Makuza Peace Plaza, Room 35', 'same building as boho, door 8'.", "13 of 51 captions are in Kinyarwanda; most are English; 1 is French. Cleopatra Home writes the caption twice, English then Kinyarwanda.", "Median video length 34 s; about half under 30 s (under 20 s for products and offers, 40 to 90 s with a talking person).", "The caption carries the spec list (checklist emojis: price, size, area, water and power, title, delivery); the video is the proof, the caption is the contract.", "MoMo is rare: none of the first 51 ads or the 111 Rwandan captions mentions it; the Sofar Kigali ticket ad does ('MoMo: 0788617015').", "Long runners (20 Rwandan ads live 97 to 565 days): 11 of 20 put a number in the caption; hashtags 0 to 12, median 2 to 3, 8 of 20 none; openers are plain statements or one question ('Need a furniture upgrade?', 'Need a place to stay in Kigali?', 'Hair loss is not the end of your story').", "About half of the Rwandan ads running 60+ days are income-chain posts and 'earn 30K a day' recruiters: age is not a quality signal on its own."]
+    },
+    {
+      "platform": "instagram",
+      "status": "researched",
+      "length": "The caption is the sales page for East African sellers: the offer or price, one benefit line, the contact (phone, WhatsApp or DM), the place, then the hashtags.",
+      "mustInclude": ["the offer or the price first", "one line of benefit", "the contact: phone, WhatsApp or 'DM to order'", "the place (street, neighbourhood or a location tag)", "3 to 6 hashtags: 2 broad, 2 local (#kigali, #rwanda), 1 or 2 niche"],
+      "formulas": [
+        {
+          "id": "page-post",
+          "name": "Page post: one friendly line",
+          "pattern": "{one friendly line about the moment or the place} {0 to 3 tags: city, brand}",
+          "examples": ["A new look. A fresh experience. #IjuruatOnomo #OnomoHotels #OnomoKigali", "Happy Customer Service Week from the RwandAir family!", "#SimbaSuperMarket now restocked with fresh groceries. Come and experience great customer service."],
+          "sectors": ["any"],
+          "evidence": ["fb-155", "fb-141", "fb-144"],
+          "purposes": ["post"],
+          "weak": true,
+          "note": "From Facebook page reels; not yet observed on this platform."
+        },
+        {
+          "id": "ig-owner-contact",
+          "name": "Offer, then call or WhatsApp and the address",
+          "pattern": "{product}\n{sizes or options}\n📞 {phone}\n📍 {area}, {landmark}\n{offer}",
+          "examples": ["LOEWE X Oncloudsolo waterproof sneakers in black and white ✅ / Size: 40,41,42,43,44,45 🛍️ / Tel: 0781704371 ✅ / Location: Downtown near la garette ✅", "Combo summer / 📞 +250785643773 / 📍Remera kisimenti opposite Canabella&camellia / Free delivery in kigali"],
+          "sectors": ["fashion", "shop", "phone-shop", "any"],
+          "evidence": ["ig-067", "ig-091", "ig-096", "ig-066", "ig-070"]
+        },
+        {
+          "id": "ig-price-stock",
+          "name": "Price and stock status (fashion)",
+          "pattern": "{product}\n💰 Price: {price}\n✅ {claim}\n{offer} (Limited size / New arrivals, only if true)",
+          "examples": ["DM us to order | Free delivery in Kigali / 💰 Price: 65,000 rwf / 💎 Stainless steel — waterproof & tarnish-free", "Full frontal bounce / Hair blend / 60k", "New arrivals / Limited size"],
+          "sectors": ["fashion", "shop", "salon"],
+          "evidence": ["ig-071", "ig-063", "ig-096"]
+        },
+        {
+          "id": "ig-dm-order",
+          "name": "Offer, then DM to order",
+          "pattern": "{claim}\n📍 {area}\n📩 DM us to order, or WhatsApp {phone}\n{delivery and payment, only if true}",
+          "examples": ["📍 Kigali, Rwanda / 📩 DM us to book your next set.", "📩 DM us to order yours today!", "Dm: 0780267970 / Payment after delivery / Delivery anywhere in Rwanda"],
+          "sectors": ["any"],
+          "evidence": ["ig-062", "ig-100", "ig-070"]
+        },
+        {
+          "id": "ig-service-card",
+          "name": "Service card with the place",
+          "pattern": "✨ {claim} ✨\n{service} | {service} | {service}\n📍 {area}, {landmark}\n📲 Book: {phone}",
+          "examples": ["✨ YOUR MOMENT OF PURE LUXURY ✨ / 💆‍♀️ Massage | 🛁 Private Jacuzzi | 🌸 Moroccan Bath | ✨ Facials & Body Treatments / 📍 Rebero, Kigali / 📲 Book your private luxury experien…", "Give your skin the care it deserves… / 📍 Kibagabaga / 📞 0790 004 000"],
+          "sectors": ["salon", "clinic", "services"],
+          "evidence": ["ig-069", "ig-098", "ig-095", "ig-060"]
+        },
+        {
+          "id": "ig-owner-question",
+          "name": "A question owners answer",
+          "pattern": "{claim} Any other small business feel me?",
+          "examples": ["Small business owner means a WHOLE lot more than just selling…", "Any other small business feel me?"],
+          "sectors": ["any"],
+          "evidence": ["ig-051", "ig-054"],
+          "purposes": ["post"],
+          "note": "An owner's own post, not an ad; seen on two small businesses outside East Africa.",
+          "weak": true
+        }
+      ],
+      "hashtags": {
+        "count": [3, 6],
+        "practice": ["Median 5 on the 58 reels (11 use none); the biggest hits mostly use few, at the end.", "Mix: 2 broad (#smallbusiness, #fyp), 2 local (#kigali, #rwanda), 1 or 2 niche; never a keyword dump."],
+        "local": ["#kigali", "#rwanda", "#kigalirwanda", "#kigalifood", "#rwandabusiness"],
+        "examples": ["#livingroom #house #remodel #diy", "#madeintanzania #merakithebranddesigns #newprints2026"]
+      },
+      "language": "English captions for Kenya, Tanzania and Rwanda in the sample; Kinyarwanda and Swahili are mostly absent, so local-language text stands out (as Tamil and Arabic do in their markets).",
+      "evidence": ["ig-023", "ig-035", "ig-053", "ig-051", "ig-037", "ig-025"],
+      "findings": ["58 reels watched: median 13 s, 37 of 58 at 15 s or under; the biggest small-business hits are 6.7 s and 7.6 s.", "First text on screen at 0.0 s in about 60%; the rest are ASMR or pure product macro with no text.", "7 of 58 put a phone number, WhatsApp or a DM instruction in the caption; East African sellers make the caption the sales page (price in local currency, stock, place, number).", "Hashtags median 5 (11 none).", "Instagram shows AI labels itself on generated videos (6 rows)."]
+    },
+    {
+      "platform": "shorts",
+      "status": "researched",
+      "length": "The Short's title is the caption: the promise or the number in the first 40 characters (what search shows), under 100 characters, a few hashtags at the end.",
+      "mustInclude": ["the promise, the number or the product name in the first 40 characters", "the shop name and the city (people search for them)", "the phone number in the title for a local shop", "0 to 3 hashtags at the end (#shorts and the city; 14 of 36 Shorts titles use none)"],
+      "formulas": [
+        {
+          "id": "page-post",
+          "name": "Page post: one friendly line",
+          "pattern": "{one friendly line about the moment or the place} {0 to 3 tags: city, brand}",
+          "examples": ["A new look. A fresh experience. #IjuruatOnomo #OnomoHotels #OnomoKigali", "Happy Customer Service Week from the RwandAir family!", "#SimbaSuperMarket now restocked with fresh groceries. Come and experience great customer service."],
+          "sectors": ["any"],
+          "evidence": ["fb-155", "fb-141", "fb-144"],
+          "purposes": ["post"],
+          "weak": true,
+          "note": "From Facebook page reels; not yet observed on this platform."
+        },
+        {
+          "id": "promise-number-title",
+          "name": "Promise or number first",
+          "pattern": "{count} reasons to {claim} / {product} in {city}: {offer}",
+          "examples": ["5 reasons to invest in Rwanda", "Turn your product into ads in seconds"],
+          "sectors": ["any"],
+          "evidence": ["yt-014", "yt-008"],
+          "weak": true
+        },
+        {
+          "id": "shop-number-title",
+          "name": "Shop, city and number",
+          "pattern": "{business} {city} ({phone}) #shorts #{city}",
+          "examples": ["Nairobi Thrift shop(0757233779)🇰🇪 #kenya #nairobi"],
+          "sectors": ["shop", "fashion", "phone-shop"],
+          "evidence": ["yt-018"],
+          "weak": true
+        },
+        {
+          "id": "store-list-title",
+          "name": "The store and what it sells",
+          "pattern": "{business}: {product}, {product} | {area}",
+          "examples": ["Big mobile store Samsung,Vivo,Realme,iPhone #shorts"],
+          "sectors": ["phone-shop", "shop"],
+          "evidence": ["yt-035"],
+          "weak": true
+        },
+        {
+          "id": "series-title",
+          "name": "Series title",
+          "pattern": "{claim} - DAY {count} | {product}",
+          "examples": ["MAKING PRODUCT ADS IN BLENDER - DAY 8 | DIOR - SAUVAGE"],
+          "sectors": ["any"],
+          "evidence": ["yt-005"],
+          "weak": true
+        }
+      ],
+      "hashtags": {
+        "count": [0, 3],
+        "practice": ["#shorts plus 1 or 2 city tags at the end of the title.", "Piles of hashtags (#viral #fyp #trending ...) are common on low-view Shorts."],
+        "local": ["#shorts", "#kigali", "#kigali_250", "#rwanda", "#visitrwanda"],
+        "examples": ["#visitrwanda #kigali_250", "#shorts"]
+      },
+      "language": "English titles; Kinyarwanda shows up in auto-captions on Kigali city clips and in one lead-generation title (which is also the income-proof pattern the engine refuses).",
+      "evidence": ["yt-014", "yt-018", "yt-035", "yt-005", "yt-010", "yt-008"],
+      "findings": ["Median 15 s, range 8 to 51 s; 23 of 36 are 15 s or shorter; the most-liked (32K, 27K, 9.3K) are 10 s.", "None of the 36 says or writes 'subscribe': YouTube draws its own Subscribe button.", "Shorts have no ad button: the ad is a pointer (a number, a QR code, a name to search).", "Local shop Shorts put the phone number in the title."]
+    }
+  ],
+  "tradeRoutes": [
+    {
+      "id": "whatsapp",
+      "words": "Call/WhatsApp: {phone}",
+      "when": "The default in Rwanda: 22 of 51 Rwandan Facebook video ads use the 'Send WhatsApp message' button, and 35 of 51 put the number in the caption."
+    },
+    {
+      "id": "twandikire",
+      "words": "Duhamagare cyangwa utwandikire kuri WhatsApp: {phone}",
+      "when": "Kinyarwanda captions: the corpus's own call to action (Duhamagare 9, Twandikire 8), never a translation of 'click the link'."
+    },
+    {
+      "id": "instagram",
+      "words": "Visit our Instagram {business}",
+      "when": "13 of 51 Rwandan Facebook ads send people to the Instagram profile; still give the number."
+    },
+    {
+      "id": "call",
+      "words": "Call {phone} / Duhamagare {phone}",
+      "when": "Services, car hire, travel, restaurants taking orders by phone ('Call now' on 4 of 51)."
+    },
+    {
+      "id": "vubavuba",
+      "words": "Order on VubaVuba",
+      "when": "Kigali restaurants that deliver through the VubaVuba app (only when the owner says so)."
+    },
+    {
+      "id": "location",
+      "words": "Find us at {area}",
+      "when": "Walk-in shops, clinics, bars and restaurants: a landmark, not a street ('Next to DELIGHT HOTEL', 'opposite IPRC traffic lights', 'Makuza Peace Plaza, Room 35')."
+    },
+    {
+      "id": "dm",
+      "words": "DM to order",
+      "when": "Instagram and TikTok shops."
+    },
+    {
+      "id": "cod",
+      "words": "Free delivery, pay after delivery",
+      "when": "Cash-on-delivery sellers; the trust line. Only when the owner offers both."
+    },
+    {
+      "id": "momo",
+      "words": "Pay with MoMo",
+      "when": "Rare in Rwandan ads (the Sofar Kigali ticket ad is the exception): an opening. Only when the owner accepts MoMo."
+    },
+    {
+      "id": "qr",
+      "words": "Scan the QR code / search {business}",
+      "when": "YouTube Shorts have no ad button: end on a QR code, the number or the name to search."
+    }
+  ],
+  "firstComment": {
+    "why": "Under 20 Kigali Instagram reels, 72 of 177 comments (41%) ask the price, and the rest of the 86 questions ask where, about delivery and for the number, often the same question 6 to 10 times under one reel; sellers answered 46 of the 86, and 19 of 38 price replies only said 'DM'. One pinned answer covers them all.",
+    "en": ["Price: {price}", "📍 {place}", "Delivery: {delivery}", "WhatsApp: {phone}"],
+    "rw": ["Igiciro ni {price}", "Turi i {area}, hafi ya {landmark}", "Turohereza i {city}", "Nandikira kuri WhatsApp {phone}"],
+    "evidence": ["ic-013", "ic-011", "ic-001", "ic-012", "ic-015", "ic-005"]
+  }
+}

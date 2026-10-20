@@ -36,6 +36,7 @@ export const BILL_PROVIDERS: BillProvider[] = [
   { key: "anthropic", label: "Anthropic (Claude)", ledger: ["claude"], hint: "console.anthropic.com, Billing" },
   { key: "elevenlabs", label: "ElevenLabs (usage beyond the plan)", ledger: ["elevenlabs"], hint: "Only the usage-based part; the subscription is a recurring cost" },
   { key: "higgsfield", label: "Higgsfield", ledger: ["higgsfield"], hint: "Credits bought or used in the month" },
+  { key: "byteplus", label: "BytePlus (Seedance video)", ledger: ["byteplus"], hint: "console.byteplus.com, Billing: ModelArk usage for the month (or the prepaid pack used)" },
   // Counted from ServiceUsage (lib/money/costs.ts), not AiCall, so WhatsApp never eats into a company's AI allowance.
   { key: "meta_whatsapp", label: "Meta (WhatsApp lead alerts)", ledger: ["whatsapp"], category: "email", hint: "WhatsApp Manager, Insights or Billing, for the month" },
   { key: "other", label: "Other provider", ledger: [], hint: "Anything else billed by usage" },

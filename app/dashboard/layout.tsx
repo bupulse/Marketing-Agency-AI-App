@@ -11,6 +11,7 @@ import { manualGrace } from "@/lib/billing/period";
 import { brandPalette, isHexColor } from "@/lib/color-contrast";
 import { AutoTimezone } from "@/components/publishing/auto-timezone";
 import { AnnouncementBanner } from "@/components/app/announcement-banner";
+import { InstallPrompt, PhoneAppSetup } from "@/components/app/phone-app";
 import { DemoLock } from "@/components/app/demo-lock";
 import { InvoiceLock } from "@/components/app/invoice-lock";
 import { openInvoiceOf } from "@/lib/invoices/service";
@@ -20,12 +21,17 @@ import { OfferBanner } from "@/components/app/offer-banner";
 import { clientOffer } from "@/lib/offers/service";
 import { currentManualPayment } from "@/lib/billing/momo";
 import { offerCheckingReference } from "@/lib/billing/momo-shared";
+import { isServiceEnabled } from "@/lib/admin/switch";
+import { unseenStudioVideos } from "@/lib/video-library/service";
+import { unreadCount } from "@/lib/inbox/service";
 
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
   robots: { index: false, follow: false },
-  // Lets a phone add the dashboard to its Home Screen: on an iPhone that is what makes lead alerts (lib/push) possible.
+  // Lets a phone install the dashboard as an app (docs/guide/features/32-phone-app-and-whatsapp-share.md): on an iPhone
+  // that is also what makes lead alerts (lib/push) possible.
   manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "BuPulse", statusBarStyle: "default" },
 };
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
@@ -41,6 +47,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     return (
       <>
         <BackgroundBlobs />
+        <PhoneAppSetup />
         {invoice ? (
           <InvoiceLock invoice={invoice} businessId={business.id} role={role} firstName={firstName} email={email} businessName={businessName} />
         ) : (
@@ -83,10 +90,27 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         },
       ]
     : [];
+  // Studio videos that finished and were not opened in the Videos library yet (docs/VIDEO_STUDIO_SPLIT.md).
+  const newVideos = await unseenStudioVideos(business.id).catch(() => 0);
+  if (newVideos > 0) {
+    notices.push({
+      id: "videos-ready",
+      title: newVideos === 1 ? "Your video is ready" : `${newVideos} new videos are ready`,
+      text: "The Video Studio finished it. Watch it, download it or schedule it on your channels.",
+      href: "/dashboard/video",
+      action: newVideos === 1 ? "View video" : "View videos",
+    });
+  }
+  // The Video Studio link in the sidebar: shown once the studio is switched on, to those who may make content.
+  const studioOn = can(role, "content") && (await isServiceEnabled("studio").catch(() => false));
+  const studio = studioOn ? ((usage.limits.videoCredits ?? 0) > 0 ? "open" : "upgrade") : null;
+  // The badge on Inbox: one indexed count, only when the plan has the inbox.
+  const inboxUnread = entitlements.inPlan.has("inbox") ? await unreadCount(business.id).catch(() => 0) : 0;
 
   return (
     <>
       <BackgroundBlobs />
+      <PhoneAppSetup />
       <AppShell
         brand={{ logoUrl, colors: brandPalette(brandColors), hasColors: brandColors.some(isHexColor) }}
         displayName={displayName}
@@ -96,6 +120,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         role={role}
         features={[...entitlements.inPlan]}
         notices={notices}
+        studio={studio}
+        inboxUnread={inboxUnread}
         plan={{
           name: usage.plan.name,
           trialLabel,
@@ -117,6 +143,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           endsOn={endingNotice(usage.subscription)}
           grace={grace ? { ended: formatDate(grace.ended) ?? "", until: formatDate(grace.until) ?? "" } : null}
         />
+        <InstallPrompt />
         {children}
         {can(role, "settings") && <AutoTimezone current={business.timezone} />}
       </AppShell>

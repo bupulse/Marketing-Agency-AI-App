@@ -19,7 +19,7 @@ export const MAX_OFFER_MINOR = 2_000_000_000;
 // ---- the add-on catalog ---------------------------------------------------------------------------------------------
 
 /** The limits an offer can raise by blocks (videos and voice characters stay the base plan's). */
-export const OFFER_METRICS = ["text", "image", "chat"] as const;
+export const OFFER_METRICS = ["text", "image", "chat", "videoCredits"] as const;
 export type OfferMetric = (typeof OFFER_METRICS)[number];
 
 export const MANAGED_TIERS = ["light", "full"] as const;
@@ -37,6 +37,8 @@ export type AddonDef =
 const FEATURE_INCLUDES: Partial<Record<FeatureKey, { metric: OfferMetric; amount: number }>> = {
   aiPhotos: { metric: "image", amount: 30 },
   websiteChat: { metric: "chat", amount: 500 },
+  // "Social replies" in docs/bizdev/PLAN.md: the automations' AI replies.
+  automations: { metric: "chat", amount: 1000 },
 };
 
 /**
@@ -50,6 +52,7 @@ export const ADDONS: readonly AddonDef[] = [
   { key: "block:text", kind: "block", metric: "text", blockSize: 100, label: "+100 AI texts" },
   { key: "block:image", kind: "block", metric: "image", blockSize: 50, label: "Image pack (+50 AI images)" },
   { key: "block:chat", kind: "block", metric: "chat", blockSize: 1000, label: "+1,000 chat replies" },
+  { key: "block:videoCredits", kind: "block", metric: "videoCredits", blockSize: 1000, label: "+1,000 video credits" },
   { key: "seat", kind: "seat", label: "Extra user" },
 ];
 export const ADDON_KEYS = ADDONS.map((a) => a.key);
@@ -59,7 +62,7 @@ export const addonOf = (key: string) => ADDONS.find((a) => a.key === key) ?? nul
 /** The price key of a feature in an offer (Managed by BuPulse is priced by tier). */
 export const featureAddonKey = (key: FeatureKey, tier: ManagedTier = "light") => (key === "managed" ? `managed:${tier}` : key);
 
-export const METRIC_LABEL: Record<OfferMetric | "seats" | "postsPerAppPerDay", string> = { text: "AI texts a month", image: "AI images a month", chat: "Chat replies a month", seats: "Users", postsPerAppPerDay: "Posts per app per day" };
+export const METRIC_LABEL: Record<OfferMetric | "seats" | "postsPerAppPerDay", string> = { text: "AI texts a month", image: "AI images a month", chat: "Chat replies a month", videoCredits: "Video Studio credits a month", seats: "Users", postsPerAppPerDay: "Posts per app per day" };
 
 // ---- pricing ------------------------------------------------------------------------------------------------------
 
@@ -67,7 +70,10 @@ export type AddonPriceRow = { addonKey: string; regionKey: string; currency: str
 /** A regional plan to start from: its price in the region's currency, what it includes. */
 export type OfferBase = { key: string; name: string; monthlyMinor: number; yearlyMinor: number; features: readonly FeatureKey[]; limits: PlanLimits };
 /** `postsPerAppPerDay` (1 to 10) is set, not priced: how many posts per app a day the custom plan makes (docs/CONTENT.md). */
-export type OfferLimits = Pick<PlanLimits, OfferMetric | "seats"> & { postsPerAppPerDay?: number };
+/** `videoCredits` is optional: offers saved before the Video Studio credits existed have none (read as 0). */
+export type OfferLimits = Pick<PlanLimits, Exclude<OfferMetric, "videoCredits"> | "seats"> & { videoCredits?: number; postsPerAppPerDay?: number };
+/** What a plan and its features include: every metric is known (video credits too). */
+export type IncludedLimits = OfferLimits & { videoCredits: number };
 
 export type PricedLine = { key: string; label: string; quantity: number; unitMinor: number; totalMinor: number; missingPrice?: boolean };
 
@@ -90,7 +96,7 @@ export type OfferQuote = {
   /** The custom plan's limits (videos and voiceCharacters stay the base plan's, except video added as an add-on). */
   limits: PlanLimits;
   /** What the base plan and the add-ons already include before any block is bought. */
-  included: OfferLimits;
+  included: IncludedLimits;
   lines: PricedLine[];
   computedMinor: number;
   /** Labels of the lines that have no price in this region (priced at 0 until the admin adds one). */
@@ -109,16 +115,16 @@ function priceOf(prices: readonly AddonPriceRow[], key: string, regionKey: strin
   return row && Number.isInteger(row.monthlyMinor) && row.monthlyMinor >= 0 ? row.monthlyMinor : null;
 }
 
-const EMPTY_LIMITS: PlanLimits = { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, seats: SEATS_MIN };
+const EMPTY_LIMITS: PlanLimits = { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, videoCredits: 0, seats: SEATS_MIN };
 
 /**
  * What a custom plan includes before any block is bought: the base plan's limits plus what each added feature brings
  * (website chat: 500 chat replies; AI photos: 30 images). The editor's fields start there and never go below it.
  */
-export function offerIncluded(base: OfferBase | null, features: readonly string[], managedTier: ManagedTier = "light"): OfferLimits {
+export function offerIncluded(base: OfferBase | null, features: readonly string[], managedTier: ManagedTier = "light"): IncludedLimits {
   const baseFeatures = base?.features ?? [];
   const baseLimits = base?.limits ?? EMPTY_LIMITS;
-  const included: OfferLimits = { text: baseLimits.text, image: baseLimits.image, chat: baseLimits.chat, seats: baseLimits.seats, postsPerAppPerDay: postsPerAppLimit(baseLimits) };
+  const included: IncludedLimits = { text: baseLimits.text, image: baseLimits.image, chat: baseLimits.chat, videoCredits: baseLimits.videoCredits ?? 0, seats: baseLimits.seats, postsPerAppPerDay: postsPerAppLimit(baseLimits) };
   for (const key of resolveOfferFeatures(features, managedTier, baseFeatures)) {
     if (baseFeatures.includes(key)) continue;
     const addon = addonOf(featureAddonKey(key, managedTier));
@@ -133,11 +139,11 @@ export function offerIncluded(base: OfferBase | null, features: readonly string[
  * never ends up with less than it includes. A limit of 0 would refuse every use (lib/usage.ts consumeUsage), so the
  * client's chat would never answer. Used when a custom plan is made from an offer that was saved before this rule.
  */
-export function withIncludedLimits<T extends Pick<PlanLimits, OfferMetric>>(limits: T, features: readonly string[]): T {
+export function withIncludedLimits<T extends Pick<PlanLimits, Exclude<OfferMetric, "videoCredits">> & { videoCredits?: number }>(limits: T, features: readonly string[]): T {
   const out = { ...limits };
   for (const key of features) {
     const inc = isFeatureKey(key) ? FEATURE_INCLUDES[key] : undefined;
-    if (inc && !(out[inc.metric] >= inc.amount)) out[inc.metric] = inc.amount;
+    if (inc && !((out[inc.metric] ?? 0) >= inc.amount)) out[inc.metric] = inc.amount;
   }
   return out;
 }
@@ -175,7 +181,8 @@ export function quoteOffer(input: OfferQuoteInput): OfferQuote {
   }
   // A limit is never below what the plan and its features include (they are paid for already): 0 chat replies with
   // website chat in the plan would refuse every reply.
-  const limit = (m: OfferMetric | "seats") => Math.max(input.limits[m], included[m]);
+  // An offer saved before video credits existed has none: 0, never NaN.
+  const limit = (m: OfferMetric | "seats") => Math.max(input.limits[m] ?? 0, included[m]);
   for (const metric of OFFER_METRICS) {
     const extra = limit(metric) - included[metric];
     if (extra <= 0) continue;
@@ -189,7 +196,7 @@ export function quoteOffer(input: OfferQuoteInput): OfferQuote {
     features,
     added,
     // Video sold on top of a plan without it brings the video plans' seconds (8 videos of up to 30 s a month).
-    limits: { ...baseLimits, text: limit("text"), image: limit("image"), chat: limit("chat"), seats: limit("seats"), postsPerAppPerDay: postsPerAppLimit({ postsPerAppPerDay: input.limits.postsPerAppPerDay ?? postsPerAppLimit(baseLimits) }), ...(added.includes("video") ? { videos: Math.max(baseLimits.videos, VIDEO_PLAN_VIDEOS) } : {}), ...(added.includes("voice") ? { voiceCharacters: Math.max(baseLimits.voiceCharacters, VOICE_PLAN_CHARACTERS) } : {}) },
+    limits: { ...baseLimits, text: limit("text"), image: limit("image"), chat: limit("chat"), videoCredits: limit("videoCredits"), seats: limit("seats"), postsPerAppPerDay: postsPerAppLimit({ postsPerAppPerDay: input.limits.postsPerAppPerDay ?? postsPerAppLimit(baseLimits) }), ...(added.includes("video") ? { videos: Math.max(baseLimits.videos, VIDEO_PLAN_VIDEOS) } : {}), ...(added.includes("voice") ? { voiceCharacters: Math.max(baseLimits.voiceCharacters, VOICE_PLAN_CHARACTERS) } : {}) },
     included,
     lines,
     computedMinor: lines.reduce((s, l) => s + l.totalMinor, 0),

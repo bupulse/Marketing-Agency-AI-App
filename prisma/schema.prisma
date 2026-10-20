@@ -54,6 +54,7 @@ model User {
   pushSubscriptions    PushSubscription[]
 
   @@index([lastSeenAt])
+  assignedConversations Conversation[] @relation("ConversationAssignee")
 }
 
 // One business per user for now. Industry-neutral: a phone shop, a school,
@@ -129,6 +130,11 @@ model Business {
   autopilotRuns    AutopilotRun[]
   chatWidgets      ChatWidget[]
   chatSessions     ChatSession[]
+  contacts         Contact[]
+  contactTags      ContactTag[]
+  contactFields    ContactField[]
+  conversations    Conversation[]
+  automations      Automation[]
   webhookEndpoints WebhookEndpoint[]
   apiKeys          ApiKey[]
   storeConnections StoreConnection[]
@@ -147,6 +153,10 @@ model Business {
   testimonials     Testimonial[]
   interview        MarketingInterview?
   postVersions     PostVersion[]
+  videoJobs        VideoJob[]
+  videoOutcomes    VideoOutcome[]
+  studioTickets    StudioTicket[]
+  bioPage          BioPage?
 
   @@index([industryId])
   // The sales staff member the company is assigned to (StaffMember.id), from a referral link at sign-up or a sales
@@ -220,6 +230,7 @@ model GeneratedContent {
   model       String
   createdAt   DateTime  @default(now())
   visuals     ContentVisual[]
+  videoJobs   VideoJob[]
 
   @@index([projectId, createdAt])
   @@index([productId, createdAt])
@@ -289,6 +300,8 @@ model Product {
   posts        Post[]
   storeSync    ProductSync?
   testimonials Testimonial[]
+  videoJobs    VideoJob[]
+  bioItems     BioPageItem[]
 
   @@index([businessId, status, createdAt])
 }
@@ -314,6 +327,7 @@ model Campaign {
   contents GeneratedContent[]
   designs  Design[]
   posts    Post[]
+  videoJobs VideoJob[]
 
   @@index([businessId, status, createdAt])
 }
@@ -475,6 +489,8 @@ model Lead {
   sessionId        String?      @unique // the chat it came from
   session          ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   pageUrl          String? // page the visitor was on
+  contactId        String? // the contact this lead belongs to (docs/INBOX.md); set when the lead is saved
+  contact          Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
   notifiedAt       DateTime? // instant email sent
   webhookPendingAt DateTime? // set when the lead.created webhook failed; the hourly cron retries it for 24 hours
   createdAt        DateTime     @default(now())
@@ -483,6 +499,7 @@ model Lead {
   @@index([businessId, createdAt])
   @@index([businessId, status])
   @@index([webhookPendingAt])
+  @@index([contactId])
 }
 
 // The website chat widget's settings. Created on first visit to the widget settings page.
@@ -543,6 +560,7 @@ model ChatSession {
   lastMessageAt DateTime      @default(now())
   messages      ChatMessage[]
   lead          Lead?
+  conversation  Conversation?
 
   @@index([businessId, lastMessageAt])
   @@index([businessId, visitorId])
@@ -722,6 +740,7 @@ model UsageRecord {
   videos           Int      @default(0) // videos made this month (each up to 30 s; until 14 Oct 2026: seconds)
   voiceCharacters  Int      @default(0)
   chatMessages     Int      @default(0) // AI replies of the website chat widget
+  videoCredits     Int      @default(0) // Video Studio credits used this month (lib/video-engine/credits.ts)
   updatedAt        DateTime @updatedAt
 
   @@unique([userId, periodStart])
@@ -749,6 +768,7 @@ enum ConnectionKind {
 enum ConnectionMethod {
   DIRECT // BuPulse's own developer app and OAuth tokens
   OWN_COMPOSIO // the user's own Composio account (Pro)
+  COMPOSIO // "BuPulse-Socials": BuPulse's own Composio account; the token stays at Composio (lib/social/composio)
 }
 
 // How posts reach the network: AUTO publishes through the API; NOTIFY (e.g. a personal Instagram
@@ -787,8 +807,11 @@ model Connection {
   accountType                String? // network-specific, e.g. "business" | "creator" | "personal" | "page" | "organization"
   avatarUrl                  String?
   lastError                  String?
+  inboxEnabled               Boolean          @default(false) // "Answer comments and messages" (Instagram, Facebook): docs/SOCIAL_INBOX.md
+  inboxCursor                Json? // what the inbox check has seen so far (lib/social/inbox/cursor.ts)
   createdAt                  DateTime         @default(now())
   updatedAt                  DateTime         @updatedAt
+  conversations              Conversation[]
   posts                      Post[]
 
   @@unique([businessId, provider, externalAccountId])
@@ -873,6 +896,7 @@ model Post {
   updatedAt      DateTime      @updatedAt
   metrics        PostMetrics[]
   versions       PostVersion[]
+  videoOutcome   VideoOutcome?
 
   @@unique([connectionId, externalId])
   @@index([status, scheduledAt])
@@ -1045,6 +1069,7 @@ model VoiceClip {
   timings    Json
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
+  videoJobs  VideoJob[]
 
   @@unique([businessId, hash])
 }
@@ -1176,6 +1201,11 @@ model MediaAsset {
   // The owner's "What's in this video?" (or photo): the AI writes captions about it.
   description String?
   source     String? // where an import came from: "google_drive" | "dropbox" | "canva" | "store"; null for uploads
+  // A product photo's cut-out (lib/video-engine/cutout.ts): the PNG next to it and the product's box in it, or why it
+  // cannot be cut out (then it is not tried again).
+  cutoutPath    String?
+  cutoutBox     Json?
+  cutoutRefused String?
   createdAt  DateTime        @default(now())
   products   ProductPhoto[]
   campaigns  CampaignPhoto[]
@@ -2124,4 +2154,565 @@ model CustomPlanRequest {
 
   @@index([status, createdAt])
   @@index([businessId, createdAt])
+}
+
+// ---- Video Studio (docs/VIDEO_APP_INTEGRATION.md) ----
+
+// One video the studio makes: a Motion design (the browser draws the MP4), a Premium 3D clip (the render worker) or a
+// Seedance clip (BytePlus), with its credits, scores and file. engine and status are text with CHECK constraints in the
+// migration (20261022100000_video_studio), like ContentVisual.
+model VideoJob {
+  id             String            @id @default(cuid())
+  businessId     String
+  business       Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId         String?           @db.Uuid // who pressed Generate; null for Autopilot
+  productId      String?
+  product        Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  campaignId     String?
+  campaign       Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contentId      String? // the GeneratedContent it belongs to, when made from a post
+  content        GeneratedContent? @relation(fields: [contentId], references: [id], onDelete: SetNull)
+  parentId       String? // the job an edit, extend, re-render or overlay came from
+  parent         VideoJob?         @relation("VideoJobParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children       VideoJob[]        @relation("VideoJobParent")
+  engine         String // "motion" | "premium3d" | "seedance"
+  mode           String? // "reference" | "text" | "image" | "first-last" | "edit" | "extend"
+  status         String            @default("designing") // designing, designed, rendering, submitted, queued, running, ready, failed, cancelled, preview, preview-ready
+  templateId     String?
+  hookId         String?
+  platform       String? // "tiktok" | "instagram" | "facebook" | "youtube"; null for any
+  ratio          String            @default("9:16")
+  seconds        Int
+  quality        String? // MP4 size, Premium 540p/720p, or "<tier> <resolution>" for Seedance
+  brief          Json // the DesignBrief or PromptBrief, photos as Storage paths (no image bytes)
+  spec           Json? // MotionSpec, or the overlay spec of a Seedance clip
+  scene          Json? // BlenderScene (Premium 3D)
+  prompt         String? // the Seedance prompt as sent
+  references     Json              @default("[]") // what was sent: [{ name, label, path, role }]
+  providerTaskId String?           @unique // BytePlus task id
+  storyboard     Json? // a free preview's storyboard (no key yet)
+  caption        String            @default("")
+  hashtags       String[]          @default([])
+  videoPath      String? // the MP4 in the Gallery (a MediaAsset, gallery-videos bucket: <userId>/clips/<id>.mp4)
+  posterPath     String?
+  bytes          Int               @default(0) // counted toward the media quota
+  durationMs     Int?
+  voiceClipId    String?
+  voiceClip      VoiceClip?        @relation(fields: [voiceClipId], references: [id], onDelete: SetNull)
+  // The library track mixed into the MP4: { trackId, title, attribution, owned }. A track whose licence asks for a
+  // credit puts its attribution on the posts (withMusicCredit). Null: no music.
+  music          Json?
+  credits        Int               @default(0) // video credits taken (0 for previews)
+  periodStart    DateTime? // the UsageRecord window they were taken from, for the refund
+  // A voice-over's credits while its take is being made (lib/video-studio/voice.ts): set when they are taken, cleared
+  // when the take is paid for or the credits are given back. The video-jobs sweep refunds one left older than the lease.
+  voiceCredits     Int             @default(0)
+  voicePeriodStart DateTime?
+  voiceReservedAt  DateTime?
+  refundedAt     DateTime?
+  costUsd        Decimal           @default(0) @db.Decimal(12, 6) // provider cost (its AiCall rows)
+  warnings       Json              @default("[]") // fact warnings (lib/video-engine/factcheck.ts)
+  score          Json? // research score (brain scoreDesign / scoreSeedancePrompt)
+  captionScore   Json? // brain scoreCaption
+  error          String?
+  attempts       Int               @default(0)
+  leaseUntil     DateTime? // the design sweep, render worker or poller holding it
+  nextPollAt     DateTime? // Seedance: when the cron checks BytePlus next
+  expiresAt      DateTime? // Seedance: execution_expires_after (BytePlus ends it unbilled)
+  // "Your video is ready" (docs/VIDEO_STUDIO_SPLIT.md): when the video-jobs sweep sent the email, and when the client
+  // first opened the video in BuPulse's Videos library (the bell shows ready videos not seen yet).
+  readyNoticeAt  DateTime?
+  seenAt         DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  outcomes       VideoOutcome[]
+
+  @@index([businessId, createdAt])
+  @@index([status, nextPollAt])
+  @@index([engine, status, leaseUntil])
+  @@index([contentId])
+  @@index([status, readyNoticeAt])
+}
+
+// One-click sign-in from BuPulse to the Video Studio (studio.bupulse.com, docs/VIDEO_STUDIO_SPLIT.md): BuPulse writes
+// a ticket and sends the client to the studio with its token; the studio redeems it once, within 2 minutes. Only the
+// token's SHA-256 is stored.
+model StudioTicket {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  userId     String    @db.Uuid // who pressed "Open Video Studio"
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
+// What a posted studio video did 24 hours and 7 days after it went out (lib/video-engine/brain/types.ts Outcome); the
+// Brain learns from these (docs/research/BRAIN.md, "Learning from our own results").
+model VideoOutcome {
+  id               String   @id @default(cuid())
+  videoJobId       String
+  videoJob         VideoJob @relation(fields: [videoJobId], references: [id], onDelete: Cascade)
+  postId           String?  @unique
+  post             Post?    @relation(fields: [postId], references: [id], onDelete: SetNull)
+  businessId       String
+  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sector           String
+  platform         String
+  templateId       String?
+  hookId           String?
+  formatId         String?
+  captionFormulaId String?
+  seconds          Int
+  language         String?
+  postedAt         DateTime
+  stats24h         Json? // OutcomeStats: views, reach, likes, comments, saves, shares
+  stats7d          Json?
+  source           String   @default("bupulse")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([sector, platform])
+  @@index([businessId, postedAt])
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Conversations engine (docs/INBOX.md, docs/AUTOMATIONS.md): contacts, the shared inbox and automations, for every
+// channel (website chat now; Instagram and Facebook through Composio or Meta; WhatsApp and others later).
+
+// Where a message comes from or goes to.
+enum ChannelKind {
+  WEBSITE
+  INSTAGRAM
+  FACEBOOK
+  WHATSAPP
+  TELEGRAM
+  TIKTOK
+  EMAIL
+  SMS
+}
+
+// One real person a business talks to, on any channel. Several ContactIdentity rows join their channels together.
+model Contact {
+  id             String            @id @default(cuid())
+  businessId     String
+  business       Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name           String?
+  email          String?
+  phone          String? // normalised (lib/leads/normalize.ts)
+  avatarUrl      String?
+  language       String? // last detected language, e.g. "rw", "en", "fr"
+  // Custom field values, keyed by ContactField.key, e.g. {"budget": "200000", "district": "Gasabo"}.
+  fields         Json              @default("{}")
+  emailOptIn     Boolean           @default(false) // agreed to receive broadcasts by email
+  unsubscribedAt DateTime? // asked to stop broadcasts (any channel)
+  lastChannel    ChannelKind?
+  lastSeenAt     DateTime          @default(now()) // last message from them
+  mergedIntoId   String? // set when merged into another contact; the row is kept for old links, hidden from lists
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @default(now()) @updatedAt
+  identities     ContactIdentity[]
+  tags           ContactTagLink[]
+  conversations  Conversation[]
+  leads          Lead[]
+  runs           AutomationRun[]
+
+  @@index([businessId, lastSeenAt])
+  @@index([businessId, email])
+  @@index([businessId, phone])
+  @@index([businessId, createdAt])
+}
+
+// How a contact is known on one channel: the Instagram-scoped id, a Facebook PSID, the website visitor id, a phone.
+model ContactIdentity {
+  id           String      @id @default(cuid())
+  businessId   String
+  contactId    String
+  contact      Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel      ChannelKind
+  externalId   String
+  connectionId String? // the connected account (Connection.id) the person wrote to, for social channels
+  handle       String? // @username on Instagram, etc.
+  displayName  String?
+  createdAt    DateTime    @default(now())
+
+  @@unique([businessId, channel, externalId])
+  @@index([contactId])
+}
+
+model ContactTag {
+  id         String           @id @default(cuid())
+  businessId String
+  business   Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  color      String?
+  createdAt  DateTime         @default(now())
+  links      ContactTagLink[]
+
+  @@unique([businessId, name])
+}
+
+model ContactTagLink {
+  contactId String
+  contact   Contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tagId     String
+  tag       ContactTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@id([contactId, tagId])
+  @@index([tagId])
+}
+
+// A custom field the business defines for its contacts ("Budget", "District", "Size").
+model ContactField {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  key        String // lower_snake, unique per business, used in Contact.fields and in automation variables
+  label      String
+  type       String   @default("text") // "text" | "number" | "date" | "choice" | "yes_no"
+  options    String[] // for "choice"
+  createdAt  DateTime @default(now())
+
+  @@unique([businessId, key])
+}
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+}
+
+// One thread with a contact on one channel (one website chat session, one Instagram DM thread, the comments of one
+// person). The inbox lists these.
+model Conversation {
+  id               String             @id @default(cuid())
+  businessId       String
+  business         Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contactId        String
+  contact          Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel          ChannelKind
+  connectionId     String? // the connected social account, null for the website
+  connection       Connection?        @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  externalThreadId String? // the platform's thread id; null for the website (chatSessionId is used)
+  chatSessionId    String?            @unique // the website chat session this mirrors
+  chatSession      ChatSession?       @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
+  status           ConversationStatus @default(OPEN)
+  assigneeId       String?            @db.Uuid // the teammate (User.id) it is assigned to
+  assignee         User?              @relation("ConversationAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  botPausedUntil   DateTime? // a person took over: automations and AI stay quiet until then
+  unread           Int                @default(0) // messages from the contact not yet opened by the team
+  preview          String? // the last message, shortened, for the list
+  lastMessageAt    DateTime           @default(now())
+  lastInboundAt    DateTime? // the contact's last message: starts the 24-hour window on Meta channels
+  createdAt        DateTime           @default(now())
+  messages         Message[]
+  runs             AutomationRun[]
+
+  @@unique([businessId, channel, externalThreadId])
+  @@index([businessId, status, lastMessageAt])
+  @@index([businessId, assigneeId, status])
+  @@index([contactId])
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+// Who wrote a message: the contact, an automation or the AI, a teammate, or BuPulse itself (a note in the thread).
+enum MessageAuthor {
+  CONTACT
+  BOT
+  AGENT
+  SYSTEM
+}
+
+// "MESSAGE" is a chat or DM; "COMMENT" a comment under a post; "COMMENT_REPLY" the public answer to one; "NOTE" a team
+// note only the business sees.
+enum MessageKind {
+  MESSAGE
+  COMMENT
+  COMMENT_REPLY
+  STORY_MENTION
+  NOTE
+}
+
+enum MessageStatus {
+  RECEIVED
+  QUEUED
+  SENT
+  FAILED
+}
+
+model Message {
+  id              String           @id @default(cuid())
+  businessId      String
+  conversationId  String
+  conversation    Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction       MessageDirection
+  author          MessageAuthor
+  kind            MessageKind      @default(MESSAGE)
+  agentId         String?          @db.Uuid // the teammate who wrote it (author AGENT)
+  text            String
+  // Buttons, quick replies, images, link cards: {buttons: [{id, title, url?}], image?: url, quickReplies?: [...]}
+  payload         Json?
+  externalId      String? // the platform's message or comment id (dedupe)
+  postExternalId  String? // the post a comment is under
+  status          MessageStatus    @default(RECEIVED)
+  error           String?
+  automationRunId String?
+  createdAt       DateTime         @default(now())
+
+  @@unique([conversationId, externalId])
+  @@index([conversationId, createdAt])
+  @@index([businessId, createdAt])
+}
+
+enum AutomationStatus {
+  DRAFT
+  LIVE
+  PAUSED
+}
+
+// An automation drawn on the canvas: a trigger node and steps joined by lines (docs/AUTOMATIONS.md). `graph` is the
+// draft being edited; `liveGraph` is the published copy that runs, so editing never changes a running automation.
+model Automation {
+  id          String           @id @default(cuid())
+  businessId  String
+  business    Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  status      AutomationStatus @default(DRAFT)
+  triggerType String? // copied from the live graph's trigger node, for fast lookup: "keyword", "comment_keyword", ...
+  channels    ChannelKind[] // channels the live trigger listens on
+  graph       Json // {nodes: [...], edges: [...]}
+  liveGraph   Json?
+  version     Int              @default(0) // bumped on every publish
+  templateKey String? // the template it was made from
+  createdById String?          @db.Uuid
+  publishedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @default(now()) @updatedAt
+  runs        AutomationRun[]
+
+  @@index([businessId, status, triggerType])
+}
+
+enum AutomationRunStatus {
+  RUNNING
+  WAITING // waiting for a reply, a delay or a button
+  DONE
+  STOPPED // replaced by a newer run, a person took over, or the automation was paused
+  FAILED
+}
+
+// One contact going through one automation.
+model AutomationRun {
+  id             String              @id @default(cuid())
+  businessId     String
+  automationId   String
+  automation     Automation          @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  version        Int // the automation version it runs
+  contactId      String
+  contact        Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversationId String?
+  conversation   Conversation?       @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  status         AutomationRunStatus @default(RUNNING)
+  nodeId         String? // the step it is on (waiting at)
+  waitingFor     String? // "reply" | "button" | "delay"
+  // Answers and variables collected so far, and the trigger's data (comment id, post id, matched keyword).
+  context        Json                @default("{}")
+  error          String?
+  startedAt      DateTime            @default(now())
+  updatedAt      DateTime            @default(now()) @updatedAt
+  finishedAt     DateTime?
+
+  @@index([automationId, status])
+  @@index([contactId, status])
+  @@index([businessId, startedAt])
+}
+
+enum DueJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// Work to do at a time: resume an automation after a delay, send a follow-up, check a social account for new comments.
+// The every-minute cron (/api/cron/due-jobs) claims due rows.
+model DueJob {
+  id         String       @id @default(cuid())
+  businessId String?
+  kind       String // "automation.resume" | "automation.timeout" | "social.poll" | ...
+  runAt      DateTime
+  payload    Json         @default("{}")
+  status     DueJobStatus @default(PENDING)
+  attempts   Int          @default(0)
+  dedupeKey  String?      @unique // one pending job per key (e.g. "poll:<connectionId>")
+  lastError  String?
+  claimedAt  DateTime?
+  createdAt  DateTime     @default(now())
+  doneAt     DateTime?
+
+  @@index([status, runAt])
+  @@index([businessId])
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Partner programme (docs/bizdev/PLAN.md section 6, docs/guide/features/25-partners.md): agencies, co-working
+// spaces, MoMo agents and happy clients who refer companies for a commission on confirmed payments.
+
+// A partner, from the application on /partners to approval in Admin -> Sales -> Partners. Only an approved partner has
+// a code; its ?ref= link reuses the staff referral cookie (lib/sales/ref-cookie.ts).
+model Partner {
+  id           String            @id @default(cuid())
+  status       String            @default("applied") // applied | approved | rejected | paused
+  kind         String // agency | coworking | momo_agent | client | consultant | other
+  name         String
+  organisation String?
+  email        String // lower case
+  phone        String // E.164 when it parses, else as typed
+  city         String?
+  message      String? // how they will find clients, in their words
+  // 7 unambiguous characters (staff codes are 5 or 6, so the two never clash); set on approval.
+  refCode      String?           @unique
+  // The partner's private page /partners/me/<token> (32 random bytes, base64url); set on approval.
+  viewToken    String?           @unique
+  rejectReason String?
+  decidedBy    String? // AuditLog actor
+  decidedAt    DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  referrals    PartnerReferral[]
+  payouts      PartnerPayout[]
+
+  @@index([status])
+  @@index([email])
+}
+
+// A company that signed up with a partner's link. No foreign key to Business or User (like BillingEvent): the
+// commission history stays when an account is deleted. One partner per company.
+model PartnerReferral {
+  id         String   @id @default(cuid())
+  partnerId  String
+  partner    Partner  @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  businessId String   @unique
+  userId     String   @db.Uuid // the company owner: payments (BillingEvent) carry it
+  code       String
+  createdAt  DateTime @default(now())
+
+  @@index([partnerId])
+  @@index([userId])
+}
+
+// Commission paid to a partner by hand (Mobile Money), recorded from Admin. The payout's MoMo transaction id is unique,
+// so one payment is never recorded twice.
+model PartnerPayout {
+  id          String   @id @default(cuid())
+  partnerId   String
+  partner     Partner  @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  amountMinor Int
+  currency    String   @default("RWF")
+  reference   String   @unique // upper case
+  note        String?
+  paidAt      DateTime
+  createdBy   String // AuditLog actor
+  createdAt   DateTime @default(now())
+
+  @@index([partnerId, paidAt])
+}
+
+// The free first-post preview (docs/guide/features/29-first-post-preview.md): one AI post a company may make while it
+// waits for its demo, when Admin -> Settings switches it on. One row per company (unique businessId) is what keeps it to
+// one. No foreign key (like PartnerReferral); the account purge deletes it by userId.
+model FirstPostPreview {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  userId     String   @db.Uuid // the company owner
+  status     String   @default("making") // making | ready | failed
+  attempts   Int      @default(1) // a failed preview may be tried once more (FIRST_POST_MAX_ATTEMPTS)
+  caption    String?
+  hashtags   String[]
+  headline   String?
+  provider   String?
+  model      String?
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Link in bio (docs/guide/features/33-link-in-bio.md): the company's public page at /b/<slug>, for the Instagram or
+// TikTok bio. Built from the Knowledge base (business info, products, logo); off until the owner switches it on, and
+// it shows only the contacts, place and products the owner put on it (lib/bio).
+model BioPage {
+  businessId String        @id
+  business   Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  enabled    Boolean       @default(false)
+  slug       String        @unique // lowercase letters, digits and dashes (lib/bio/slug.ts)
+  tagline    String? // the line under the name; null = the Company profile's tagline, else the description
+  whatsapp   String? // E.164 of the WhatsApp button, one of the business's contacts; null = no button
+  message    String? // the WhatsApp message the visitor starts with; null = the default
+  phone      String? // E.164 of the Call button; null = no button
+  location   String? // the address of the place shown (Business info -> Locations); null = none
+  landmark   String? // "Opposite the bus park, next to the MTN shop"
+  showHours  Boolean       @default(true)
+  links      String[] // contact types shown as links: website, instagram, tiktok, facebook
+  logoPath   String? // small JPEG copy of the logo in "media" (<userId>/bio/...), made on save
+  logoSource String? // the brand logo path the copy was made from
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  items      BioPageItem[]
+  days       BioPageDay[]
+}
+
+// A product or service on the page, in the owner's order, with a small copy of its first photo.
+model BioPageItem {
+  id          String  @id @default(cuid())
+  businessId  String
+  page        BioPage @relation(fields: [businessId], references: [businessId], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  position    Int     @default(0)
+  photoPath   String? // small JPEG in "media" (<userId>/bio/...), made on save; null = no photo
+  photoSource String? // the gallery photo (MediaAsset.path) the copy was made from
+
+  @@unique([businessId, productId])
+  @@index([productId])
+}
+
+// Visits and taps on the page, one row per company and day (UTC): "how many messages did my bio bring".
+model BioPageDay {
+  businessId String
+  page       BioPage  @relation(fields: [businessId], references: [businessId], onDelete: Cascade)
+  date       DateTime @db.Date
+  views      Int      @default(0)
+  whatsapp   Int      @default(0)
+  calls      Int      @default(0)
+
+  @@id([businessId, date])
+}
+
+// A real client's words on the marketing home page (docs/guide/features/34-testimonials.md), added in Admin ->
+// Testimonials. Shown only when published, and it can only be published with the client's consent.
+model SiteTestimonial {
+  id         String   @id @default(cuid())
+  clientName String
+  business   String
+  sector     String?
+  quote      String
+  result     String? // "12 orders on WhatsApp in a week"
+  photo      Bytes? // small square JPEG (lib/testimonials), shown as it is
+  consent    Boolean  @default(false) // the client agreed to be shown
+  published  Boolean  @default(false)
+  position   Int      @default(0)
+  createdBy  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([published, position])
 }

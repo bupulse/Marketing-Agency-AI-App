@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
 import { PlanChoice } from "@/components/demo/plan-choice";
@@ -9,6 +10,7 @@ import { ensureAccount } from "@/lib/account";
 import { prisma } from "@/lib/db";
 import { availableSlots, currentBooking } from "@/lib/demo/bookings";
 import { DEMO_TIME_ZONE, formatSlot, groupSlotsByDay } from "@/lib/demo/slots";
+import { PLAN_PICK_COOKIE, pickedPlanKey } from "@/lib/plan-quiz";
 import { companyPlans } from "@/lib/region-prices";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { resolveCompany } from "@/lib/team/company";
@@ -45,7 +47,10 @@ export default async function BookDemoPage({ searchParams }: { searchParams: Pro
   const step = asked === "time" && sub.chosenPlan ? "time" : asked === "plan" || !sub.chosenPlan ? "plan" : "time";
 
   if (step === "plan") {
-    const [{ region, plans }, settings] = await Promise.all([companyPlans(business.id), getSettings()]);
+    const [{ region, plans }, settings, jar] = await Promise.all([companyPlans(business.id), getSettings(), cookies()]);
+    // The plan the /pricing quiz suggested (lib/plan-quiz.ts), when the company's region offers it.
+    const pick = pickedPlanKey(jar.get(PLAN_PICK_COOKIE)?.value);
+    const suggested = plans.some((p) => p.key === pick) ? pick : null;
     return (
       <OnboardingShell>
         <div className="flex flex-col gap-1.5">
@@ -55,7 +60,7 @@ export default async function BookDemoPage({ searchParams }: { searchParams: Pro
             Prices for {region.name}. After your demo you get {settings.trialDays} {settings.trialDays === 1 ? "day" : "days"} free with this plan&apos;s features. No card needed; you can change plan later.
           </p>
         </div>
-        <PlanChoice plans={plans} current={sub.chosenPlan} />
+        <PlanChoice plans={plans} current={sub.chosenPlan} suggested={suggested} />
       </OnboardingShell>
     );
   }

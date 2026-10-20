@@ -25,6 +25,10 @@ export const FEATURE_KEYS = [
   "managed",
   "video",
   "voice",
+  "videoStudio",
+  "aiVideo",
+  "inbox",
+  "automations",
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -232,6 +236,52 @@ export const FEATURES: readonly FeatureDef[] = [
     status: "built",
     kind: "app",
     routes: [],
+  },
+  {
+    key: "videoStudio",
+    label: "Video Studio",
+    description: "Animated and 3D marketing videos that Claude designs from your products, with your prices, number and a voice-over, paid with video credits.",
+    requires: ["video"],
+    metric: "videoCredits",
+    // Claude designs every Motion and Premium 3D video (docs/VIDEO_APP_INTEGRATION.md); the API key only.
+    services: ["claude"],
+    status: "coming_soon",
+    kind: "app",
+    // Videos are made on the Video Studio's own site (studio.bupulse.com, docs/VIDEO_STUDIO_SPLIT.md). The Videos
+    // library (/dashboard/video) is every plan's: it shows their videos, or says how to get video credits.
+    routes: [],
+  },
+  {
+    key: "aiVideo",
+    label: "AI video",
+    description: "Filmed-looking clips with people, hands and real places (Seedance 2.0), with your text added on top, paid with video credits.",
+    requires: ["videoStudio"],
+    metric: "videoCredits",
+    services: ["seedance"],
+    status: "coming_soon",
+    kind: "app",
+    routes: [],
+  },
+  {
+    key: "inbox",
+    label: "Inbox and contacts",
+    description: "One inbox for website chats and social messages, where your team answers, plus every contact with tags and details.",
+    requires: [],
+    services: [],
+    status: "built",
+    kind: "app",
+    routes: ["/dashboard/inbox", "/dashboard/contacts"],
+  },
+  {
+    key: "automations",
+    label: "Automations",
+    description: "Automatic replies to messages and comments: keywords, questions, AI conversations and follow-ups, drawn on a canvas.",
+    requires: ["inbox"],
+    metric: "chat",
+    services: [],
+    status: "built",
+    kind: "app",
+    routes: ["/dashboard/automations"],
   },
 ];
 

@@ -24,7 +24,7 @@ const RW: AddonPriceRow[] = [
 ].map(([addonKey, monthlyMinor]) => ({ addonKey: String(addonKey), regionKey: "RW", currency: "RWF", monthlyMinor: Number(monthlyMinor) }));
 
 // Rwanda's Business plan: website chat and Autopilot are add-ons there (docs/RWANDA_LAUNCH_PLAN.md section 2).
-const BUSINESS: OfferBase = { key: "BUSINESS", name: "Business", monthlyMinor: 35000, yearlyMinor: 350000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, seats: 3 } };
+const BUSINESS: OfferBase = { key: "BUSINESS", name: "Business", monthlyMinor: 35000, yearlyMinor: 350000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, videoCredits: 0, seats: 3 } };
 const baseLimits = { text: 200, image: 100, chat: 0, seats: 3 };
 const quote = (over: Partial<Parameters<typeof quoteOffer>[0]> = {}) => quoteOffer({ base: BUSINESS, features: [], limits: baseLimits, interval: "MONTH", currency: "RWF", regionKey: "RW", prices: RW, ...over });
 
@@ -44,7 +44,7 @@ describe("pricing totals", () => {
 
   it("limits above what is included are bought in blocks; add-ons bring their own allowance", () => {
     const q = quote({ features: ["websiteChat"], limits: { text: 450, image: 100, chat: 1500, seats: 5 } });
-    expect(q.included).toEqual({ text: 200, image: 100, chat: 500, seats: 3, postsPerAppPerDay: 1 });
+    expect(q.included).toEqual({ text: 200, image: 100, chat: 500, videoCredits: 0, seats: 3, postsPerAppPerDay: 1 });
     const line = (k: string) => q.lines.find((l) => l.key === k);
     expect(line("block:text")).toMatchObject({ quantity: 3, totalMinor: 9000 }); // 250 more texts = 3 blocks of 100
     expect(line("block:chat")).toMatchObject({ quantity: 1, totalMinor: 3000 }); // 1,000 more replies

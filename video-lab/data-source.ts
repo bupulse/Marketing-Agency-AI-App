@@ -1,0 +1,246 @@
+// Video Lab (docs/VIDEO_ENGINE.md): reads the TEST database and storage, read-only. Businesses, products and their
+// photos (resized and cached on disk), and the music library. Never writes to the database.
+import { randomBytes } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import pg from "pg";
+import sharp from "sharp";
+import { createClient } from "@supabase/supabase-js";
+import { decrypt } from "@/lib/crypto";
+import { splitPrice } from "@/lib/video-engine/price";
+
+const DATA = path.resolve("video-lab/data");
+let pool: pg.Pool | null = null;
+
+function db(): pg.Pool {
+  if (!pool) {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error("DATABASE_URL is not set in .env");
+    pool = new pg.Pool({ connectionString: url, max: 3 });
+  }
+  return pool;
+}
+
+function storage() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key) throw new Error("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY must be set in .env");
+  return createClient(url, key, { auth: { persistSession: false } }).storage;
+}
+
+export type LabBusiness = { id: string; name: string; products: number };
+export type LabPhoto = { assetId: string; width: number | null; height: number | null; description: string | null };
+export type LabProduct = {
+  id: string;
+  name: string;
+  summary: string;
+  description: string | null;
+  /** The amount with its condition ("from 250,000 RWF"); `priceNotes`: what the owner wrote after it (lib/video-engine/price.ts). */
+  price: string | null;
+  priceNotes: string | null;
+  usps: string[];
+  features: string[];
+  targetCustomer: string | null;
+  photos: LabPhoto[];
+};
+export type LabBusinessDetail = { id: string; name: string; description: string | null; language: string; colors: string[]; phone: string | null; website: string | null; country: string | null; tone: string | null };
+
+export async function listBusinesses(): Promise<LabBusiness[]> {
+  const r = await db().query(
+    `select b.id, b.name, count(p.id)::int as products from "Business" b join "Product" p on p."businessId" = b.id and p.status = 'ACTIVE'
+     group by b.id, b.name order by b.name`,
+  );
+  return r.rows;
+}
+
+export async function getBusiness(id: string): Promise<LabBusinessDetail | null> {
+  const r = await db().query(
+    `select id, name, coalesce(description, "industryDescription") as description, "contentLanguage" as language, "brandColors" as colors, phone, website, country, tone
+     from "Business" where id = $1`,
+    [id],
+  );
+  return r.rows[0] ?? null;
+}
+
+/** "15,000 RWF", "From 5,000 RWF", "20,000 RWF / month"; null when the price is on request. */
+export function priceText(model: string, amount: number | null, currency: string, note: string | null): string | null {
+  if (model === "ON_REQUEST" || amount === null) return note || null;
+  const value = `${amount.toLocaleString("en-US")} ${currency}`;
+  const text = model === "FROM" ? `From ${value}` : model === "PER_MONTH" ? `${value} / month` : model === "PER_YEAR" ? `${value} / year` : model === "PER_UNIT" ? `${value} each` : value;
+  return note ? `${text} (${note})` : text;
+}
+
+export async function listProducts(businessId: string): Promise<LabProduct[]> {
+  const r = await db().query(
+    `select p.id, p.name, p.summary, p.description, p."priceModel", p."priceAmount", p.currency, p."priceNote", p.usps, p.features, p."targetCustomer",
+       coalesce(json_agg(json_build_object('assetId', a.id, 'width', a.width, 'height', a.height, 'description', a.description) order by pp.position)
+         filter (where a.id is not null and a.kind = 'photo'), '[]') as photos
+     from "Product" p
+     left join "ProductPhoto" pp on pp."productId" = p.id
+     left join "MediaAsset" a on a.id = pp."assetId"
+     where p."businessId" = $1 and p.status = 'ACTIVE'
+     group by p.id order by p."createdAt" desc`,
+    [businessId],
+  );
+  return r.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    summary: row.summary,
+    description: row.description,
+    ...(({ short, notes }) => ({ price: short, priceNotes: notes }))(splitPrice(priceText(row.priceModel, row.priceAmount, row.currency, row.priceNote))),
+    usps: row.usps ?? [],
+    features: row.features ?? [],
+    targetCustomer: row.targetCustomer,
+    photos: row.photos,
+  }));
+}
+
+/** The photo, resized (longest side `max` px) to JPEG and cached on disk. Only photos that belong to the business. */
+const UPLOAD_ID = /^up-[0-9a-f]{12}$/;
+const uploadFile = (id: string) => path.join(DATA, "uploads", `${id}.jpg`);
+
+/** Saves an owner's photo (JPEG, PNG, WebP or HEIC as sharp reads it), at most 2,000 px, as JPEG. Returns its id. */
+export async function saveUpload(bytes: Buffer, description?: string): Promise<{ id: string; width: number; height: number }> {
+  const out = await sharp(bytes).rotate().resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer({ resolveWithObject: true }).catch(() => {
+    throw new Error("That file is not a photo we can read (use JPG, PNG or WebP).");
+  });
+  const id = `up-${randomBytes(6).toString("hex")}`;
+  await fs.mkdir(path.dirname(uploadFile(id)), { recursive: true });
+  await fs.writeFile(uploadFile(id), out.data);
+  if (description) await fs.writeFile(uploadFile(id).replace(/\.jpg$/, ".json"), JSON.stringify({ description: description.slice(0, 300) }));
+  return { id, width: out.info.width, height: out.info.height };
+}
+
+/** What an upload shows, when it was described (presenter shots are), for Claude's brief. */
+export async function uploadNote(id: string): Promise<string | null> {
+  if (!UPLOAD_ID.test(id)) return null;
+  try {
+    return (JSON.parse(await fs.readFile(uploadFile(id).replace(/\.jpg$/, ".json"), "utf8")) as { description?: string }).description ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const MEDIA_ID = /^um-[0-9a-f]{12}$/;
+const MEDIA_TYPES: Record<string, string> = { "video/mp4": "mp4", "video/quicktime": "mov", "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/wav": "wav", "audio/x-wav": "wav" };
+
+/** Saves a video or audio reference (MP4, MOV, MP3, WAV; at most 60 MB) for Seedance. Returns its id. */
+export async function saveMedia(bytes: Buffer, mimeType: string): Promise<{ id: string; mimeType: string; bytes: number }> {
+  const type = mimeType.split(";")[0].trim().toLowerCase();
+  const ext = MEDIA_TYPES[type];
+  if (!ext) throw new Error("Upload an MP4 or MOV video, or an MP3 or WAV audio file.");
+  const head = bytes.subarray(0, 12);
+  const looksRight = ext === "mp4" || ext === "mov" ? head.subarray(4, 8).toString("latin1") === "ftyp" : ext === "mp3" ? head.subarray(0, 3).toString("latin1") === "ID3" || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0) : head.subarray(0, 4).toString("latin1") === "RIFF";
+  if (!looksRight) throw new Error("That file does not look like the type it says it is.");
+  const id = `um-${randomBytes(6).toString("hex")}`;
+  const dir = path.join(DATA, "media");
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, `${id}.${ext}`), bytes);
+  await fs.writeFile(path.join(dir, `${id}.json`), JSON.stringify({ mimeType: type === "audio/mp3" ? "audio/mpeg" : type, ext }));
+  return { id, mimeType: type, bytes: bytes.length };
+}
+
+export async function mediaBytes(id: string): Promise<{ bytes: Buffer; mimeType: string } | null> {
+  if (!MEDIA_ID.test(id)) return null;
+  try {
+    const meta = JSON.parse(await fs.readFile(path.join(DATA, "media", `${id}.json`), "utf8")) as { mimeType: string; ext: string };
+    return { bytes: await fs.readFile(path.join(DATA, "media", `${id}.${meta.ext}`)), mimeType: meta.mimeType };
+  } catch {
+    return null;
+  }
+}
+
+export async function uploadExists(id: string): Promise<boolean> {
+  if (!UPLOAD_ID.test(id)) return false;
+  return fs.access(uploadFile(id)).then(() => true, () => false);
+}
+
+/** True when the photo (a MediaAsset) belongs to the business. */
+export async function photoBelongsTo(assetId: string, businessId: string): Promise<boolean> {
+  if (!/^[a-z0-9-]{10,40}$/i.test(assetId)) return false;
+  const r = await db().query(`select 1 from "MediaAsset" where id = $1 and kind = 'photo' and "businessId" = $2`, [assetId, businessId]);
+  return r.rows.length > 0;
+}
+
+export async function photoJpeg(assetId: string, max: number, businessId?: string): Promise<{ bytes: Buffer; width: number; height: number }> {
+  if (UPLOAD_ID.test(assetId)) {
+    const out = await sharp(await fs.readFile(uploadFile(assetId))).resize({ width: max, height: max, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 86 }).toBuffer({ resolveWithObject: true });
+    return { bytes: out.data, width: out.info.width, height: out.info.height };
+  }
+  if (!/^[a-z0-9-]{10,40}$/i.test(assetId)) throw new Error("Bad photo id");
+  // Ownership first, before the disk cache: a cached photo must never be handed to another business.
+  if (businessId) {
+    const owner = await db().query(`select "businessId" from "MediaAsset" where id = $1 and kind = 'photo'`, [assetId]);
+    if (owner.rows[0]?.businessId !== businessId) throw new Error("Photo not found");
+  }
+  const file = path.join(DATA, "photos", `${assetId}-${max}.jpg`);
+  try {
+    const bytes = await fs.readFile(file);
+    const meta = await sharp(bytes).metadata();
+    return { bytes, width: meta.width ?? 0, height: meta.height ?? 0 };
+  } catch {
+    // Not cached yet.
+  }
+  const r = await db().query(`select path, "businessId", "mimeType" from "MediaAsset" where id = $1 and kind = 'photo'`, [assetId]);
+  const row = r.rows[0];
+  if (!row || (businessId && row.businessId !== businessId)) throw new Error("Photo not found");
+  const { data, error } = await storage().from("media").download(row.path);
+  if (error || !data) throw new Error("Photo could not be downloaded");
+  const out = await sharp(Buffer.from(await data.arrayBuffer())).rotate().resize({ width: max, height: max, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 86 }).toBuffer({ resolveWithObject: true });
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, out.data);
+  return { bytes: out.data, width: out.info.width, height: out.info.height };
+}
+
+/** An active library track for the mood (or any), cached on disk; null when the library is empty. */
+export async function musicFor(mood: string | null): Promise<{ id: string; title: string } | null> {
+  const r = await db().query(
+    `select id, title from "MusicTrack" where active order by (case when $1::text = any(moods) then 0 else 1 end), random() limit 1`,
+    [mood ?? ""],
+  );
+  return r.rows[0] ?? null;
+}
+
+export async function musicBytes(id: string): Promise<{ bytes: Buffer; mimeType: string }> {
+  if (!/^[a-z0-9_-]{6,60}$/i.test(id)) throw new Error("Bad track id");
+  const r = await db().query(`select path, "mimeType" from "MusicTrack" where id = $1 and active`, [id]);
+  const row = r.rows[0];
+  if (!row) throw new Error("Track not found");
+  const file = path.join(DATA, "music", `${id}`);
+  try {
+    return { bytes: await fs.readFile(file), mimeType: row.mimeType };
+  } catch {
+    // Not cached yet.
+  }
+  const { data, error } = await storage().from("music").download(row.path);
+  if (error || !data) throw new Error("Track could not be downloaded");
+  const bytes = Buffer.from(await data.arrayBuffer());
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, bytes);
+  return { bytes, mimeType: row.mimeType };
+}
+
+/**
+ * Keys saved in Admin -> Services (AdminSetting "services.keys", encrypted with ENCRYPTION_KEY) for the lab's
+ * services, put in process.env when .env has no value, the same way the app loads them (lib/admin/service-keys.ts).
+ * Returns the names loaded (never the values).
+ */
+export async function loadSavedKeys(names: string[]): Promise<string[]> {
+  const r = await db().query(`select value from "AdminSetting" where key = 'services.keys'`);
+  const values = (r.rows[0]?.value?.values ?? {}) as Record<string, { enc?: string }>;
+  const loaded: string[] = [];
+  for (const name of names) {
+    if (process.env[name] || !values[name]?.enc) continue;
+    try {
+      process.env[name] = await decrypt(values[name].enc as string);
+      loaded.push(name);
+    } catch {
+      // Saved with another ENCRYPTION_KEY: left unset, the lab says the key is missing.
+    }
+  }
+  return loaded;
+}
+
+export async function closeDb(): Promise<void> {
+  await pool?.end().catch(() => undefined);
+}

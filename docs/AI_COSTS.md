@@ -28,3 +28,119 @@ Calls that are **not** billed and correctly cost nothing: 429 and 5xx answers th
 ## Checking
 
 Each month: Admin, Money, Costs, Provider bills: enter Google's (and Anthropic's, ElevenLabs', Higgsfield's) amount for the month before. The Costs and AI pages show the estimate next to the bill and the difference in percent. A persistent gap of more than about 20% means a price or a call path is missing: look at the AI page's "priced by family" list and the models table first.
+
+## Video (Video Studio, October 2026)
+
+What one video costs BuPulse in providers, next to what the client pays in studio credits. 1 credit = 10 RWF and
+USD 1 = 1,450 RWF (`RWF_PER_CREDIT`, `USD_PER_RWF` in `video-lab/credits.ts`). A credit price is the estimated
+provider cost × 2.2, rounded to 5 credits (`MARGIN`, `roundCredits`), except Premium 3D and the voice-over, which are
+owner decisions. "Measured" means the lab ledger (`video-lab/data/ledger.jsonl`, 56 rows from 16 to 17 October 2026,
+API-equivalent cost even when Claude ran on the subscription); the rest says where the number comes from.
+
+### Per video
+
+| What | Provider cost (USD) | RWF | Client pays | RWF | Margin (price ÷ cost) | Source of the cost |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Motion** video (one Claude design) | 0.107 median (0.087 to 0.161, mean 0.114) | 155 | 35 credits | 350 | 2.3× (2.1× at the mean) | measured, 43 `claude-design` rows (Sonnet 5.5); rendering and MP4 are free (the browser); a viral recipe (the default since 19 October, docs/VIRAL_RECIPES.md) adds about 1,000 input tokens, about $0.003, and phone clips are free |
+| **Premium 3D**, 540p, up to 8 s | 0.085 design + Mac time | 123 | 100 credits | 1,000 | 8.1× on cash | measured, 1 `claude-blender-design` row; `docs/BLENDER.md` "Premium 3D credits" says $0.08 to $0.09 |
+| **Premium 3D**, 720p | 0.085 + about twice the Mac time | 123 | 150 credits | 1,500 | 12.2× on cash | as above; 720p render time not yet measured |
+| Premium 3D **re-render** | 0 (Mac time only) | 0 | 70 credits | 700 | (machine slot) | `PREMIUM_RERENDER_CREDITS`; the 70 pays the Mac, about 1.5 to 3.5 min for 6 s at 540p (`docs/BLENDER.md`) |
+| **Voice-over**, one take | 0.059 median (0.036 to 0.078) | 86 | 15 credits | 150 | 1.7× (1.3× for the longest take) | measured, 7 `elevenlabs-voice` rows at the list price ($0.30 per 1,000 characters); a reused take is free and its credits are given back |
+| **Presenter or AI image** (Gemini) | 0.039 | 57 | 15 credits | 150 | 2.6× | measured, 5 `gemini-*` rows (`gemini-2.5-flash-image`) |
+
+**Seedance** clips: seconds × the rate in `SEEDANCE_USD_PER_SECOND` (`lib/video-engine/seedance.ts`, public price pages
+read 16 October 2026: Seedance 2.0 about $0.07/s at 480p, $0.15 at 720p, $0.37 at 1080p; Fast about 20% less; Mini
+about half). These are **estimates until the first BytePlus invoice**. The real cost of each clip is priced from the
+tokens BytePlus reports, at `SEEDANCE_USD_PER_M_TOKENS` ($7 per million by default). A rough cross-check, not from the
+BytePlus docs (they do not state the token formula): if a clip is width × height × frames ÷ 1,024 tokens, a 720p, 24
+fps, 5 s clip is about 108,000 tokens, about $0.76, close to the Pro 720p rate.
+
+| Clip | Provider cost (USD) | RWF | Client pays (credits) | RWF | Margin |
+| --- | --- | --- | --- | --- | --- |
+| Mini 480p, 4 s (the key-day test clip) | 0.140 | 203 | 45 | 450 | 2.2× |
+| Mini 480p, 5 s | 0.175 | 254 | 55 | 550 | 2.2× |
+| Mini 720p, 5 s | 0.375 | 544 | 120 | 1,200 | 2.2× |
+| Fast 480p, 5 s | 0.280 | 406 | 90 | 900 | 2.2× |
+| Fast 720p, 5 s | 0.600 | 870 | 190 | 1,900 | 2.2× |
+| Fast 720p, 10 s | 1.200 | 1,740 | 385 | 3,850 | 2.2× |
+| Pro 720p, 5 s | 0.750 | 1,088 | 240 | 2,400 | 2.2× |
+| Pro 1080p, 5 s | 1.850 | 2,683 | 590 | 5,900 | 2.2× |
+| Pro 1080p, 10 s | 3.700 | 5,365 | 1,180 | 11,800 | 2.2× |
+| Pro 1080p, 15 s | 5.550 | 8,048 | 1,770 | 17,700 | 2.2× |
+
+Seedance credits are computed in `seedanceCredits`, so this table is exact for the estimate. Failed, cancelled and
+expired clips are given back and BytePlus does not bill them. Free previews (no key) cost nothing.
+
+### Veo AI clips (Google, 19 October 2026)
+
+"AI makes the clips" adds 2 or 3 real moving clips of the product to a Motion video, made by **Google Veo 3.1 Lite**
+through the Gemini API (the existing `GEMINI_API_KEY`; Veo has no free tier, so billing must be on). Owner decision,
+19 October 2026. Price: **$0.05 a second at 720p**, audio always on (BuPulse mutes it and uses its own music and
+voice-over), from the Gemini API pricing page read that day. Google bills **only clips it makes**: a blocked or failed
+clip costs nothing, and its credits are given back. Credits use the usual formula (`veoClipCredits` in
+`lib/video-engine/credits.ts`, × 2.2, rounded to 5); `VEO_USD_PER_SECOND` overrides the rate if Google changes it.
+
+| One clip (720p, 9:16) | Provider cost (USD) | RWF | Client pays (credits) | RWF | Margin |
+| --- | --- | --- | --- | --- | --- |
+| 4 s | 0.20 | 290 | 65 | 650 | 2.2× |
+| 6 s | 0.30 | 435 | 95 | 950 | 2.2× |
+| 8 s | 0.40 | 580 | 130 | 1,300 | 2.2× |
+
+| A whole Motion video with AI clips | Provider cost (USD) | Client pays (credits) | RWF |
+| --- | --- | --- | --- |
+| Design + 2 clips of 4 s | 0.107 + 0.40 = about 0.51 | 35 + 130 = 165 | 1,650 |
+| Design + 3 clips of 4 s | 0.107 + 0.60 = about 0.71 | 35 + 195 = 230 | 2,300 |
+| Design + 3 clips of 6 s | 0.107 + 0.90 = about 1.01 | 35 + 285 = 320 | 3,200 |
+| (+ voice-over) | + about 0.06 | + 15 | + 150 |
+
+The clips are made once per request and shared by every version of the design. Recorded: in the lab ledger as
+`veo-clip` rows for the owner's tests, through `withLedger` (provider `veo`, feature `video-veo`, seconds recorded as
+input tokens and priced per second in `lib/ai/pricing.ts`) for a client.
+
+**Real test clips** (owner-approved test budget: $5 in total, about 15 clips of 4 s; LEAF Hydro Tower, TEST database):
+
+| # | Date | Clip | What it shows | Provider cost (USD) | Running total |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 19 Oct 2026 | 4 s, 9:16, 720p, Veo 3.1 Lite, 47 s to make | first frame the product photo; slow push-in while an adult's hands pick lettuce from the tower | 0.20 | 0.20 |
+| 2 | 19 Oct 2026 | 4 s, through the studio route (`vc-a18e0373e375`), 51 s | kitchen photo cropped by sharp's "attention" crop to the counter: Veo panned and invented its own tower (crop fixed after this) | 0.20 | 0.40 |
+| 3 | 19 Oct 2026 | 4 s, studio route (`vc-d77f4dfe9d50`), 45 s | "attention" crop on the greenhouse photo picked the control box; peppers and a new tower slide in (crop fixed after this) | 0.20 | 0.60 |
+| 4 | 19 Oct 2026 | 4 s, studio route, centre crop (`vc-f70f242ef185`) | the real kitchen tower stays in frame; an adult East African man smiles and presents it with his hands | 0.20 | 0.80 |
+| 5 | 19 Oct 2026 | 4 s, studio route, centre crop (`vc-1475999cf352`) | the greenhouse rack, then the scene morphs into a street shop and the rack changes shape (the "Kigali setting" asked for a new place; prompt fixed after this) | 0.20 | 1.00 |
+| 6 | 19 Oct 2026 | 4 s, studio route, fixed prompt (`vc-fbd17b278a07`) | the same rack stays in its greenhouse; slow orbit, the sun flares through; the product and its LEAF base unchanged | 0.20 | 1.20 |
+| 7-9 | 19 Oct 2026 | 3 clips of 4 s made together from the Create page for a viral recipe's AI beats (run `vr-32e2d800bc09`, 55 to 74 s) | the spiral, terracotta and sculpture towers from their own photos, hands reaching in; then designed (same recipe), rendered to a 15 s MP4 with music: clips placed in scenes 2 to 4, their sound absent from the mix | 0.60 | 1.80 |
+
+**What the margins say:**
+- **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to
+  $0.07 (85 to 100 RWF) against 150 RWF, and even the longest take measured ($0.078, 113 RWF) is covered. On a
+  subscription plan ElevenLabs' characters cost less than the list price, so the real margin is better.
+- **Motion:** 35 credits since 17 October (owner decision; it was 30, under the 2.2× target because the measured design,
+  $0.107, is above the $0.10 budget the price was set from). 35 gives 2.3× at the median.
+- **Premium 3D:** its cash margin is large because the price mostly pays for the Mac's time: one render at a time,
+  about 20 clips an hour at most.
+
+### The monthly picture: 9M RWF of video sales
+
+Provider cost = sales × (cost ÷ price) for each kind of video. There is no sales mix yet (clients do not have the
+studio), so this shows the lab's own measured mix and the bounds:
+
+| Mix | Provider cost share | Provider cost for 9,000,000 RWF of sales | USD |
+| --- | --- | --- | --- |
+| The lab's own charges so far (wallet, 16 to 17 October: Motion 150 credits, Premium 3D 120, re-render 70, voice 100, images 30; no Seedance yet) | 40% | about 3.6M RWF | about 2,500 |
+| All Seedance (any tier: always about 1 ÷ 2.2) | 45% | about 4.1M RWF | about 2,840 |
+| All Motion (at the measured median design) | 52% | about 4.7M RWF | about 3,210 |
+| All Premium 3D at 540p (cash only; the Mac's time is the limit) | 12% | about 1.1M RWF | about 765 |
+
+So at today's prices, providers take about 40 to 50% of video sales, and the rest is gross margin before hosting,
+staff and MoMo fees.
+- **Ceiling:** Premium 3D cannot carry 9M RWF a month, because the Mac renders one clip at a time (about 20 an hour).
+  9M RWF would be about 9,000 clips, 450 hours of rendering.
+- **Watch:** the voice-over, which is sold at about cost; Motion, slightly under target; and the first BytePlus
+  invoice, which replaces the Seedance estimates.
+
+### Where the costs are recorded
+
+While in the Video Lab, every paid call is written to `video-lab/data/ledger.jsonl` with its tokens and cost (the
+API-equivalent cost when Claude runs on the subscription), under a $5 daily cap (`VIDEO_LAB_DAILY_USD`). Seedance
+clips add their real token cost when they finish (`seedanceUsage`), and Veo AI clips a `veo-clip` row each. Once in the
+app, designs, voice takes, images, Seedance clips and a client's Veo clips go through `withLedger` like every other AI
+call.

@@ -24,6 +24,7 @@ export const CRON_JOBS: CronJob[] = [
   { job: "trial-reminders", label: "Trial reminders", cron: "53 * * * *", via: "Cloudflare", what: "Trial-end reminders and read-only when a trial ends" },
   { job: "media-cleanup", label: "Video clean-up", cron: "19 3 * * *", via: "Cloudflare", what: "Deletes content videos 30 days after their posts went out" },
   { job: "content-summary", label: "Auto-scheduled summary", cron: "7 * * * *", via: "Cloudflare", what: "Daily email of posts scheduled without approval, from 08:00 local" },
+  { job: "video-jobs", label: "Video Studio sweep", cron: "*/4 * * * *", via: "Cloudflare", what: "Fails and refunds Video Studio designs whose request died" },
   { job: "purge-accounts", label: "Delete scheduled accounts", cron: "17 3 * * *", via: "GitHub Actions", what: "Erases accounts past their 30-day grace period" },
   { job: "social-refresh", label: "Refresh social tokens", cron: "43 4 * * *", via: "GitHub Actions", what: "Renews channel tokens before they expire" },
   { job: "video-robot", label: "Video robot", cron: "*/15 * * * *", via: "GitHub Actions", what: "Makes pending content videos in headless Chrome (only when VIDEO_ROBOT_SECRET is set)" },

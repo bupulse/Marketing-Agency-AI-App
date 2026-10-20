@@ -10,9 +10,9 @@ import { paymentMethodLabel } from "@/lib/region-format";
 import { cn } from "@/lib/cn";
 import { choosePlanAction, type BookDemoState } from "@/app/book-demo/actions";
 
-/** Step 1 of /book-demo: the region's plans as radio cards. */
-export function PlanChoice({ plans, current }: { plans: RegionalPlan[]; current: string | null }) {
-  const [selected, setSelected] = useState<string | null>(current ?? plans.find((p) => p.highlight)?.key ?? plans[0]?.key ?? null);
+/** Step 1 of /book-demo: the region's plans as radio cards. `suggested`: the /pricing quiz's pick (lib/plan-quiz.ts). */
+export function PlanChoice({ plans, current, suggested = null }: { plans: RegionalPlan[]; current: string | null; suggested?: string | null }) {
+  const [selected, setSelected] = useState<string | null>(current ?? suggested ?? plans.find((p) => p.highlight)?.key ?? plans[0]?.key ?? null);
   const [state, formAction, pending] = useActionState<BookDemoState, FormData>(choosePlanAction, {});
 
   if (plans.length === 0) {
@@ -41,6 +41,11 @@ export function PlanChoice({ plans, current }: { plans: RegionalPlan[]; current:
               <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-col">
                   <strong className="text-lg">{plan.name}</strong>
+                  {suggested === plan.key && (
+                    <Badge tone="violet" className="mt-1 w-fit">
+                      Suggested by your quiz
+                    </Badge>
+                  )}
                   <span className="text-[13px] text-muted">{plan.description}</span>
                 </div>
                 <span aria-hidden className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-full border", on ? "border-pulse-violet bg-pulse-violet text-white" : "border-line")}>

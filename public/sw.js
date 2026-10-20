@@ -1,5 +1,6 @@
 // BuPulse service worker: shows lead alerts sent with Web Push (lib/push) and opens the lead when one is tapped.
-// No caching and no offline pages: it only handles push and notification clicks.
+// Registered for every signed-in person (components/app/phone-app.tsx), so BuPulse installs as a phone app.
+// No caching and no offline pages: it only handles push and notification clicks, so private pages never stay on a device.
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 

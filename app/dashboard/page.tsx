@@ -181,11 +181,11 @@ export default async function DashboardPage() {
         <GlassCard as="section" aria-labelledby="rp" className="min-w-0 flex-[1.5_1_340px] p-5 sm:p-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 id="rp" className="text-lg font-semibold">Products & services</h2>
-            <Link href="/dashboard/knowledge/products" className="text-sm font-semibold">View all</Link>
+            <Link href="/dashboard/knowledge/products" className="inline-flex min-h-11 items-center px-1 text-sm font-semibold">View all</Link>
           </div>
           {recentProducts.length === 0 ? (
             <p className="rounded-2xl bg-soft px-4 py-8 text-center text-[15px] text-muted">
-              Nothing here yet. Add what you sell in the <Link href="/dashboard/knowledge" className="font-semibold">Knowledge base</Link>: products, services, events and offers.
+              Nothing here yet. Add what you sell in the <Link href="/dashboard/knowledge" className="font-semibold">Business info</Link>: products, services, events and offers.
             </p>
           ) : (
             <ul className="flex flex-col">
@@ -209,7 +209,7 @@ export default async function DashboardPage() {
         <GlassCard as="section" aria-labelledby="ld" className="min-w-0 flex-[1_1_280px] p-5 sm:p-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 id="ld" className="text-lg font-semibold">New leads</h2>
-            <Link href="/dashboard/leads" className="text-sm font-semibold">All leads</Link>
+            <Link href="/dashboard/leads" className="inline-flex min-h-11 items-center px-1 text-sm font-semibold">All leads</Link>
           </div>
           {recentLeads.length === 0 ? (
             <p className="rounded-2xl bg-soft px-4 py-8 text-center text-[15px] text-muted">
@@ -233,7 +233,7 @@ export default async function DashboardPage() {
       <GlassCard as="section" aria-labelledby="us" className="p-5 sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 id="us" className="text-lg font-semibold">Usage this period</h2>
-          <Link href="/dashboard/usage" className="text-sm font-semibold">Details</Link>
+          <Link href="/dashboard/usage" className="inline-flex min-h-11 items-center px-1 text-sm font-semibold">Details</Link>
         </div>
         {planEnded && <p className="-mt-2 mb-4 text-sm text-muted">Your plan has ended, so nothing new can be made until a plan is chosen. Everything you made is saved.</p>}
         <div className={cn("grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-5", planEnded && "opacity-60")}>

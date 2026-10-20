@@ -404,10 +404,10 @@ describe("confirming a contest", () => {
 
   it("refuses a post that is not a contest, or that changed meanwhile", async () => {
     prisma.post.findFirst.mockResolvedValue({ id: "p", text: "Hi", status: "PENDING_APPROVAL", contest: null, updatedAt: NOW });
-    await expect(confirmContest(owner, "p", { prize: "x", endsOn: "2026-10-16", howChosen: "y", willPay: true })).rejects.toThrow(/could not find/);
+    await expect(confirmContest(owner, "p", { prize: "x", endsOn: "2026-10-16", howChosen: "y", willPay: true }, NOW)).rejects.toThrow(/could not find/);
     prisma.post.findFirst.mockResolvedValue({ id: "c1", text: "Win [PRIZE]", status: "PENDING_APPROVAL", contest: {}, contentId: null, updatedAt: NOW });
     prisma.post.updateMany.mockResolvedValue({ count: 0 });
-    await expect(confirmContest(owner, "c1", { prize: "x", endsOn: "2026-10-16", howChosen: "y", willPay: true })).rejects.toThrow(/changed meanwhile/);
+    await expect(confirmContest(owner, "c1", { prize: "x", endsOn: "2026-10-16", howChosen: "y", willPay: true }, NOW)).rejects.toThrow(/changed meanwhile/);
   });
 });
 

@@ -5,7 +5,6 @@ vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 const mocks = vi.hoisted(() => ({
   requireActiveUser: vi.fn(),
   disconnect: vi.fn(),
-  saveReminderConnection: vi.fn(),
   rateLimit: vi.fn(),
   prisma: { business: { findUnique: vi.fn() }, connection: { findMany: vi.fn() } },
   deleteConnections: vi.fn(),
@@ -14,13 +13,13 @@ vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: mocks.requireActi
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/rate-limit", async (orig) => ({ ...(await orig<typeof import("@/lib/rate-limit")>()), rateLimit: mocks.rateLimit }));
-vi.mock("@/lib/social/connections", () => ({ disconnect: mocks.disconnect, saveConnections: vi.fn(), saveReminderConnection: mocks.saveReminderConnection, deleteConnections: mocks.deleteConnections }));
+vi.mock("@/lib/social/connections", () => ({ disconnect: mocks.disconnect, saveConnections: vi.fn(), deleteConnections: mocks.deleteConnections }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined, set: vi.fn() }) }));
 vi.mock("next/navigation", () => ({ redirect: (to: string) => { throw new Error(`redirect:${to}`); } }));
 vi.mock("@opennextjs/cloudflare", () => ({ getCloudflareContext: () => { throw new Error("no"); } }));
 
-import { connectReminderAction, disconnectAction, savePickedAccountsAction } from "@/app/dashboard/connections/actions";
+import { disconnectAction, savePickedAccountsAction } from "@/app/dashboard/connections/actions";
 import { automaticAvailable, canConnect, primaryVariant, showFacebookLink } from "@/components/connections/types";
 import { deleteMetaConnections } from "@/lib/social/meta-callbacks";
 
@@ -43,20 +42,12 @@ describe("connections actions", () => {
     expect(mocks.disconnect).toHaveBeenCalledWith("someone-elses-connection", { businessId: "biz1" });
   });
 
-  it("validates the personal Instagram handle", async () => {
-    expect((await connectReminderAction({}, form({ handle: "not valid!" }))).error).toMatch(/username/);
-    expect(mocks.saveReminderConnection).not.toHaveBeenCalled();
-    expect(await connectReminderAction({}, form({ handle: "@my.shop", displayName: "My Shop" }))).toEqual({ ok: true });
-    expect(mocks.saveReminderConnection).toHaveBeenCalledWith("biz1", "instagram", "@my.shop", "My Shop");
-  });
-
-  it("personal Instagram works without any Meta app keys", async () => {
-    for (const k of ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"]) delete process.env[k];
-    expect(await connectReminderAction({}, form({ handle: "shop" }))).toEqual({ ok: true });
+  it("connects a network only when one of its sign-ins is set up (Instagram: professional accounts only)", () => {
     const base = { label: "", note: "", configured: false };
-    expect(canConnect({ ...base, network: "instagram" })).toBe(true);
-    for (const network of ["facebook", "linkedin", "tiktok", "youtube"] as const) expect(canConnect({ ...base, network })).toBe(false);
+    for (const network of ["instagram", "facebook", "linkedin", "tiktok", "youtube"] as const) expect(canConnect({ ...base, network })).toBe(false);
     expect(canConnect({ ...base, network: "facebook", configured: true })).toBe(true);
+    expect(canConnect({ ...base, network: "instagram", viaComposio: true })).toBe(true);
+    expect(canConnect({ ...base, network: "instagram", viaFacebook: true })).toBe(true);
   });
 
   it("Instagram connect variants follow which Meta keys are set", () => {
@@ -66,7 +57,9 @@ describe("connections actions", () => {
     const none = { ...base, configured: false, viaFacebook: false };
     expect([primaryVariant(both), showFacebookLink(both), automaticAvailable(both)]).toEqual(["instagram", true, true]);
     expect([primaryVariant(fbOnly), showFacebookLink(fbOnly), automaticAvailable(fbOnly)]).toEqual(["facebook", false, true]);
-    expect([showFacebookLink(none), automaticAvailable(none), canConnect(none)]).toEqual([false, false, true]);
+    expect([showFacebookLink(none), automaticAvailable(none), canConnect(none)]).toEqual([false, false, false]);
+    const socials = { ...base, configured: false, viaComposio: true };
+    expect([primaryVariant(socials), showFacebookLink(socials), automaticAvailable(socials)]).toEqual([undefined, false, true]);
   });
 
   it("sends the user back when the account picker's cookie is gone or expired", async () => {

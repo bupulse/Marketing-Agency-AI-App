@@ -124,7 +124,7 @@ export function MediaAttach({ media, onChange, max, album }: { media: MediaItem[
       )}
       <div className="flex flex-wrap gap-2">
         <button type="button" className={pill} disabled={room <= 0} onClick={() => setGallery(true)}>
-          <Images aria-hidden className="size-4" /> Gallery
+          <Images aria-hidden className="size-4" /> Photos
         </button>
         <button type="button" className={pill} disabled={room <= 0} onClick={() => setDesigns(true)}>
           <Palette aria-hidden className="size-4" /> Designs

@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, ChevronDown, LogOut, Menu, Plus, Settings, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Bell, ChevronDown, Clapperboard, ExternalLink, LogOut, Menu, Plus, Search, Settings, X } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { Logo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme";
 import { Avatar, Button, Meter, useToast } from "@/components/ui";
 import { readableTextColor } from "@/lib/color-contrast";
 import { cn } from "@/lib/cn";
 import { FEATURES, type FeatureKey } from "@/lib/features";
-import { FEATURE_ICONS, NAV_ITEMS } from "./nav";
+import { BottomBar, badgeText } from "./bottom-bar";
+import { CreateMenu } from "./create-menu";
+import { activeGroup, bottomBarItems, createActions, FEATURE_ICONS, finderEntries, FOLDED_GROUP, isActive, navFor, type CreateAction, type NavGroup, type StudioLink } from "./nav";
+import { PageFinder } from "./page-finder";
 import { can, type Role } from "@/lib/team/roles";
 
 export type ShellPlan = {
@@ -42,6 +45,14 @@ type ShellProps = {
   features: FeatureKey[];
   /** Things that need the owner's attention, shown under the bell (for example apps to connect). */
   notices?: ShellNotice[];
+  /**
+   * The Video Studio link in the sidebar (docs/VIDEO_STUDIO_SPLIT.md): "open" opens studio.bupulse.com in a new tab,
+   * signed in; "upgrade" goes to the Videos library, which says the plan has no video credits; null hides it (the
+   * studio is switched off, or the role may not make content).
+   */
+  studio?: StudioLink;
+  /** Open inbox conversations with unread messages: the badge on Inbox (0 without the inbox feature). */
+  inboxUnread?: number;
   children: ReactNode;
 };
 
@@ -95,9 +106,70 @@ function addable(features: FeatureKey[]) {
   return FEATURES.filter((f) => f.status === "built" && f.kind === "app" && !features.includes(f.key));
 }
 
-function isActive(pathname: string, href: string) {
-  if (href === "/dashboard/settings") return pathname === href;
-  return href === "/dashboard" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+// The "Account & settings" group's open or closed choice, remembered on this device. Storage may be refused (private
+// windows): the choice then lasts until the page is opened again.
+const FOLD_KEY = "bp-nav-account-open";
+const foldListeners = new Set<() => void>();
+let foldMemory: boolean | null = null;
+
+function readFold(): boolean {
+  if (foldMemory !== null) return foldMemory;
+  try {
+    return window.localStorage.getItem(FOLD_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeFold(open: boolean) {
+  foldMemory = open;
+  try {
+    window.localStorage.setItem(FOLD_KEY, open ? "1" : "0");
+  } catch {
+    // Kept in memory instead.
+  }
+  foldListeners.forEach((l) => l());
+}
+
+function subscribeFold(cb: () => void) {
+  foldListeners.add(cb);
+  return () => {
+    foldListeners.delete(cb);
+  };
+}
+
+// "⌘K" on a Mac or an iPad with a keyboard, "Ctrl K" elsewhere; nothing on the server (the hint is for keyboards only).
+const noSubscribe = () => () => {};
+const shortcutHint = () => (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "⌘K" : "Ctrl K");
+
+function NavLink({ href, label, icon: Icon, pathname, badge, onNavigate }: { href: string; label: string; icon: NavGroup["items"][number]["icon"]; pathname: string; badge?: number; onNavigate?: () => void }) {
+  const active = isActive(pathname, href);
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "relative flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium no-underline transition-colors duration-200",
+        active ? "bg-soft text-text" : "text-muted hover:bg-soft hover:text-text",
+      )}
+    >
+      {active && (
+        <span
+          aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-full"
+          style={{ background: "linear-gradient(180deg, var(--brand-1), var(--brand-2))" }}
+        />
+      )}
+      <Icon aria-hidden className={cn("size-[18px] shrink-0", active && "text-pulse-blue")} />
+      {label}
+      {badge ? (
+        <span className="ml-auto inline-flex min-w-[22px] items-center justify-center rounded-full bg-danger px-1.5 text-[12px] leading-[22px] font-bold text-white">
+          {badgeText(badge)}
+          <span className="sr-only"> unread</span>
+        </span>
+      ) : null}
+    </Link>
+  );
 }
 
 function BrandMark({ name, brand, size }: { name: string; brand: ShellBrand; size: number }) {
@@ -133,31 +205,89 @@ function BrandMark({ name, brand, size }: { name: string; brand: ShellBrand; siz
   );
 }
 
-function Sidebar({
-  pathname,
-  plan,
-  businessName,
-  brand,
-  role,
-  features,
-  onNavigate,
-}: {
+type SidebarProps = {
   pathname: string;
   role: Role;
   plan: ShellPlan;
   businessName: string;
   brand: ShellBrand;
   features: FeatureKey[];
+  studio: StudioLink;
+  inboxUnread: number;
+  actions: CreateAction[];
+  createOpen: boolean;
+  onCreate: (button: HTMLButtonElement) => void;
+  onFind: (button: HTMLButtonElement) => void;
   onNavigate?: () => void;
-}) {
+};
+
+/** The "Account & settings" group: folded unless opened (remembered) or one of its pages is open. */
+function FoldedGroup({ group, pathname, children }: { group: NavGroup; pathname: string; children: ReactNode }) {
+  const uid = useId();
+  const stored = useSyncExternalStore(subscribeFold, readFold, () => false);
+  // Folded by hand on one of its own pages: stays folded there until another page is opened.
+  const [closedOn, setClosedOn] = useState<string | null>(null);
+  const inside = activeGroup(pathname, [group]) === group.id;
+  const open = stored || (inside && closedOn !== pathname);
+  const toggle = () => {
+    if (open) {
+      writeFold(false);
+      if (inside) setClosedOn(pathname);
+    } else {
+      writeFold(true);
+      setClosedOn(null);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        aria-controls={`${uid}-items`}
+        className="flex min-h-11 cursor-pointer items-center justify-between gap-2 rounded-2xl px-3.5 text-xs font-semibold uppercase tracking-wide text-muted hover:bg-soft hover:text-text"
+      >
+        {group.title}
+        <ChevronDown aria-hidden className={cn("size-4 transition-transform", open && "rotate-180")} />
+      </button>
+      <div id={`${uid}-items`} hidden={!open} className="flex flex-col gap-1">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({ pathname, plan, businessName, brand, role, features, studio, inboxUnread, actions, createOpen, onCreate, onFind, onNavigate }: SidebarProps) {
   // Members get no purchase prompts; Admins see what could be added so they can ask the owner (lib/team/roles.ts).
   const missing = can(role, "upgrade") ? addable(features) : [];
+  const groups = useMemo(() => navFor(role, features), [role, features]);
+  const hint = useSyncExternalStore(noSubscribe, shortcutHint, () => null);
+  const uid = useId();
   const brandRow = (
     <>
       <BrandMark name={businessName} brand={brand} size={36} />
       <span className="min-w-0 truncate text-sm font-semibold">{businessName}</span>
     </>
   );
+  const quiet = "flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium text-muted no-underline transition-colors duration-200 hover:bg-soft hover:text-text";
+  const studioLink =
+    studio === "open" ? (
+      // A plain link, not next/link: it must never be prefetched (each visit writes a sign-in ticket).
+      <a href="/dashboard/video/open" target="_blank" rel="noopener" onClick={onNavigate} className={quiet}>
+        <Clapperboard aria-hidden className="size-[18px] shrink-0" />
+        Video Studio
+        <ExternalLink aria-hidden className="ml-auto size-4 shrink-0" />
+        <span className="sr-only">(opens in a new tab)</span>
+      </a>
+    ) : studio === "upgrade" ? (
+      <Link href="/dashboard/video?studio=plan" onClick={onNavigate} className={quiet}>
+        <Clapperboard aria-hidden className="size-[18px] shrink-0" />
+        Video Studio
+      </Link>
+    ) : null;
+  const links = (g: NavGroup) =>
+    g.items.map((i) => <NavLink key={i.href} href={i.href} label={i.label} icon={i.icon} pathname={pathname} badge={i.href === "/dashboard/inbox" ? inboxUnread : undefined} onNavigate={onNavigate} />);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
       <div className="px-2 pt-1">
@@ -176,31 +306,36 @@ function Sidebar({
       ) : (
         <div className="flex min-h-12 items-center gap-2.5 rounded-2xl bg-soft px-2.5 py-1.5">{brandRow}</div>
       )}
-      <nav aria-label="App" className="flex flex-col gap-1">
-        {NAV_ITEMS.filter((item) => (!item.permission || can(role, item.permission)) && (!item.feature || features.includes(item.feature))).map(({ href, label, icon: Icon }) => {
-          const active = isActive(pathname, href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              onClick={onNavigate}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "relative flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium no-underline transition-colors duration-200",
-                active ? "bg-soft text-text" : "text-muted hover:bg-soft hover:text-text",
+      {actions.length > 0 && (
+        <button
+          type="button"
+          onClick={(e) => onCreate(e.currentTarget)}
+          aria-haspopup="menu"
+          aria-expanded={createOpen}
+          className="-my-1 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-brand-gradient px-4 text-[15px] font-semibold text-white shadow-glow transition-shadow hover:shadow-glow-hover"
+        >
+          <Plus aria-hidden className="size-5" />
+          Create
+        </button>
+      )}
+      <nav aria-label="App" className="flex flex-col gap-3">
+        {groups.map((g) =>
+          g.id === FOLDED_GROUP ? (
+            <FoldedGroup key={g.id} group={g} pathname={pathname}>
+              {links(g)}
+            </FoldedGroup>
+          ) : (
+            <div key={g.id} role={g.title ? "group" : undefined} aria-labelledby={g.title ? `${uid}-${g.id}` : undefined} className="flex flex-col gap-1">
+              {g.title && (
+                <p id={`${uid}-${g.id}`} className="px-3.5 pb-0.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                  {g.title}
+                </p>
               )}
-            >
-              {active && (
-                <span
-                  aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-full"
-                  style={{ background: "linear-gradient(180deg, var(--brand-1), var(--brand-2))" }}
-                />
-              )}
-              <Icon aria-hidden className={cn("size-[18px] shrink-0", active && "text-pulse-blue")} />
-              {label}
-            </Link>
-          );
-        })}
+              {links(g)}
+              {g.id === "create" && studioLink}
+            </div>
+          ),
+        )}
       </nav>
       {missing.length > 0 && (
         <nav aria-label="Add to your plan" className="flex flex-col gap-1">
@@ -222,15 +357,31 @@ function Sidebar({
           })}
         </nav>
       )}
-      <div className="glass-strong mt-auto flex flex-col gap-2.5 rounded-[20px] p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px]">
-          <strong>{plan.name}</strong>
-          {plan.trialLabel && <span className="text-muted">{plan.trialLabel}</span>}
+      <div className="mt-auto flex flex-col gap-3">
+        <button
+          type="button"
+          onClick={(e) => onFind(e.currentTarget)}
+          aria-haspopup="dialog"
+          className="glass flex min-h-11 cursor-pointer items-center gap-2.5 rounded-2xl px-3.5 text-left text-[15px] text-muted hover:text-text"
+        >
+          <Search aria-hidden className="size-[18px] shrink-0" />
+          <span className="flex-1">Find a page</span>
+          {hint && (
+            <kbd aria-hidden className="hidden rounded-md border border-line px-1.5 py-0.5 font-sans text-[11px] lg:inline">
+              {hint}
+            </kbd>
+          )}
+        </button>
+        <div className="glass-strong flex flex-col gap-2.5 rounded-[20px] p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px]">
+            <strong>{plan.name}</strong>
+            {plan.trialLabel && <span className="text-muted">{plan.trialLabel}</span>}
+          </div>
+          <Meter value={plan.used} max={plan.max} label="Text generations used" />
+          <span className="text-xs text-muted">
+            {plan.used} of {plan.max} generations used
+          </span>
         </div>
-        <Meter value={plan.used} max={plan.max} label="Text generations used" />
-        <span className="text-xs text-muted">
-          {plan.used} of {plan.max} generations used
-        </span>
       </div>
     </div>
   );
@@ -302,23 +453,7 @@ function UserMenu({ displayName, email }: { displayName: string; email: string }
   );
 }
 
-function Drawer({
-  pathname,
-  plan,
-  businessName,
-  brand,
-  role,
-  features,
-  onClose,
-}: {
-  pathname: string;
-  role: Role;
-  plan: ShellPlan;
-  businessName: string;
-  brand: ShellBrand;
-  features: FeatureKey[];
-  onClose: () => void;
-}) {
+function Drawer({ onClose, ...sidebar }: Omit<SidebarProps, "onNavigate"> & { onClose: () => void }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -367,25 +502,70 @@ function Drawer({
         >
           <X aria-hidden className="size-5" />
         </button>
-        <Sidebar pathname={pathname} plan={plan} role={role} features={features} businessName={businessName} brand={brand} onNavigate={onClose} />
+        <Sidebar {...sidebar} onNavigate={onClose} />
       </div>
     </div>
   );
 }
 
-export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, notices = [], children }: ShellProps) {
+export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, notices = [], studio = null, inboxUnread = 0, children }: ShellProps) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // The + Create menu: open with the button's place (the computer menu opens under it), or closed (null).
+  const [create, setCreate] = useState<{ anchor: DOMRect | null } | null>(null);
+  const [finding, setFinding] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  // Where focus goes back when the drawer, the Create menu or the search closes: the button that opened it.
+  const returnFocus = useRef<HTMLElement | null>(null);
 
+  const actions = useMemo(() => createActions(role, features, studio), [role, features, studio]);
+  const entries = useMemo(() => finderEntries(role, features, studio), [role, features, studio]);
+  const barItems = useMemo(() => bottomBarItems(role, features), [role, features]);
+
+  const refocus = useCallback(() => {
+    (returnFocus.current ?? menuButtonRef.current)?.focus();
+    returnFocus.current = null;
+  }, []);
+  const openDrawer = (button: HTMLElement) => {
+    returnFocus.current = button;
+    setDrawerOpen(true);
+  };
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
-    menuButtonRef.current?.focus();
-  }, []);
+    refocus();
+  }, [refocus]);
+  // From the drawer, the menu and the search take its place; focus then goes back to what opened the drawer.
+  const openCreate = (button: HTMLButtonElement) => {
+    if (!drawerOpen) returnFocus.current = button;
+    setDrawerOpen(false);
+    setCreate({ anchor: window.matchMedia("(min-width: 64rem)").matches ? button.getBoundingClientRect() : null });
+  };
+  const closeCreate = useCallback(
+    (restore: boolean) => {
+      setCreate(null);
+      if (restore) refocus();
+      else returnFocus.current = null;
+    },
+    [refocus],
+  );
+  const openFinder = (button: HTMLButtonElement) => {
+    if (!drawerOpen) returnFocus.current = button;
+    setDrawerOpen(false);
+    setFinding(true);
+  };
+  const onFinding = useCallback(
+    (open: boolean) => {
+      setFinding(open);
+      if (!open) refocus();
+    },
+    [refocus],
+  );
+
+  const sidebar = { pathname, plan, role, features, studio, businessName, brand, inboxUnread, actions, createOpen: create !== null, onCreate: openCreate, onFind: openFinder };
 
   return (
     <div
-      className="relative flex min-h-dvh w-full flex-wrap items-start gap-5 p-3 sm:p-5"
+      className="relative flex min-h-dvh w-full flex-wrap items-start gap-5 p-3 max-lg:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:p-5 sm:max-lg:pb-[calc(6.5rem+env(safe-area-inset-bottom))]"
       style={
         {
           "--brand-1": brand.colors[0],
@@ -408,10 +588,12 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
         aria-label="Sidebar"
         className="glass-strong hidden w-[248px] shrink-0 flex-col rounded-[28px] p-3.5 lg:sticky lg:top-5 lg:flex lg:max-h-[calc(100dvh-2.5rem)] lg:self-start lg:overflow-y-auto"
       >
-        <Sidebar pathname={pathname} plan={plan} role={role} features={features} businessName={businessName} brand={brand} />
+        <Sidebar {...sidebar} />
       </aside>
 
-      {drawerOpen && <Drawer pathname={pathname} plan={plan} role={role} features={features} businessName={businessName} brand={brand} onClose={closeDrawer} />}
+      {drawerOpen && <Drawer {...sidebar} onClose={closeDrawer} />}
+      {create && <CreateMenu actions={actions} anchor={create.anchor} onClose={closeCreate} />}
+      <PageFinder open={finding} onOpenChange={onFinding} entries={entries} />
 
       <div className="flex min-w-0 flex-1 basis-[min(100%,560px)] flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3 px-1">
@@ -419,7 +601,7 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
             <button
               ref={menuButtonRef}
               type="button"
-              onClick={() => setDrawerOpen(true)}
+              onClick={(e) => openDrawer(e.currentTarget)}
               aria-label="Open menu"
               aria-expanded={drawerOpen}
               className="glass inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full lg:hidden"
@@ -448,6 +630,17 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
           {children}
         </main>
       </div>
+
+      <BottomBar
+        items={barItems}
+        pathname={pathname}
+        unread={inboxUnread}
+        canCreate={actions.length > 0}
+        createOpen={create !== null}
+        menuOpen={drawerOpen}
+        onCreate={openCreate}
+        onMenu={openDrawer}
+      />
     </div>
   );
 }

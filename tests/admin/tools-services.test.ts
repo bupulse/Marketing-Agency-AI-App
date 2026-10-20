@@ -68,7 +68,7 @@ describe("new Jarvis tools", () => {
     const out = (await call("list_services", {})) as { id: string; env: { name: string; set: boolean }[] }[];
     expect(out.map((s) => s.id)).toContain("gemini");
     expect(JSON.stringify(out)).not.toContain("AIzaSyFAKE-tool-secret-0001");
-    expect(out.find((s) => s.id === "gemini")!.env[0]).toEqual({ name: "GEMINI_API_KEY", set: true });
+    expect(out.find((s) => s.id === "gemini")!.env[0]).toEqual({ name: "GEMINI_API_KEY", set: true, source: "host", shown: null, savedAt: null, savedBy: null, hostSet: true });
   });
 
   it("set_service_enabled works through the tool: confirm and reason enforced, audited, effective", async () => {

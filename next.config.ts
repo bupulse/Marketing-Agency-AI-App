@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { NextConfig } from "next";
 import { version } from "./package.json";
 
@@ -10,8 +11,23 @@ const nextConfig: NextConfig = {
   // Heavy libraries used by both pages (server actions) and route handlers: kept as packages so the Cloudflare Worker
   // carries each one once (OpenNext bundles external packages once) instead of a copy per Turbopack chunk group.
   // Behaviour is the same; only where the code sits in the Worker changes (docs/DEPLOY.md, "Worker size").
-  // @bupulse/prisma-data exists only in the Cloudflare build (scripts/cf-build.mjs): the generated Prisma client's data.
-  serverExternalPackages: ["zod", "pdf-lib", "libphonenumber-js", "@bupulse/prisma-data"],
+  // @bupulse/prisma-data and @bupulse/video-brain-data exist only in the Cloudflare build (scripts/cf-build.mjs): the
+  // generated Prisma client's data, and the video brain's data files (lib/video-engine/brain/data).
+  serverExternalPackages: ["zod", "pdf-lib", "libphonenumber-js", "@bupulse/prisma-data", "@bupulse/video-brain-data"],
+  // Cloudflare build only: server code reads the video brain's data files from @bupulse/video-brain-data (one copy in
+  // the Worker) instead of a copy inlined in every chunk group that reaches the brain (scripts/cf-brain-data-loader.cjs).
+  // Other builds (Node, Netlify, dev, the studio) and the browser bundle import the files as they are.
+  ...(process.env.BUPULSE_CF_BUILD === "1" && {
+    turbopack: {
+      rules: {
+        "*.json": {
+          condition: { all: [{ not: "browser" }, { path: /^lib\/video-engine\/brain\/data\/[^/]+\.json$/ }] },
+          loaders: [resolve("scripts/cf-brain-data-loader.cjs")],
+          as: "*.js",
+        },
+      },
+    },
+  }),
   // Inlined at build time for the admin Updates page (lib/version.ts). BUILD_SHA comes from the deploy workflow.
   // BUPULSE_BUILD_PLATFORM: "netlify" when Netlify builds the app (it sets NETLIFY=true), else PLATFORM or empty, read by
   // lib/platform/detect.ts when PLATFORM is not set at runtime.

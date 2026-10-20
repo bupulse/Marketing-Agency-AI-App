@@ -72,6 +72,8 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
     .filter((c) => c.image || c.video)
     .map((c) => ({ id: c.id, label: c.network && isNetwork(c.network) ? NETWORK_STYLE[c.network].label : "Post", angle: isAngleId(c.angle) ? ANGLES[c.angle].label : null, image: c.image, video: c.video, hasScript: c.hasScript }));
   const create = <CreateDayContent scope={scope} path={path} subjectName={info.name} networks={networks} allowance={allowance} album={album} />;
+  // Today's header button opens by itself on ?create=1 (+ Create → New post); the empty state's copy never does.
+  const createHere = day === today ? <CreateDayContent scope={scope} path={path} subjectName={info.name} networks={networks} allowance={allowance} album={album} openOnAsk /> : create;
 
   const empty = filtered ? (
     <EmptyState icon={Icon} title="No posts match these filters on this day" text="Try another app or type, or clear the filters." action={<Button href={`${path}${withDay("")}`}>Clear filters</Button>} />
@@ -79,7 +81,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
     <EmptyState
       icon={Icon}
       title="Nothing for today yet"
-      text={`Create today's posts for this ${thing}: BuPulse writes a short post for each app from a new angle every day, with your Gallery photos and videos first. They wait for your OK here.`}
+      text={`Create today's posts for this ${thing}: BuPulse writes a short post for each app from a new angle every day, with your own Photos first. They wait for your OK here.`}
       action={create}
     />
   ) : (
@@ -91,7 +93,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
   return (
     <div className="flex flex-col gap-6">
       <Link href="/dashboard/content" className="-mb-2 inline-flex min-h-11 w-fit items-center gap-1 px-1 text-[15px] font-medium text-muted hover:text-text">
-        <ChevronLeft aria-hidden className="size-4" /> Content
+        <ChevronLeft aria-hidden className="size-4" /> Posts
       </Link>
       <PageHeader
         title={info.name}
@@ -103,7 +105,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
                 Open {thing}
               </Button>
             )}
-            {create}
+            {createHere}
           </div>
         }
       />

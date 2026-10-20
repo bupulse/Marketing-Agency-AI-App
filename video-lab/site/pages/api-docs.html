@@ -1,0 +1,123 @@
+<section class="section apiDocs">
+  <p class="kicker">Developers</p>
+  <h1 data-i18n="api.h1">The Video Studio <span class="grad">API</span></h1>
+  <p class="lead muted" data-i18n="api.lead">Everything the studio pages do goes through a small JSON API. You can call it yourself to quote, generate and fetch videos and images.</p>
+  <div class="card notice2">
+    <b>Keys come per business, in the app.</b> Today the studio runs on this computer only (127.0.0.1, port 3100) and needs no key. When the studio joins BuPulse, each business gets its own API key in Settings, sent as <code>Authorization: Bearer &lt;key&gt;</code>, and spends that business's credits. The paths below stay the same.
+  </div>
+
+  <div class="apiLayout">
+    <nav class="apiToc">
+      <a href="#flow">How it works</a>
+      <a href="#credits">Credits</a>
+      <a href="#quote">Quote a price</a>
+      <a href="#upload">Upload references</a>
+      <a href="#seedance">Seedance video</a>
+      <a href="#jobs">Seedance jobs</a>
+      <a href="#design">Motion video (Claude)</a>
+      <a href="#image">AI image</a>
+      <a href="#showcase">Showcase</a>
+      <a href="#errors">Errors</a>
+    </nav>
+    <div class="apiBody">
+      <h2 id="flow">How it works</h2>
+      <ol>
+        <li><b>Quote</b> the job (<code>POST /api/quote</code>) to see its credits.</li>
+        <li><b>Upload</b> any photo, video or audio you want as a reference.</li>
+        <li><b>Submit</b>: <code>POST /api/seedance/submit</code> for real video, <code>POST /api/design</code> for a motion video, <code>POST /api/image</code> for an image. Credits are taken when the job starts.</li>
+        <li><b>Wait</b>: Seedance jobs run 1 to 10 minutes; check <code>GET /api/seedance/jobs/{id}</code> every 10 seconds. Motion designs and images answer directly.</li>
+        <li><b>Download</b> the MP4 from <code>videoUrl</code>. A failed job gives its credits back by itself.</li>
+      </ol>
+      <p class="muted">Base URL today: <code>http://localhost:3100</code>. All bodies are JSON (<code>content-type: application/json</code>) except uploads, which are the raw file bytes.</p>
+
+      <h2 id="credits">Credits</h2>
+      <p>1 credit = 10 RWF. <code>GET /api/pricing</code> lists the packs and the price of every model; <code>GET /api/wallet</code> returns the balance.</p>
+      <pre><code>GET /api/pricing
+{
+  "packs": [{ "id": "starter", "name": "Starter pack", "credits": 1000, "rwf": 10000 }, …],
+  "seedance": [{ "tier": "fast", "name": "Seedance 2.0 Fast", "resolution": "720p", "credits5s": 190, "credits10s": 385, "credits15s": 575 }, …],
+  "claudeCredits": 30,
+  "presenterCredits": 15
+}</code></pre>
+      <table class="rates" id="apiRates"></table>
+
+      <h2 id="quote">Quote a price</h2>
+      <pre><code>POST /api/quote
+{ "engine": "seedance", "tier": "fast", "resolution": "720p", "seconds": 5, "versions": 1 }
+
+200 { "credits": 190, "usd": 0.6 }</code></pre>
+      <p class="muted"><code>engine</code>: <code>seedance</code> or <code>claude</code>. <code>tier</code>: <code>pro</code> (Seedance 2.0), <code>fast</code>, <code>mini</code>. <code>seconds</code>: 4 to 15. <code>versions</code>: 1 to 4.</p>
+
+      <h2 id="upload">Upload references</h2>
+      <pre><code>POST /api/upload            (body: the photo bytes, content-type image/jpeg, png or webp; at most 15 MB)
+200 { "id": "up-1a2b3c4d5e6f", "width": 1600, "height": 2000 }
+
+POST /api/media             (body: MP4 / MOV video or MP3 / WAV audio; at most 60 MB)
+200 { "id": "um-1a2b3c4d5e6f", "mimeType": "video/mp4", "bytes": 5242880 }</code></pre>
+      <p class="muted">Use them in a job as <code>up:&lt;id&gt;</code> (photo) or <code>um:&lt;id&gt;</code> (video or audio). A product photo from BuPulse is <code>ph:&lt;assetId&gt;</code>; a video you made is <code>vid:seedance:&lt;jobId&gt;</code> or <code>vid:claude:&lt;jobId&gt;</code>. Photos of real people's faces are refused by Seedance.</p>
+
+      <h2 id="seedance">Seedance video</h2>
+      <pre><code>POST /api/seedance/submit
+{
+  "prompt": "0-2 s: close-up of the phone from Image 1 turning on a wooden table; 2-5 s: a hand picks it up.",
+  "refs": [{ "id": "ph:7f0c…", "kind": "image" }],
+  "tier": "fast", "resolution": "720p", "ratio": "9:16", "seconds": 5,
+  "audio": true, "fixedLens": false, "flex": false, "draft": false, "seed": null, "versions": 1
+}
+
+200 { "jobs": [{ "id": "sd-0a1b2c3d4e5f", "status": "queued", "credits": 190, "estimateUsd": 0.6, … }] }
+503 { "error": "Seedance is waiting for the BytePlus key (SEEDANCE_API_KEY in .env)." }</code></pre>
+      <p class="muted">Ratios: 9:16, 3:4, 1:1, 4:3, 16:9, 21:9, adaptive. Up to 9 images, 3 videos and 3 audio files; refer to them in the prompt as Image 1, Video 1, Audio 1. Image roles: <code>first_frame</code>, <code>last_frame</code> or <code>reference_image</code>. <code>POST /api/seedance/prompt</code> asks Claude to write the prompt from a product (<code>businessId</code>, <code>productId</code>, <code>templateId</code>).</p>
+
+      <h2 id="jobs">Seedance jobs</h2>
+      <pre><code>GET /api/seedance/jobs/sd-0a1b2c3d4e5f
+200 {
+  "id": "sd-0a1b2c3d4e5f",
+  "status": "succeeded",          // submitting | queued | running | succeeded | failed | cancelled
+  "videoFile": "sd-0a1b2c3d4e5f.mp4",
+  "credits": 190, "tokens": 108900, "costUsd": 0.76, "error": null
+}
+
+GET  /videos/seedance/sd-0a1b2c3d4e5f.mp4      the MP4
+POST /api/seedance/jobs/sd-0a1b2c3d4e5f/cancel  cancel a queued job (credits back)
+GET  /api/seedance/jobs                         your last 200 jobs</code></pre>
+
+      <h2 id="design">Motion video (Claude)</h2>
+      <pre><code>POST /api/design
+{
+  "businessId": "…", "productId": "…", "photoIds": ["7f0c…"],
+  "styleId": "product-hero", "hookId": "auto", "ratio": "9:16", "seconds": 15,
+  "note": "Price drop in big 3D letters", "mode": "reference", "versions": 1
+}
+
+200 { "jobs": [{ "id": "20261017-1a2b3c4d", "spec": { "scenes": [ … ] }, "status": "designed" }], "error": null }</code></pre>
+      <p class="muted">The answer is the video's design. The studio page draws it and makes the MP4 in the browser, then saves it (<code>POST /api/jobs/{id}/video</code>); the finished file is <code>/videos/{id}.mp4</code>. Edit or extend a design with <code>"mode": "edit"</code> or <code>"extend"</code> and <code>"baseJobId"</code>. Templates and hooks: <code>GET /api/options</code>. Products: <code>GET /api/businesses</code>, <code>GET /api/products?business=&lt;id&gt;</code>.</p>
+
+      <h2 id="image">AI image (Nano Banana)</h2>
+      <pre><code>POST /api/image
+{ "prompt": "The product from Image 1 on a white marble table, soft morning light", "refs": ["ph:7f0c…"], "ratio": "4:5", "businessId": "…" }
+
+200 { "image": { "id": "up-1a2b3c4d5e6f", "url": "/api/photo/up-1a2b3c4d5e6f", "prompt": "…", "ratio": "4:5" }, "credits": 15 }
+
+GET /api/images     your images, newest first</code></pre>
+      <p class="muted">Up to 3 reference photos. The image is saved as an upload, so <code>up:&lt;id&gt;</code> works as a reference in a video job.</p>
+
+      <h2 id="showcase">Showcase</h2>
+      <pre><code>GET /api/showcase
+200 { "items": [{ "id": "…", "engine": "seedance", "title": "…", "status": "succeeded", "videoUrl": "/videos/seedance/….mp4", "prompt": "…" }] }</code></pre>
+
+      <h2 id="errors">Errors</h2>
+      <p>Every error is JSON with a plain-English message: <code>{ "error": "Not enough credits: this needs 190 and you have 40. Top up in Pricing." }</code>.</p>
+      <table class="rates">
+        <tr><th>Status</th><th>Meaning</th></tr>
+        <tr><td>400</td><td>Something is missing in the request (a prompt, a photo for image-to-video…)</td></tr>
+        <tr><td>402</td><td>Not enough credits</td></tr>
+        <tr><td>404</td><td>Unknown product, job or file</td></tr>
+        <tr><td>429</td><td>Today's test budget is used, or the provider is busy</td></tr>
+        <tr><td>502</td><td>The model could not make it (credits given back)</td></tr>
+        <tr><td>503</td><td>The model's key is not set yet (Seedance waits for the BytePlus key)</td></tr>
+      </table>
+      <p style="margin-top:24px"><a class="btn primary" href="/app/video/seedance-2-0" data-i18n="nav.start">Start creating</a> <a class="btn" href="/pricing" data-i18n="nav.pricing">Pricing</a></p>
+    </div>
+  </div>
+</section>

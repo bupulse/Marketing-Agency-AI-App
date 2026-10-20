@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Optional: keeps the studio's Cloudflare tunnel (tools/bin/studio-tunnel.sh) running, so it does not need a Terminal
+  window left open. NOT loaded by anything yet: see "Going live" in docs/STUDIO_DEPLOY.md. Install:
+    cp tools/launchd/com.bupulse.studio-tunnel.plist ~/Library/LaunchAgents/
+    launchctl load -w ~/Library/LaunchAgents/com.bupulse.studio-tunnel.plist
+  Stop for good:  launchctl unload -w ~/Library/LaunchAgents/com.bupulse.studio-tunnel.plist
+  Run tools/bin/studio-tunnel.sh once in a Terminal first (it creates the tunnel and the DNS record).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.bupulse.studio-tunnel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/macbook1/BuPulse-video/tools/bin/studio-tunnel.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/macbook1/Library/Logs/bupulse-studio-tunnel.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macbook1/Library/Logs/bupulse-studio-tunnel.log</string>
+</dict>
+</plist>

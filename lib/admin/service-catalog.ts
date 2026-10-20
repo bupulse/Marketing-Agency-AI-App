@@ -19,6 +19,11 @@ export const SERVICE_IDS = [
   "cloudflare",
   "elevenlabs",
   "whatsapp",
+  "seedance",
+  "veo",
+  "premium3d",
+  "composio",
+  "studio",
 ] as const;
 export type ServiceId = (typeof SERVICE_IDS)[number];
 
@@ -37,7 +42,7 @@ export const NETWORK_SERVICE: Record<string, ServiceId> = {
 export const networksOf = (service: ServiceId): string[] => Object.entries(NETWORK_SERVICE).filter(([, s]) => s === service).map(([n]) => n);
 
 /** AI provider names in the AiCall ledger -> service. */
-export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude", elevenlabs: "elevenlabs" };
+export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude", elevenlabs: "elevenlabs", byteplus: "seedance", veo: "veo" };
 
 export type ServiceInfo = {
   id: ServiceId;
@@ -72,7 +77,7 @@ export const SERVICES: ServiceInfo[] = [
     purpose: "Speaks the voiceover of content videos (text to speech).",
     env: ["ELEVENLABS_API_KEY"],
     optionalEnv: ["ELEVENLABS_MODEL"],
-    features: ["Voiceover on videos"],
+    features: ["Voiceover on videos", "Video Studio voice-overs (coming soon)"],
     killable: true,
     whenOff: "Videos are made without a voiceover, with captions and music only.",
   },
@@ -90,12 +95,12 @@ export const SERVICES: ServiceInfo[] = [
   {
     id: "claude",
     name: "Anthropic Claude",
-    purpose: "Alternative text model, used only when AI_TEXT_PROVIDER=claude.",
+    purpose: "Alternative text model, used only when AI_TEXT_PROVIDER=claude. The Video Studio (coming soon) designs its videos and writes its Seedance prompts with it, through ANTHROPIC_API_KEY only (docs/VIDEO_APP_INTEGRATION.md).",
     env: ["ANTHROPIC_API_KEY"],
     optionalEnv: ["CLAUDE_TEXT_MODEL", "CLAUDE_EFFORT"],
-    features: ["Content generation (when selected)"],
+    features: ["Content generation (when selected)", "Video Studio design (coming soon)"],
     killable: true,
-    whenOff: "Text generation pauses with a friendly message while Claude is the selected provider.",
+    whenOff: "Text generation pauses with a friendly message while Claude is the selected provider. Once the Video Studio is live, video design pauses too; finished videos and scheduled posts are not affected.",
   },
   {
     id: "resend",
@@ -153,7 +158,7 @@ export const SERVICES: ServiceInfo[] = [
     name: "Meta (Facebook and Instagram)",
     purpose: "Publishes to Facebook Pages and Instagram.",
     env: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
-    optionalEnv: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "META_APP_SECRET"],
+    optionalEnv: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN"],
     features: ["Facebook posts", "Instagram posts", "Connecting Facebook and Instagram"],
     killable: true,
     whenOff: "Facebook and Instagram posts wait as scheduled (not failed) and publish when it is back on.",
@@ -244,6 +249,61 @@ export const SERVICES: ServiceInfo[] = [
     killable: true,
     defaultOff: true,
     whenOff: "No WhatsApp alerts are sent and clients do not see the option; email and phone alerts carry on. Off until switched on (docs/RELEASE_2.0.md).",
+  },
+  {
+    id: "seedance",
+    name: "Seedance 2.0 (BytePlus ModelArk)",
+    purpose: "ByteDance's AI video model: filmed-looking clips from text, photos and digital characters. The Video Studio's AI video (coming soon) uses it; no client feature calls it yet. SEEDANCE_USD_PER_M_TOKENS sets the cost estimate; the BytePlus Access Key (BYTEPLUS_ACCESS_KEY_ID and BYTEPLUS_SECRET_ACCESS_KEY) lists the account's digital characters.",
+    env: ["SEEDANCE_API_KEY"],
+    optionalEnv: ["SEEDANCE_MODEL", "SEEDANCE_BASE_URL", "SEEDANCE_USD_PER_M_TOKENS", "BYTEPLUS_ACCESS_KEY_ID", "BYTEPLUS_SECRET_ACCESS_KEY"],
+    features: ["AI video (Video Studio, coming soon)"],
+    killable: true,
+    whenOff: "Nothing changes for clients today: no feature uses Seedance yet. Once AI video is built, it pauses with a friendly message.",
+  },
+  {
+    id: "veo",
+    name: "Google Veo AI clips",
+    purpose: "Google's AI video model (Veo 3.1 Lite through the Gemini API): short real moving clips of the client's product, mixed into Video Studio videos when the client picks \"AI makes the clips\" (docs/VIDEO_ENGINE.md, \"Veo AI clips\"). It uses the Gemini key (GEMINI_API_KEY, billing must be on: Veo has no free tier) and is billed per second of video ($0.05 at 720p). VEO_MODEL changes the model (default veo-3.1-lite-generate-preview); VEO_USD_PER_SECOND overrides the price used for credits and costs.",
+    env: ["GEMINI_API_KEY"],
+    optionalEnv: ["VEO_MODEL", "VEO_USD_PER_SECOND"],
+    features: ["AI clips in Video Studio videos (\"AI makes the clips\")"],
+    killable: true,
+    // Paid per second: off until the owner switches it on.
+    defaultOff: true,
+    whenOff: "The \"AI makes the clips\" choice is hidden in the Video Studio, with a short note that AI clips are paused. Videos are made from the client's photos and their own clips; clips already made stay in their videos and Gallery. Off until the owner switches it on (Veo is paid per second of video).",
+  },
+  {
+    id: "composio",
+    name: "Composio",
+    purpose: "\"BuPulse-Socials\": BuPulse's own Composio account. Clients connect Facebook, Instagram, LinkedIn and YouTube through Composio's approved apps (no Composio account for them), and BuPulse posts through it, while BuPulse's own apps wait for Meta, LinkedIn and Google. SOCIALS_DIRECT (optional, e.g. facebook,instagram) sends those networks back to BuPulse's own apps once approved.",
+    env: ["COMPOSIO_API_KEY"],
+    optionalEnv: ["SOCIALS_DIRECT"],
+    features: ["Connecting Facebook, Instagram, LinkedIn and YouTube (BuPulse-Socials)", "Posting and post numbers for accounts connected that way"],
+    killable: true,
+    whenOff: "New social connections use BuPulse's own apps instead (\"Coming soon\" where those are not set up). Accounts already connected through BuPulse-Socials keep posting through it.",
+  },
+  {
+    id: "premium3d",
+    name: "Premium 3D (Blender)",
+    purpose: "Real 3D product clips in the Video Studio: Claude designs a Blender scene from the product and Blender renders it on the studio computer, one clip at a time (docs/BLENDER.md, docs/STUDIO_DEPLOY.md item 9). Clients pay 100 credits at 540p, 150 at 720p, 70 for a re-render. BLENDER_BIN points at Blender when it is not in /Applications; BLENDER_TIMEOUT_MS stops a render that runs too long (default 30 minutes).",
+    env: [],
+    optionalEnv: ["BLENDER_BIN", "BLENDER_TIMEOUT_MS"],
+    features: ["Premium 3D clips for clients in the Video Studio"],
+    killable: true,
+    // The studio computer renders one clip at a time: off until the owner opens it to clients after Motion is live.
+    defaultOff: true,
+    whenOff: "Clients see Premium 3D as \"coming soon\" in the Video Studio and cannot start a clip. Clips already queued still render, and finished ones stay in their library. The owner's own tests on the studio are not affected. Off until the owner switches it on.",
+  },
+  {
+    id: "studio",
+    name: "Video Studio",
+    purpose: "BuPulse's own video site (studio.bupulse.com, docs/VIDEO_STUDIO_SPLIT.md), where clients make their marketing videos. \"Open Video Studio\" in BuPulse signs them in with one click, and every video it finishes appears in their Videos library. STUDIO_URL changes the address (default https://studio.bupulse.com).",
+    env: [],
+    optionalEnv: ["STUDIO_URL"],
+    features: ["Open Video Studio (one-click sign-in)", "Making new studio videos"],
+    killable: true,
+    defaultOff: true,
+    whenOff: "Clients see \"Video Studio: coming soon\" instead of the button, and nobody new can sign in to the studio. Their Videos library, scheduled videos and credits stay as they are.",
   },
 ];
 

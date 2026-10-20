@@ -17,6 +17,11 @@ export const DEFAULT_DEMO_DAILY_CAP = 12;
 /** EUR per USD until the owner sets one (or the daily ECB refresh brings one). */
 export const DEFAULT_USD_TO_EUR = 0.92;
 
+/** The monthly income goal (docs/bizdev/PLAN.md): 9,000,000 RWF a month by month 3 to 4 after launch. */
+export const DEFAULT_REVENUE_GOAL_RWF = 9_000_000;
+/** Month 1 of the launch for the goal tracker (Admin -> Revenue): a guess until the owner sets it. */
+export const DEFAULT_GOAL_START_MONTH = "2026-11";
+
 /** New sign-ups: how long the trial lasts once an admin starts it after the demo (section 12 of the launch plan). */
 export const DEFAULT_TRIAL_DAYS = 3;
 
@@ -47,6 +52,12 @@ export type Settings = {
   usdToEur: number;
   /** Refresh the EUR rate once a day from the ECB reference rates (api.frankfurter.app, free, no key). */
   eurRateAuto: boolean;
+  /** The monthly recurring income goal in RWF (Admin -> Revenue, "Goal"). */
+  revenueGoalRwf: number;
+  /** Month 1 of the launch, YYYY-MM (Kigali): the goal tracker counts months from it. */
+  goalStartMonth: string;
+  /** The free first-post preview while a company waits for its demo (one AI post each; lib/preview/first-post.ts). Off by default: it spends AI money. */
+  firstPostPreview: boolean;
 };
 export type SettingName = keyof Settings;
 
@@ -64,6 +75,9 @@ const KEYS: Record<SettingName, string> = {
   displayCurrency: "admin.displayCurrency",
   usdToEur: "pricing.usdToEur",
   eurRateAuto: "pricing.usdToEurAuto",
+  revenueGoalRwf: "sales.revenueGoalRwf",
+  goalStartMonth: "sales.goalStartMonth",
+  firstPostPreview: "sales.firstPostPreview",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -80,6 +94,9 @@ export const DEFAULT_SETTINGS: Settings = {
   displayCurrency: "USD",
   usdToEur: DEFAULT_USD_TO_EUR,
   eurRateAuto: false,
+  revenueGoalRwf: DEFAULT_REVENUE_GOAL_RWF,
+  goalStartMonth: DEFAULT_GOAL_START_MONTH,
+  firstPostPreview: false,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -131,6 +148,13 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   },
   usdToEur: number("The USD to EUR rate", 0.1, 10, false),
   eurRateAuto: (value) => value === true || value === "on" || value === "true" || value === "1",
+  revenueGoalRwf: number("The monthly income goal (RWF)", 0, 10_000_000_000),
+  firstPostPreview: (value) => value === true || value === "on" || value === "true" || value === "1",
+  goalStartMonth: (value) => {
+    const v = String(value ?? "").trim();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new AdminError("invalid", "The launch month must look like 2026-11 (year and month).");
+    return v;
+  },
   blockedDates: (value) => {
     const list = Array.isArray(value) ? value : String(value ?? "").split(/[\s,]+/);
     const out = [...new Set(list.map((v) => String(v).trim()).filter(Boolean))].sort();

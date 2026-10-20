@@ -18,7 +18,7 @@ export const PERMISSIONS = {
   "money.costs": { label: "View and edit costs", group: "Areas" },
   "payments.view": { label: "Payments and invoices", group: "Areas" },
   "plans.manage": { label: "Plans, add-on prices and regions", group: "Areas" },
-  content: { label: "Content, funnels, designs, music, industries, announcements", group: "Areas" },
+  content: { label: "Content, funnels, designs, music, industries, announcements, testimonials", group: "Areas" },
   ai: { label: "AI calls, spend and budget", group: "Areas" },
   system: { label: "Health, services, errors, activity, audit, flags, settings, updates", group: "Areas" },
   jarvis: { label: "Jarvis API keys", group: "Areas" },

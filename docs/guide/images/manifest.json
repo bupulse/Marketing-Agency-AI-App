@@ -1,0 +1,478 @@
+{
+  "public/home.jpg": {
+    "url": "/",
+    "finalPath": "/",
+    "title": "BuPulse: the marketing team for every small business",
+    "h1": "The marketing team for your shop., school., construction company., IT business., restaurant., salon.shop.school.construction company.IT business.restaurant.salon.",
+    "fullPage": false
+  },
+  "public/pricing.jpg": {
+    "url": "/pricing",
+    "finalPath": "/pricing",
+    "title": "Pricing · BuPulse",
+    "h1": "Simple pricing for every small business",
+    "fullPage": false
+  },
+  "public/about.jpg": {
+    "url": "/about",
+    "finalPath": "/about",
+    "title": "About · BuPulse",
+    "h1": "Marketing help for every small business owner",
+    "fullPage": false
+  },
+  "public/industries.jpg": {
+    "url": "/industries",
+    "finalPath": "/industries",
+    "title": "Industries · BuPulse",
+    "h1": "Built for whatever you sell",
+    "fullPage": false
+  },
+  "public/done-for-you.jpg": {
+    "url": "/done-for-you",
+    "finalPath": "/done-for-you",
+    "title": "Done-for-you marketing · BuPulse",
+    "h1": "We run your marketing for you",
+    "fullPage": false
+  },
+  "public/contact.jpg": {
+    "url": "/contact",
+    "finalPath": "/contact",
+    "title": "Contact · BuPulse",
+    "h1": "Talk to us",
+    "fullPage": false
+  },
+  "public/blog.jpg": {
+    "url": "/blog",
+    "finalPath": "/blog",
+    "title": "Blog · BuPulse",
+    "h1": "Marketing tips for busy owners",
+    "fullPage": false
+  },
+  "public/signup.jpg": {
+    "url": "/signup",
+    "finalPath": "/signup",
+    "title": "Create your account · BuPulse",
+    "h1": "Create your account",
+    "fullPage": false
+  },
+  "public/login.jpg": {
+    "url": "/login",
+    "finalPath": "/login",
+    "title": "Sign in · BuPulse",
+    "h1": "Sign in to BuPulse",
+    "fullPage": false
+  },
+  "public/forgot-password.jpg": {
+    "url": "/forgot-password",
+    "finalPath": "/forgot-password",
+    "title": "Reset your password · BuPulse",
+    "h1": "Forgot your password?",
+    "fullPage": false
+  },
+  "public/privacy.jpg": {
+    "url": "/privacy",
+    "finalPath": "/privacy",
+    "title": "Privacy Policy · BuPulse",
+    "h1": "Privacy Policy",
+    "fullPage": false
+  },
+  "public/terms.jpg": {
+    "url": "/terms",
+    "finalPath": "/terms",
+    "title": "Terms of Service · BuPulse",
+    "h1": "Terms of Service",
+    "fullPage": false
+  },
+  "public/refund-policy.jpg": {
+    "url": "/refund-policy",
+    "finalPath": "/refund-policy",
+    "title": "Refund Policy · BuPulse",
+    "h1": "Refund Policy",
+    "fullPage": false
+  },
+  "public/data-deletion.jpg": {
+    "url": "/data-deletion",
+    "finalPath": "/data-deletion",
+    "title": "Data deletion · BuPulse",
+    "h1": "Data deletion",
+    "fullPage": false
+  },
+  "public/home-full.jpg": {
+    "url": "/",
+    "finalPath": "/",
+    "title": "BuPulse: the marketing team for every small business",
+    "h1": "The marketing team for your shop., school., construction company., IT business., restaurant., salon.shop.school.construction company.IT business.restaurant.salon.",
+    "fullPage": true
+  },
+  "public/pricing-full.jpg": {
+    "url": "/pricing",
+    "finalPath": "/pricing",
+    "title": "Pricing · BuPulse",
+    "h1": "Simple pricing for every small business",
+    "fullPage": true
+  },
+  "client/home.jpg": {
+    "url": "/dashboard",
+    "finalPath": "/dashboard",
+    "title": "Dashboard · BuPulse",
+    "h1": "Welcome, Patrick",
+    "fullPage": false
+  },
+  "client/analytics.jpg": {
+    "url": "/dashboard/analytics",
+    "finalPath": "/dashboard/analytics",
+    "title": "Analytics · BuPulse",
+    "h1": "Analytics",
+    "fullPage": false
+  },
+  "client/autopilot.jpg": {
+    "url": "/dashboard/autopilot",
+    "finalPath": "/dashboard/autopilot",
+    "title": "Autopilot · BuPulse",
+    "h1": "Autopilot",
+    "fullPage": false
+  },
+  "client/billing.jpg": {
+    "url": "/dashboard/billing",
+    "finalPath": "/dashboard/billing",
+    "title": "Billing · BuPulse",
+    "h1": "Billing",
+    "fullPage": false
+  },
+  "client/brand.jpg": {
+    "url": "/dashboard/brand",
+    "finalPath": "/dashboard/brand",
+    "title": "Brand · BuPulse",
+    "h1": "Brand",
+    "fullPage": false
+  },
+  "client/calendar.jpg": {
+    "url": "/dashboard/calendar",
+    "finalPath": "/dashboard/calendar",
+    "title": "Calendar · BuPulse",
+    "h1": "Calendar",
+    "fullPage": false
+  },
+  "client/connections.jpg": {
+    "url": "/dashboard/connections",
+    "finalPath": "/dashboard/connections",
+    "title": "Channels · BuPulse",
+    "h1": "Channels",
+    "fullPage": false
+  },
+  "client/connectors.jpg": {
+    "url": "/dashboard/connectors",
+    "finalPath": "/dashboard/connectors",
+    "title": "Connectors · BuPulse",
+    "h1": "Connectors",
+    "fullPage": false
+  },
+  "client/connectors-api.jpg": {
+    "url": "/dashboard/connectors/api",
+    "finalPath": "/dashboard/connectors/api",
+    "title": "API keys · BuPulse",
+    "h1": "API access",
+    "fullPage": false
+  },
+  "client/connectors-webhooks.jpg": {
+    "url": "/dashboard/connectors/webhooks",
+    "finalPath": "/dashboard/connectors/webhooks",
+    "title": "Webhooks · BuPulse",
+    "h1": "Webhooks",
+    "fullPage": false
+  },
+  "client/content.jpg": {
+    "url": "/dashboard/content",
+    "finalPath": "/dashboard/content",
+    "title": "Content · BuPulse",
+    "h1": "Content",
+    "fullPage": false
+  },
+  "client/content-general.jpg": {
+    "url": "/dashboard/content/general",
+    "finalPath": "/dashboard/content/general",
+    "title": "General posts · BuPulse",
+    "h1": "General",
+    "fullPage": false
+  },
+  "client/content-settings.jpg": {
+    "url": "/dashboard/content/settings",
+    "finalPath": "/dashboard/content/settings",
+    "title": "Content settings · BuPulse",
+    "h1": "Content settings",
+    "fullPage": false
+  },
+  "client/designs.jpg": {
+    "url": "/dashboard/designs",
+    "finalPath": "/dashboard/designs",
+    "title": "Designs · BuPulse",
+    "h1": "Designs",
+    "fullPage": false
+  },
+  "client/domains.jpg": {
+    "url": "/dashboard/domains",
+    "finalPath": "/dashboard/domains",
+    "title": "Your domains · BuPulse",
+    "h1": "Your domains",
+    "fullPage": false
+  },
+  "client/gallery.jpg": {
+    "url": "/dashboard/gallery",
+    "finalPath": "/dashboard/gallery",
+    "title": "Gallery · BuPulse",
+    "h1": "Gallery",
+    "fullPage": false
+  },
+  "client/knowledge.jpg": {
+    "url": "/dashboard/knowledge",
+    "finalPath": "/dashboard/knowledge",
+    "title": "Knowledge base · BuPulse",
+    "h1": "Knowledge base",
+    "fullPage": false
+  },
+  "client/knowledge-profile.jpg": {
+    "url": "/dashboard/knowledge/profile",
+    "finalPath": "/dashboard/knowledge/profile",
+    "title": "Company profile · BuPulse",
+    "h1": "Company profile",
+    "fullPage": false
+  },
+  "client/knowledge-products.jpg": {
+    "url": "/dashboard/knowledge/products",
+    "finalPath": "/dashboard/knowledge/products",
+    "title": "Products & services · BuPulse",
+    "h1": "Products & services",
+    "fullPage": false
+  },
+  "client/knowledge-audience.jpg": {
+    "url": "/dashboard/knowledge/audience",
+    "finalPath": "/dashboard/knowledge/audience",
+    "title": "Customers & audience · BuPulse",
+    "h1": "Customers & audience",
+    "fullPage": false
+  },
+  "client/knowledge-campaigns.jpg": {
+    "url": "/dashboard/knowledge/campaigns",
+    "finalPath": "/dashboard/knowledge/campaigns",
+    "title": "Campaigns · BuPulse",
+    "h1": "Campaigns",
+    "fullPage": false
+  },
+  "client/knowledge-competitors.jpg": {
+    "url": "/dashboard/knowledge/competitors",
+    "finalPath": "/dashboard/knowledge/competitors",
+    "title": "Competitors & what makes you different · BuPulse",
+    "h1": "Competitors & what makes you different",
+    "fullPage": false
+  },
+  "client/knowledge-faqs.jpg": {
+    "url": "/dashboard/knowledge/faqs",
+    "finalPath": "/dashboard/knowledge/faqs",
+    "title": "FAQs & policies · BuPulse",
+    "h1": "FAQs & policies",
+    "fullPage": false
+  },
+  "client/knowledge-interview.jpg": {
+    "url": "/dashboard/knowledge/interview",
+    "finalPath": "/dashboard/knowledge/interview",
+    "title": "Digital marketing profile · BuPulse",
+    "h1": "Digital marketing profile",
+    "fullPage": false
+  },
+  "client/knowledge-locations.jpg": {
+    "url": "/dashboard/knowledge/locations",
+    "finalPath": "/dashboard/knowledge/locations",
+    "title": "Locations, hours & contacts · BuPulse",
+    "h1": "Locations, hours & contacts",
+    "fullPage": false
+  },
+  "client/knowledge-reviews.jpg": {
+    "url": "/dashboard/knowledge/reviews",
+    "finalPath": "/dashboard/knowledge/reviews",
+    "title": "Reviews & testimonials · BuPulse",
+    "h1": "Reviews & testimonials",
+    "fullPage": false
+  },
+  "client/leads.jpg": {
+    "url": "/dashboard/leads",
+    "finalPath": "/dashboard/leads",
+    "title": "Leads · BuPulse",
+    "h1": "Leads",
+    "fullPage": false
+  },
+  "client/settings.jpg": {
+    "url": "/dashboard/settings",
+    "finalPath": "/dashboard/settings",
+    "title": "Settings · BuPulse",
+    "h1": "Settings",
+    "fullPage": false
+  },
+  "client/settings-team.jpg": {
+    "url": "/dashboard/settings/team",
+    "finalPath": "/dashboard/settings/team",
+    "title": "Team · BuPulse",
+    "h1": "Team",
+    "fullPage": false
+  },
+  "client/stores.jpg": {
+    "url": "/dashboard/stores",
+    "finalPath": "/dashboard/stores",
+    "title": "Import from your store · BuPulse",
+    "h1": "Store import",
+    "fullPage": false
+  },
+  "client/usage.jpg": {
+    "url": "/dashboard/usage",
+    "finalPath": "/dashboard/usage",
+    "title": "Usage · BuPulse",
+    "h1": "Usage",
+    "fullPage": false
+  },
+  "client/widget.jpg": {
+    "url": "/dashboard/widget",
+    "finalPath": "/dashboard/widget",
+    "title": "Website chat · BuPulse",
+    "h1": "Website chat",
+    "fullPage": false
+  },
+  "client/content-products-detail.jpg": {
+    "url": "/dashboard/content/products/cmv8agh1n001gdt4558uhsapk",
+    "finalPath": "/dashboard/content/products/cmv8agh1n001gdt4558uhsapk",
+    "title": "Product posts · BuPulse",
+    "h1": "Samsung Galaxy A56",
+    "fullPage": false
+  },
+  "client/home-full.jpg": {
+    "url": "/dashboard",
+    "finalPath": "/dashboard",
+    "title": "Dashboard · BuPulse",
+    "h1": "Welcome, Patrick",
+    "fullPage": true
+  },
+  "mobile/home.jpg": {
+    "url": "/dashboard",
+    "finalPath": "/dashboard",
+    "title": "Dashboard · BuPulse",
+    "h1": "Welcome, Patrick",
+    "fullPage": false
+  },
+  "mobile/content.jpg": {
+    "url": "/dashboard/content",
+    "finalPath": "/dashboard/content",
+    "title": "Content · BuPulse",
+    "h1": "Content",
+    "fullPage": false
+  },
+  "mobile/calendar.jpg": {
+    "url": "/dashboard/calendar",
+    "finalPath": "/dashboard/calendar",
+    "title": "Calendar · BuPulse",
+    "h1": "Calendar",
+    "fullPage": false
+  },
+  "mobile/leads.jpg": {
+    "url": "/dashboard/leads",
+    "finalPath": "/dashboard/leads",
+    "title": "Leads · BuPulse",
+    "h1": "Leads",
+    "fullPage": false
+  },
+  "mobile/widget.jpg": {
+    "url": "/dashboard/widget",
+    "finalPath": "/dashboard/widget",
+    "title": "Website chat · BuPulse",
+    "h1": "Website chat",
+    "fullPage": false
+  },
+  "mobile/billing.jpg": {
+    "url": "/dashboard/billing",
+    "finalPath": "/dashboard/billing",
+    "title": "Billing · BuPulse",
+    "h1": "Billing",
+    "fullPage": false
+  },
+  "mobile/public-home.jpg": {
+    "url": "/",
+    "finalPath": "/",
+    "title": "BuPulse: the marketing team for every small business",
+    "h1": "The marketing team for your shop., school., construction company., IT business., restaurant., salon.shop.school.construction company.IT business.restaurant.salon.",
+    "fullPage": false
+  },
+  "mobile/public-pricing.jpg": {
+    "url": "/pricing",
+    "finalPath": "/pricing",
+    "title": "Pricing · BuPulse",
+    "h1": "Simple pricing for every small business",
+    "fullPage": false
+  },
+  "client/knowledge-products-new.jpg": {
+    "url": "/dashboard/knowledge/products/new",
+    "finalPath": "/dashboard/knowledge/products/new",
+    "title": "Add a product or service · BuPulse",
+    "h1": "Add a product or service",
+    "fullPage": false
+  },
+  "client/leads-detail.jpg": {
+    "url": "/dashboard/leads/guide-nova-39fed8f24ae7a6d9",
+    "finalPath": "/dashboard/leads",
+    "title": "Leads · BuPulse",
+    "h1": "Leads",
+    "fullPage": false
+  },
+  "client/knowledge-products-detail.jpg": {
+    "url": "/dashboard/knowledge/products/cmv8agh1n001gdt4558uhsapk",
+    "finalPath": "/dashboard/knowledge/products/cmv8agh1n001gdt4558uhsapk",
+    "title": "Product · BuPulse",
+    "h1": "Samsung Galaxy A56",
+    "fullPage": false
+  },
+  "states/trial-home.jpg": {
+    "url": "/dashboard",
+    "finalPath": "/dashboard",
+    "title": "Dashboard · BuPulse",
+    "h1": "Welcome, Eric",
+    "fullPage": false
+  },
+  "states/trial-billing.jpg": {
+    "url": "/dashboard/billing",
+    "finalPath": "/dashboard/billing",
+    "title": "Billing · BuPulse",
+    "h1": "Billing",
+    "fullPage": false
+  },
+  "states/onboarding.jpg": {
+    "url": "/onboarding",
+    "finalPath": "/onboarding",
+    "title": "Set up your brand · BuPulse",
+    "h1": "What you sell",
+    "fullPage": false
+  },
+  "states/book-demo.jpg": {
+    "url": "/book-demo",
+    "finalPath": "/book-demo",
+    "title": "Book your demo · BuPulse",
+    "h1": "Choose the plan you want to try",
+    "fullPage": false
+  },
+  "states/book-demo-full.jpg": {
+    "url": "/book-demo",
+    "finalPath": "/book-demo",
+    "title": "Book your demo · BuPulse",
+    "h1": "Choose the plan you want to try",
+    "fullPage": true
+  },
+  "states/custom-plan.jpg": {
+    "url": "/custom-plan",
+    "finalPath": "/custom-plan",
+    "title": "Request a custom plan · BuPulse",
+    "h1": "Request a custom plan",
+    "fullPage": false
+  },
+  "client/upgrade.jpg": {
+    "url": "/dashboard/upgrade?feature",
+    "finalPath": "/dashboard/upgrade",
+    "title": "Add to your plan · BuPulse",
+    "h1": "404",
+    "fullPage": false
+  }
+}

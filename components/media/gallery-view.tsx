@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Check, FolderInput, FolderPlus, ImagePlus, Package, Pencil, Sparkles, Star, Trash2, Upload, X } from "lucide-react";
 import { Button, Chip, Dialog, Input, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -52,6 +52,20 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
   const [asking, setAsking] = useState(false);
   const [target, setTarget] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // ?upload=1 (+ Create → Add photo) asks where the photos go, once; the file picker opens from that choice (a
+  // browser opens it only from a tap). Then it leaves the address, so a reload does not ask again.
+  const asked = useSearchParams().get("upload") === "1";
+  const [seenAsk, setSeenAsk] = useState(false);
+  if (asked !== seenAsk) {
+    setSeenAsk(asked);
+    if (asked) setAsking(true);
+  }
+  useEffect(() => {
+    if (!asked) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("upload");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }, [asked]);
 
   const filter = parseFilter(folder);
   const current = filter.kind === "folder" ? overview.folders.find((f) => f.id === filter.id) : undefined;

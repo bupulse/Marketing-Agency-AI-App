@@ -516,9 +516,11 @@ tool({
   name: "list_services",
   title: "List services",
   kind: "read",
-  description: "Every outside service BuPulse depends on (Gemini, Resend, Paddle, Supabase, Meta, LinkedIn, TikTok, YouTube, Canva, Drive, Dropbox, Shopify, WooCommerce, Cloudflare, Turnstile): purpose, which environment variables are set or missing (never their values), whether it is switched on, health, last test result, last error and 30-day usage. Start here for \"is anything broken?\".",
+  description: "Every outside service BuPulse depends on (Gemini, Resend, Paddle, Supabase, Meta, LinkedIn, TikTok, YouTube, Canva, Drive, Dropbox, Shopify, WooCommerce, Cloudflare, Turnstile, ElevenLabs, WhatsApp, Seedance, Composio): purpose, which keys are set or missing and whether each was saved in Admin -> Services or comes from the hosting environment (never their values; keys are entered only by a person on the Services page), whether it is switched on, health, last test result, last error and 30-day usage. Start here for \"is anything broken?\".",
   schema: z.object({}),
-  run: () => services.listServices(),
+  // Which keys are set and where from (saved in Admin -> Services or the hosting environment); not even a saved key's
+  // last characters reach the model.
+  run: async () => (await services.listServices()).map((s) => ({ ...s, env: s.env.map((e) => ({ ...e, shown: null })), optionalEnv: s.optionalEnv.map((e) => ({ ...e, shown: null })) })),
 });
 tool({
   name: "test_service",

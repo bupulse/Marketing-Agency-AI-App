@@ -165,6 +165,8 @@ async function purgeDue(now: Date): Promise<PurgeResult> {
       await prisma.$executeRaw`SELECT public.redact_audit_for_user(${id})`;
       // Private admin notes about the client (no foreign key, so they would otherwise outlive the account).
       await prisma.adminNote.deleteMany({ where: { userId: id } });
+      // The first-post preview has no foreign key either (lib/preview/first-post.ts): it is about the business, so it goes.
+      await prisma.firstPostPreview.deleteMany({ where: { userId: id } });
       await unlinkAnalytics(id);
       const deleted = await prisma.$executeRaw`
         DELETE FROM auth.users a USING public."User" u

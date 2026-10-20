@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { loadServiceKeys } from "@/lib/admin/service-keys";
 import { loadPublicWidget } from "@/lib/widget/config";
 import { checkOrigin, hostOf } from "@/lib/widget/origin";
 import { ownHostsFor } from "@/lib/widget/request";
@@ -30,6 +31,7 @@ async function recordSeen(businessId: string, originParam: string | null, ownHos
 
 // What widget.js needs to draw the launcher. Public data only; called from any website.
 export async function GET(request: Request) {
+  await loadServiceKeys(); // the Turnstile site key may be saved in Admin -> Services
   const url = new URL(request.url);
   const widget = await loadPublicWidget(url.searchParams.get("key") ?? "");
   if (!widget) return OFF("unknown_key");

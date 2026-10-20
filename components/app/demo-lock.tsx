@@ -30,6 +30,8 @@ import { linkSiteUrl } from "@/lib/auth/request-site";
 import { CheckoutPendingWatch } from "@/components/billing/checkout-pending";
 import { CARD_PAID_EVENTS, CHECKOUT_PENDING_COOKIE, CHECKOUT_PENDING_MS, checkoutPendingSince } from "@/lib/billing/checkout-pending";
 import { offerCheckingReference } from "@/lib/billing/momo-shared";
+import { getFirstPostPreview, previewOffered } from "@/lib/preview/first-post";
+import { FirstPostPreview } from "./first-post-preview";
 
 /**
  * A card payment that went through but has not switched the plan on yet (lib/billing/checkout-pending.ts): the start
@@ -60,7 +62,7 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
     currentBooking(businessId),
     getSettings(),
     companyPlans(businessId),
-    prisma.business.findUnique({ where: { id: businessId }, select: { userId: true, user: { select: { subscription: { select: { chosenPlan: true } } } } } }),
+    prisma.business.findUnique({ where: { id: businessId }, select: { userId: true, brandColors: true, user: { select: { subscription: { select: { chosenPlan: true } } } } } }),
     getMomoSettings(),
   ]);
   const chosenKey = business?.user.subscription?.chosenPlan ?? null;
@@ -90,6 +92,8 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
   const googleUrl = booking ? demoGoogleCalendarUrl({ ...booking, meetingLink }, businessName, `${(await linkSiteUrl())}/dashboard`) : null;
   const movable = booking ? canStillMove(booking) : false;
   const zone = DEMO_TIME_ZONE.replace("_", " ");
+  // The free first-post preview (lib/preview/first-post.ts): offered while the Admin switch is on; a post already made stays.
+  const [previewOn, firstPost] = await Promise.all([previewOffered(businessId).catch(() => false), getFirstPostPreview(businessId)]);
 
   return (
     <div className="relative flex min-h-dvh w-full flex-col items-center px-4 pb-10 sm:px-8">
@@ -182,6 +186,8 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
             </div>
           )}
         </GlassCard>
+
+        {(previewOn || firstPost?.status === "ready") && <FirstPostPreview initial={firstPost} businessName={businessName} color={business?.brandColors[0] ?? null} canMake={canManage && previewOn} />}
 
         {canBill && (
           <Suspense fallback={null}>

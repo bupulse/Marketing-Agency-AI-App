@@ -1,0 +1,120 @@
+<section class="hero">
+  <div>
+    <span class="chip" data-i18n="home.chip">Seedance 2.0 · Claude 3D motion · Nano Banana · Made for Rwanda</span>
+    <h1><span data-i18n="home.h1a">Real videos for your business,</span> <span class="grad" data-i18n="home.h1b">made in minutes</span></h1>
+    <p class="lead" data-i18n="home.lead">Turn your products, photos and offers into ready-to-post videos for Instagram Reels, TikTok, YouTube Shorts and Facebook. Real moving people and places with Seedance 2.0, or instant 3D motion videos designed by Claude.</p>
+    <form class="quick" action="/app/video/seedance-2-0" method="get">
+      <textarea name="prompt" maxlength="2000" placeholder="Describe the video you want: the product, the place, the camera…" data-i18n-ph="home.quick.ph"></textarea>
+      <div class="row">
+        <button class="btn primary" type="submit" data-i18n="home.quick.real">Make a real video</button>
+        <button class="btn" type="submit" formaction="/app/video/motion" data-i18n="home.quick.motion">Make a 3D motion video</button>
+        <a class="btn" href="/showcase" data-i18n="home.cta.showcase">✨ Showcase</a>
+      </div>
+    </form>
+    <div class="chips">
+      <span class="chip" data-i18n="home.chip1">Text, image, video and audio references</span>
+      <span class="chip" data-i18n="home.chip2">4 to 15 seconds</span>
+      <span class="chip">9:16 · 1:1 · 16:9</span>
+      <span class="chip" data-i18n="home.chip3">Sound included</span>
+      <span class="chip" data-i18n="home.chip4">No watermark</span>
+      <span class="chip" data-i18n="home.chip5">Pay in RWF credits</span>
+    </div>
+  </div>
+  <div class="heroVideo" id="heroVideo"><span class="tag" id="heroTag">Made with BuPulse</span><video muted autoplay loop playsinline id="heroPlayer"></video></div>
+</section>
+
+<section class="section stats">
+  <div class="grid3">
+    <div class="card stat"><p class="kicker" data-i18n="home.stat.models">Core models</p><h3>Seedance 2.0 · Claude · Nano Banana</h3></div>
+    <div class="card stat"><p class="kicker" data-i18n="home.stat.inputs">Input types</p><h3 data-i18n="home.stat.inputsV">Text · Image · Video · Audio</h3></div>
+    <div class="card stat"><p class="kicker" data-i18n="home.stat.best">Best for</p><h3 data-i18n="home.stat.bestV">Shops · Food · Beauty · Real estate</h3></div>
+  </div>
+</section>
+
+<section class="section madeWith">
+  <p class="kicker" data-i18n="home.made.kicker">Made with BuPulse</p>
+  <h2 data-i18n="home.made.h2">Real clips from the studio</h2>
+  <div class="carousel" id="homeCarousel"></div>
+</section>
+
+<section class="section" id="models">
+  <p class="kicker" data-i18n="home.models.kicker">Models</p>
+  <h2 data-i18n="home.models.h2">Pick a model and go straight to its generator</h2>
+  {{modelCards}}
+</section>
+
+<section class="section" id="showcase">
+  <p class="kicker" data-i18n="home.show.kicker">Get inspired</p>
+  <h2 data-i18n="home.show.h2">Made in the studio</h2>
+  <p class="muted" data-i18n="home.show.p">Videos made here, from the test businesses' products. Click one to watch it.</p>
+  <div class="showcase" id="showcaseGrid"></div>
+  <p style="margin-top:14px"><a class="btn" href="/showcase" data-i18n="home.show.all">See the full showcase →</a></p>
+</section>
+
+<section class="section" id="how">
+  <p class="kicker" data-i18n="home.how.kicker">How to create</p>
+  <h2 data-i18n="home.how.h2">Your video in three steps</h2>
+  <div class="grid3 howSteps">
+    <div class="card how"><img src="/static/step-1.jpg" alt="Choosing a product in the studio" loading="lazy"><div class="n">1</div><h3 data-i18n="home.how.s1">Pick a product or a photo</h3><p class="muted" data-i18n="home.how.p1">Your products, photos and prices are already in BuPulse. Press PRODUCT, or add your own photos, videos and audio.</p></div>
+    <div class="card how"><img src="/static/step-2.jpg" alt="Writing the prompt and choosing the settings" loading="lazy"><div class="n">2</div><h3 data-i18n="home.how.s2">Describe it and choose the settings</h3><p class="muted" data-i18n="home.how.p2">Write a line or let Claude write the shot list. Choose the shape, the length and the quality. The credits show before you click.</p></div>
+    <div class="card how"><img src="/static/step-3.jpg" alt="A finished video with download, edit and extend" loading="lazy"><div class="n">3</div><h3 data-i18n="home.how.s3">Generate, edit and post</h3><p class="muted" data-i18n="home.how.p3">Watch it, change it by describing the change, extend it, download the MP4, or schedule it in BuPulse.</p></div>
+  </div>
+  <p style="margin-top:16px"><a class="btn primary" href="/app/video/seedance-2-0-fast" data-i18n="home.how.cta">Start with Seedance 2.0 Fast</a> <a class="btn" href="/guide" data-i18n="home.how.guide">Read the guide</a></p>
+</section>
+
+<section class="section">
+  <p class="kicker" data-i18n="home.feat.kicker">Key features</p>
+  <h2 data-i18n="home.feat.h2">Everything a small business needs to post video every week</h2>
+  <div class="grid3">
+    <div class="card feat"><div class="ico">1</div><h3 data-i18n="home.f1">Reference anything</h3><p class="muted" data-i18n="home.f1p">Up to 9 photos, 3 videos and 3 audio clips. Your real product stays recognisable: the same shape, colours and labels.</p></div>
+    <div class="card feat"><div class="ico">2</div><h3 data-i18n="home.f2">Real people, safely</h3><p class="muted" data-i18n="home.f2p">Presenters are fictional: AI presenters and the BytePlus character library. Real customers' faces are never sent to the model.</p></div>
+    <div class="card feat"><div class="ico">3</div><h3 data-i18n="home.f3">Camera you can direct</h3><p class="muted" data-i18n="home.f3p">Dolly, orbit, crane, crash zoom, handheld, fixed lens. Claude can write the shot list for you from your product.</p></div>
+    <div class="card feat"><div class="ico">4</div><h3 data-i18n="home.f4">Edit and extend</h3><p class="muted" data-i18n="home.f4p">Change a finished video by describing the change, or add seconds to it. Keep what works, fix the rest.</p></div>
+    <div class="card feat"><div class="ico">5</div><h3 data-i18n="home.f5">Sound and captions</h3><p class="muted" data-i18n="home.f5p">Clips come with generated sound. Motion videos get library music, voice-over and captions in English, French or Kinyarwanda.</p></div>
+    <div class="card feat"><div class="ico">6</div><h3 data-i18n="home.f6">Ready to post</h3><p class="muted" data-i18n="home.f6p">The right shape for every network, a caption and hashtags, and one click to schedule in BuPulse.</p></div>
+  </div>
+</section>
+
+<section class="section">
+  <p class="kicker" data-i18n="home.uses.kicker">Endless possibilities</p>
+  <h2 data-i18n="home.uses.h2">For every business in Kigali and beyond</h2>
+  <div class="grid4">
+    <a class="card use" href="/app/video/seedance-2-0-fast"><h3 data-i18n="home.u1">Shops and e-commerce</h3><p class="muted" data-i18n="home.u1p">Product reveals, new arrivals, unboxings, price drops.</p></a>
+    <a class="card use" href="/app/video/seedance-2-0-fast"><h3 data-i18n="home.u2">Food and drinks</h3><p class="muted" data-i18n="home.u2p">Sizzling dishes, fresh juice, delivery promos.</p></a>
+    <a class="card use" href="/app/image/nano-banana"><h3 data-i18n="home.u3">Beauty and fashion</h3><p class="muted" data-i18n="home.u3p">Try-ons, salon transformations, product close-ups.</p></a>
+    <a class="card use" href="/app/video/seedance-2-0"><h3 data-i18n="home.u4">Real estate</h3><p class="muted" data-i18n="home.u4p">Walkthrough-style property videos from photos.</p></a>
+    <a class="card use" href="/app/video/motion"><h3 data-i18n="home.u5">Services</h3><p class="muted" data-i18n="home.u5p">Explainers, story videos, before and after.</p></a>
+    <a class="card use" href="/app/video/motion"><h3 data-i18n="home.u6">Events</h3><p class="muted" data-i18n="home.u6p">Animated posters with date, place and a call to action.</p></a>
+    <a class="card use" href="/app/video/motion"><h3 data-i18n="home.u7">Tech and phones</h3><p class="muted" data-i18n="home.u7p">Specs that pop, hands-on demos, comparisons.</p></a>
+    <a class="card use" href="/app/video/seedance-2-0-mini"><h3 data-i18n="home.u8">Education</h3><p class="muted" data-i18n="home.u8p">Course promos, tips, 3-reasons lists.</p></a>
+  </div>
+</section>
+
+<section class="section" id="voices">
+  <p class="kicker" data-i18n="home.quotes.kicker">What owners say</p>
+  <h2 data-i18n="home.quotes.h2">Made for busy business owners</h2>
+  <p class="muted small exampleNote" data-i18n="home.quotes.note">Example quotes: the studio is still in testing, so these show the result we aim for. They are not from real customers yet.</p>
+  <div class="grid3">
+    <figure class="card quoteCard"><span class="exTag" data-i18n="home.quotes.ex">Example</span><blockquote data-i18n="home.q1">"I took one photo of my new phones and had a Reel ready before lunch."</blockquote><figcaption class="muted" data-i18n="home.q1w">Phone shop owner, Kigali</figcaption></figure>
+    <figure class="card quoteCard"><span class="exTag" data-i18n="home.quotes.ex">Example</span><blockquote data-i18n="home.q2">"The 3D price-drop video brought more WhatsApp messages than our posters."</blockquote><figcaption class="muted" data-i18n="home.q2w">Restaurant manager, Musanze</figcaption></figure>
+    <figure class="card quoteCard"><span class="exTag" data-i18n="home.quotes.ex">Example</span><blockquote data-i18n="home.q3">"Five photos of the house became a real walkthrough video."</blockquote><figcaption class="muted" data-i18n="home.q3w">Estate agent, Kibagabaga</figcaption></figure>
+  </div>
+</section>
+
+<section class="section" id="pricing">
+  <p class="kicker" data-i18n="home.price.kicker">Pricing</p>
+  <h2 data-i18n="home.price.h2">Credits in RWF, pay with MoMo</h2>
+  <div class="packs" id="packs"></div>
+  <p class="muted small" style="margin-top:12px" data-i18n="home.price.p">Credits never expire during your subscription. Failed videos are refunded. Prices shown in the studio before every generation.</p>
+</section>
+
+<section class="section faq" id="faq">
+  <p class="kicker">FAQ</p>
+  <h2 data-i18n="home.faq.h2">Questions</h2>
+  <details open><summary data-i18n="home.faq1">What is Seedance 2.0?</summary><p data-i18n="home.faq1a">ByteDance's video model. It makes real-looking video from text, photos, videos and audio, with sound. BuPulse uses it through BytePlus, ByteDance's official cloud service.</p></details>
+  <details><summary data-i18n="home.faq2">What is the difference between a real video and a motion video?</summary><p data-i18n="home.faq2a">A real video is footage made by Seedance: people and things actually move. A motion video is designed by Claude from your photos: camera moves, 3D text and graphics, like a professional ad made in an editing app. Motion videos are instant and cost a few credits; real videos take 1 to 10 minutes and cost more.</p></details>
+  <details><summary data-i18n="home.faq3">Can I show my staff or myself in a video?</summary><p data-i18n="home.faq3a">Not yet. Seedance does not accept photos of real faces. Presenters are fictional: AI presenters or the BytePlus character library.</p></details>
+  <details><summary data-i18n="home.faq4">Which shapes and lengths are supported?</summary><p data-i18n="home.faq4a">9:16, 3:4, 1:1, 4:3, 16:9 and 21:9; 4 to 15 seconds for a Seedance clip, 4 to 30 seconds for a motion video.</p></details>
+  <details><summary data-i18n="home.faq5">Are the videos watermark-free?</summary><p data-i18n="home.faq5a">Yes.</p></details>
+  <details><summary data-i18n="home.faq6">How are credits counted?</summary><p data-i18n="home.faq6a">Each video shows its credits before you generate: by length, quality and engine. A failed generation gives the credits back.</p></details>
+</section>

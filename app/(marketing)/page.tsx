@@ -6,8 +6,9 @@ import { FinalCta } from "@/components/marketing/home/final-cta";
 import { Hero } from "@/components/marketing/home/hero";
 import { HowItWorks } from "@/components/marketing/home/how-it-works";
 import { IndustryCards, IndustryMarquee } from "@/components/marketing/home/industries";
+import { Testimonials } from "@/components/marketing/home/testimonials";
 
-// The FAQ reads the trial length, an admin setting.
+// The FAQ reads the trial length, an admin setting; testimonials come from Admin (shown only when one is published).
 export const dynamic = "force-dynamic";
 
 const title = "BuPulse: the marketing team for every small business";
@@ -32,6 +33,7 @@ export default function HomePage() {
       <IndustryCards />
       <Features />
       <HowItWorks />
+      <Testimonials />
       <Faq />
       <BlogTeaser />
       <FinalCta />

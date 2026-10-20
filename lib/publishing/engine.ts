@@ -20,6 +20,7 @@ import { createMarkPostedToken } from "./token";
 import { composeText } from "./validate";
 import { CONTEST_NOTE, contestBlocked } from "@/lib/content-flow/contest";
 import { publicSiteUrl } from "@/lib/auth/site-url";
+import { recordStudioOutcome } from "@/lib/video-studio/outcomes";
 
 /** A claimed post whose lock is older than this was abandoned by a crashed run and is taken again. */
 export const STALE_LOCK_MINUTES = 10;
@@ -292,6 +293,8 @@ async function saveSuccess(post: ClaimedPost, result: { externalId: string; perm
       if (await settle(post.id, data)) {
         await trackEvent(EVENT_NAMES.postPublished, { businessId: post.businessId, props: { network: post.network } });
         await emitPostEvent(post, "post.published", { status: "PUBLISHED", lastError: null, permalink: data.permalink, publishedAt: data.publishedAt });
+        // A Video Studio MP4: what it does is recorded for the Brain (never fails the post).
+        await recordStudioOutcome(post, data.publishedAt);
         return;
       }
       return await logSaveFailure(post, result, new Error("The post was no longer in PUBLISHING state"));

@@ -17,9 +17,11 @@ export const RATE_LIMITS = {
   interviewAi: { limit: 60, windowSeconds: 60 * 60 }, // marketing interview AI calls (next question, summary), per company
   contentEdit: { limit: 120, windowSeconds: 60 * 60 },
   contentRegenerate: { limit: 60, windowSeconds: 60 * 60 }, // "Generate again" on one post or piece, per company (each also uses a text generation)
+  videoDesign: { limit: 30, windowSeconds: 60 * 60 },
+  videoVoice: { limit: 30, windowSeconds: 60 * 60 }, // Video Studio designs (Claude), per company; each also uses video credits
   canvaOpen: { limit: 20, windowSeconds: 60 * 60 },
   canvaReturn: { limit: 30, windowSeconds: 60 * 60 },
-  socialConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a social connection (OAuth or reminder account)
+  socialConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a social connection (OAuth or BuPulse-Socials)
   storeConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a Shopify/WooCommerce/Cloudflare connection
   storeImport: { limit: 150, windowSeconds: 60 * 60 }, // import/list calls (5 products each)
   momo: { limit: 10, windowSeconds: 60 * 60 }, // Mobile Money start / "I've paid" / cancel, together, per company
@@ -32,6 +34,9 @@ export const RATE_LIMITS = {
   placesDetails: { limit: 60, windowSeconds: 60 * 60 }, // the chosen address's details, per company
   videoRobot: { limit: 120, windowSeconds: 60 * 60 }, // video robot API calls (a run makes about 10), per IP
   pushDevice: { limit: 20, windowSeconds: 60 * 60 }, // "Alerts on this device" switched on (per person)
+  firstPostPreview: { limit: 6, windowSeconds: 60 * 60 }, // the free first-post preview button (at most 2 AI calls ever), per company
+  whatsappShare: { limit: 200, windowSeconds: 60 * 60 }, // "Share to WhatsApp" counted (a product event each), per company; more are not counted
+  bioSave: { limit: 60, windowSeconds: 60 * 60 }, // Link in bio saves (each may make small copies of up to 12 photos), per company
 } satisfies Record<string, RateLimitRule>;
 
 export class RateLimitError extends Error {

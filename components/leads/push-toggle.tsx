@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { BellRing } from "lucide-react";
 import { removePushDevice, savePushDevice } from "@/app/dashboard/leads/actions";
+import { registerServiceWorker } from "@/components/app/phone-app";
 import { Switch } from "@/components/autopilot/switch";
 import { GlassCard, useToast } from "@/components/ui";
 
@@ -34,7 +35,7 @@ function deviceLabel(): string {
 }
 
 async function registration(): Promise<ServiceWorkerRegistration> {
-  await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
+  await registerServiceWorker();
   return navigator.serviceWorker.ready;
 }
 

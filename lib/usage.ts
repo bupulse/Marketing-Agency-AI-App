@@ -12,6 +12,7 @@ const FIELD = {
   videos: "videos",
   voiceCharacters: "voiceCharacters",
   chat: "chatMessages",
+  videoCredits: "videoCredits",
 } as const satisfies Record<UsageMetric, string>;
 
 export type UsageBlockReason = "no_subscription" | "pending_demo" | "trial_expired" | "inactive" | "past_due" | "limit_reached";
@@ -72,6 +73,16 @@ export async function consumeUsage(userId: string, metric: UsageMetric, amount =
   return { periodStart };
 }
 
+/**
+ * The one exception to "nothing is generated while waiting for the demo": the first-post preview (lib/preview/first-post.ts,
+ * switched on in Admin -> Settings). Only a company waiting for its demo, not suspended. It is not counted in the plan's
+ * usage (it comes before the trial); one per company is kept by FirstPostPreview's unique row, not here.
+ */
+export async function assertPreviewAllowed(userId: string) {
+  const sub = await activePeriod(userId);
+  if (sub.user?.suspendedAt || sub.status !== "PENDING_DEMO") throw new UsageLimitError("inactive", "text");
+}
+
 // Gives a reservation back when the AI call fails, so users aren't charged for errors.
 export async function refundUsage(userId: string, metric: UsageMetric, periodStart: Date, amount = 1) {
   await prisma.usageRecord.updateMany({
@@ -123,6 +134,7 @@ export async function getUsageSummary(userId: string) {
       videos: record?.videos ?? 0,
       voiceCharacters: record?.voiceCharacters ?? 0,
       chat: record?.chatMessages ?? 0,
+      videoCredits: record?.videoCredits ?? 0,
     },
     limits,
     /** Videos made today (Kigali day) and the plan's daily cap. */

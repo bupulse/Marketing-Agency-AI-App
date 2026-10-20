@@ -1,0 +1,173 @@
+{
+ "id": "ex-services-before-after-home-cleaning-after-moving-in",
+ "order": 3,
+ "title": "Clean before and after: Home cleaning after moving in",
+ "sector": "services",
+ "format": "before-after",
+ "templateId": "services-before-after",
+ "seconds": 10,
+ "ratio": "9:16",
+ "prompt": "A vertical 9:16 before-and-after ad (the result first) for a local service business in Rwanda. Setting: a home in Kigali. Light: bright daylight. Music: upbeat, satisfying beat.\n0-3s: Wide shot, locked-off static camera: the result first: a spotless, shining room in a home in Kigali. Sound: a bright chime.\n3-5s: Wide shot, static camera: the same spot before: dusty and untidy.\n5-8s: Medium shot, waist up, tracking shot following the subject: a fictional adult worker in a uniform, seen from behind, works quickly with the Home cleaning after moving in.\n8-10s: Clean hero shot, subject centred, slow push-in: on the clean, shining result. A warm voice-over says in English: \"Book your spot at Urugo Homes.\"\nNo on-screen text or added logos.",
+ "notes": [
+  "No product photo: Seedance will imagine the Home cleaning after moving in from the words. Add a photo as Image 1 so it looks exactly like yours."
+ ],
+ "storyboard": {
+  "kind": "seedance-storyboard",
+  "notice": "Preview: Seedance arrives with the BytePlus key. This is the shot plan Seedance will film; no credits were taken.",
+  "title": "Home cleaning after moving in: Clean before and after",
+  "model": "Seedance 2.0 Fast",
+  "tier": "fast",
+  "resolution": "720p",
+  "ratio": "9:16",
+  "seconds": 10,
+  "audio": true,
+  "fixedLens": false,
+  "setting": "A vertical 9:16 before-and-after ad (the result first) for a local service business in Rwanda. Setting: a home in Kigali. Light: bright daylight. Music: upbeat, satisfying beat.",
+  "prompt": "A vertical 9:16 before-and-after ad (the result first) for a local service business in Rwanda. Setting: a home in Kigali. Light: bright daylight. Music: upbeat, satisfying beat.\n0-3s: Wide shot, locked-off static camera: the result first: a spotless, shining room in a home in Kigali. Sound: a bright chime.\n3-5s: Wide shot, static camera: the same spot before: dusty and untidy.\n5-8s: Medium shot, waist up, tracking shot following the subject: a fictional adult worker in a uniform, seen from behind, works quickly with the Home cleaning after moving in.\n8-10s: Clean hero shot, subject centred, slow push-in: on the clean, shining result. A warm voice-over says in English: \"Book your spot at Urugo Homes.\"\nNo on-screen text or added logos.",
+  "shots": [
+   {
+    "n": 1,
+    "from": 0,
+    "to": 3,
+    "shot": "Wide shot",
+    "camera": "locked-off static camera",
+    "cameraId": "static",
+    "action": "Wide shot, locked-off static camera: the result first: a spotless, shining room in a home in Kigali.",
+    "sound": "a bright chime",
+    "spoken": null,
+    "references": []
+   },
+   {
+    "n": 2,
+    "from": 3,
+    "to": 5,
+    "shot": "Wide shot",
+    "camera": "locked-off static camera",
+    "cameraId": "static",
+    "action": "Wide shot, static camera: the same spot before: dusty and untidy.",
+    "sound": null,
+    "spoken": null,
+    "references": []
+   },
+   {
+    "n": 3,
+    "from": 5,
+    "to": 8,
+    "shot": "Medium shot",
+    "camera": "tracking shot following the subject",
+    "cameraId": "tracking",
+    "action": "Medium shot, waist up, tracking shot following the subject: a fictional adult worker in a uniform, seen from behind, works quickly with the Home cleaning after moving in.",
+    "sound": null,
+    "spoken": null,
+    "references": []
+   },
+   {
+    "n": 4,
+    "from": 8,
+    "to": 10,
+    "shot": "Hero end shot",
+    "camera": "slow push-in",
+    "cameraId": "push-in",
+    "action": "Clean hero shot, subject centred, slow push-in: on the clean, shining result. No on-screen text or added logos.",
+    "sound": null,
+    "spoken": "Book your spot at Urugo Homes.",
+    "references": []
+   }
+  ],
+  "frames": [
+   {
+    "at": 1.5,
+    "shot": 1,
+    "label": "1",
+    "from": 0,
+    "to": 3,
+    "caption": "Wide shot, locked-off static camera: Wide shot, locked-off static camera: the result first: a spotless, shining room in a home in Kigali.",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 180 320\" width=\"180\" height=\"320\" role=\"img\" aria-label=\"Shot 1: Wide shot, locked-off static camera. Wide shot, locked-off static camera: the result first: a spotless, shining room in a home in Kigali.\"><defs><linearGradient id=\"g-ex-services-before-after-home-cleaning-after-moving-in-0\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#20264a\"/><stop offset=\"1\" stop-color=\"#0c0f20\"/></linearGradient><marker id=\"m-ex-services-before-after-home-cleaning-after-moving-in-0\" viewBox=\"0 0 8 8\" refX=\"6\" refY=\"4\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0,0 L8,4 L0,8 z\" fill=\"#ffd166\"/></marker></defs><rect width=\"180\" height=\"320\" fill=\"url(#g-ex-services-before-after-home-cleaning-after-moving-in-0)\"/><g fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.35\" stroke-width=\"2\"><path d=\"M0,198.4 Q54,176 99.00000000000001,192 T180,185.6\"/><path d=\"M57.6,192 v-41.6 l32.4,-32 l32.4,32 v41.6\"/></g><g fill=\"none\" stroke=\"#ffd166\" stroke-width=\"2.2\" stroke-linecap=\"round\"><rect x=\"73.62\" y=\"122.94\" width=\"32.76\" height=\"21.060000000000002\" rx=\"3\"/><path d=\"M90,144 l-16.38,28.080000000000002 M90,144 v28.080000000000002 M90,144 l16.38,28.080000000000002\"/></g><rect width=\"180\" height=\"22\" fill=\"#000\" fill-opacity=\"0.45\"/><text x=\"8\" y=\"15\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">SHOT 1 · 0–3 s</text><text x=\"172\" y=\"15\" text-anchor=\"end\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" font-weight=\"700\" fill=\"#ffd166\">PREVIEW</text><rect y=\"266\" width=\"180\" height=\"54\" fill=\"#000\" fill-opacity=\"0.6\"/><text x=\"8\" y=\"283\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">Wide shot</text><text x=\"8\" y=\"298\" font-family=\"Inter, Arial, sans-serif\" font-size=\"10\" fill=\"#ffd166\">locked-off static camera</text><text x=\"8\" y=\"312\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" fill=\"#cfd3e6\">Sound: a bright chime</text></svg>"
+   },
+   {
+    "at": 4,
+    "shot": 2,
+    "label": "2",
+    "from": 3,
+    "to": 5,
+    "caption": "Wide shot, locked-off static camera: Wide shot, static camera: the same spot before: dusty and untidy.",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 180 320\" width=\"180\" height=\"320\" role=\"img\" aria-label=\"Shot 2: Wide shot, locked-off static camera. Wide shot, static camera: the same spot before: dusty and untidy.\"><defs><linearGradient id=\"g-ex-services-before-after-home-cleaning-after-moving-in-1\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#2a1f45\"/><stop offset=\"1\" stop-color=\"#110c1f\"/></linearGradient><marker id=\"m-ex-services-before-after-home-cleaning-after-moving-in-1\" viewBox=\"0 0 8 8\" refX=\"6\" refY=\"4\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0,0 L8,4 L0,8 z\" fill=\"#ffd166\"/></marker></defs><rect width=\"180\" height=\"320\" fill=\"url(#g-ex-services-before-after-home-cleaning-after-moving-in-1)\"/><g fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.35\" stroke-width=\"2\"><path d=\"M0,198.4 Q54,176 99.00000000000001,192 T180,185.6\"/><path d=\"M57.6,192 v-41.6 l32.4,-32 l32.4,32 v41.6\"/></g><g fill=\"none\" stroke=\"#ffd166\" stroke-width=\"2.2\" stroke-linecap=\"round\"><rect x=\"73.62\" y=\"122.94\" width=\"32.76\" height=\"21.060000000000002\" rx=\"3\"/><path d=\"M90,144 l-16.38,28.080000000000002 M90,144 v28.080000000000002 M90,144 l16.38,28.080000000000002\"/></g><rect width=\"180\" height=\"22\" fill=\"#000\" fill-opacity=\"0.45\"/><text x=\"8\" y=\"15\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">SHOT 2 · 3–5 s</text><text x=\"172\" y=\"15\" text-anchor=\"end\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" font-weight=\"700\" fill=\"#ffd166\">PREVIEW</text><rect y=\"266\" width=\"180\" height=\"54\" fill=\"#000\" fill-opacity=\"0.6\"/><text x=\"8\" y=\"283\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">Wide shot</text><text x=\"8\" y=\"298\" font-family=\"Inter, Arial, sans-serif\" font-size=\"10\" fill=\"#ffd166\">locked-off static camera</text><text x=\"8\" y=\"312\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" fill=\"#cfd3e6\">at 4 s</text></svg>"
+   },
+   {
+    "at": 6.5,
+    "shot": 3,
+    "label": "3",
+    "from": 5,
+    "to": 8,
+    "caption": "Medium shot, tracking shot following the subject: Medium shot, waist up, tracking shot following the subject: a fictional adult worker in a uniform, seen from behind, works quickly with the Home cleaning after moving in.",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 180 320\" width=\"180\" height=\"320\" role=\"img\" aria-label=\"Shot 3: Medium shot, tracking shot following the subject. Medium shot, waist up, tracking shot following the subject: a fictional adult worker in a uniform, seen from behind, works quickly with the Home cleaning after moving in.\"><defs><linearGradient id=\"g-ex-services-before-after-home-cleaning-after-moving-in-2\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#173444\"/><stop offset=\"1\" stop-color=\"#0a1820\"/></linearGradient><marker id=\"m-ex-services-before-after-home-cleaning-after-moving-in-2\" viewBox=\"0 0 8 8\" refX=\"6\" refY=\"4\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0,0 L8,4 L0,8 z\" fill=\"#ffd166\"/></marker></defs><rect width=\"180\" height=\"320\" fill=\"url(#g-ex-services-before-after-home-cleaning-after-moving-in-2)\"/><g fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.35\" stroke-width=\"2\"><circle cx=\"90\" cy=\"115.19999999999999\" r=\"18\"/><path d=\"M50.4,249.60000000000002 Q54,150.39999999999998 90,153.6 Q126,150.39999999999998 129.6,249.60000000000002\"/></g><g fill=\"none\" stroke=\"#ffd166\" stroke-width=\"2.2\" stroke-linecap=\"round\"><path d=\"M61.92,172.08 C80.64,148.68 94.68,153.36 118.08,122.94\" marker-end=\"url(#m-ex-services-before-after-home-cleaning-after-moving-in-2)\"/></g><rect width=\"180\" height=\"22\" fill=\"#000\" fill-opacity=\"0.45\"/><text x=\"8\" y=\"15\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">SHOT 3 · 5–8 s</text><text x=\"172\" y=\"15\" text-anchor=\"end\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" font-weight=\"700\" fill=\"#ffd166\">PREVIEW</text><rect y=\"266\" width=\"180\" height=\"54\" fill=\"#000\" fill-opacity=\"0.6\"/><text x=\"8\" y=\"283\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">Medium shot</text><text x=\"8\" y=\"298\" font-family=\"Inter, Arial, sans-serif\" font-size=\"10\" fill=\"#ffd166\">tracking shot following the …</text><text x=\"8\" y=\"312\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" fill=\"#cfd3e6\">at 6.5 s</text></svg>"
+   },
+   {
+    "at": 9,
+    "shot": 4,
+    "label": "4",
+    "from": 8,
+    "to": 10,
+    "caption": "Hero end shot, slow push-in: Clean hero shot, subject centred, slow push-in: on the clean, shining result. No on-screen text or added logos.",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 180 320\" width=\"180\" height=\"320\" role=\"img\" aria-label=\"Shot 4: Hero end shot, slow push-in. Clean hero shot, subject centred, slow push-in: on the clean, shining result. No on-screen text or added logos.\"><defs><linearGradient id=\"g-ex-services-before-after-home-cleaning-after-moving-in-3\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#3a2a1c\"/><stop offset=\"1\" stop-color=\"#150e08\"/></linearGradient><marker id=\"m-ex-services-before-after-home-cleaning-after-moving-in-3\" viewBox=\"0 0 8 8\" refX=\"6\" refY=\"4\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0,0 L8,4 L0,8 z\" fill=\"#ffd166\"/></marker></defs><rect width=\"180\" height=\"320\" fill=\"url(#g-ex-services-before-after-home-cleaning-after-moving-in-3)\"/><g fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.35\" stroke-width=\"2\"><rect x=\"63\" y=\"99.09999999999998\" width=\"54\" height=\"102.6\" rx=\"7.5600000000000005\"/><path d=\"M73.8,114.48999999999998 l13.5,-8.208\" stroke-opacity=\"0.8\"/></g><g fill=\"none\" stroke=\"#ffd166\" stroke-width=\"2.2\" stroke-linecap=\"round\"><line x1=\"57.2\" y1=\"111.2\" x2=\"73.6\" y2=\"127.6\" marker-end=\"url(#m-ex-services-before-after-home-cleaning-after-moving-in-3)\"/><line x1=\"122.8\" y1=\"111.2\" x2=\"106.4\" y2=\"127.6\" marker-end=\"url(#m-ex-services-before-after-home-cleaning-after-moving-in-3)\"/><line x1=\"122.8\" y1=\"176.8\" x2=\"106.4\" y2=\"160.4\" marker-end=\"url(#m-ex-services-before-after-home-cleaning-after-moving-in-3)\"/><line x1=\"57.2\" y1=\"176.8\" x2=\"73.6\" y2=\"160.4\" marker-end=\"url(#m-ex-services-before-after-home-cleaning-after-moving-in-3)\"/></g><rect width=\"180\" height=\"22\" fill=\"#000\" fill-opacity=\"0.45\"/><text x=\"8\" y=\"15\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">SHOT 4 · 8–10 s</text><text x=\"172\" y=\"15\" text-anchor=\"end\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" font-weight=\"700\" fill=\"#ffd166\">PREVIEW</text><rect y=\"266\" width=\"180\" height=\"54\" fill=\"#000\" fill-opacity=\"0.6\"/><text x=\"8\" y=\"283\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">Hero end shot</text><text x=\"8\" y=\"298\" font-family=\"Inter, Arial, sans-serif\" font-size=\"10\" fill=\"#ffd166\">slow push-in</text><text x=\"8\" y=\"312\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" fill=\"#cfd3e6\">at 9 s</text></svg>"
+   }
+  ],
+  "references": [],
+  "estimate": {
+   "usd": 1.2,
+   "credits": 385,
+   "wait": "about 4 to 5 minutes"
+  },
+  "issues": []
+ },
+ "credits": [
+  {
+   "tier": "pro",
+   "name": "Seedance 2.0",
+   "resolution": "480p",
+   "credits": 225
+  },
+  {
+   "tier": "pro",
+   "name": "Seedance 2.0",
+   "resolution": "720p",
+   "credits": 480
+  },
+  {
+   "tier": "pro",
+   "name": "Seedance 2.0",
+   "resolution": "1080p",
+   "credits": 1180
+  },
+  {
+   "tier": "fast",
+   "name": "Seedance 2.0 Fast",
+   "resolution": "480p",
+   "credits": 180
+  },
+  {
+   "tier": "fast",
+   "name": "Seedance 2.0 Fast",
+   "resolution": "720p",
+   "credits": 385
+  },
+  {
+   "tier": "mini",
+   "name": "Seedance 2.0 Mini",
+   "resolution": "480p",
+   "credits": 110
+  },
+  {
+   "tier": "mini",
+   "name": "Seedance 2.0 Mini",
+   "resolution": "720p",
+   "credits": 240
+  }
+ ],
+ "source": {
+  "businessId": "c8d21b4b4f52711aa6d4d1e67",
+  "businessName": "Urugo Homes",
+  "productId": "cmv6c3rf50007ll45m26c12rj",
+  "productName": "Home cleaning after moving in"
+ }
+}

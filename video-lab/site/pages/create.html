@@ -1,0 +1,86 @@
+<section class="studioHero">
+  {{pill}}
+  <div class="carousel" id="carousel"></div>
+  {{title1}}
+
+  <div class="hookChips" id="hookChips" hidden></div>
+  <div class="bar">
+    <div class="engineSw" id="engineSw">
+      <button data-engine="seedance" class="on"><i>🎬</i>Real video</button>
+      <button data-engine="claude"><i>✦</i>Motion</button>
+    </div>
+    <div class="prompt">
+      <textarea id="prompt" placeholder="Describe the video you want to create…"></textarea>
+      <div class="pillRow" id="pills">
+        <button class="pillBtn" id="pAdd" title="Add a reference">+</button>
+        <button class="pillBtn" id="pMode"><span id="pModeV">Reference</span><div class="pop" id="popMode"></div></button>
+        <button class="pillBtn" id="pTemplate"><span id="pTemplateV">Product hero</span></button>
+        <button class="pillBtn" id="pPurpose" hidden title="Ad: price and how to order. Post: a page post for followers, quieter, ending on the shop sign.">Ad</button>
+        <button class="pillBtn" id="pPlatform" hidden><span id="pPlatformV">Any platform</span><div class="pop" id="popPlatform"></div></button>
+        <button class="pillBtn" id="pRatio"><span id="pRatioV">9:16</span><div class="pop" id="popRatio"></div></button>
+        <button class="pillBtn" id="pSeconds"><span id="pSecondsV">5s</span><div class="pop" id="popSeconds"></div></button>
+        <button class="pillBtn" id="pQuality"><span id="pQualityV">Fast · 720p</span><div class="pop" id="popQuality"></div></button>
+        <button class="pillBtn" id="pMore">More <span class="muted">▾</span><div class="pop" id="popMore"></div></button>
+        <button class="pillBtn" id="pVersions">− <span id="pVersionsV">1/4</span> +</button>
+        <button class="pillBtn" id="pPlan" title="BuPulse's own shot plan from your product: free and instant">⚡ Quick plan</button>
+        <button class="pillBtn" id="pWrite">✨ Write with Claude</button>
+      </div>
+    </div>
+    <div class="refTiles">
+      <button class="tileBtn" id="tAvatar"><span class="plus">+</span><span>AVATAR</span></button>
+      <button class="tileBtn" id="tProduct"><span class="plus">+</span><span>PRODUCT</span></button>
+      <button class="genBtn bp" id="go">GENERATE<small id="goCredits">✦ …</small></button>
+    </div>
+  </div>
+  <div class="viralRow" id="viralRow" hidden></div>
+  <div class="refStrip" id="refStrip"></div>
+  <div class="checks" id="sdChecks" hidden></div>
+  <div class="msg" id="msg"></div>
+</section>
+
+{{modelInfo}}
+
+<section class="gens" id="gens" hidden>
+  <h2>Your generations</h2>
+  <div class="genGrid" id="genGrid"></div>
+</section>
+
+<section class="explore" id="inspire" hidden>
+  <div class="head"><h2>Get inspired</h2><span class="muted small">Seedance storyboards made from real products. Hover to flip through the shots; open one to use it.</span></div>
+  <div id="inspireFilters" class="inspireFilters"></div>
+  <div class="inGrid" id="inspireGrid"></div>
+</section>
+
+<dialog id="inspireDlg"><div class="dlgHead"><h3 id="inspireTitle">Example</h3><button class="btn sm" id="inspireClose">Close</button></div><div class="dlgBody" id="inspireBody"></div></dialog>
+
+<section class="explore" id="tplSection">
+  <div class="head"><h2>Explore templates</h2><div class="pills" id="cats"></div><input type="text" id="tsearch" placeholder="Search" style="width:200px"></div>
+  <div class="tgrid" id="tgrid"></div>
+</section>
+
+<input type="file" id="file" accept="image/*,video/mp4,video/quicktime,audio/mpeg,audio/wav" hidden>
+<input type="file" id="clipFile" accept="video/mp4,video/quicktime,.mp4,.mov" multiple hidden>
+
+<dialog id="planDlg"><div class="dlgHead"><h3 id="planTitle">Plan a week</h3><button class="btn sm" id="planClose">Close</button></div><div class="dlgBody"><p class="muted small" id="planNote"></p><table class="rates planTable" id="planTable"></table></div></dialog>
+
+<dialog id="pickDlg"><div class="dlgHead"><h3 id="pickTitle">Choose</h3><button class="btn sm" id="pickClose">Close</button></div><div class="dlgBody"><div class="row" id="pickTop"></div><div class="picker" id="pickGrid" style="margin-top:12px"></div></div></dialog>
+
+<aside class="drawer" id="drawer">
+  <div class="dh"><h3 id="dTitle">Video</h3><a class="btn sm" id="dDl" download hidden>Download</a><button class="btn sm" id="dClose">Close</button></div>
+  <div class="db">
+    <div class="dStage" id="dMedia"></div>
+    <div class="dSide">
+    <div class="progress" id="dProgress" hidden><i></i></div>
+    <div class="msg" id="dMsg"></div>
+    <div class="row" id="dActions"></div>
+    <div class="kv" id="dInfo"></div>
+    <div id="dFacts" hidden></div>
+    <div id="dEdit" hidden>
+      <h5>Edit this video</h5>
+      <textarea id="dEditNote" placeholder="Describe the change, e.g. make the price bigger / change the colour to white"></textarea>
+      <div class="row" style="margin-top:6px"><button class="btn sm" id="dEditBtn">Apply change</button><button class="btn sm" id="dExtendBtn">Extend +5 s</button></div>
+    </div>
+    <details><summary class="muted">Prompt / design</summary><pre id="dPrompt" style="white-space:pre-wrap;font:12.5px/1.5 Inter,sans-serif;color:#d6d6dc"></pre></details>
+    </div>
+  </div>
+</aside>

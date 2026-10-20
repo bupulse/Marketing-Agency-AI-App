@@ -10,6 +10,8 @@ import { Badge, Button, GlassCard, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { AutopilotView, ViewCard, ViewDay } from "@/lib/autopilot/view";
 import { MediaThumb } from "@/components/visuals/media-thumb";
+import { WhatsAppShare } from "@/components/share/whatsapp-share";
+import { postShareCaption } from "@/lib/share/whatsapp";
 
 const GOAL_LABEL = { awareness: "Awareness", engagement: "Engagement", sales: "Sales", trust: "Trust" } as const;
 
@@ -117,12 +119,13 @@ function PostCard({ card, timeZone, videoInPlan }: { card: ViewCard; timeZone: s
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         {(card.image || card.video) && (
           <Button variant="outline" size="sm" aria-expanded={visualOpen} leading={card.video ? <Clapperboard aria-hidden className="size-4" /> : <ImageIcon aria-hidden className="size-4" />} onClick={() => setVisualOpen((o) => !o)}>
             {visualOpen ? "Hide picture" : card.video?.status === "pending" ? "Make the video" : "Picture and video"}
           </Button>
         )}
+        {post && <WhatsAppShare key={post.id} media={post.mediaUrls.map((url) => ({ path: url, url }))} caption={postShareCaption(post)} what="post" />}
         <Button href={`/dashboard/calendar?post=${post?.id ?? ""}`} variant="outline" size="sm" leading={<Pencil aria-hidden className="size-4" />}>
           Edit
         </Button>

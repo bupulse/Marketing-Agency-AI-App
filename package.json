@@ -17,7 +17,8 @@
     "release:zip": "node scripts/release-zip.mjs",
     "cf-typegen": "wrangler types --include-runtime=false --env-interface CloudflareEnv cloudflare-env.d.ts",
     "ai:eval:widget": "AI_EVAL=1 node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/ai-eval/widget.test.ts",
-    "ai:eval:autopilot": "AI_EVAL=1 node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/ai-eval/autopilot.test.ts"
+    "ai:eval:autopilot": "AI_EVAL=1 node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/ai-eval/autopilot.test.ts",
+    "lab": "node --env-file=.env scripts/video-lab/start.mjs"
   },
   "dependencies": {
     "@jsquash/jpeg": "^1.6.0",
@@ -29,10 +30,12 @@
     "@rapideditor/country-coder": "5.6.1",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
+    "@xyflow/react": "12.12.0",
     "clsx": "^2.1.1",
     "libphonenumber-js": "^1.12.10",
     "lucide-react": "^1.52.0",
     "mp4-muxer": "5.2.2",
+    "mp4box": "2.4.1",
     "next": "16.3.8",
     "pdf-lib": "^1.17.1",
     "pg": "^8.23.1",

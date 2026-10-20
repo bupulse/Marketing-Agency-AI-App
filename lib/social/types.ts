@@ -1,6 +1,6 @@
 // Social network providers. Feature code (composer, publisher, Autopilot, metrics) depends only on these
 // types and on lib/social/registry.ts, never on a network's API, so networks and connection methods
-// (direct OAuth now, the user's own Composio later) can be added without touching the features.
+// (direct OAuth, BuPulse-Socials through Composio, the user's own Composio later) can be added without touching the features.
 
 export type Network = "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube";
 
@@ -77,7 +77,12 @@ export interface ConnectionCredentials {
   connectionId: string;
   externalAccountId: string;
   accountType: string | null;
+  /** For BuPulse-Socials connections (method COMPOSIO) this is the Composio connected-account id, not a token. */
   accessToken: string;
+  /** How the account was connected (Connection.method); DIRECT when absent. */
+  method?: "DIRECT" | "OWN_COMPOSIO" | "COMPOSIO";
+  /** BuPulse-Socials only: the Composio user the account belongs to (the business id); Composio asks for it on every call. */
+  composioUserId?: string;
 }
 
 export interface SocialProvider {
@@ -85,8 +90,11 @@ export interface SocialProvider {
   readonly rules: NetworkRules;
   /** True when this network's developer app keys are set; the Connect button is hidden otherwise. */
   isConfigured(): boolean;
-  /** URL of the network's consent page. `state` is opaque and signed by the caller. */
-  authorizeUrl(input: { state: string; codeChallenge?: string; redirectUri: string; variant?: string }): string;
+  /**
+   * URL of the network's consent page. `state` is opaque and signed by the caller. `extraScopes`: permissions asked for
+   * on top of the network's own (the social inbox's, only on the direct Meta route: lib/social/inbox/scopes.ts).
+   */
+  authorizeUrl(input: { state: string; codeChallenge?: string; redirectUri: string; variant?: string; extraScopes?: string[] }): string;
   /** Exchanges the OAuth code and lists the accounts the user may connect. */
   finishOAuth(input: { code: string; codeVerifier?: string; redirectUri: string; variant?: string }): Promise<OAuthResult>;
   /** Refreshes tokens before they expire; undefined for networks whose tokens do not need it. */

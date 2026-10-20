@@ -21,6 +21,8 @@ export const PUBLIC_LIMITS = {
   forgotPassword: { ip: { limit: 10, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
   contact: { ip: { limit: 10, windowSeconds: HOUR } },
   demoBook: { ip: { limit: 10, windowSeconds: HOUR } },
+  // The partner application on /partners (stored for the admin; nothing is emailed).
+  partnerApply: { ip: { limit: 5, windowSeconds: HOUR }, email: { limit: 3, windowSeconds: 24 * HOUR } },
   // The sales room TV (/screen/<token>): it polls every 10 s, so 30 a minute leaves room for a few screens per office.
   screen: { ip: { limit: 30, windowSeconds: 60 } },
 } satisfies Record<string, { ip: RateLimitRule; email?: RateLimitRule; emailPerIp?: boolean }>;

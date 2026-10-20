@@ -1,6 +1,5 @@
 import { SERVICES } from "./service-catalog";
-
-const SECRET_NAME = /KEY|SECRET|TOKEN|PASSWORD|DATABASE_URL|DIRECT_URL|SIGNING/i;
+import { SECRET_NAME, customKeyNames } from "./service-keys-rules";
 
 /** Values of the secret-looking environment variables of every registered service (plus a few core ones). */
 function secretValues(): string[] {
@@ -10,6 +9,11 @@ function secretValues(): string[] {
   for (const name of names) {
     const value = process.env[name];
     if (value && value.length >= 6 && SECRET_NAME.test(name)) out.push(value);
+  }
+  // Custom keys saved in Admin -> Services are secret whatever they are called.
+  for (const name of customKeyNames) {
+    const value = process.env[name];
+    if (value && value.length >= 6) out.push(value);
   }
   return out.sort((a, b) => b.length - a.length);
 }

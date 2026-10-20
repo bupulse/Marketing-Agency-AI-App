@@ -5,7 +5,7 @@ import { GalleryView } from "@/components/media/gallery-view";
 import { filterKey, parseFilter } from "@/lib/media/destinations";
 import { galleryOverview, listMedia } from "@/lib/media/service";
 
-export const metadata = { title: "Gallery" };
+export const metadata = { title: "Photos" };
 
 export default async function GalleryPage({ searchParams }: { searchParams: Promise<{ folder?: string }> }) {
   const blocked = await featureGate("gallery");
@@ -28,7 +28,7 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageHeader title="Gallery" description="Your own photos, in folders and in the albums of your products. Use them in posts and designs for free, no image credits needed." />
+      <PageHeader title="Photos" description="Your own photos, in folders and in the albums of your products. Use them in posts and designs for free, no image credits needed." />
       <GalleryView key={folder} folder={folder} overview={overview} initialItems={items} initialCursor={nextCursor} />
     </>
   );

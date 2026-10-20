@@ -75,6 +75,11 @@ export async function collectMetrics(now = new Date(), options: { limit?: number
     perAccount.set(post.connectionId, (perAccount.get(post.connectionId) ?? 0) + 1);
     try {
       const snapshot = await provider.metrics(await loadCredentials(post.connectionId), post.externalId);
+      // An account connected a way that cannot read numbers (e.g. a BuPulse-Socials LinkedIn profile) has nothing to save.
+      if (Object.values(snapshot).every((v) => v === undefined)) {
+        result.skipped++;
+        continue;
+      }
       await prisma.postMetrics.create({
         data: { postId: post.id, capturedAt: now, views: snapshot.views, reach: snapshot.reach, likes: snapshot.likes, comments: snapshot.comments, saves: snapshot.saves, shares: snapshot.shares },
       });

@@ -22,6 +22,9 @@ const eslintConfig = defineConfig([
     "cloudflare-env.d.ts",
     // Demo video project (own package and toolchain):
     "Demo/**",
+    // Video Lab bundles and local test data (docs/VIDEO_ENGINE.md):
+    "video-lab/.build/**",
+    "video-lab/data/**",
   ]),
 ]);
 

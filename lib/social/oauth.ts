@@ -44,6 +44,8 @@ export type SocialState = {
   network: Network;
   variant?: string;
   next: string;
+  /** BuPulse-Socials only: the Composio connected account this sign-in fills in (verifier is then empty). */
+  composioAccount?: string;
   expiresAt: number;
 };
 

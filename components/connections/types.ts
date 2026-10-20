@@ -9,6 +9,8 @@ export type ChannelInfo = {
   configured: boolean;
   /** Instagram only: Facebook Login keys are set, so Instagram can be connected through Facebook. */
   viaFacebook?: boolean;
+  /** New connections go through BuPulse-Socials (BuPulse's Composio account) instead of BuPulse's own app. */
+  viaComposio?: boolean;
 };
 
 export type AccountInfo = {
@@ -20,17 +22,26 @@ export type AccountInfo = {
   avatarUrl: string | null;
   status: "ACTIVE" | "EXPIRING" | "EXPIRED" | "REVOKED" | "ERROR";
   postingMode: "AUTO" | "NOTIFY";
+  /** Instagram and Facebook: the "Answer comments and messages" switch (docs/SOCIAL_INBOX.md). */
+  inbox?: InboxInfo;
 };
 
-/** Personal Instagram is reminder posting and needs no Meta app, so Instagram can always be added; other networks need their keys. */
-/** Instagram: automatic posting needs Instagram Login keys or, failing that, Facebook Login keys. */
-export const automaticAvailable = (c: ChannelInfo) => c.configured || !!c.viaFacebook;
-/** The login variant the main Connect button uses: Instagram Login when set up, otherwise Facebook Login. */
-export const primaryVariant = (c: ChannelInfo) => (c.configured ? "instagram" : "facebook");
-/** The separate "through Facebook" link only makes sense when it is not already the main button. */
-export const showFacebookLink = (c: ChannelInfo) => c.configured && !!c.viaFacebook;
+export type InboxInfo = {
+  enabled: boolean;
+  /** False when the account must be reconnected before it can answer (connected another way than the current route). */
+  usable: boolean;
+  note: string | null;
+};
 
-export const canConnect = (c: ChannelInfo) => c.configured || c.network === "instagram";
+/** Instagram: automatic posting needs Instagram Login keys or, failing that, Facebook Login keys. */
+export const automaticAvailable = (c: ChannelInfo) => c.configured || !!c.viaFacebook || !!c.viaComposio;
+/** The login variant the main Connect button uses: Instagram Login when set up, otherwise Facebook Login. */
+export const primaryVariant = (c: ChannelInfo) => (c.viaComposio ? undefined : c.configured ? "instagram" : "facebook");
+/** The separate "through Facebook" link only makes sense when it is not already the main button. */
+export const showFacebookLink = (c: ChannelInfo) => !c.viaComposio && c.configured && !!c.viaFacebook;
+
+/** Instagram connects professional (Business or Creator) accounts only, through whichever sign-in is set up. */
+export const canConnect = (c: ChannelInfo) => c.configured || (c.network === "instagram" && automaticAvailable(c));
 
 export const NEXT = "/dashboard/connections";
 export const connectHref = (network: Network, variant?: string) =>

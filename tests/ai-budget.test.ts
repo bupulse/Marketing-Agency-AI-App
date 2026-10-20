@@ -70,7 +70,15 @@ describe("monthly AI allowance per company", () => {
   it("lets a company under $3 (the default) through", async () => {
     spend(5, 2.99);
     expect(await runFor("b1")).toBe("ok");
-    expect(aggregate).toHaveBeenCalledWith({ where: { businessId: "b1", createdAt: { gte: expect.any(Date) } }, _sum: { costUsd: true } });
+    // Video Studio calls are metered in video credits: left out of the allowance (lib/video-engine/ledger-features.ts).
+    expect(aggregate).toHaveBeenCalledWith({ where: { businessId: "b1", createdAt: { gte: expect.any(Date) }, NOT: { feature: { startsWith: "video-" } } }, _sum: { costUsd: true } });
+  });
+
+  it("lets Video Studio calls through at the company's allowance (video credits meter them), never past the platform cap", async () => {
+    spend(5, 3);
+    expect(await runFor("b1", "video-design")).toBe("ok");
+    spend(1_000_000, 0);
+    await expect(runFor("b1", "video-seedance")).rejects.toBeInstanceOf(AIBudgetExceededError);
   });
 
   it("stops a company at its allowance with a message the owner can read, without calling or recording", async () => {

@@ -7,6 +7,7 @@ import { Badge, Button, buttonClasses, Field, Input, Select, Textarea } from "@/
 import { listAvailability } from "@/lib/admin/availability";
 import { dateTime, param } from "@/lib/admin/format";
 import { getSettings } from "@/lib/admin/settings";
+import { previewCostSummary } from "@/lib/preview/first-post";
 import { DISPLAY_CURRENCIES } from "@/lib/money/display";
 import { effectiveUsdToEur } from "@/lib/money/display-server";
 import { publicSiteUrl, siteUrl } from "@/lib/auth/site-url";
@@ -39,7 +40,7 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const [s, windows, google, momo, paddle] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus()]);
+  const [s, windows, google, momo, paddle, previewCost] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus(), previewCostSummary()]);
   const eur = await effectiveUsdToEur(s);
   const dial = mtnMomoPayDial(momo.merchantCode);
   const example = cardUsdCents(15000, "RWF", s.usdToRwf, s.cardMarginPercent);
@@ -206,6 +207,44 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             />
             <ConfirmButton action={clearPaddleSettingsAction} fields={{}} label="Remove saved values" title="Remove the saved Paddle values?" description="Card payments then use the PADDLE_* environment variables, if they are set; otherwise card shows as coming soon to clients." confirmLabel="Remove" />
           </div>
+        </Panel>
+      </div>
+
+      <div id="goal">
+        <Panel title="Revenue goal" description="The monthly income the goal tracker on Revenue and profit measures against, and the launch month it counts months from (docs/bizdev/PLAN.md).">
+          <form action={saveSettingsAction} className="flex flex-wrap items-end gap-3">
+            <Field label="Goal, RWF a month" required>
+              <Input name="revenueGoalRwf" type="number" min={0} step={100000} defaultValue={s.revenueGoalRwf} required className="w-44" />
+            </Field>
+            <Field label="Launch month (month 1)" required hint="Year and month, for example 2026-11.">
+              <Input name="goalStartMonth" pattern={"\\d{4}-\\d{2}"} defaultValue={s.goalStartMonth} required className="w-32" />
+            </Field>
+            <Button type="submit">Save</Button>
+          </form>
+        </Panel>
+      </div>
+
+      <div id="first-post-preview">
+        <Panel
+          title="Free first-post preview"
+          description="While a company waits for its demo, its owner can ask BuPulse for one post about the business (caption, hashtags and a headline) on the demo screen. One per company, a failed one may be tried once more. Off until you switch it on, because every preview is a paid AI call."
+          action={s.firstPostPreview ? <Badge tone="success">On</Badge> : <Badge tone="neutral">Off</Badge>}
+        >
+          <form action={saveSettingsAction} className="flex flex-col gap-3">
+            <input type="hidden" name="previewPanel" value="1" />
+            <label className="flex min-h-11 items-center gap-2 text-[15px]">
+              <input type="checkbox" name="firstPostPreview" defaultChecked={s.firstPostPreview} className="size-5" />
+              Offer the free first-post preview to companies waiting for their demo
+            </label>
+            <p className="text-[13px] text-muted">
+              Cost per sign-up that uses it: about {previewCost.estimateUsd === null ? "an unknown amount" : `$${previewCost.estimateUsd.toFixed(3)}`} (one {previewCost.model} call of about 2,500 tokens in and 900 out, at the prices in lib/ai/pricing.ts), at most twice that when a first try fails.
+              {previewCost.made > 0 && previewCost.averageUsd !== null ? ` Real average so far: $${previewCost.averageUsd.toFixed(4)} over ${previewCost.made} ${previewCost.made === 1 ? "call" : "calls"}.` : " No preview made yet."}
+              {" "}It counts in the AI monthly cap and the company allowance like every AI call.
+            </p>
+            <div>
+              <Button type="submit">Save</Button>
+            </div>
+          </form>
         </Panel>
       </div>
 

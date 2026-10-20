@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { loadServiceKeys } from "@/lib/admin/service-keys";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { WidgetBudgetExceededError } from "@/lib/ai/budget";
@@ -7,6 +8,7 @@ import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { RateLimitError, rateLimit } from "@/lib/rate-limit";
 import { createLeadFromChat } from "@/lib/leads/service";
+import { ingestWebsiteMessage, linkLeadToContact, mirrorWebsiteReply, websiteMessagesSince } from "@/lib/inbox/website";
 import { generateChatReply } from "./ai";
 import { loadFaqs, loadProjectFacts, loadPublicWidget, type PublicWidget } from "./config";
 import { cleanEmail, cleanPhone, hasContact, mergeDetected, shouldAskContact, type Detected } from "./detect";
@@ -64,13 +66,19 @@ async function limited(key: string, rule: (typeof WIDGET_LIMITS)[keyof typeof WI
 }
 
 /** Shared by the chat and lead endpoints: ip limit, key, enabled, origin. */
-async function admit(key: string, claimedHost: string | undefined, ctx: RequestContext): Promise<{ widget: PublicWidget } | ServiceResult> {
-  const flood = await limited(`widget:ipall:${ctx.ipHash}`, WIDGET_LIMITS.ipFlood);
-  if (flood) return flood;
+// `countIp: false` (the new-messages check) skips the address limits: polling must never use up a visitor's chat
+// allowance; it has its own per-visitor limit instead.
+async function admit(key: string, claimedHost: string | undefined, ctx: RequestContext, { countIp = true } = {}): Promise<{ widget: PublicWidget } | ServiceResult> {
+  if (countIp) {
+    const flood = await limited(`widget:ipall:${ctx.ipHash}`, WIDGET_LIMITS.ipFlood);
+    if (flood) return flood;
+  }
   const widget = await loadPublicWidget(key);
   if (!widget || !widget.enabled) return fail(404, "unavailable");
-  const blocked = await limited(`widget:ip:${widget.businessId}:${ctx.ipHash}`, WIDGET_LIMITS.ip);
-  if (blocked) return blocked;
+  if (countIp) {
+    const blocked = await limited(`widget:ip:${widget.businessId}:${ctx.ipHash}`, WIDGET_LIMITS.ip);
+    if (blocked) return blocked;
+  }
   const origin = checkOrigin({
     allowedDomains: widget.allowedDomains,
     claimedHost,
@@ -115,6 +123,7 @@ async function releaseMessage(sessionId: string, previous: Date) {
 
 /** One visitor message in, one assistant reply out. */
 export async function handleChat(raw: unknown, ctx: RequestContext): Promise<ServiceResult> {
+  await loadServiceKeys(); // Gemini and Turnstile keys saved in Admin -> Services (the widget routes skip the session)
   const parsed = chatBodySchema.safeParse(raw);
   if (!parsed.success) return fail(400, "invalid_request");
   const body = parsed.data;
@@ -180,7 +189,11 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
     session = created;
     visitorMessages = 1;
   }
-  await prisma.chatMessage.create({ data: { sessionId: session.id, role: "visitor", content: body.message } });
+  const visitorRow = await prisma.chatMessage.create({ data: { sessionId: session.id, role: "visitor", content: body.message }, select: { id: true } });
+  // The inbox (when the plan has it): the message is stored in the conversation and automations may answer it. When
+  // one does, or a teammate took the conversation over, the chat's own AI stays quiet (docs/INBOX.md).
+  const inbox = await ingestWebsiteMessage({ businessId: widget.businessId, sessionId: session.id, visitorId: body.visitorId, text: body.message, chatMessageId: visitorRow.id, language: session.language });
+  const handled = !!inbox?.handled;
 
   const existingLead = await prisma.lead.findUnique({ where: { sessionId: session.id }, select: { id: true } });
   let leadCaptured = Boolean(existingLead);
@@ -194,8 +207,10 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
   // The AI reply costs one chat credit of the business owner; without one the widget only collects details.
   let reservation: { periodStart: Date } | null = null;
   // Each visitor address gets a daily allowance of AI replies per business; beyond it only details are collected.
-  const dailyCapped = await limited(`widget:aiday:${widget.businessId}:${ctx.ipHash}`, WIDGET_LIMITS.aiPerIpDay);
-  if (dailyCapped) {
+  const dailyCapped = handled ? null : await limited(`widget:aiday:${widget.businessId}:${ctx.ipHash}`, WIDGET_LIMITS.aiPerIpDay);
+  if (handled) {
+    reply = inbox!.replies.map((r) => r.text).join("\n\n");
+  } else if (dailyCapped) {
     unanswered = true;
   } else if (!(await isServiceEnabled("gemini"))) {
     // The widget always answers with Gemini (lib/widget/ai.ts), whatever AI_TEXT_PROVIDER is. AI switched off in the admin console: the widget keeps collecting the visitor's details and no credit is used.
@@ -247,12 +262,17 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
     const saved = await saveLead(widget, session.id, details, { message: firstMessages.map((m) => m.content).join(" / ").slice(0, 500), pageUrl: session.pageUrl ?? pageUrl });
     if (saved) {
       leadCaptured = true;
+      await linkLeadToContact(session.id);
       // The AI could not confirm (no credit or an error): confirm in the business's language.
       if (unanswered) reply = text.thanks;
     }
   }
 
-  await prisma.chatMessage.create({ data: { sessionId: session.id, role: "assistant", content: reply } });
+  // Automation replies are already in the chat (the website channel writes them); the AI's reply is added here.
+  if (!handled) {
+    const row = await prisma.chatMessage.create({ data: { sessionId: session.id, role: "assistant", content: reply }, select: { id: true } });
+    if (inbox) await mirrorWebsiteReply(session.id, row.id, reply);
+  }
   if (language && !session.language) await prisma.chatSession.update({ where: { id: session.id }, data: { language: language.slice(0, 40) } });
 
   return {
@@ -260,7 +280,12 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
     body: {
       sessionId: session.id,
       reply,
-      askContact: shouldAskContact({ aiWantsContact, visitorMessages, message: body.message, leadCaptured, unanswered: unanswered && !leadCaptured }),
+      // Automation replies with their buttons (newer chat bubbles show these instead of `reply`).
+      replies: handled ? inbox!.replies.map((r) => ({ text: r.text, buttons: r.buttons?.slice(0, 3) })) : undefined,
+      // A teammate took over: no reply now, theirs arrives through /api/widget/messages.
+      waiting: handled && !inbox!.replies.length,
+      at: new Date().toISOString(),
+      askContact: handled ? false : shouldAskContact({ aiWantsContact, visitorMessages, message: body.message, leadCaptured, unanswered: unanswered && !leadCaptured }),
       leadCaptured,
       limited: unanswered,
       interest: details.interest,
@@ -270,6 +295,7 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
 
 /** The visitor filled in the contact card. */
 export async function handleLead(raw: unknown, ctx: RequestContext): Promise<ServiceResult> {
+  await loadServiceKeys();
   const parsed = leadBodySchema.safeParse(raw);
   if (!parsed.success) return fail(400, "invalid_request");
   const body = parsed.data;
@@ -299,5 +325,36 @@ export async function handleLead(raw: unknown, ctx: RequestContext): Promise<Ser
   );
   if (!saved) return fail(500, "lead_failed", { message: text.error });
   await prisma.chatMessage.create({ data: { sessionId: session.id, role: "system", content: "Visitor shared contact details." } });
+  await linkLeadToContact(session.id);
   return { status: 200, body: { ok: true, message: text.thanks } };
+}
+
+export const messagesBodySchema = z.object({
+  key: z.string().min(8).max(64),
+  visitorId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
+  sessionId: z.string().min(1).max(64),
+  after: z.string().datetime().optional(),
+  origin: z.string().max(253).optional(),
+});
+
+/**
+ * New replies in a chat since `after` (a teammate answering from the inbox, an automation after a wait). The chat
+ * bubble asks every few seconds while it is open. Cheap: no AI, and only this visitor's own session.
+ */
+export async function handleMessages(raw: unknown, ctx: RequestContext): Promise<ServiceResult> {
+  const parsed = messagesBodySchema.safeParse(raw);
+  if (!parsed.success) return fail(400, "invalid_request");
+  const body = parsed.data;
+  const admitted = await admit(body.key, body.origin, ctx, { countIp: false });
+  if (!("widget" in admitted)) return admitted;
+  const { widget } = admitted;
+  const blocked = await limited(`widget:poll:${widget.businessId}:${body.visitorId}`, WIDGET_LIMITS.poll);
+  if (blocked) return blocked;
+  const session = await prisma.chatSession.findFirst({ where: { id: body.sessionId, businessId: widget.businessId, visitorId: body.visitorId }, select: { id: true } });
+  if (!session) return fail(404, "session_not_found");
+  const now = new Date();
+  // At most a day back: an old "after" never returns a whole history.
+  const after = body.after ? new Date(Math.max(new Date(body.after).getTime(), now.getTime() - 86_400_000)) : now;
+  const messages = await websiteMessagesSince(widget.businessId, session.id, after);
+  return { status: 200, body: { messages, at: messages.length ? messages[messages.length - 1].at : now.toISOString() } };
 }

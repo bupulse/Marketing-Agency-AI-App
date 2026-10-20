@@ -171,6 +171,7 @@ robot is not one of them: it runs on GitHub Actions every 15 minutes (`video-rob
 | `cron-trial-reminders` | hourly at :53 | `/api/cron/trial-reminders` |
 | `cron-media-cleanup` | daily 03:19 | `/api/cron/media-cleanup` |
 | `cron-content-summary` | hourly :07 | `/api/cron/content-summary` (cursor calls) |
+| `cron-video-jobs` | every 4 minutes | `/api/cron/video-jobs` |
 
 How a run works: the scheduled function (30 s limit) posts `{ path }` with `Authorization: Bearer $CRON_SECRET` to `/.netlify/functions/cron-runner-background`; Netlify answers 202 and runs that background function (15 minutes), which checks the secret and that the path is one of the jobs above, then calls the route on the site's own URL with the same bearer token. `purge-accounts` and `social-refresh` keep running from GitHub Actions as before.
 

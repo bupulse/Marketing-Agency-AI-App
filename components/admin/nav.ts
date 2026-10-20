@@ -23,6 +23,7 @@ import {
   Music,
   Palette,
   Plug,
+  Quote,
   Receipt,
   ScrollText,
   Server,
@@ -71,6 +72,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/sales", perm: "clients.own", label: "My clients", icon: Contact, description: "Your clients: contact, plan, trial days left, last sign-in, posts and payment status, and your referral link.", keywords: "agent referral link whatsapp" },
       { href: "/admin/sales/team", perm: "sales.team", label: "Sales team", icon: Users, description: "Every agent and every client's agent; reassign a client with a reason.", keywords: "reassign agents manager" },
       { href: "/admin/sales/leaderboard", perm: "sales.board", label: "Leaderboard", icon: Medal, description: "This month's sales per agent: own sales, team share and total.", keywords: "ranking performance" },
+      { href: "/admin/sales/partners", perm: ["sales.team", "money.revenue"], label: "Partners", icon: Network, description: "Outside partners: applications, their links, the companies they brought, commission owed and paid.", keywords: "affiliate referral commission agency coworking momo agent payout" },
     ],
   },
   {
@@ -113,6 +115,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/music", perm: "content", label: "Music library", icon: Music, description: "Tracks for videos, and generating new ones." },
       { href: "/admin/industries", perm: "content", label: "Industries", icon: Briefcase, description: "The industries clients pick at sign-up, and their defaults." },
       { href: "/admin/announcements", perm: "content", label: "Announcements", icon: Megaphone, description: "Banners shown to every client in the app." },
+      { href: "/admin/testimonials", perm: "content", label: "Testimonials", icon: Quote, description: "Real client quotes shown on the home and pricing pages.", keywords: "reviews quotes clients" },
     ],
   },
   {

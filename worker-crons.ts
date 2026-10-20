@@ -27,6 +27,8 @@ export const TRIAL_CRON = "53 * * * *";
 export const MEDIA_CLEANUP_CRON = "19 3 * * *";
 /** Hourly at :07: the daily email of posts auto-approval scheduled, sent from 08:00 local (docs/CONTENT.md). */
 export const CONTENT_SUMMARY_CRON = "7 * * * *";
+/** Every 4 minutes: Video Studio designs whose request died are failed and refunded once (docs/VIDEO_APP_INTEGRATION.md). */
+export const VIDEO_JOBS_CRON = "*/4 * * * *";
 
 export const CRON_ROUTES: Record<string, string> = {
   [PUBLISH_CRON]: "/api/cron/publish",
@@ -40,6 +42,7 @@ export const CRON_ROUTES: Record<string, string> = {
   [TRIAL_CRON]: "/api/cron/trial-reminders",
   [MEDIA_CLEANUP_CRON]: "/api/cron/media-cleanup",
   [CONTENT_SUMMARY_CRON]: "/api/cron/content-summary",
+  [VIDEO_JOBS_CRON]: "/api/cron/video-jobs",
 };
 
 /** The route for a schedule, or null for one this worker doesn't know (never fall back to publishing). */

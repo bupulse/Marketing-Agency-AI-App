@@ -31,6 +31,8 @@ vi.mock("@/lib/usage", () => ({
 vi.mock("@/lib/leads/service", () => ({ createLeadFromChat: m.createLead }));
 vi.mock("@/lib/widget/ai", () => ({ generateChatReply: m.generate }));
 vi.mock("@/lib/widget/config", () => ({ loadPublicWidget: m.widget, loadProjectFacts: vi.fn().mockResolvedValue([]), loadFaqs: vi.fn().mockResolvedValue([]) }));
+// The inbox is tested in tests/inbox; here the plan has no inbox, so the chat behaves as before.
+vi.mock("@/lib/inbox/website", () => ({ ingestWebsiteMessage: vi.fn().mockResolvedValue(null), linkLeadToContact: vi.fn(), mirrorWebsiteReply: vi.fn(), websiteMessagesSince: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/widget/turnstile", async (orig) => ({ ...(await orig<typeof import("@/lib/widget/turnstile")>()), turnstileEnabled: m.turnstile, verifyTurnstile: vi.fn().mockResolvedValue(true) }));
 
 import { handleChat, handleLead } from "@/lib/widget/chat";
@@ -57,6 +59,7 @@ beforeEach(() => {
   m.generate.mockResolvedValue(aiReply);
   m.turnstile.mockReturnValue(false);
   m.prisma.chatSession.create.mockResolvedValue(session);
+  m.prisma.chatMessage.create.mockResolvedValue({ id: "cm1" });
   m.prisma.chatSession.findFirst.mockResolvedValue(session);
   m.prisma.chatMessage.findMany.mockResolvedValue([{ role: "visitor", content: "hello there" }]);
   m.prisma.lead.findUnique.mockResolvedValue(null);

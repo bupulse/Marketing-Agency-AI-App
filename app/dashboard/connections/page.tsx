@@ -17,11 +17,14 @@ import { listConnections } from "@/lib/social/connections";
 import { openPending } from "@/lib/social/oauth";
 import { isInstagramViaFacebookConfigured } from "@/lib/social/providers/instagram";
 import { allProviders, isNetwork } from "@/lib/social/registry";
+import { viaComposio } from "@/lib/social/composio/client";
+import { isServiceEnabled } from "@/lib/admin/switch";
+import { inboxStates } from "@/lib/social/inbox/accounts";
 
 export const metadata = { title: "Channels" };
 
 const NOTES: Record<string, string> = {
-  instagram: "Business, Creator or personal accounts",
+  instagram: "Business and Creator accounts",
   facebook: "Facebook Pages",
   linkedin: "Profiles and Pages",
   tiktok: "Videos",
@@ -37,14 +40,23 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
   // where BuPulse's own keys are not set, "Add to your plan" where the plan lacks the feature. Canva has its own card above.
   const apps = business ? (await getCatalog({ userId: actorId, businessId: business.id, features: entitlements.inPlan })).filter((a) => a.id !== "canva" || !isCanvaEnabled()) : [];
 
-  const channels: ChannelInfo[] = allProviders().map((p) => ({
-    network: p.network,
-    label: p.rules.label,
-    note: NOTES[p.network] ?? "",
-    configured: p.isConfigured(),
-    viaFacebook: p.network === "instagram" ? isInstagramViaFacebookConfigured() : undefined,
-  }));
-  const accounts: AccountInfo[] = social.map((a) => ({ id: a.id, network: a.network, displayName: a.displayName, externalAccountId: a.externalAccountId, accountType: a.accountType, avatarUrl: a.avatarUrl, status: a.status, postingMode: a.postingMode }));
+  // BuPulse-Socials (Composio) replaces BuPulse's own apps where it is on; switched off in Admin -> Services, those
+  // networks fall back to their own apps (or "Coming soon" when those are not set up).
+  const composioOn = await isServiceEnabled("composio");
+  const channels: ChannelInfo[] = allProviders().map((p) => {
+    const composio = composioOn && viaComposio(p.network);
+    return {
+      network: p.network,
+      label: p.rules.label,
+      note: NOTES[p.network] ?? "",
+      configured: composio || p.isConfigured(),
+      viaFacebook: p.network === "instagram" && !composio ? isInstagramViaFacebookConfigured() : undefined,
+      viaComposio: composio || undefined,
+    };
+  });
+  // Instagram and Facebook accounts carry the "Answer comments and messages" switch (lib/social/inbox/accounts.ts).
+  const inbox = business ? await inboxStates(business.id, entitlements.inPlan.has("inbox")) : {};
+  const accounts: AccountInfo[] = social.map((a) => ({ id: a.id, network: a.network, displayName: a.displayName, externalAccountId: a.externalAccountId, accountType: a.accountType, avatarUrl: a.avatarUrl, status: a.status, postingMode: a.postingMode, inbox: inbox[a.id] }));
 
   // After OAuth with several accounts, the encrypted cookie holds them until the user picks.
   const pick = (await searchParams).pick;

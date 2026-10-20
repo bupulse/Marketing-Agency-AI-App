@@ -1,0 +1,31 @@
+<section class="section">
+  <p class="kicker" data-i18n="viral.kicker">Viral library</p>
+  <h1 data-i18n="viral.h1">What went <span class="grad">viral</span>, and why</h1>
+  <p class="muted" id="vTotals"></p>
+  <p class="hint" id="vNewest"></p>
+  <div class="pills vTabs" id="vTabs" style="margin:14px 0"></div>
+  <div class="vFilters">
+    <select id="vRegion" aria-label="Region"></select>
+    <select id="vSector" aria-label="Sector"></select>
+    <select id="vFormat" aria-label="Format"></select>
+    <select id="vHook" aria-label="Hook type"></select>
+    <select id="vSort" aria-label="Sort"></select>
+    <label class="vAds"><input type="checkbox" id="vAds"> <span data-i18n="viral.ads">Ads only</span></label>
+    <input type="text" id="vSearch" data-i18n-ph="viral.search" placeholder="Search caption, account or hashtag" aria-label="Search">
+  </div>
+  <p class="hint" id="vCount"></p>
+  <div class="vGrid" id="vGrid"></div>
+  <p class="muted" id="vEmpty" hidden data-i18n="viral.empty">The research team is collecting viral videos; this page fills up as they work.</p>
+  <p class="muted" id="vNone" hidden data-i18n="viral.none">No video matches these filters.</p>
+</section>
+<aside class="drawer" id="vDrawer" aria-hidden="true">
+  <div class="dh"><h3 id="vdTitle">Video</h3><a class="btn sm" id="vdOpen" target="_blank" rel="noopener noreferrer"></a><button class="btn sm" id="vdClose" data-i18n="viral.close">Close</button></div>
+  <div class="db">
+    <div class="dStage">
+      <div class="vPhone" id="vdPhone"></div>
+      <div class="vStrip" id="vdStrip"></div>
+      <div class="vPlayRow"><button class="btn primary sm" id="vdPlay"></button></div>
+    </div>
+    <div class="dSide" id="vdSide"></div>
+  </div>
+</aside>

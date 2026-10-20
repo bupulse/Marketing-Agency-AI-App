@@ -73,18 +73,26 @@ export class ElevenLabsProvider implements TtsProvider {
 }
 
 let provider: TtsProvider | null | undefined;
+/** The key and model the provider was built with; null while a test has set it (setTtsProvider). */
+let providerFor: string | null | undefined;
 
-/** The configured voice provider, or null when ELEVENLABS_API_KEY is not set (videos then have no voiceover). */
+/**
+ * The configured voice provider, or null when ELEVENLABS_API_KEY is not set (videos then have no voiceover). A key
+ * saved or replaced in Admin -> Services is picked up on the next call.
+ */
 export function getTtsProvider(): TtsProvider | null {
-  if (provider !== undefined) return provider;
+  const signature = `${process.env.ELEVENLABS_API_KEY ?? ""}\u0000${process.env.ELEVENLABS_MODEL ?? ""}`;
+  if (provider !== undefined && (providerFor === null || providerFor === signature)) return provider;
   const key = process.env.ELEVENLABS_API_KEY;
   provider = key ? new ElevenLabsProvider(key, process.env.ELEVENLABS_MODEL || DEFAULT_ELEVENLABS_MODEL) : null;
+  providerFor = signature;
   return provider;
 }
 
-/** Tests replace the provider. */
+/** Tests replace the provider (undefined: build it from the environment again). */
 export function setTtsProvider(next: TtsProvider | null | undefined) {
   provider = next;
+  providerFor = next === undefined ? undefined : null;
 }
 
 /** A voice's public sample (ElevenLabs returns a preview URL per voice; listening to it costs no characters). */

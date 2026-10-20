@@ -1,35 +1,16 @@
-import { NextResponse } from "next/server";
 import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { safeNext } from "@/lib/auth/safe-next";
-import { requestSiteUrl } from "@/lib/auth/request-site";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { saveConnections } from "@/lib/social/connections";
-import { cookieOptions, openState, PENDING_PATH, pendingCookieNames, redirectUri, sameString, sealPending, STATE_COOKIE, type ConnectErrorCode } from "@/lib/social/oauth";
+import { done, readCookie } from "@/lib/social/callback-response";
+import { openState, redirectUri, sameString, sealPending, STATE_COOKIE } from "@/lib/social/oauth";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { SocialError } from "@/lib/social/types";
 import { NETWORK_SERVICE } from "@/lib/admin/service-catalog";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { hasFeature } from "@/lib/entitlements";
-
-type Outcome = { error: ConnectErrorCode } | { connected: string } | { pick: string };
-
-async function done(next: string, outcome: Outcome, setCookies: Record<string, string> = {}) {
-  const url = new URL(next, await requestSiteUrl());
-  for (const [key, value] of Object.entries(outcome)) url.searchParams.set(key, value);
-  const response = NextResponse.redirect(url);
-  response.cookies.delete({ name: STATE_COOKIE, path: "/api/social" });
-  for (const [name, value] of Object.entries(setCookies)) response.cookies.set(name, value, await cookieOptions(PENDING_PATH));
-  // A finished or failed connect leaves no half-open account picker behind.
-  if (!("pick" in outcome)) for (const name of pendingCookieNames()) response.cookies.delete({ name, path: PENDING_PATH });
-  return response;
-}
-
-function readCookie(request: Request, name: string) {
-  const raw = request.headers.get("cookie")?.split(/;\s*/).find((c) => c.startsWith(`${name}=`))?.slice(name.length + 1);
-  return raw ? decodeURIComponent(raw) : undefined;
-}
 
 /** The network sends the user back here. Checks state, swaps the code for tokens, then saves the account or asks which one to connect. */
 export async function GET(request: Request, { params }: { params: Promise<{ network: string }> }) {
