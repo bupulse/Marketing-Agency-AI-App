@@ -33,10 +33,14 @@ plan does not have move to an "Add to your plan" group.
 
 Around the page (on every dashboard page):
 
-- **Left menu.** Home, Knowledge base, Content, Calendar, Analytics, Autopilot, Gallery, Designs, Leads, Website chat,
-  Channels, Connectors, Brand, Usage, Billing, Settings and Team. Items the person's role cannot use are hidden;
-  items the plan does not include are listed under **Add to your plan**. The plan name and the text-generation meter
-  sit at the bottom.
+- **Menu.** On the left on a computer; on a phone it opens from **Menu** in the bottom bar. At the top a **+ Create**
+  button (New post, New video, New design, Add photo) and **Home**, then the groups **Create** (Posts, Videos, Designs,
+  Photos, Autopilot), **Publish** (Calendar, Channels, Link in bio), **Customers** (Inbox, Leads, Contacts,
+  Automations, Website chat), **Results** (Analytics), **My business** (Business info, Brand) and **Account &
+  settings** (Billing, Team, Usage, Settings, Connectors; folded until opened). Items the person's role cannot use are
+  hidden; items the plan does not include are listed under **Add to your plan**. **Find a page** (also ⌘K / Ctrl+K),
+  the plan name and the text-generation meter sit at the bottom. See [Finding your way](35-finding-your-way.md).
+- **Phone bar.** On a phone: Home, Calendar, the big **+**, Inbox and Menu, always at the bottom.
 - **Bell.** Notices that need attention, for example "Connect your apps so we can post for you" when posts are made
   for apps that are not connected yet.
 - **Banners.** Messages (announcements) from the BuPulse team, a custom plan offer waiting to be accepted or paid, and
@@ -56,7 +60,7 @@ Around the page (on every dashboard page):
 2. Work down the **Get started** list: click a step to open the page where it is done.
 3. Check **Usage this period** to see how much of the month's AI allowance is left. Click **Details** for the full
    picture.
-4. Click a product or **View all** to go to the Knowledge base; click **All leads** to answer new customers.
+4. Click a product or **View all** to go to Business info; click **All leads** to answer new customers.
 5. Open the bell when it shows a dot, and follow its button (for example **Connect apps**).
 
 ## Limits and settings
@@ -101,6 +105,8 @@ Around the page (on every dashboard page):
 - `companyEntitlements` (lib/entitlements.ts) — `inPlan` (plan features), `usable` (plan features whose services are
   on) and `block` (pending demo, trial ended, past due, inactive).
 - `featureForRoute` (lib/features.ts) — maps a menu link to its feature, so the sidebar can hide or move it.
+- `navFor`, `createActions`, `bottomBarItems` (components/app/nav.ts) — the grouped menu, + Create and the phone bar
+  for a role and plan ([35-finding-your-way.md](35-finding-your-way.md)).
 - `missingApps` (lib/content-board/queries.ts) — the apps posts are made for that are not connected (the bell notice).
 - `manualGrace` (lib/billing/period.ts) — for Mobile Money and custom plans, the grace days after the period ended.
 - `getActiveAnnouncements` (lib/admin/service.ts) — the admin's live announcements for this user and plan.

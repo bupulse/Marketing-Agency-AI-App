@@ -96,7 +96,7 @@ plans in Admin → Plans.
 3. For each idea (group): `consumeUsage(..., "text")` → the writer (Gemini, through `withLedger` with feature
    `autopilot`) → `makeGroupVisuals` (template design, AI photo with `createAiPhotoDesign`, carousel, or a video plan).
 4. One `Post` per account: `PENDING_APPROVAL`, or `SCHEDULED` with "Post without asking". Apps that need no approval
-   (Content → Settings) are scheduled at once unless a safety rule keeps them in review.
+   (Posts → Settings) are scheduled at once unless a safety rule keeps them in review.
 5. If posts wait, `sendReadyEmail` goes out (Resend).
 6. The owner presses Approve all → `approveAllPosts` → `approveAll` → `approvePosts` (lib/publishing/service.ts) →
    the [publish cron](07-calendar-and-publishing.md) sends them at their times.

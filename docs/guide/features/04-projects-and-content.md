@@ -1,6 +1,6 @@
 # Projects and content
 
-The Content page is where posts are made, reviewed and found. Every post belongs to a product, a campaign or
+The Posts page (**Posts** in the menu, once called Content) is where posts are made, reviewed and found. Every post belongs to a product, a campaign or
 "General". BuPulse writes the caption and hashtags, a 30-second video script and three ad headlines for each post,
 in the business's language and voice, picks a picture or video for it, and lets the owner approve it, change the
 words, generate it again or go back to an earlier version. "Projects" is the old name: products and campaigns used to
@@ -60,7 +60,7 @@ base: Products & services, "Add a product or service" and the product's page.
 
 Make today's posts for a product:
 
-1. Open **Content** and click the product's card (or **See this product's content** on its Knowledge base page).
+1. Open **Posts** and click the product's card (or **See this product's content** on its Business info page).
 2. Click **Create today's content**.
 3. Choose how:
    - **AI makes it for me:** BuPulse picks the ideas, writes one post per app and finds pictures.
@@ -84,7 +84,7 @@ Review and change a post:
 A contest post ("make the best video about us") cannot go out until an Owner or Admin fills in the prize, the end
 date and how the winner is chosen, and ticks "I will give this prize to the winner".
 
-To let some apps post without asking, open **Content → Settings** and switch off "Require my approval" for them.
+To let some apps post without asking, open **Posts → Settings** and switch off "Require my approval" for them.
 
 ## Limits and settings
 

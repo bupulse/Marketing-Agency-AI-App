@@ -71,7 +71,7 @@ end it shows a draft brand-voice guide (voice, do, don't, three sample captions)
 
 ## How to use it
 
-1. Open **Knowledge base** in the menu. Start with the cards that show the lowest percentage.
+1. Open **Business info** in the menu (it used to be called Knowledge base). Start with the cards that show the lowest percentage.
 2. **Company profile:** fill in at least the name, what the company does and the sector, then **Save**.
 3. **Products & services:** click **Add**, pick physical, digital or service, enter the name, a short description,
    the price (or "on request") and at least one reason customers choose it. Add photos to its album.

@@ -9,7 +9,7 @@ them). Owners, admins and members can make videos. Other plans see the button wi
 
 ## Opening the studio
 
-1. In BuPulse, press **Open Video Studio ↗**. It is in the sidebar and on the **Videos** page.
+1. In BuPulse, press **Open Video Studio ↗**. It is in the menu (group **Create**, as **Video Studio**), under **+ Create → New video**, and on the **Videos** page.
 2. The studio opens in a new tab, already signed in to your business. There is no second password.
 3. After 12 hours the studio asks BuPulse again; press the button once more if it does.
 
@@ -55,7 +55,7 @@ fails (Google cannot make a clip, for example) gives its credits back.
 
 ## Where your videos go
 
-- The MP4 is saved in your BuPulse **Gallery**, folder **Video Studio**, and appears in **Videos** with its caption
+- The MP4 is saved in your BuPulse **Photos**, folder **Video Studio**, and appears in **Videos** with its caption
   and hashtags.
 - BuPulse rings the **bell** and sends one email ("Your video is ready") for videos you have not opened yet.
 - From **Videos**: play, download, **Schedule** to your connected pages, or delete (not while a scheduled post still

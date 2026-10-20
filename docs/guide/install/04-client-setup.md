@@ -67,7 +67,7 @@ Four steps at `/onboarding`. Each **Continue** saves, so a refresh carries on wh
 
 ![Onboarding](../images/states/onboarding.jpg)
 
-Everything can be changed later in **Brand** and **Knowledge base**.
+Everything can be changed later in **Brand** and **Business info**.
 
 ## 3. Book the demo and wait for it
 
@@ -196,7 +196,7 @@ team. Every AI answer uses one chat credit from the plan; when they run out, vis
 ## 8. The first post
 
 1. Connect at least one account first (step 6).
-2. **Content** → **Create today's content** (or "AI makes it"): BuPulse writes a post for each chosen network from the
+2. **+ Create** → **New post** (or **Posts** → **Create today's content**) (or "AI makes it"): BuPulse writes a post for each chosen network from the
    business's products, campaigns and photos, with a picture or video. The client checks it and approves.
 3. Or **Calendar** → **Create post**: tick the accounts, write the text once (change it per network in its tab), add
    photos or a video from the Gallery or Designs, choose **when**, and schedule.
