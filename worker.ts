@@ -10,6 +10,7 @@
 //   hourly :53   -> POST /api/cron/trial-reminders  (trial-end reminders for clients without a card, and trial expiry)
 //   daily 03:19  -> POST /api/cron/media-cleanup  (deletes content videos 30 days after their posts went out)
 //   hourly :07   -> POST /api/cron/content-summary  (daily email of auto-scheduled posts, from 08:00 local, cursor calls)
+//   hourly :13   -> POST /api/cron/daily-posts  (daily posts made for you, local midnight to midday, cursor calls)
 // The handler calls the app's own routes through the self-reference binding, so the routes keep one set of
 // rules (CRON_SECRET bearer check) whether Cloudflare, GitHub Actions or a person calls them.
 // Not type-checked with the app (tsconfig excludes it): ./.open-next only exists after `opennextjs-cloudflare build`.
@@ -31,7 +32,7 @@ export { BucketCachePurge, DOQueueHandler, DOShardedTagCache } from "./.open-nex
 
 type Env = CloudflareEnv & { CRON_SECRET?: string };
 
-import { AUTOPILOT_CRON, ANALYTICS_ROLLUP_CRON, CONTENT_SUMMARY_CRON, MOMO_RENEWALS_CRON, PLAN_PRICE_CRON, routeForCron, STORE_SYNC_CRON } from "./worker-crons";
+import { AUTOPILOT_CRON, ANALYTICS_ROLLUP_CRON, CONTENT_SUMMARY_CRON, DAILY_POSTS_CRON, MOMO_RENEWALS_CRON, PLAN_PRICE_CRON, routeForCron, STORE_SYNC_CRON } from "./worker-crons";
 
 async function runCron(path: string, env: Env): Promise<string | null> {
   if (!env.CRON_SECRET) {
@@ -74,6 +75,7 @@ const worker = {
     if (controller.cron === MOMO_RENEWALS_CRON) return ctx.waitUntil(runCursorCron("/api/cron/momo-renewals", env));
     if (controller.cron === ANALYTICS_ROLLUP_CRON) return ctx.waitUntil(runCursorCron("/api/cron/analytics-rollup", env));
     if (controller.cron === CONTENT_SUMMARY_CRON) return ctx.waitUntil(runCursorCron("/api/cron/content-summary", env));
+    if (controller.cron === DAILY_POSTS_CRON) return ctx.waitUntil(runCursorCron("/api/cron/daily-posts", env));
     const path = routeForCron(controller.cron);
     if (!path) return console.error(`[cron] unknown schedule "${controller.cron}"; check wrangler.jsonc against worker.ts`);
     ctx.waitUntil(runCron(path, env));

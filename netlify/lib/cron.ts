@@ -29,6 +29,7 @@ export const CRON_JOBS: Record<string, CronJob> = {
   "/api/cron/media-cleanup": { path: "/api/cron/media-cleanup", cursor: false },
   "/api/cron/content-summary": { path: "/api/cron/content-summary", cursor: true },
   "/api/cron/video-jobs": { path: "/api/cron/video-jobs", cursor: false },
+  "/api/cron/daily-posts": { path: "/api/cron/daily-posts", cursor: true },
 };
 
 export const RUNNER_PATH = "/.netlify/functions/cron-runner-background";
