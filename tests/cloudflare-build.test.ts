@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { BRAIN_PACKAGE, BRAIN_SOURCE, DATA_PACKAGE, externalizeClientData, patchClientForWorkers, restoreOnExit, WASM_OUT } from "@/scripts/cf-build.mjs";
+import { BRAIN_PACKAGE, BRAIN_SOURCE, DATA_PACKAGE, externalizeClientData, patchClientForWorkers, restoreOnExit, withSmallCompiler, WASM_OUT } from "@/scripts/cf-build.mjs";
 import brainDataLoader from "@/scripts/cf-brain-data-loader.cjs";
 import { ANTHROPIC_MESSAGES_URL, ClaudeTextProvider } from "@/lib/ai/claude-text";
 import { createInteraction, GEMINI_API, GeminiHttpError } from "@/lib/ai/gemini-rest";
@@ -19,6 +19,17 @@ describe("Workers build (scripts/cf-build.mjs)", () => {
     expect(patched).not.toContain("decodeBase64AsWasm");
     expect(patched).toContain("__bupulseWasm?.prismaQueryCompiler");
     expect(() => patchClientForWorkers("export {}")).toThrow(/generated Prisma client changed/);
+  });
+
+  it("the client names the size-optimised query compiler, as compilerBuild \"small\" would", () => {
+    const source = patchClientForWorkers(readFileSync("lib/generated/prisma/internal/class.ts", "utf8"));
+    const small = withSmallCompiler(source);
+    expect(small).toContain('getRuntime: async () => await import("@prisma/client/runtime/query_compiler_small_bg.postgresql.mjs"),');
+    expect(small).toContain('importName: "./query_compiler_small_bg.js"');
+    expect(small).not.toContain("query_compiler_fast_bg");
+    expect(small.length).toBe(source.length + 2);
+    expect(WASM_OUT).toContain("query_compiler_small_bg");
+    expect(() => withSmallCompiler("export {}")).toThrow(/generated Prisma client changed/);
   });
 
   it("the client's data moves to one package with the same values (bundled once in the Worker, next.config.ts lists it)", () => {

@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 
 const CLASS = "lib/generated/prisma/internal/class.ts";
 /** Where worker.ts imports the query compiler from (made by this build, next to the OpenNext output). */
-export const WASM_OUT = ".open-next/prisma/query_compiler_fast_bg.wasm";
+export const WASM_OUT = ".open-next/prisma/query_compiler_small_bg.wasm";
 
 const LOADER = /getQueryCompilerWasmModule: async \(\) => \{\n\s*const \{ wasm \} = await import\("@prisma\/client\/runtime\/query_compiler_fast_bg\.postgresql\.wasm-base64\.mjs"\)\n\s*return await decodeBase64AsWasm\(wasm\)\n\s*\},/;
 const DECODER = /async function decodeBase64AsWasm\(wasmBase64: string\): Promise<WebAssembly\.Module> \{[\s\S]*?\n\}\n/;
@@ -28,6 +28,21 @@ export function patchClientForWorkers(source) {
     return module
   },`,
   );
+}
+
+const FAST_RUNTIME = 'getRuntime: async () => await import("@prisma/client/runtime/query_compiler_fast_bg.postgresql.mjs"),';
+const FAST_IMPORT_NAME = 'importName: "./query_compiler_fast_bg.js"';
+
+/**
+ * The client on the size-optimised build of the same query compiler (Prisma's generator option `compilerBuild =
+ * "small"`): 1.7 MB of WebAssembly instead of 3.4 MB (about 660 KiB gzipped instead of 1,115 KiB in the Worker). Both
+ * builds compile the same queries; "small" trades some compile speed for size, and a query shape is compiled once per
+ * isolate. A client generated with compilerBuild "small" differs from the usual one only in these two names, so other
+ * builds keep the fast compiler. Pure.
+ */
+export function withSmallCompiler(source) {
+  if (!source.includes(FAST_RUNTIME) || !source.includes(FAST_IMPORT_NAME)) throw new Error("The generated Prisma client changed: update scripts/cf-build.mjs (withSmallCompiler).");
+  return source.replace(FAST_RUNTIME, () => FAST_RUNTIME.replace("query_compiler_fast_bg", "query_compiler_small_bg")).replace(FAST_IMPORT_NAME, () => FAST_IMPORT_NAME.replace("query_compiler_fast_bg", "query_compiler_small_bg"));
 }
 
 /**
@@ -105,7 +120,7 @@ function main(argv) {
     if (!argv.includes("--keep")) run("npx", ["prisma", "generate"]);
   });
   run("npx", ["prisma", "generate"]);
-  const client = externalizeClientData(patchClientForWorkers(readFileSync(CLASS, "utf8")));
+  const client = externalizeClientData(withSmallCompiler(patchClientForWorkers(readFileSync(CLASS, "utf8"))));
   mkdirSync(DATA_DIR, { recursive: true });
   writeFileSync(`${DATA_DIR}/package.json`, JSON.stringify({ name: DATA_PACKAGE, version: "0.0.0", private: true, main: "index.js" }, null, 2));
   writeFileSync(`${DATA_DIR}/index.js`, client.data);
@@ -113,8 +128,8 @@ function main(argv) {
   writeBrainData();
   try {
     run("npx", ["opennextjs-cloudflare", "build"], { BUPULSE_CF_BUILD: "1" });
-    // The same query compiler the client's JavaScript glue was built with, as a plain .wasm file.
-    const { wasm } = createRequire(import.meta.url)("@prisma/client/runtime/query_compiler_fast_bg.postgresql.wasm-base64.js");
+    // The query compiler the patched client names (withSmallCompiler), as a plain .wasm file.
+    const { wasm } = createRequire(import.meta.url)("@prisma/client/runtime/query_compiler_small_bg.postgresql.wasm-base64.js");
     mkdirSync(".open-next/prisma", { recursive: true });
     writeFileSync(WASM_OUT, Buffer.from(wasm, "base64"));
   } finally {

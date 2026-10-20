@@ -20,8 +20,8 @@ import webpDecodeWasm from "./node_modules/@jsquash/webp/codec/dec/webp_dec.wasm
 import jpegDecodeWasm from "./node_modules/@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
 import jpegEncodeWasm from "./node_modules/@jsquash/jpeg/codec/enc/mozjpeg_enc.wasm";
 // Prisma's query compiler: workerd cannot compile WebAssembly from bytes at runtime, so the client takes this module
-// (scripts/cf-build.mjs writes the file and points the generated client here).
-import prismaQueryCompilerWasm from "./.open-next/prisma/query_compiler_fast_bg.wasm";
+// (scripts/cf-build.mjs writes the file, the size-optimised "small" build, and points the generated client here).
+import prismaQueryCompilerWasm from "./.open-next/prisma/query_compiler_small_bg.wasm";
 
 (globalThis as { __bupulseWasm?: unknown }).__bupulseWasm = { png: pngWasm, webpDecode: webpDecodeWasm, jpegEncode: jpegEncodeWasm, jpegDecode: jpegDecodeWasm, prismaQueryCompiler: prismaQueryCompilerWasm };
 
