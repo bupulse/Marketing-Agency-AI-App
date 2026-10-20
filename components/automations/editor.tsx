@@ -1,8 +1,9 @@
 "use client";
 
 import "@xyflow/react/dist/style.css";
-import { applyEdgeChanges, applyNodeChanges, Background, Controls, Handle, MiniMap, Position, ReactFlow, type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type NodeProps } from "@xyflow/react";
-import { ArrowLeft, Bot, CircleHelp, Clock, GitBranch, Hand, MessageSquare, OctagonX, Pause, Play, Smartphone, Sparkles, Zap } from "lucide-react";
+import type { Connection, Edge, EdgeChange, NodeChange } from "@xyflow/react";
+import { ArrowLeft, Pause, Play, Smartphone } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -11,7 +12,6 @@ import { Badge, Button, GlassCard, Input, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import {
   NODE_LABELS,
-  TRIGGER_LABELS,
   exitsOf,
   graphProblems,
   graphSchema,
@@ -20,68 +20,16 @@ import {
   type GraphProblem,
   type NodeType,
 } from "@/lib/automations/graph";
-import { CHANNEL_LABELS } from "@/lib/inbox/labels";
+import type { CanvasProps, StepNode } from "./canvas";
+import { ICONS } from "./icons";
 import { StepForm, newStep } from "./step-form";
 import { PhonePreview } from "./preview";
 
-type StepData = { step: GraphNode; problems: string[] };
-type StepNode = Node<StepData, "step">;
+// The canvas runs in the browser only: React Flow stays out of the server bundle (canvas.tsx).
+const AutomationCanvas = dynamic(() => import("./canvas").then((m) => m.AutomationCanvas), { ssr: false });
 
-const ICONS: Record<NodeType, typeof Zap> = { trigger: Zap, message: MessageSquare, question: CircleHelp, ai: Sparkles, condition: GitBranch, action: Bot, wait: Clock, handover: Hand, end: OctagonX };
 const PALETTE: NodeType[] = ["message", "question", "ai", "condition", "action", "wait", "handover", "end"];
 const STATUS: Record<string, { label: string; tone: "success" | "neutral" | "blue" }> = { LIVE: { label: "Live", tone: "success" }, PAUSED: { label: "Paused", tone: "neutral" }, DRAFT: { label: "Draft", tone: "blue" } };
-
-/** One line describing a step on its box. */
-function summary(step: GraphNode): string {
-  switch (step.type) {
-    case "trigger":
-      return `${TRIGGER_LABELS[step.data.kind]}${step.data.keywords.length ? `: ${step.data.keywords.slice(0, 3).join(", ")}` : ""} · ${step.data.channels.map((c) => CHANNEL_LABELS[c]).join(", ") || "choose a channel"}`;
-    case "message":
-    case "question":
-      return step.data.text || "Write the text…";
-    case "ai":
-      return step.data.goal || "Tell the AI the goal…";
-    case "condition":
-      return `${step.data.rules.length} ${step.data.rules.length === 1 ? "rule" : "rules"} (${step.data.mode === "all" ? "all must match" : "any one"})`;
-    case "action":
-      return step.data.actions.map((a) => a.kind.replace(/_/g, " ") + (a.tag ? ` “${a.tag}”` : a.key ? ` ${a.key}` : "")).join(", ");
-    case "wait":
-      return step.data.minutes % 1440 === 0 ? `${step.data.minutes / 1440} day(s)` : step.data.minutes % 60 === 0 ? `${step.data.minutes / 60} hour(s)` : `${step.data.minutes} minutes`;
-    case "handover":
-      return step.data.note || "Hand the conversation to the team";
-    case "end":
-      return "The automation ends here";
-  }
-}
-
-function StepBox({ data, selected }: NodeProps<StepNode>) {
-  const { step, problems } = data;
-  const Icon = ICONS[step.type];
-  const exits = exitsOf(step);
-  return (
-    <div className={cn("w-[240px] rounded-2xl border bg-white text-left shadow-glass", selected ? "border-pulse-blue ring-2 ring-pulse-blue/30" : problems.length ? "border-amber-400" : "border-line")}>
-      {step.type !== "trigger" && <Handle type="target" position={Position.Top} className="!size-3 !border-2 !border-white !bg-pulse-blue" />}
-      <div className={cn("flex items-center gap-2 rounded-t-2xl px-3 py-2 text-[13px] font-semibold", step.type === "trigger" ? "bg-ink text-white" : "bg-soft")}>
-        <Icon className="size-4" aria-hidden />
-        {NODE_LABELS[step.type]}
-        {problems.length > 0 && <span className="ml-auto text-amber-600" title={problems.join(" ")}>●</span>}
-      </div>
-      <p className="line-clamp-3 whitespace-pre-wrap break-words px-3 py-2 text-[12px] text-text">{summary(step)}</p>
-      {exits.length > 0 && (
-        <div className="flex border-t border-line">
-          {exits.map((e) => (
-            <span key={e.handle} className="relative flex-1 truncate px-1 pb-3 pt-1 text-center text-[10px] text-muted">
-              {e.label}
-              <Handle id={e.handle} type="source" position={Position.Bottom} className="!size-3 !border-2 !border-white !bg-ink" />
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const NODE_TYPES = { step: StepBox };
 
 /** A fresh id for a line on the canvas. */
 const newEdgeId = () => `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -126,7 +74,7 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
     setServerProblems([]);
   }
 
-  function onNodesChange(changes: NodeChange<StepNode>[]) {
+  function onNodesChange(changes: NodeChange<StepNode>[], apply: Parameters<CanvasProps["onNodesChange"]>[1]) {
     const sized = changes.filter((c) => c.type === "dimensions" && c.dimensions);
     if (sized.length) {
       setDims((cur) => {
@@ -137,7 +85,7 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
     }
     if (sized.length === changes.length) return;
     // Positions and deletions come from the canvas; the graph stays the single source of truth.
-    const applied = applyNodeChanges(changes, flow.nodes);
+    const applied = apply(changes, flow.nodes);
     const removed = changes.filter((c) => c.type === "remove").map((c) => c.id);
     const moved = changes.some((c) => c.type === "position" && !c.dragging) || removed.length;
     const nodes = graph.nodes
@@ -152,8 +100,8 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
     else setGraph(next);
   }
 
-  function onEdgesChange(changes: EdgeChange[]) {
-    const kept = applyEdgeChanges(changes, flow.edges).map((e) => e.id);
+  function onEdgesChange(changes: EdgeChange[], apply: Parameters<CanvasProps["onEdgesChange"]>[1]) {
+    const kept = apply(changes, flow.edges).map((e) => e.id);
     if (changes.some((c) => c.type === "remove")) update({ ...graph, edges: graph.edges.filter((e) => kept.includes(e.id)) });
   }
 
@@ -294,25 +242,14 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
               );
             })}
           </div>
-          <ReactFlow
+          <AutomationCanvas
             nodes={flow.nodes.map((n) => ({ ...n, selected: n.id === selectedId, measured: dims[n.id] }))}
             edges={flow.edges}
-            nodeTypes={NODE_TYPES}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
-            onNodeClick={(_, n) => setSelectedId(n.id)}
-            onPaneClick={() => setSelectedId(null)}
-            fitView
-            fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
-            minZoom={0.3}
-            deleteKeyCode={["Backspace", "Delete"]}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background gap={18} size={1} />
-            <Controls showInteractive={false} />
-            <MiniMap pannable zoomable style={{ width: 150, height: 100 }} className="!hidden md:!block" />
-          </ReactFlow>
+            onSelect={setSelectedId}
+          />
         </GlassCard>
 
         <GlassCard padding="sm" className="flex max-h-[70vh] min-h-[480px] flex-col gap-3 overflow-y-auto">
