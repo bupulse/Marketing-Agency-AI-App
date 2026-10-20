@@ -31,7 +31,7 @@ describe("the feature registry", () => {
   });
 
   it("covers the catalog of the launch plan (section 4)", () => {
-    expect(BUILT_FEATURE_KEYS).toEqual(["content", "designs", "aiPhotos", "calendar", "gallery", "websiteChat", "autopilot", "analytics", "canva", "storeImport", "driveImport", "webhooks", "apiAccess", "ownComposio", "managed", "video", "voice", "inbox", "automations"]);
+    expect(BUILT_FEATURE_KEYS).toEqual(["content", "designs", "aiPhotos", "calendar", "gallery", "websiteChat", "autopilot", "analytics", "canva", "storeImport", "driveImport", "webhooks", "apiAccess", "ownComposio", "managed", "video", "voice", "inbox", "automations", "dailyPosts"]);
     // The Video Studio's two features stay "coming soon" in plans: videos are made on the studio's own site
     // (docs/VIDEO_STUDIO_SPLIT.md), and plans with video credits open it.
     expect(FEATURES.filter((f) => f.status === "coming_soon").map((f) => f.key)).toEqual(["videoStudio", "aiVideo"]);
@@ -43,6 +43,8 @@ describe("the feature registry", () => {
     expect(FEATURES.find((f) => f.key === "canva")!.requires).toEqual(["designs"]);
     expect(FEATURES.find((f) => f.key === "analytics")!.requires).toEqual(["calendar"]);
     expect(FEATURES.find((f) => f.key === "driveImport")!.requires).toEqual(["gallery"]);
+    // Daily posts reuse "Create today's content" (content, designs, calendar, gallery), like Autopilot.
+    expect(FEATURES.find((f) => f.key === "dailyPosts")).toMatchObject({ requires: ["content", "designs", "calendar", "gallery"], status: "built", kind: "app", routes: [] });
   });
 
   it("has no cycle (and the check finds one when there is)", () => {
@@ -140,8 +142,8 @@ describe("the seed plans and the plan_features migration agree", () => {
   const sql = readFileSync("prisma/migrations/20261009110000_plan_features/migration.sql", "utf8");
 
   it("core = every built app feature but the API; Pro = all of them plus own Composio; Managed is sold apart", () => {
-    // Inbox and automations came after the plan builder: plans get them from their own migration, not from the seeds.
-    const later = ["inbox", "automations"];
+    // Inbox, automations and daily posts came after the plan builder: plans get them from their own migration, not from the seeds.
+    const later = ["inbox", "automations", "dailyPosts"];
     expect(CORE_FEATURES).toEqual(BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice" && !later.includes(k)));
     expect(PRO_FEATURES).toEqual(sortFeatureKeys([...BUILT_APP_FEATURE_KEYS.filter((k) => !later.includes(k)), "ownComposio"]));
     expect(PRO_FEATURES).not.toContain("managed");

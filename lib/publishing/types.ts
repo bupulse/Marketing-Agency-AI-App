@@ -15,7 +15,7 @@ export type CalendarPost = {
   notify: boolean;
   status: PostStatusName;
   format: PostFormatName | "ARTICLE" | "THREAD";
-  source: "MANUAL" | "AUTOPILOT" | "STUDIO";
+  source: "MANUAL" | "AUTOPILOT" | "STUDIO" | "DAILY";
   title: string | null;
   text: string;
   hashtags: string[];

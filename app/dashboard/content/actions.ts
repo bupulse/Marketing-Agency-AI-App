@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { ContentSettingsError, saveContentSettings } from "@/lib/content-board/settings-service";
 import type { ContentSettingsInput } from "@/lib/content-board/settings";
+import { DailySettingsError, saveDailySettings } from "@/lib/daily-posts/settings-service";
+import type { DailySettingsInput } from "@/lib/daily-posts/settings";
 import { draftPostsFromContent } from "@/lib/content-board/drafts";
 import { parseContentFilters, type ContentScope } from "@/lib/content-board/filters";
 import { scheduleAll, schedulablePosts, type ScheduleAllResult, type SchedulablePost } from "@/lib/content-board/schedule-all";
@@ -34,6 +36,29 @@ export async function saveContentSettingsAction(input: ContentSettingsInput): Pr
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     if (error instanceof ForbiddenError || error instanceof ContentSettingsError) return { ok: false, error: error.message };
     await logError(error, { source: "content.settings" });
+    return { ok: false, error: "We could not save that. Please try again." };
+  }
+  revalidatePath("/dashboard/content", "layout");
+  return { ok: true };
+}
+
+/** Content -> Settings, daily posts made for you: on/off, posts per app, apps, design. Owners and Admins, audited. */
+export async function saveDailySettingsAction(input: DailySettingsInput): Promise<SettingsResult> {
+  let user: Awaited<ReturnType<typeof requireActiveUser>>;
+  try {
+    user = await requireActiveUser("contentSettings", "throw");
+    await assertFeature(user.businessId, "dailyPosts");
+  } catch (error) {
+    if (error instanceof ForbiddenError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
+    throw error;
+  }
+  try {
+    await rateLimit(`content:settings:${user.actorId}`, { limit: 30, windowSeconds: 60 * 60 });
+    await saveDailySettings({ actorId: user.actorId, role: user.role, businessId: user.businessId, ownerId: user.id }, input);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    if (error instanceof ForbiddenError || error instanceof DailySettingsError) return { ok: false, error: error.message };
+    await logError(error, { source: "content.daily-settings" });
     return { ok: false, error: "We could not save that. Please try again." };
   }
   revalidatePath("/dashboard/content", "layout");

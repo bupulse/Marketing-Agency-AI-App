@@ -25,6 +25,8 @@ export async function saveSettingsAction(f: FormData) {
     if (f.has("currencyPanel")) await setSetting(ctx, "eurRateAuto", f.get("eurRateAuto") === "on");
     // The first-post preview switch spends AI money: its panel says it carries the switch, like the currency panel.
     if (f.has("previewPanel")) await setSetting(ctx, "firstPostPreview", f.get("firstPostPreview") === "on");
+    // Daily posts made for clients (cost safety): off stops them for everyone at once.
+    if (f.has("dailyPanel")) await setSetting(ctx, "dailyPosts", f.get("dailyPosts") === "on");
   });
 }
 

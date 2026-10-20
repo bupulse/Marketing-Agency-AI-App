@@ -28,7 +28,7 @@ import { NETWORKS, type Network } from "@/lib/social/types";
 import { configuredModel } from "@/lib/studio/service";
 import { consumeUsage, getUsageSummary, refundUsage, UsageLimitError } from "@/lib/usage";
 import { writePack, type PackSlot, type WrittenPost } from "@/lib/ai/pack";
-import { ANGLES, chooseAngles, funCountFor, funShareFor } from "@/lib/studio/angles";
+import { ANGLES, chooseAngles, funCountFor, funShareFor, isAngleId } from "@/lib/studio/angles";
 import { aiImagesLeft, angleFacts, recentAngles } from "@/lib/studio/pack";
 import { directVisual } from "@/lib/visuals/art-director";
 import { diversifyPack } from "@/lib/visuals/direction";
@@ -47,7 +47,7 @@ import { writeContentScript } from "@/lib/visuals/script-writer";
 import { fence } from "@/lib/visuals/art-director";
 import { adaptOwnPost } from "./writer";
 import { isPriceLike, mentionsPrice, priceAngleAllowed, priceFreeLines, priceSlots, stripPriceLike, withoutPriceLines, type PriceChoice } from "./price";
-import { assignAngles, postsPerApp } from "./slots";
+import { assignAngles, postsPerApp, withinDaily } from "./slots";
 import { postsPerAppLimit } from "@/lib/plans";
 import { applyContest, CONTEST_NOTE, contestDraftText, contestEndProblem, hasContestPlaceholders, readContest, withoutPlaceholders, type ContestConfirm } from "./contest";
 
@@ -79,6 +79,22 @@ export type DayRunInput = {
   price?: PriceChoice;
   /** Picture or video per post: BuPulse decides (default), or the owner leans the run to video or pictures. */
   format?: FormatPreference;
+  /** Set only by the nightly daily posts run (lib/daily-posts): the day's share of the allowances, never the dialog's. */
+  daily?: DailyRunLimits;
+};
+
+/** What a daily posts run may use (lib/daily-posts/budget.ts spreads the month's allowances over the days left). */
+export type DailyRunLimits = {
+  /** Posts in this run at most. */
+  maxPosts: number;
+  /** Posts per app at most: what each app still has room for today, counting every post of the company. */
+  room: Partial<Record<Network, number>>;
+  /** AI photos at most (0: free designs only). */
+  maxAiImages: number;
+  /** Videos BuPulse makes at most. */
+  maxVideos: number;
+  /** Yesterday's ideas: not used again today while others are left. */
+  avoidAngles: readonly string[];
 };
 
 export type DayRunResult = { day: string; packId: string; posts: number; scheduled: number; skipped: { network: Network; reason: string }[]; failed: Network[]; angles: string[]; contests: number; videos: number; notes: string[] };
@@ -220,6 +236,8 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   if (input.mode === "own" && picked.length === 0) throw new DayRunError("Choose your photos or videos from the Gallery first.");
 
   const allowance = await runAllowance(owner);
+  // A daily run makes no more videos than its share of the month (lib/daily-posts/budget.ts).
+  if (input.daily) allowance.videosLeft = Math.min(allowance.videosLeft, Math.max(0, input.daily.maxVideos));
   const since = new Date(now.getTime() - HISTORY_DAYS * 24 * 60 * 60 * 1000);
 
   // How many posts per app: the owner's choice within the plan's limit, counting what the subject has today.
@@ -233,6 +251,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   });
   const perApp = postsPerApp({ networks, perApp: input.mode === "own" ? 1 : (input.perApp ?? 1), limit: allowance.postsPerApp, madeToday: Object.fromEntries(today.map((r) => [r.network, r._count._all])) });
   const skipped: DayRunResult["skipped"] = [...perApp.skipped];
+  if (input.daily) perApp.slots = withinDaily(perApp.slots, input.daily);
 
   const [kb, previous] = await Promise.all([
     writerKnowledge(businessId),
@@ -263,10 +282,16 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
     gallery = [...picked, ...album.filter((a) => !picked.some((p) => p.path === a.path))].map((m) => ({ ...m, recentUses: picked.some((p) => p.path === m.path) ? -1 : (uses.get(m.path) ?? 0) }));
     // A different idea per post, rotated per subject across days and balanced fun / professional by the brand's tone;
     // the price follows the owner's choice. Then each post's format (format.ts), then its media.
-    const angles = chooseAngles({ ...facts!, hasBeforeAfter: hasBeforeAfter(gallery) }, await recentAngles(businessId, packSubject), slotNetworks.length, {
-      funCount: funCountFor(funShareFor(profile?.answers), slotNetworks.length, dayNumber(day)),
-      exclude: priceAngleAllowed(priceChoice, priceHistory, !!subject.item.price) ? [] : ["price"],
-    });
+    const angleFacts = { ...facts!, hasBeforeAfter: hasBeforeAfter(gallery) };
+    const recent = await recentAngles(businessId, packSubject);
+    const pick = (avoid: readonly string[]) =>
+      chooseAngles(angleFacts, recent, slotNetworks.length, {
+        funCount: funCountFor(funShareFor(profile?.answers), slotNetworks.length, dayNumber(day)),
+        exclude: [...(priceAngleAllowed(priceChoice, priceHistory, !!subject.item.price) ? [] : ["price" as const]), ...avoid.filter(isAngleId)],
+      });
+    // A daily run leaves out yesterday's ideas, unless that leaves too few.
+    const avoided = input.daily?.avoidAngles.length ? pick(input.daily.avoidAngles) : [];
+    const angles = avoided.length >= slotNetworks.length ? avoided : pick([]);
     assigned = assignAngles(angles, slotNetworks);
     const own = albumVideos(slotNetworks, gallery);
     const decision = decideFormats({
@@ -307,7 +332,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   const mix = languageMixOf(profile);
   const packId = globalThis.crypto.randomUUID();
   const configured = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
-  const ledger = { userId, businessId, feature: "content" };
+  const ledger = { userId, businessId, feature: input.daily ? "daily-posts" : "content" };
   const model = { provider: configured, model: configuredModel(configured) };
   const usage = (r: { provider: string; model: string; usage: TokenUsage }) => ({ provider: r.provider, model: r.model, usage: r.usage });
 
@@ -454,7 +479,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
       contentId: contents[i].id,
       status: "PENDING_APPROVAL",
       format: m.format,
-      source: "STUDIO",
+      source: input.daily ? "DAILY" : "STUDIO",
       // A TikTok / YouTube video without the owner's video is the script to film (the video BuPulse makes goes with
       // it); a video post on Instagram, Facebook or LinkedIn keeps its caption (the video becomes the post).
       text: m.format === "SCRIPT" && m.mediaPaths.length === 0 && w.videoScript && (isVideoNetwork(w.network) || media[w.slot]?.kind === "script") ? (contest ? contestDraftText(w.videoScript) : w.videoScript) : caption,
@@ -504,7 +529,9 @@ async function planDayVisuals(
 ) {
   const { input, business, subject, media, own, done, contents } = ctx;
   const useAi = input.mode !== "own" && input.design === "ai" && ctx.allowance.aiPhotos;
-  const [ai, audience] = await Promise.all([useAi ? aiImagesLeft(owner) : { count: 0, exhausted: null }, audienceFor(owner.businessId)]);
+  const [left, audience] = await Promise.all([useAi ? aiImagesLeft(owner) : { count: 0, exhausted: null }, audienceFor(owner.businessId)]);
+  // A daily run draws no more AI photos than its share of the month.
+  const ai = input.daily ? { ...left, count: Math.min(left.count, Math.max(0, input.daily.maxAiImages)) } : left;
   type Job = { i: number; content: (typeof contents)[number]; kind: "image" | "video"; photos: string[]; carousel: boolean; angle: { label: string; people: string } | null; price: string | null };
   const jobs = done.flatMap((w, i): Job[] => {
     const content = contents[i];

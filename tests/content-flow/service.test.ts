@@ -454,3 +454,21 @@ describe("Bring my own", () => {
     await expect(runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "own", design: "free", networks: ["facebook"], caption: "Hi", mediaPaths: ["u9/gallery/x.jpg"] }, NOW)).rejects.toThrow(/Choose your photos or videos/);
   });
 });
+
+describe("a daily posts run (lib/daily-posts)", () => {
+  const daily = { maxPosts: 2, room: { instagram: 1, facebook: 2 }, maxAiImages: 1, maxVideos: 0, avoidAngles: ["tips", "how-it-works"] };
+
+  it("stays within the day's posts, apps' room, AI photos and videos, leaves out yesterday's ideas, and marks its posts DAILY", async () => {
+    const result = await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "ai", networks: ["instagram", "facebook"], perApp: 2, daily }, NOW);
+    expect(result.posts).toBe(2);
+    expect(usage.consumeUsage).toHaveBeenCalledWith("u1", "text", 2);
+    expect(result.angles).not.toContain("tips");
+    expect(result.angles).not.toContain("how-it-works");
+    const posts = prisma.post.create.mock.calls.map((c) => c[0].data);
+    expect(posts.map((p) => p.network).sort()).toEqual(["facebook", "instagram"]);
+    expect(posts.every((p) => p.source === "DAILY" && p.status === "PENDING_APPROVAL")).toBe(true);
+    // No video for Instagram (none in today's share), and one AI photo at most.
+    expect(posts.find((p) => p.network === "instagram")!.mediaPaths).toEqual([]);
+    expect(director.directVisual.mock.calls.filter((c) => c[0].aiAllowed)).toHaveLength(1);
+  });
+});

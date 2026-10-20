@@ -11,6 +11,7 @@ import { kindLabel } from "@/lib/content-board/kind";
 import { CHIP_STYLE, networkLabel, statusChip, UNPOSTED, unpostedReason } from "@/lib/content-board/labels";
 import { WhatsAppShare } from "@/components/share/whatsapp-share";
 import { postShareCaption } from "@/lib/share/whatsapp";
+import { dailyPostLabel } from "@/lib/daily-posts/settings";
 
 const dateOnly = (iso: string, zone: string) => new Intl.DateTimeFormat("en-US", { timeZone: zone, month: "short", day: "numeric" }).format(new Date(iso));
 
@@ -92,6 +93,7 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
             </time>
             {showSubject && <span>· {post.subject?.name ?? "General"}</span>}
             {post.source === "AUTOPILOT" && <span>· Autopilot</span>}
+            {post.source === "DAILY" && <span suppressHydrationWarning>· {dailyPostLabel(post.createdAt, zone)}</span>}
           </p>
         </div>
       </button>

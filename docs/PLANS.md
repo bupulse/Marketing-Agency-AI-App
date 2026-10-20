@@ -50,6 +50,15 @@ only; regional prices have none. So:
 - The plan's own USD price (`PlanDefinition`, the derived card price of a Rwanda plan) is not changed by the
   migration; the regional row's card price is.
 
+## Business and custom plans include daily posts (owner decision, 20 October 2026)
+
+The feature `dailyPosts` ("Daily posts made for you", docs/CONTENT.md) makes the day's posts every night. Migration
+`20261027100000_daily_posts` (audited as `migration:20261027100000_daily_posts`) adds it to the BUSINESS row and to
+every custom plan that has content, designs, calendar and gallery. It is in the plan builder's checklist and the offer
+builder like any feature (an offer on the Business plan has it as a base feature); Starter, Standard and Pro do not
+have it until an admin ticks it. Its use is metered by the plan's existing allowances (one text per post, AI images,
+videos), spread over the month so a company never uses them up early; no new limit.
+
 ## Regions and the demo-first trial
 
 Full description in `docs/REGIONS.md`. In short: `lib/region.ts` says which region a visitor or a company is in; `lib/region-prices.ts` lists the plans a region offers with that region's prices (`getRegionPlans`, `companyPlans`); checkout uses `regionPriceIdFor` (GLOBAL = the plan's own Paddle ids, other regions wait for the Paddle sync). `lib/entitlements.ts` grants nothing while a company waits for its demo and the chosen plan's features during the trial. The migrations are `20261010100000_subscription_pending_demo` and `20261010100100_regions_and_demos` (deploy before the code).

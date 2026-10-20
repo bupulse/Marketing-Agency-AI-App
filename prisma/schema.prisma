@@ -110,6 +110,9 @@ model Business {
   // and until when it holds the claim; the key stays after the run so the same request is never run twice.
   contentRunKey           String?
   contentRunUntil         DateTime?
+  // Daily posts made for you (docs/CONTENT.md "Daily posts"): on or off, posts per app, apps and design style
+  // (lib/daily-posts/settings.ts). Null: the defaults (on, one post per app, the connected apps, free designs).
+  dailyPostSettings       Json?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -128,6 +131,7 @@ model Business {
   mediaAssets      MediaAsset[]
   autopilot        AutopilotSettings?
   autopilotRuns    AutopilotRun[]
+  dailyPostRuns    DailyPostRun[]
   chatWidgets      ChatWidget[]
   chatSessions     ChatSession[]
   contacts         Contact[]
@@ -841,6 +845,7 @@ enum PostSource {
   MANUAL
   AUTOPILOT
   STUDIO // drafted automatically from Studio content (lib/content-board/drafts.ts)
+  DAILY // made by the nightly daily posts run (lib/daily-posts), shown as "Made for you this morning"
 }
 
 // One post for one connected account. Posts written together for several accounts share a groupId.
@@ -1239,6 +1244,31 @@ model AutopilotRun {
   posts      Post[]
 
   @@unique([businessId, weekStart])
+}
+
+// Daily posts (docs/CONTENT.md "Daily posts", lib/daily-posts/service.ts): one row per company and business-local day,
+// claimed by the nightly cron (unique, so calling it twice is safe). RUNNING until the day's posts are made; DONE with
+// how many; SKIPPED with the reason (allowance, ai_allowance, budget, full, nothing); FAILED is retaken (a few times).
+// The subject and ideas rotate from these rows; notifiedAt is the morning "Your posts for today are ready" notice.
+model DailyPostRun {
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  day         DateTime  @db.Date
+  status      String    @default("RUNNING") // RUNNING | DONE | SKIPPED | FAILED
+  attempts    Int       @default(1)
+  posts       Int       @default(0)
+  subjectKind String? // product | campaign | general
+  subjectId   String?
+  angles      String[]
+  reason      String?
+  note        String?
+  notifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([businessId, day])
+  @@index([day, status])
 }
 
 // Outgoing webhooks (Phase 7), on every plan. One business can have a few endpoints, each with its own

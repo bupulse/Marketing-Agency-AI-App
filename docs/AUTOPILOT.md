@@ -60,6 +60,14 @@ With at least 6 posts with metrics the scores steer the plan: about 70% of picks
 - Projects: new, never-posted ones first, each used at most once a week.
 - Photos: gallery photos not used recently first, varying folders. Templates only get JPG or PNG photos. A carousel needs two pictures, otherwise it becomes a single image post.
 
+## Daily posts
+
+Companies whose plan has daily posts (`docs/CONTENT.md`, "Daily posts made for you") also get the day's posts every
+night. The two never double up: the daily run counts every post the company already has on each app that day,
+Autopilot's included (Autopilot plans the next week on Fridays, so its posts are there first), and fills only the room
+left up to the daily posts per app. A company that wants only Autopilot's weekly plan switches daily posts off in
+Content -> Settings.
+
 ## Credits and cost
 
 - Each AI-written post group costs 1 text credit (`consumeUsage`), refunded in a `finally` unless the group's posts were saved.

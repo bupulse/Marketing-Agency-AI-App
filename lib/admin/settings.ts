@@ -58,6 +58,8 @@ export type Settings = {
   goalStartMonth: string;
   /** The free first-post preview while a company waits for its demo (one AI post each; lib/preview/first-post.ts). Off by default: it spends AI money. */
   firstPostPreview: boolean;
+  /** Daily posts made for clients every night (lib/daily-posts). On by default; off pauses them for everyone (cost safety). */
+  dailyPosts: boolean;
 };
 export type SettingName = keyof Settings;
 
@@ -78,6 +80,7 @@ const KEYS: Record<SettingName, string> = {
   revenueGoalRwf: "sales.revenueGoalRwf",
   goalStartMonth: "sales.goalStartMonth",
   firstPostPreview: "sales.firstPostPreview",
+  dailyPosts: "content.dailyPosts",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -97,6 +100,7 @@ export const DEFAULT_SETTINGS: Settings = {
   revenueGoalRwf: DEFAULT_REVENUE_GOAL_RWF,
   goalStartMonth: DEFAULT_GOAL_START_MONTH,
   firstPostPreview: false,
+  dailyPosts: true,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -150,6 +154,7 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   eurRateAuto: (value) => value === true || value === "on" || value === "true" || value === "1",
   revenueGoalRwf: number("The monthly income goal (RWF)", 0, 10_000_000_000),
   firstPostPreview: (value) => value === true || value === "on" || value === "true" || value === "1",
+  dailyPosts: (value) => value === true || value === "on" || value === "true" || value === "1",
   goalStartMonth: (value) => {
     const v = String(value ?? "").trim();
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new AdminError("invalid", "The launch month must look like 2026-11 (year and month).");
