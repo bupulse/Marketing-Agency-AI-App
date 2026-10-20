@@ -33,7 +33,11 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: "BuPulse", description },
   // A static file (public/icon.png), served by Cloudflare's assets: as app/icon.png it was a route inside the Worker
   // (about 60 KB gzipped of the 10 MiB budget, docs/DEPLOY.md "Worker size").
-  icons: { icon: [{ url: "/icon.png", type: "image/png", sizes: "256x256" }] },
+  // The Home Screen icon of an iPhone: full bleed, as iOS rounds the corners itself (scripts/make-app-icons.mjs).
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png", sizes: "256x256" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
+  },
 };
 
 export const viewport: Viewport = {

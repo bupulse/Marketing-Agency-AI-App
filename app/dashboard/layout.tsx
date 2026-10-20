@@ -11,6 +11,7 @@ import { manualGrace } from "@/lib/billing/period";
 import { brandPalette, isHexColor } from "@/lib/color-contrast";
 import { AutoTimezone } from "@/components/publishing/auto-timezone";
 import { AnnouncementBanner } from "@/components/app/announcement-banner";
+import { InstallPrompt, PhoneAppSetup } from "@/components/app/phone-app";
 import { DemoLock } from "@/components/app/demo-lock";
 import { InvoiceLock } from "@/components/app/invoice-lock";
 import { openInvoiceOf } from "@/lib/invoices/service";
@@ -26,8 +27,10 @@ import { unseenStudioVideos } from "@/lib/video-library/service";
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
   robots: { index: false, follow: false },
-  // Lets a phone add the dashboard to its Home Screen: on an iPhone that is what makes lead alerts (lib/push) possible.
+  // Lets a phone install the dashboard as an app (docs/guide/features/32-phone-app-and-whatsapp-share.md): on an iPhone
+  // that is also what makes lead alerts (lib/push) possible.
   manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "BuPulse", statusBarStyle: "default" },
 };
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
@@ -43,6 +46,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     return (
       <>
         <BackgroundBlobs />
+        <PhoneAppSetup />
         {invoice ? (
           <InvoiceLock invoice={invoice} businessId={business.id} role={role} firstName={firstName} email={email} businessName={businessName} />
         ) : (
@@ -103,6 +107,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <>
       <BackgroundBlobs />
+      <PhoneAppSetup />
       <AppShell
         brand={{ logoUrl, colors: brandPalette(brandColors), hasColors: brandColors.some(isHexColor) }}
         displayName={displayName}
@@ -134,6 +139,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           endsOn={endingNotice(usage.subscription)}
           grace={grace ? { ended: formatDate(grace.ended) ?? "", until: formatDate(grace.until) ?? "" } : null}
         />
+        <InstallPrompt />
         {children}
         {can(role, "settings") && <AutoTimezone current={business.timezone} />}
       </AppShell>
