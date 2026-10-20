@@ -6,7 +6,7 @@
 // the image codecs): the base64 leaves the bundle and the queries work on Workers. The usual client is generated again
 // afterwards unless --keep (CI: the checkout is thrown away), also when the build is stopped with Ctrl+C or a kill.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const CLASS = "lib/generated/prisma/internal/class.ts";
@@ -58,7 +58,24 @@ export function externalizeClientData(source) {
   return { source: patched, data };
 }
 
-const run = (cmd, args) => execFileSync(cmd, args, { stdio: "inherit" });
+/**
+ * The video brain's data files (lib/video-engine/brain/data, about 1.2 MB) as their own package, copied unchanged.
+ * Turbopack inlines them into every chunk group that reaches the brain (four in the Worker); with BUPULSE_CF_BUILD set,
+ * next.config.ts has server code require them from this package instead (scripts/cf-brain-data-loader.cjs), which
+ * serverExternalPackages bundles once.
+ */
+export const BRAIN_PACKAGE = "@bupulse/video-brain-data";
+export const BRAIN_DIR = `node_modules/${BRAIN_PACKAGE}`;
+export const BRAIN_SOURCE = "lib/video-engine/brain/data";
+
+function writeBrainData() {
+  rmSync(BRAIN_DIR, { recursive: true, force: true });
+  mkdirSync(BRAIN_DIR, { recursive: true });
+  writeFileSync(`${BRAIN_DIR}/package.json`, JSON.stringify({ name: BRAIN_PACKAGE, version: "0.0.0", private: true }, null, 2));
+  for (const name of readdirSync(BRAIN_SOURCE)) if (name.endsWith(".json")) copyFileSync(`${BRAIN_SOURCE}/${name}`, `${BRAIN_DIR}/${name}`);
+}
+
+const run = (cmd, args, env) => execFileSync(cmd, args, { stdio: "inherit", env: env && { ...process.env, ...env } });
 
 /**
  * Runs `restore` once: from the normal end of the build, or when Ctrl+C or a kill stops it (a stopped build must not
@@ -93,8 +110,9 @@ function main(argv) {
   writeFileSync(`${DATA_DIR}/package.json`, JSON.stringify({ name: DATA_PACKAGE, version: "0.0.0", private: true, main: "index.js" }, null, 2));
   writeFileSync(`${DATA_DIR}/index.js`, client.data);
   writeFileSync(CLASS, client.source);
+  writeBrainData();
   try {
-    run("npx", ["opennextjs-cloudflare", "build"]);
+    run("npx", ["opennextjs-cloudflare", "build"], { BUPULSE_CF_BUILD: "1" });
     // The same query compiler the client's JavaScript glue was built with, as a plain .wasm file.
     const { wasm } = createRequire(import.meta.url)("@prisma/client/runtime/query_compiler_fast_bg.postgresql.wasm-base64.js");
     mkdirSync(".open-next/prisma", { recursive: true });

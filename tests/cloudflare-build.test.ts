@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { DATA_PACKAGE, externalizeClientData, patchClientForWorkers, restoreOnExit, WASM_OUT } from "@/scripts/cf-build.mjs";
+import { BRAIN_PACKAGE, BRAIN_SOURCE, DATA_PACKAGE, externalizeClientData, patchClientForWorkers, restoreOnExit, WASM_OUT } from "@/scripts/cf-build.mjs";
+import brainDataLoader from "@/scripts/cf-brain-data-loader.cjs";
 import { ANTHROPIC_MESSAGES_URL, ClaudeTextProvider } from "@/lib/ai/claude-text";
 import { createInteraction, GEMINI_API, GeminiHttpError } from "@/lib/ai/gemini-rest";
 import { AIProviderError } from "@/lib/ai/types";
@@ -53,6 +54,16 @@ describe("Workers build (scripts/cf-build.mjs)", () => {
 
   it("worker.ts imports the module the build writes", () => {
     expect(readFileSync("worker.ts", "utf8")).toContain(`from "./${WASM_OUT}"`);
+  });
+
+  it("server code requires the video brain's data files from one package (same file names, next.config.ts lists it)", () => {
+    const out = brainDataLoader.call({ resourcePath: `/repo/${BRAIN_SOURCE}/viral.json` });
+    expect(out).toBe(`module.exports = require("${BRAIN_PACKAGE}/viral.json");\n`);
+    const config = readFileSync("next.config.ts", "utf8");
+    expect(config).toContain(`"${BRAIN_PACKAGE}"`);
+    expect(config).toContain("scripts/cf-brain-data-loader.cjs");
+    expect(config).toContain(String.raw`/^lib\/video-engine\/brain\/data\/[^/]+\.json$/`);
+    expect(BRAIN_SOURCE).toBe("lib/video-engine/brain/data");
   });
 });
 
