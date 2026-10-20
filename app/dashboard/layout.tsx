@@ -23,6 +23,7 @@ import { currentManualPayment } from "@/lib/billing/momo";
 import { offerCheckingReference } from "@/lib/billing/momo-shared";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { unseenStudioVideos } from "@/lib/video-library/service";
+import { unreadCount } from "@/lib/inbox/service";
 
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
@@ -103,6 +104,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   // The Video Studio link in the sidebar: shown once the studio is switched on, to those who may make content.
   const studioOn = can(role, "content") && (await isServiceEnabled("studio").catch(() => false));
   const studio = studioOn ? ((usage.limits.videoCredits ?? 0) > 0 ? "open" : "upgrade") : null;
+  // The badge on Inbox: one indexed count, only when the plan has the inbox.
+  const inboxUnread = entitlements.inPlan.has("inbox") ? await unreadCount(business.id).catch(() => 0) : 0;
 
   return (
     <>
@@ -118,6 +121,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         features={[...entitlements.inPlan]}
         notices={notices}
         studio={studio}
+        inboxUnread={inboxUnread}
         plan={{
           name: usage.plan.name,
           trialLabel,

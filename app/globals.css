@@ -437,6 +437,15 @@ dialog.bp-dialog[open] {
 .bp-drawer-in {
   animation: bp-drawer 0.35s var(--ease-out-soft) both;
 }
+.bp-sheet-in {
+  animation: bp-sheet 0.3s var(--ease-out-soft) both;
+}
+/* The dashboard's phone bar (components/app/bottom-bar.tsx): toasts sit above it, not behind it. */
+@media (width < 64rem) {
+  body:has([data-bottom-bar]) {
+    --bp-bottom-bar: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+}
 
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
