@@ -181,6 +181,70 @@ photos; a video idea whose product or campaign has an album video now posts that
 **Permissions**: the `content` permission, the `content` and `calendar` features, 30 runs an hour per company.
 
 
+## Daily posts made for you
+
+Owner decision (20 October 2026): "For people on the Business plan and Custom plans: they get into the system and find
+posts are created every day for them, without having to say 'create posts'." Code: `lib/daily-posts/` (`settings.ts`,
+`budget.ts`, `plan.ts` are pure; `service.ts`, `settings-service.ts`), `app/api/cron/daily-posts`,
+`components/content-board/daily-posts-form.tsx`. Client guide: `docs/guide/features/36-daily-posts.md`.
+
+- **Who.** The plan feature `dailyPosts` (`lib/features.ts`; needs content, designs, calendar and gallery). Migration
+  `20261027100000_daily_posts` added it to the BUSINESS plan and to every custom plan that had the prerequisites
+  (audited as `migration:20261027100000_daily_posts`); other plans get it when an admin ticks it in Admin -> Plans or
+  the offer builder (an offer on the Business plan has it as a base feature). A trial whose chosen plan has it gets it
+  with the TRIAL plan's limits (`featurePlanKey`). Never for a company waiting for its demo or an invoice, read-only
+  (trial over, unpaid, ended), suspended or being deleted (`featureStatus` answers `not_in_plan` for a blocked account;
+  `plan_unknown` and the AI switched off mean "try later", nothing written).
+- **Settings** (Content -> Settings, "Daily posts made for you"; `Business.dailyPostSettings`, `readDailySettings`,
+  read field by field): on (default) or off, posts per app per day (1 by default, up to the plan's
+  `postsPerAppPerDay`), which apps (default: the connected ones, Instagram and Facebook while none is connected; apps
+  not connected get the usual reminder posts) and the design style (free designs by default; AI photos only while the
+  image allowance lasts). Owners and Admins (`contentSettings`), audited as `content.daily_posts` with before and after
+  in the same transaction. Changes apply from the next day's posts.
+- **When.** The cron `/api/cron/daily-posts` runs hourly at :13 (`DAILY_POSTS_CRON`, `wrangler.jsonc`,
+  `netlify/functions/cron-daily-posts.mts`, Admin cron list; cursor calls). A company is due from local midnight
+  (business time zone) until midday (`dueDay`): the night's first call after midnight makes the new day's posts, so they
+  wait under Today in the morning; a company that has none yet (it got the feature in the morning, or the night's run
+  failed) still gets today's until midday. We chose the run after midnight over a run the evening before for
+  "tomorrow" because the posts are then made, counted, approved and scheduled on their own day exactly like "Create
+  today's content" (Today lists posts created today; the per-app count and the best time are the day's).
+- **One run per company and day.** `DailyPostRun` (unique `businessId, day`) is the claim, like `AutopilotRun`: a second
+  call finds it taken; a RUNNING run quiet for 15 minutes that saved posts is closed as DONE, one that saved none is
+  retaken; FAILED is retaken up to 3 attempts (compare-and-set on `status, updatedAt`). Each call makes at most 2
+  companies (1 on Netlify) and starts none after 40 s (10 s on Netlify), then answers `nextCursor`.
+- **Making the posts: content flow v3, not a new writer.** The run calls `runDayContent` with `mode: "ai"` ("AI makes
+  it for me": angles rotation, Knowledge base, price rules "AI decides", variety, recent openings, the art director,
+  Gallery first, contests that wait for confirming) and a `daily` limit (`DailyRunLimits`): at most so many posts, each
+  app's room, AI photos and videos, and yesterday's ideas to leave out (`avoidAngles`, used only while enough others
+  are left). Posts have `source DAILY`, ledger feature `daily-posts`, and go through the usual auto-approval and safety
+  rules (apps that skip approval are scheduled). Content flow v3 fits better than Autopilot's planner: it makes one
+  day, for one subject, with the packs' angle rotation and the day's variety, which is exactly a daily post; the
+  planner plans a week of playbook ideas at once.
+- **Subjects** rotate (`chooseSubject`): running campaigns, active products, then General, the one that had daily posts
+  longest ago first, so the same subject never comes twice in a row while there is another.
+- **Never overspend** (`dayBudget`, pure): the month's text, AI images and videos left are spread over the days left in
+  the usage period (the trial's end for a trial) and daily posts take at most `DAILY_SHARE` (80%) of that share; the
+  company's AI allowance (`AI_COMPANY_MONTHLY_USD` or the plan's) is spread over the days left in its Kigali month the
+  same way, at an estimate of $0.02 a post, the image price per AI photo and $0.18 per voiced video; daily posts stop
+  for everyone while the platform's AI spend is above 90% of the monthly budget (`PLATFORM_CEILING`). A day that would
+  pass one is made smaller (AI photos first, then videos, then posts; `reason` on the run) or skipped with the reason
+  (`allowance`, `ai_allowance`, `budget`, `full` when every app already has its posts, `nothing`). The run still
+  reserves credits through `consumeUsage` and stops on `CompanyBudgetExceededError` / `AIBudgetExceededError`.
+- **Admin pause.** Admin -> Settings -> "Daily posts for clients" (`AdminSetting content.dailyPosts`, on by default,
+  audited): off stops all generation at once (the morning notices of posts already made still go). The same panel and
+  Admin -> Content show today's line (Kigali day): how many companies got daily posts and how many posts, how many were
+  skipped and why, failures (`dailyPostsToday`).
+- **Telling the owner.** From 07:00 local on the run's day, once (`DailyPostRun.notifiedAt`, compare-and-set), when some
+  of the day's daily posts still wait: the email "Your posts for today are ready: approve them" (Owner and Admins with
+  alerts, `alertRecipients`) with a link to the Content page, and a phone/browser alert to devices with alerts on
+  (`pushToLeadWatchers`). No posts waiting, no email. The bell shows "Your posts for today are ready" while they wait;
+  each card says "Made for you this morning" (`source DAILY`; "Made for you" on later days).
+- **Autopilot.** The two never double up: the run counts every post the company already has on each app that day
+  (Autopilot's planned ones, by hand, "Create today's content") and fills only the room left up to the daily posts per
+  app, so a day Autopilot already planned for an app gets nothing more on it. Autopilot plans the next week on Fridays,
+  so its posts always exist before that day's daily run. A company that wants only Autopilot's weekly plan switches
+  daily posts off in Content -> Settings.
+
 ## Caption, script and headlines; Generate again; Versions
 
 Every post BuPulse writes ("Create today's content", content packs, `/api/generate`) comes with its caption and
@@ -396,6 +460,11 @@ The in-app notice on the Content page covers the same posts for 24 hours.
 
 ## Data
 
+Migration `20261027100000_daily_posts`: `PostSource` gains `DAILY`; `Business.dailyPostSettings` (JSONB, null = the
+defaults); the `DailyPostRun` table (business, local day unique together, status CHECK, attempts, posts, subject,
+angles, reason, note, notifiedAt), RLS on and no grants, cascading with the business; `dailyPosts` added to the
+BUSINESS plan and the custom plans with its prerequisites, audited.
+
 Migration `20261019120000_post_versions`: the `PostVersion` table (business, post, kind, part, restored from, the
 person, the words), RLS on and no grants, cascading with the post and the business.
 
@@ -417,7 +486,10 @@ need `contentSettings` (Owner, Admin).
 
 ## Tests
 
-`tests/content-flow/`: the day's pack (angles after the subject's last ones, one call, credits per post and refunds,
+`tests/daily-posts/`: the day's budget (spread, shrink, skip, platform ceiling), when a company is due and the notice
+hour, subject rotation, per-app room, settings (defaults, validation, roles, audit), the claim (once, retake, died run),
+a company's run (content flow v3 with the daily limits, Autopilot's posts counted, skips and failures), the morning
+notice (once, nothing when nothing waits) and the cron (pause, cursor). `tests/content-flow/`: the day's pack (angles after the subject's last ones, one call, credits per post and refunds,
 design choice and AI image limit, General), day-to-day variety, Autopilot angles, `tests/autopilot/planner.test.ts`
 one app per idea, Gallery first including videos, Bring my own per network (media, text rules,
 adaptation with the AI mocked), the day view (Africa/Kigali bounds, `?day=`, the query, sections), the run (one text

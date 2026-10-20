@@ -75,7 +75,7 @@ For staging, create a second worker (copy `wrangler.jsonc` to an environment nam
 
 1. `https://bupulse.com/api/status` answers `{"status":"ok"}`. Sign in, open `/dashboard`.
 2. Header check: `wrangler secret put PLATFORM_CHECK` (value `1`), then `curl -s https://bupulse.com/api/platform/check` shows `"platform":"cloudflare"`, your country and your IP; the same with `-H "cf-ipcountry: US" -H "cf-connecting-ip: 1.2.3.4"` must not change the answer (Cloudflare overwrites them). Then `wrangler secret delete PLATFORM_CHECK`.
-3. Cloudflare dashboard, the Worker, Logs: `[cron] /api/cron/publish` every minute, the hourly jobs at :07, :23, :37 and :53.
+3. Cloudflare dashboard, the Worker, Logs: `[cron] /api/cron/publish` every minute, the hourly jobs at :07, :13, :23, :37 and :53.
 4. Schedule an Instagram post with a PNG design a few minutes ahead: it goes out within a minute of its time, converted to JPEG.
 5. Admin, Settings, Updates shows Cloudflare, the version and the runs of `deploy.yml`.
 
@@ -123,7 +123,7 @@ For staging, create a second worker (copy `wrangler.jsonc` to an environment nam
 
 ## Scheduled jobs (Cron Triggers)
 
-All in `worker-crons.ts` and `wrangler.jsonc` (11 triggers; Workers Paid allows 250 per account). Times are UTC. The Netlify fallback runs the same jobs at the same times, except the publisher (every 5 minutes there).
+All in `worker-crons.ts` and `wrangler.jsonc` (13 triggers; Workers Paid allows 250 per account). Times are UTC. The Netlify fallback runs the same jobs at the same times, except the publisher (every 5 minutes there).
 
 | Schedule | Route | What |
 | --- | --- | --- |
@@ -139,6 +139,7 @@ All in `worker-crons.ts` and `wrangler.jsonc` (11 triggers; Workers Paid allows 
 | daily 04:29 | `/api/cron/plan-price-changes` (cursor) | plan price change notices and moves |
 | daily 05:41 | `/api/cron/momo-renewals` (cursor) | Mobile Money renewal reminders, grace period, unpaid offer reminders |
 | every 3 h, Fri and Sat | `/api/cron/autopilot` (cursor) | Autopilot plans next week |
+| hourly at :13 | `/api/cron/daily-posts` (cursor) | daily posts made for you, from local midnight until midday (docs/CONTENT.md) |
 
 "Cursor" jobs call their route again until it answers `nextCursor: null` (at most 40 calls a run). GitHub Actions runs `purge-accounts` and `social-refresh` daily, and fallback calls of the publisher.
 
