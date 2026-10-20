@@ -60,6 +60,7 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
   const [preview, setPreview] = useState(false);
   // The size React Flow measured for each box: kept apart from the graph, because the canvas hides boxes it has not measured.
   const [dims, setDims] = useState<Record<string, { width: number; height: number }>>({});
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
   const problems = useMemo(() => {
     const parsed = graphSchema.safeParse(graph);
@@ -101,8 +102,24 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
   }
 
   function onEdgesChange(changes: EdgeChange[], apply: Parameters<CanvasProps["onEdgesChange"]>[1]) {
+    // A clicked line is kept selected here (the canvas only reports it), so Delete can remove it; one thing at a time.
+    for (const c of changes) {
+      if (c.type !== "select") continue;
+      if (c.selected) {
+        setSelectedEdgeId(c.id);
+        setSelectedId(null);
+      } else setSelectedEdgeId((cur) => (cur === c.id ? null : cur));
+    }
     const kept = apply(changes, flow.edges).map((e) => e.id);
-    if (changes.some((c) => c.type === "remove")) update({ ...graph, edges: graph.edges.filter((e) => kept.includes(e.id)) });
+    if (changes.some((c) => c.type === "remove")) {
+      setSelectedEdgeId((cur) => (cur && kept.includes(cur) ? cur : null));
+      update({ ...graph, edges: graph.edges.filter((e) => kept.includes(e.id)) });
+    }
+  }
+
+  function selectStep(id: string | null) {
+    setSelectedId(id);
+    setSelectedEdgeId(null);
   }
 
   function onConnect(c: Connection) {
@@ -123,7 +140,7 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
       if (free) edges.push({ id: newEdgeId(), source: anchor.id, target: step.id, sourceHandle: free.handle });
     }
     update({ nodes: [...graph.nodes, step], edges });
-    setSelectedId(step.id);
+    selectStep(step.id);
   }
 
   function changeStep(step: GraphNode) {
@@ -218,7 +235,7 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
             {allProblems.slice(0, 6).map((p, i) => (
               <li key={i}>
                 {p.nodeId ? (
-                  <button type="button" className="underline-offset-2 hover:underline" onClick={() => setSelectedId(p.nodeId!)}>
+                  <button type="button" className="underline-offset-2 hover:underline" onClick={() => selectStep(p.nodeId!)}>
                     {p.message}
                   </button>
                 ) : (
@@ -244,11 +261,11 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
           </div>
           <AutomationCanvas
             nodes={flow.nodes.map((n) => ({ ...n, selected: n.id === selectedId, measured: dims[n.id] }))}
-            edges={flow.edges}
+            edges={flow.edges.map((e) => ({ ...e, selected: e.id === selectedEdgeId }))}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
-            onSelect={setSelectedId}
+            onSelect={selectStep}
           />
         </GlassCard>
 
