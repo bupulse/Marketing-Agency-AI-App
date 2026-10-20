@@ -88,6 +88,7 @@ export async function rollupDay(day: string, now = new Date()): Promise<number> 
   await feature(EVENT_NAMES.designCreated, Prisma.sql`SELECT COUNT(DISTINCT "businessId")::bigint c FROM "Design" WHERE "createdAt" >= ${start} AND "createdAt" < ${end}`);
   await feature(EVENT_NAMES.postScheduled, Prisma.sql`SELECT COUNT(DISTINCT "businessId")::bigint c FROM "Post" WHERE "source" = 'MANUAL' AND "status" <> 'DRAFT' AND "createdAt" >= ${start} AND "createdAt" < ${end}`);
   await feature(EVENT_NAMES.postPublished, Prisma.sql`SELECT COUNT(DISTINCT "businessId")::bigint c FROM "Post" WHERE "publishedAt" >= ${start} AND "publishedAt" < ${end}`);
+  await feature(EVENT_NAMES.whatsappShare, Prisma.sql`SELECT COUNT(DISTINCT "businessId")::bigint c FROM "AnalyticsEvent" WHERE "name" = ${EVENT_NAMES.whatsappShare} AND "createdAt" >= ${start} AND "createdAt" < ${end}`);
   await feature(EVENT_NAMES.leadCaptured, Prisma.sql`SELECT COUNT(DISTINCT "businessId")::bigint c FROM "Lead" WHERE "createdAt" >= ${start} AND "createdAt" < ${end}`);
 
   // --- Revenue (Paddle webhooks and confirmed Mobile Money payments, USD cents, tax excluded; one refund counted once per adjustment id) ---
