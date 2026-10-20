@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Sparkles } from "lucide-react";
+import { Testimonials } from "@/components/marketing/home/testimonials";
 import { PageHero } from "@/components/marketing/pages/page-hero";
 import { PlanComparison } from "@/components/marketing/pages/plan-comparison";
 import { pageMetadata } from "@/components/marketing/pages/seo";
@@ -124,6 +125,8 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
           </GlassCard>
         </Reveal>
       </Container>
+
+      <Testimonials />
 
       <Container size="narrow" className="pb-24">
         <SectionHeading title="Pricing questions" className="mb-10" />

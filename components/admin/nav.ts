@@ -23,6 +23,7 @@ import {
   Music,
   Palette,
   Plug,
+  Quote,
   Receipt,
   ScrollText,
   Server,
@@ -114,6 +115,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/music", perm: "content", label: "Music library", icon: Music, description: "Tracks for videos, and generating new ones." },
       { href: "/admin/industries", perm: "content", label: "Industries", icon: Briefcase, description: "The industries clients pick at sign-up, and their defaults." },
       { href: "/admin/announcements", perm: "content", label: "Announcements", icon: Megaphone, description: "Banners shown to every client in the app." },
+      { href: "/admin/testimonials", perm: "content", label: "Testimonials", icon: Quote, description: "Real client quotes shown on the home and pricing pages.", keywords: "reviews quotes clients" },
     ],
   },
   {

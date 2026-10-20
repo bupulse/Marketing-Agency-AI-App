@@ -156,6 +156,7 @@ model Business {
   videoJobs        VideoJob[]
   videoOutcomes    VideoOutcome[]
   studioTickets    StudioTicket[]
+  bioPage          BioPage?
 
   @@index([industryId])
   // The sales staff member the company is assigned to (StaffMember.id), from a referral link at sign-up or a sales
@@ -300,6 +301,7 @@ model Product {
   storeSync    ProductSync?
   testimonials Testimonial[]
   videoJobs    VideoJob[]
+  bioItems     BioPageItem[]
 
   @@index([businessId, status, createdAt])
 }
@@ -2642,4 +2644,75 @@ model FirstPostPreview {
   updatedAt  DateTime @updatedAt
 
   @@index([userId])
+}
+
+// Link in bio (docs/guide/features/33-link-in-bio.md): the company's public page at /b/<slug>, for the Instagram or
+// TikTok bio. Built from the Knowledge base (business info, products, logo); off until the owner switches it on, and
+// it shows only the contacts, place and products the owner put on it (lib/bio).
+model BioPage {
+  businessId String        @id
+  business   Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  enabled    Boolean       @default(false)
+  slug       String        @unique // lowercase letters, digits and dashes (lib/bio/slug.ts)
+  tagline    String? // the line under the name; null = the Company profile's tagline, else the description
+  whatsapp   String? // E.164 of the WhatsApp button, one of the business's contacts; null = no button
+  message    String? // the WhatsApp message the visitor starts with; null = the default
+  phone      String? // E.164 of the Call button; null = no button
+  location   String? // the address of the place shown (Business info -> Locations); null = none
+  landmark   String? // "Opposite the bus park, next to the MTN shop"
+  showHours  Boolean       @default(true)
+  links      String[] // contact types shown as links: website, instagram, tiktok, facebook
+  logoPath   String? // small JPEG copy of the logo in "media" (<userId>/bio/...), made on save
+  logoSource String? // the brand logo path the copy was made from
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  items      BioPageItem[]
+  days       BioPageDay[]
+}
+
+// A product or service on the page, in the owner's order, with a small copy of its first photo.
+model BioPageItem {
+  id          String  @id @default(cuid())
+  businessId  String
+  page        BioPage @relation(fields: [businessId], references: [businessId], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  position    Int     @default(0)
+  photoPath   String? // small JPEG in "media" (<userId>/bio/...), made on save; null = no photo
+  photoSource String? // the gallery photo (MediaAsset.path) the copy was made from
+
+  @@unique([businessId, productId])
+  @@index([productId])
+}
+
+// Visits and taps on the page, one row per company and day (UTC): "how many messages did my bio bring".
+model BioPageDay {
+  businessId String
+  page       BioPage  @relation(fields: [businessId], references: [businessId], onDelete: Cascade)
+  date       DateTime @db.Date
+  views      Int      @default(0)
+  whatsapp   Int      @default(0)
+  calls      Int      @default(0)
+
+  @@id([businessId, date])
+}
+
+// A real client's words on the marketing home page (docs/guide/features/34-testimonials.md), added in Admin ->
+// Testimonials. Shown only when published, and it can only be published with the client's consent.
+model SiteTestimonial {
+  id         String   @id @default(cuid())
+  clientName String
+  business   String
+  sector     String?
+  quote      String
+  result     String? // "12 orders on WhatsApp in a week"
+  photo      Bytes? // small square JPEG (lib/testimonials), shown as it is
+  consent    Boolean  @default(false) // the client agreed to be shown
+  published  Boolean  @default(false)
+  position   Int      @default(0)
+  createdBy  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([published, position])
 }
