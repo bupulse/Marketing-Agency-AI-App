@@ -7,11 +7,12 @@ import { scoreCaption } from "@/lib/video-engine/brain/score";
 import { brainBriefFromDesign, brainContext, brainFor } from "@/lib/video-engine/brain/select";
 import { CLAUDE_VIDEO_CREDITS } from "@/lib/video-engine/credits";
 import { DESIGNER_MODEL, DesignError, apiTransport, designVideo, recipeForBrief, type BriefClip, type ClaudeTransport, type DesignBrief, type DesignMode, type Platform } from "@/lib/video-engine/designer";
-import { recipeWhy, type ViralRecipe } from "@/lib/video-engine/brain/viral";
+import type { ViralRecipe } from "@/lib/video-engine/brain/viral";
 import { isViralStyle } from "@/lib/video-engine/templates";
 import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
 import type { MotionSpec, Ratio } from "@/lib/video-engine/spec";
 import { BriefError, choosePhotos, loadBriefFacts, readPhotos, type StoredPhoto } from "./brief";
+import { VideoStudioError, recipeOf, view, type StudioOwner, type VideoJobView } from "./job-view";
 
 // Video Studio jobs in the app (docs/VIDEO_APP_INTEGRATION.md, task 5): a Motion design is a VideoJob. The credits are
 // reserved first (consumeUsage "videoCredits"), the job rows are written next, then Claude designs each version
@@ -23,17 +24,6 @@ import { BriefError, choosePhotos, loadBriefFacts, readPhotos, type StoredPhoto 
  * the route's 300 s, so a request still working is never swept.
  */
 export const DESIGN_LEASE_MS = 10 * 60_000;
-
-export class VideoStudioError extends Error {
-  constructor(
-    message: string,
-    public code: "unavailable" | "not_found" | "invalid",
-    public status: number,
-  ) {
-    super(message);
-    this.name = "VideoStudioError";
-  }
-}
 
 /** What a design request asks for (already validated by the route). */
 export type DesignJobInput = {
@@ -69,37 +59,7 @@ export type DesignJobInput = {
   aiClipRecipe?: ViralRecipe | null;
 };
 
-export type VideoJobView = {
-  id: string;
-  status: string;
-  engine: string;
-  spec: MotionSpec | null;
-  caption: string;
-  hashtags: string[];
-  warnings: unknown;
-  score: unknown;
-  captionScore: unknown;
-  credits: number;
-  error: string | null;
-  parentId: string | null;
-  productId: string | null;
-  templateId: string | null;
-  platform: string | null;
-  ratio: string;
-  seconds: number;
-  /** The MP4 in the Gallery, once the browser made it (status "ready"). */
-  videoPath: string | null;
-  /** Whether the owner asked for a voice-over (the MP4 step then records it). */
-  voice: boolean;
-  /** The library track in the MP4 (its title, and the credit line its licence asks for, if any). */
-  music: { trackId: string; title: string; credit: string | null } | null;
-  /** A viral video's "Why this video" lines (plain English, no names) and the viral ids its techniques came from. */
-  viral: { why: string[]; sources: string[] } | null;
-  createdAt: string;
-};
-
-/** The company account (Business.userId, whose credits are used), the person, and the business. */
-export type StudioOwner = { userId: string; actorId: string; businessId: string };
+export { VideoStudioError, view, recipeOf, type VideoJobView, type StudioOwner, type JobRow } from "./job-view";
 
 /** Claude with the API key, each call through the cost ledger (and so the Claude switch and the platform cap). */
 export function ledgeredClaude(apiKey: string, owner: StudioOwner, fetchImpl?: typeof fetch): ClaudeTransport {
@@ -118,49 +78,6 @@ export async function designUnavailable(env: Record<string, string | undefined> 
     throw error;
   }
   return null;
-}
-
-export type JobRow = { id: string; status: string; engine: string; spec: unknown; caption: string; hashtags: string[]; warnings: unknown; score: unknown; captionScore: unknown; credits: number; error: string | null; parentId: string | null; productId?: string | null; templateId?: string | null; platform?: string | null; ratio?: string; seconds?: number; videoPath?: string | null; brief?: unknown; music?: unknown; createdAt: Date };
-
-function musicOf(v: unknown): VideoJobView["music"] {
-  const m = v as { trackId?: unknown; title?: unknown; attribution?: unknown; owned?: unknown } | null | undefined;
-  if (!m || typeof m.trackId !== "string" || typeof m.title !== "string") return null;
-  return { trackId: m.trackId, title: m.title, credit: m.owned === false && typeof m.attribution === "string" && m.attribution.trim() ? m.attribution : null };
-}
-
-export const view = (j: JobRow): VideoJobView => ({
-  id: j.id,
-  status: j.status,
-  engine: j.engine,
-  spec: (j.spec as MotionSpec | null) ?? null,
-  caption: j.caption,
-  hashtags: j.hashtags,
-  warnings: j.warnings,
-  score: j.score,
-  captionScore: j.captionScore,
-  credits: j.credits,
-  error: j.error,
-  parentId: j.parentId,
-  productId: j.productId ?? null,
-  templateId: j.templateId ?? null,
-  platform: j.platform ?? null,
-  ratio: j.ratio ?? "9:16",
-  seconds: j.seconds ?? 15,
-  videoPath: j.videoPath ?? null,
-  voice: (j.brief as { voice?: unknown } | null | undefined)?.voice !== false,
-  music: musicOf(j.music),
-  viral: viralOf(j.brief),
-  createdAt: j.createdAt.toISOString(),
-});
-
-/** The recipe a job's brief keeps (styleId "viral"), or null. */
-export function recipeOf(brief: unknown): ViralRecipe | null {
-  const r = (brief as { recipe?: ViralRecipe } | null | undefined)?.recipe;
-  return r && r.version === 1 && Array.isArray(r.sources) && Array.isArray(r.beats) ? r : null;
-}
-function viralOf(brief: unknown): VideoJobView["viral"] {
-  const r = recipeOf(brief);
-  return r ? { why: recipeWhy(r), sources: r.sources.map((s) => s.id) } : null;
 }
 
 /** How many of the business's recent recipes a new one avoids (another opening, layout and beat order). */

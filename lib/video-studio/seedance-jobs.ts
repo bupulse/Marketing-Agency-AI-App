@@ -13,7 +13,7 @@ import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
 import { SEEDANCE_BASE_URL, SEEDANCE_MODELS, SEEDANCE_TASK_EXPIRES_SECONDS, SeedanceError, cancelSeedanceTask, createSeedanceTask, estimateSeedanceUsd, getSeedanceTask, seedanceLedgerUsage, type SeedanceRequest, type SeedanceTask, type SeedanceTier } from "@/lib/video-engine/seedance";
 import type { MotionSpec } from "@/lib/video-engine/spec";
 import { saveJobVideo, studioFolder } from "./library";
-import { VideoStudioError, view, type StudioOwner, type VideoJobView } from "./jobs";
+import { VideoStudioError, view, type StudioOwner, type VideoJobView } from "./job-view";
 
 // Seedance real video as VideoJob rows (docs/STUDIO_DEPLOY.md, build item 8; docs/SEEDANCE_KEY_DAY.md). A client's
 // Seedance clip is a VideoJob (engine "seedance"):

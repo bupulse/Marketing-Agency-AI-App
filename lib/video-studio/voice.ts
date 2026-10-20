@@ -16,7 +16,7 @@ import { fitSpecToVoice, looksKinyarwanda, voiceLanguage, voiceLines, voiceScrip
 import { lineTimings, type Timing } from "@/lib/voice/speech";
 import { claimClip, fileExists, storeAudio, voiceHash } from "@/lib/voice/service";
 import { DEFAULT_VOICE_ID, isVoiceId } from "@/lib/voice/voices";
-import { VideoStudioError, type StudioOwner } from "./jobs";
+import { VideoStudioError, type StudioOwner } from "./job-view";
 
 // The voice-over of a Video Studio design (docs/VIDEO_APP_INTEGRATION.md, POST /api/video/jobs/<id>/voice): the
 // design's `say` lines spoken in the company's voice by ElevenLabs (lib/ai/tts.ts), through the cost ledger

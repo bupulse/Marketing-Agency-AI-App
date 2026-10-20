@@ -7,7 +7,7 @@ import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { can } from "@/lib/team/roles";
 import { UsageLimitError } from "@/lib/usage";
-import { VideoStudioError } from "@/lib/video-studio/jobs";
+import { VideoStudioError } from "@/lib/video-studio/job-view";
 import { makeJobVoice } from "@/lib/video-studio/voice";
 
 // ElevenLabs takes 5 to 20 s for 30 seconds of speech.
