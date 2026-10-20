@@ -17,7 +17,7 @@ import { ConnectAppsBanner } from "@/components/content-board/connect-apps-banne
 import { ScheduleAllButton } from "@/components/content-board/schedule-all";
 import { loadComposerContext } from "@/lib/publishing/queries";
 
-export const metadata = { title: "Content" };
+export const metadata = { title: "Posts" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -43,7 +43,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Sear
   return (
     <div className="flex flex-col gap-8">
       <PageHeader
-        title="Content"
+        title="Posts"
         description="Review today's posts, then find every post by product, campaign or app."
         action={
           <Button href="/dashboard/content/settings" variant="outline" size="sm" leading={<Settings aria-hidden className="size-4" />}>

@@ -10,7 +10,7 @@ import { isNetwork } from "@/lib/social/registry";
 import { NETWORKS, type Network } from "@/lib/social/types";
 import { askMessage, can } from "@/lib/team/roles";
 
-export const metadata = { title: "Content settings" };
+export const metadata = { title: "Post settings" };
 
 export default async function ContentSettingsPage() {
   const blocked = await featureGate("content");
@@ -25,9 +25,9 @@ export default async function ContentSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <Link href="/dashboard/content" className="-mb-2 inline-flex min-h-11 w-fit items-center gap-1 px-1 text-[15px] font-medium text-muted hover:text-text">
-        <ChevronLeft aria-hidden className="size-4" /> Content
+        <ChevronLeft aria-hidden className="size-4" /> Posts
       </Link>
-      <PageHeader title="Content settings" description="Choose which apps' posts wait for your approval." />
+      <PageHeader title="Post settings" description="Choose which apps' posts wait for your approval." />
       <ContentSettingsForm initial={settings} apps={NETWORKS} connected={connected} canEdit={can(role, "contentSettings")} askText={askMessage("contentSettings")} />
     </div>
   );

@@ -11,7 +11,7 @@ import { knowledgeProgress } from "@/lib/knowledge/overview";
 import { KNOWLEDGE_SECTIONS, overallPercent } from "@/lib/knowledge/sections";
 import { can } from "@/lib/team/roles";
 
-export const metadata = { title: "Knowledge base" };
+export const metadata = { title: "Business info" };
 
 export default async function KnowledgePage() {
   const { business, role, entitlements } = await getAppContext();
@@ -25,15 +25,15 @@ export default async function KnowledgePage() {
   return (
     <>
       <PageHeader
-        title="Knowledge base"
+        title="Business info"
         description="Everything BuPulse knows about your business. The more you add, the more your posts, designs and chat replies sound like you and get the facts right."
       />
       <GlassCard className="flex flex-col gap-3 p-5 sm:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-semibold tracking-[-0.02em]">Your knowledge base is {overall}% complete</h2>
+          <h2 className="text-lg font-semibold tracking-[-0.02em]">Your business info is {overall}% complete</h2>
           <span className="text-[13px] text-muted">Required fields are marked with *</span>
         </div>
-        <Progress percent={overall} label="Knowledge base complete" />
+        <Progress percent={overall} label="Business info complete" />
       </GlassCard>
 
       <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

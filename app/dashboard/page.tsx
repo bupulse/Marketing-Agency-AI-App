@@ -185,7 +185,7 @@ export default async function DashboardPage() {
           </div>
           {recentProducts.length === 0 ? (
             <p className="rounded-2xl bg-soft px-4 py-8 text-center text-[15px] text-muted">
-              Nothing here yet. Add what you sell in the <Link href="/dashboard/knowledge" className="font-semibold">Knowledge base</Link>: products, services, events and offers.
+              Nothing here yet. Add what you sell in the <Link href="/dashboard/knowledge" className="font-semibold">Business info</Link>: products, services, events and offers.
             </p>
           ) : (
             <ul className="flex flex-col">
