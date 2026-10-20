@@ -93,6 +93,7 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
         <span className="text-[15px] font-semibold">{post.accountName}</span>
         <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${style.badge}`}>{STATUS_LABEL[post.status]}</span>
         {post.source === "AUTOPILOT" && <Badge tone="violet">Autopilot</Badge>}
+        {post.source === "DAILY" && <Badge tone="violet">Made for you</Badge>}
         {post.autoScheduledAt && post.status !== "PENDING_APPROVAL" && <Badge tone="blue">Auto-scheduled</Badge>}
         {post.scheduledAt && <span className="text-[13px] text-muted">{post.status === "PUBLISHED" && post.publishedAt ? `Published ${formatDateTime(post.publishedAt, zone)}` : formatDateTime(post.scheduledAt, zone)}</span>}
       </div>

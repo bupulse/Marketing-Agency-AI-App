@@ -24,6 +24,7 @@ import { offerCheckingReference } from "@/lib/billing/momo-shared";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { unseenStudioVideos } from "@/lib/video-library/service";
 import { unreadCount } from "@/lib/inbox/service";
+import { dailyPostsWaiting } from "@/lib/daily-posts/service";
 
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
@@ -90,6 +91,17 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         },
       ]
     : [];
+  // Daily posts made for you that still wait for approval today (docs/CONTENT.md "Daily posts").
+  const dailyWaiting = entitlements.usable.has("dailyPosts") && can(role, "content") ? await dailyPostsWaiting(business.id, business.timezone || "UTC").catch(() => 0) : 0;
+  if (dailyWaiting > 0) {
+    notices.unshift({
+      id: "daily-posts",
+      title: "Your posts for today are ready",
+      text: `BuPulse made ${dailyWaiting === 1 ? "1 post" : `${dailyWaiting} posts`} for you today. Approve ${dailyWaiting === 1 ? "it" : "them"} to post.`,
+      href: "/dashboard/content",
+      action: "Approve them",
+    });
+  }
   // Studio videos that finished and were not opened in the Videos library yet (docs/VIDEO_STUDIO_SPLIT.md).
   const newVideos = await unseenStudioVideos(business.id).catch(() => 0);
   if (newVideos > 0) {

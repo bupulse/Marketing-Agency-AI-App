@@ -8,6 +8,8 @@ import { listAvailability } from "@/lib/admin/availability";
 import { dateTime, param } from "@/lib/admin/format";
 import { getSettings } from "@/lib/admin/settings";
 import { previewCostSummary } from "@/lib/preview/first-post";
+import { dailyPostsToday } from "@/lib/daily-posts/service";
+import { dailyTodayLine } from "@/lib/daily-posts/budget";
 import { DISPLAY_CURRENCIES } from "@/lib/money/display";
 import { effectiveUsdToEur } from "@/lib/money/display-server";
 import { publicSiteUrl, siteUrl } from "@/lib/auth/site-url";
@@ -40,7 +42,7 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const [s, windows, google, momo, paddle, previewCost] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus(), previewCostSummary()]);
+  const [s, windows, google, momo, paddle, previewCost, daily] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus(), previewCostSummary(), dailyPostsToday()]);
   const eur = await effectiveUsdToEur(s);
   const dial = mtnMomoPayDial(momo.merchantCode);
   const example = cardUsdCents(15000, "RWF", s.usdToRwf, s.cardMarginPercent);
@@ -220,6 +222,26 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <Input name="goalStartMonth" pattern={"\\d{4}-\\d{2}"} defaultValue={s.goalStartMonth} required className="w-32" />
             </Field>
             <Button type="submit">Save</Button>
+          </form>
+        </Panel>
+      </div>
+
+      <div id="daily-posts">
+        <Panel
+          title="Daily posts for clients"
+          description="Every night BuPulse makes the day's posts for companies on the Business plan or a custom plan (and trials of those plans), within each plan's allowances spread over the month, each company's AI allowance and the AI budget. Switch it off to stop them for everyone at once; no AI is used while it is off."
+          action={s.dailyPosts ? <Badge tone="success">On</Badge> : <Badge tone="neutral">Paused</Badge>}
+        >
+          <form action={saveSettingsAction} className="flex flex-col gap-3">
+            <input type="hidden" name="dailyPanel" value="1" />
+            <label className="flex min-h-11 items-center gap-2 text-[15px]">
+              <input type="checkbox" name="dailyPosts" defaultChecked={s.dailyPosts} className="size-5" />
+              Make daily posts for clients
+            </label>
+            <p className="text-[13px] text-muted">{dailyTodayLine(daily)}</p>
+            <div>
+              <Button type="submit">Save</Button>
+            </div>
           </form>
         </Panel>
       </div>

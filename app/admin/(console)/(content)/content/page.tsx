@@ -4,17 +4,22 @@ import { Bars } from "@/components/admin/charts";
 import { Empty, Panel, RangeTabs, TableWrap, Td, Th } from "@/components/admin/ui";
 import { num, parseRange } from "@/lib/admin/format";
 import { getTopContent } from "@/lib/analytics/queries";
+import { dailyPostsToday } from "@/lib/daily-posts/service";
+import { dailyTodayLine } from "@/lib/daily-posts/budget";
 
 export const metadata = { title: "Content performance" };
 
 export default async function ContentPage({ searchParams }: PageProps<"/admin/content">) {
   await requirePermission("content"); // pages render alongside the layout, so check here too
   const { key, range } = parseRange((await searchParams).range);
-  const top = await getTopContent(range);
+  const [top, daily] = await Promise.all([getTopContent(range), dailyPostsToday()]);
   const none = top.topPosts.length === 0 && top.byNetwork.length === 0;
   return (
     <>
       <PageHeader title="Content performance" description={`What customers’ posts earn across all businesses, ${range.from} to ${range.to}. From the metrics collected for published posts.`} action={<RangeTabs current={key} base="/admin/content" />} />
+      <Panel title="Daily posts" description="Posts BuPulse made for clients last night. Pause them in Settings, Daily posts for clients.">
+        <p className="text-[14px]">{dailyTodayLine(daily)}</p>
+      </Panel>
       {none ? (
         <Empty>No published posts with metrics in this range yet.</Empty>
       ) : (
