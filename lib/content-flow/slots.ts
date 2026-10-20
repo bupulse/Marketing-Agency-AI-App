@@ -38,3 +38,16 @@ export function assignAngles(angles: readonly AngleId[], slots: readonly Network
     return [{ angle: best, network, format: formatFor(best, network) }];
   });
 }
+
+/** A daily posts run's posts (lib/daily-posts): at most `maxPosts`, and per app at most its room, in order. */
+export function withinDaily(slots: readonly Network[], daily: { maxPosts: number; room: Partial<Record<Network, number>> }): Network[] {
+  const used = new Map<Network, number>();
+  const out: Network[] = [];
+  for (const n of slots) {
+    if (out.length >= Math.max(0, daily.maxPosts)) break;
+    if ((used.get(n) ?? 0) >= (daily.room[n] ?? 0)) continue;
+    used.set(n, (used.get(n) ?? 0) + 1);
+    out.push(n);
+  }
+  return out;
+}
