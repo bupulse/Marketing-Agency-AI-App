@@ -1,4 +1,4 @@
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { bioPageCsp, bioUnavailablePage, renderBioPage } from "@/lib/bio/page";
 import { loadPublicBio } from "@/lib/bio/service";
 import { buildBioView, platformOf } from "@/lib/bio/view";
@@ -21,7 +21,7 @@ export async function GET(request: Request, ctx: RouteContext<"/b/[slug]">) {
       headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": bioPageCsp(n), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
     });
   }
-  const site = siteUrl();
+  const site = publicSiteUrl();
   const view = buildBioView(page.source, page.settings, { platform: platformOf(request.headers.get("user-agent")) });
   const html = renderBioPage({ view, mode: "live", nonce: n, pageUrl: `${site}/b/${page.slug}`, ogImage: page.ogImage ? `${site}${page.ogImage}` : null, siteUrl: site });
   return new Response(html, {
