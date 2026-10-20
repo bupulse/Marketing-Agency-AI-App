@@ -9,7 +9,7 @@ import { suggestHooks, type HookSuggestion } from "@/lib/video-engine/brain/sugg
 import type { Platform } from "@/lib/video-engine/designer";
 import type { MotionSpec } from "@/lib/video-engine/spec";
 import { loadBriefFacts, type StoredPhoto } from "./brief";
-import { view, VideoStudioError, type VideoJobView } from "./jobs";
+import { view, VideoStudioError, type VideoJobView } from "./job-view";
 import { scheduledPostsOf } from "./schedule";
 
 // The Create page's side of the Video Studio (docs/VIDEO_APP_INTEGRATION.md, task 6): the job list, the Brain's

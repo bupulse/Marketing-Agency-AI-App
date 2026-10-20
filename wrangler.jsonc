@@ -5,6 +5,10 @@
   "main": "worker.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // Wrangler re-prints the OpenNext bundle with all its whitespace; minified, the Worker is about 1 MiB smaller gzipped
+  // (limit 10 MiB, docs/DEPLOY.md "Known notes"). keep_names (wrangler's default) keeps function and class names.
+  "minify": true,
+  "keep_names": true,
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

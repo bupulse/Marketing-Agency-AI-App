@@ -93,7 +93,27 @@ For staging, create a second worker (copy `wrangler.jsonc` to an environment nam
   `app/icon.png` route (-90 KiB). Not externalised: `@supabase/supabase-js` (OpenNext's middleware bundle then cannot
   resolve `tslib`). To find what grew: `.next/server/chunks/**/*.js.map` lists each chunk's sources; the largest
   gzipped chunks under `.open-next/server-functions/default/.next/server` show the duplicates.
-- **Workers build**: always `node scripts/cf-build.mjs` (the npm `deploy`, `preview` and `build:cloudflare` scripts and `deploy.yml` use it), not `opennextjs-cloudflare build` alone: workerd cannot compile WebAssembly from bytes, so Prisma's query compiler must be a `.wasm` module imported by `worker.ts`, like the image codecs. The script patches the generated client for the build and generates the usual one again afterwards, also when stopped with Ctrl+C. If it was killed hard (or the machine stopped) and `next dev`, tests or `npm run build` then fail on Prisma's query compiler ("was not loaded (worker.ts)"), run `npx prisma generate` to restore the client.
+- **Worker size, 20 October 2026: 8.73 MiB gzipped (8,944 KiB; 29.4 MiB raw)**, down from 11.14 MiB (11,406 KiB, over
+  the limit) after the video engine, bizdev, inbox, contacts, automations and BuPulse-Socials merges. What grew: the
+  video brain's data (`lib/video-engine/brain/data`: `viral.json` 757 KB, the brain database 470 KB) was inlined into
+  four chunk groups (the dashboard pages, `/api/video/design`, `/api/video/jobs/[id]/voice`, `/api/cron/video-jobs`),
+  with the engine's code; the rest is new feature code copied into many route groups. What was done, with no change in
+  behaviour: `scripts/cf-build.mjs` copies the brain data unchanged into a package `@bupulse/video-brain-data` and sets
+  `BUPULSE_CF_BUILD=1`, so `next.config.ts` has server code require each data file from it (a Turbopack rule with
+  `scripts/cf-brain-data-loader.cjs`) and `serverExternalPackages` bundles it once (-848 KiB; other builds and the
+  browser import the files as before); `lib/video-studio/job-view.ts` holds the job view and `VideoStudioError` (re-
+  exported by `jobs.ts`), so the voice route no longer carries the designer; the Cloudflare build uses Prisma's
+  size-optimised query compiler, `query_compiler_small_bg` (generator option `compilerBuild = "small"`, Prisma's
+  default for Vercel Edge: the same compiler built for size, 662 instead of 1,115 KiB gzipped; compiling a query shape
+  is a little slower, once per isolate; `withSmallCompiler`); `"minify": true` in `wrangler.jsonc` (wrangler printed
+  OpenNext's minified handler back with all its whitespace; `keep_names` stays on; about -1,000 KiB); the automations
+  canvas (React Flow) renders in the browser only (`components/automations/canvas.tsx`, `next/dynamic` with
+  `ssr: false`; -66 KiB). Still not externalised: `@supabase/supabase-js` (OpenNext bundles the Node middleware with
+  the `module` condition, which resolves `tslib` to `tslib.es6.mjs`, a file Next does not trace; `outputFileTracingIncludes`
+  does not reach the middleware). `experimental.turbopackChunking` does not reduce the server copies. To see what is in
+  the Worker: `.open-next/server-functions/default/handler.mjs.meta.json` is esbuild's metafile (bytes per input file)
+  and, with the chunk source maps, shows which sources are copied into how many chunks.
+- **Workers build**: always `node scripts/cf-build.mjs` (the npm `deploy`, `preview` and `build:cloudflare` scripts and `deploy.yml` use it), not `opennextjs-cloudflare build` alone: workerd cannot compile WebAssembly from bytes, so Prisma's query compiler must be a `.wasm` module imported by `worker.ts`, like the image codecs (the size-optimised `query_compiler_small_bg`; Node, Netlify and dev keep the fast build). The script patches the generated client for the build and generates the usual one again afterwards, also when stopped with Ctrl+C. If it was killed hard (or the machine stopped) and `next dev`, tests or `npm run build` then fail on Prisma's query compiler ("was not loaded (worker.ts)"), run `npx prisma generate` to restore the client.
 - `worker.ts` may only export its handler and the Durable Object classes (workerd refuses other named exports); the cron schedules live in `worker-crons.ts`.
 - `pg-cloudflare` is pinned to 1.3.0 in `package.json` (`overrides`) because 1.4.1 is published without the files the bundler needs. Remove the pin once a fixed version ships.
 - `proxy.ts` runs as Node.js middleware, which OpenNext marks experimental on Cloudflare. Check sign-in and the `/dashboard` redirect after the first deploy.

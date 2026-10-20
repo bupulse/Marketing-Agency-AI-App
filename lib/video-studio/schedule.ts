@@ -7,7 +7,7 @@ import { seedanceOverlayCaption } from "@/lib/video-engine/seedance-overlay";
 import type { Ratio } from "@/lib/video-engine/spec";
 import { withMusicCredit } from "@/lib/visuals/service";
 import { loadBriefFacts } from "./brief";
-import { VideoStudioError } from "./jobs";
+import { VideoStudioError } from "./job-view";
 
 // Scheduling a Video Studio MP4 (docs/VIDEO_APP_INTEGRATION.md, section 5, task 7): a studio video is a normal post with
 // its one video in mediaPaths, made by createPosts (lib/publishing/service.ts) like the composer's, so every rule of
