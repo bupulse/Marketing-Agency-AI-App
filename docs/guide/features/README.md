@@ -40,6 +40,8 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 29 | The Video Studio, for clients (open it, credits per action, where videos go) | studio.bupulse.com; BuPulse Videos | [29-video-studio-for-clients.md](29-video-studio-for-clients.md) |
 | 30 | The Video Studio, for the owner (switches, costs, viral library, checks) | Admin → Services, Plans, Usage; studio `/viral` | [30-video-studio-for-the-owner.md](30-video-studio-for-the-owner.md) |
 | 31 | Free first-post preview (before the demo) | the demo screen, Admin → Settings → Free first-post preview | [31-first-post-preview.md](31-first-post-preview.md) |
+| 33 | Link in bio (a free public page for the Instagram or TikTok bio) | `/dashboard/bio`, `/b/[slug]` | [33-link-in-bio.md](33-link-in-bio.md) |
+| 34 | Testimonials on the website (Admin) | `/admin/testimonials`, shown on `/` and `/pricing` | [34-testimonials.md](34-testimonials.md) |
 
 ## Which plan has what
 
@@ -52,6 +54,8 @@ What a company may use is decided only by its plan's feature list (`PlanDefiniti
 | Business | 50,000 RWF a month (500,000 RWF a year) | Starter + AI photos, website chat and leads, videos, voiceover | 200 AI texts, 100 AI images, 500 chat replies, 120 videos (4 a day, up to 30 s), 3 users |
 | Free trial | free, after the demo | the features of the plan the client chose | the TRIAL plan's limits (10 texts, 5 images, 1 sample video, 50 chat replies) |
 | Custom plan | agreed per client | any built features and extra blocks | set in the offer |
+
+**Link in bio** (a free page for the Instagram or TikTok bio) is on every plan and the trial.
 
 Everything else (Autopilot, Analytics, Canva, Drive and Dropbox import, store import, webhooks, API access, Managed
 by BuPulse) can be added from **Billing → Add features** when it has a price in the client's region, or put in a
