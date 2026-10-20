@@ -29,6 +29,7 @@ export const FEATURE_KEYS = [
   "aiVideo",
   "inbox",
   "automations",
+  "dailyPosts",
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -282,6 +283,18 @@ export const FEATURES: readonly FeatureDef[] = [
     status: "built",
     kind: "app",
     routes: ["/dashboard/automations"],
+  },
+  {
+    key: "dailyPosts",
+    label: "Daily posts made for you",
+    description: "Every night BuPulse makes the day's posts for your apps, ready for you to approve in the morning, within your plan's allowances.",
+    requires: ["content", "designs", "calendar", "gallery"],
+    metric: "text",
+    services: ["gemini", "claude"],
+    status: "built",
+    kind: "app",
+    // Its switch and choices are in Content -> Settings (a `content` route); there is no page of its own.
+    routes: [],
   },
 ];
 

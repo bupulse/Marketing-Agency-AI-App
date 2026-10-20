@@ -195,7 +195,7 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
   // Scheduled from Studio content by hand: the drafts BuPulse made of that content for the same accounts are replaced,
   // in the same transaction, unless the owner already edited them.
   // The owner's edited drafts are kept as history but cancelled (superseded), so the account never gets two posts.
-  const draftsOf = { businessId: owner.businessId, contentId: content?.id, source: "STUDIO" as const, status: "PENDING_APPROVAL" as const, connectionId: { in: ordered.map((c) => c.id) } };
+  const draftsOf = { businessId: owner.businessId, contentId: content?.id, source: { in: ["STUDIO" as const, "DAILY" as const] }, status: "PENDING_APPROVAL" as const, connectionId: { in: ordered.map((c) => c.id) } };
   const replace =
     !draft && content
       ? [

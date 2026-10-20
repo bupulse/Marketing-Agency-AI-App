@@ -1,4 +1,5 @@
 import {
+  Sunrise,
   Blocks,
   BookOpen,
   BookUser,
@@ -249,4 +250,5 @@ export const FEATURE_ICONS: Record<FeatureKey, LucideIcon> = {
   aiVideo: Film,
   inbox: Inbox,
   automations: Workflow,
+  dailyPosts: Sunrise,
 };
