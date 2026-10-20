@@ -6,7 +6,9 @@
   var send = function (kind) {
     try {
       navigator.sendBeacon(url, kind);
-    } catch (e) {}
+    } catch {
+      // counting is never worth an error
+    }
   };
   send("view");
   document.addEventListener("click", function (e) {
