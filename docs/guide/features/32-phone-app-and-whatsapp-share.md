@@ -106,4 +106,4 @@ The post itself is not changed, and sharing does not mark it as posted.
 | "We could not get the picture. Reload the page and try again." | The page's private links last one hour | Reload the page, then share |
 | WhatsApp is not in the share menu | WhatsApp not installed on that phone, or the browser cannot share files | Use another browser (Chrome or Safari), or a computer (download + link) |
 | The caption is missing in WhatsApp | The phone sent the picture only | Paste: the caption was copied |
-| Shares do not show in analytics | Admin → Errors / server log `[share] could not count` | Counting never blocks a share; check the database connection |
+| Shares do not show in analytics | The server log: `[share] could not count a WhatsApp share` | Counting never blocks a share; check the database connection |
