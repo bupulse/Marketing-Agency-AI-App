@@ -2763,6 +2763,9 @@ model CreatorCampaign {
   brief                 String // the challenge and what the videos should show, for the whole campaign
   rules                 String? // the company's own written rules, shown to creators before they apply and on every task
   status                String              @default("DRAFT") // DRAFT | LIVE | PAUSED | ENDED
+  listed                Boolean             @default(true) // shown on the marketplace /creators: the company's switch (docs/CREATOR_MARKETPLACE.md)
+  hiddenAt              DateTime? // hidden from the marketplace by a BuPulse admin, whatever `listed` says
+  hiddenReason          String?
   acceptingApplications Boolean             @default(true)
   startsOn              DateTime            @db.Date // first day, in the company's timezone
   endsOn                DateTime            @db.Date // last day (inclusive)
@@ -2781,6 +2784,7 @@ model CreatorCampaign {
   periods               CreatorPeriod[]
   submissions           CreatorSubmission[]
   posts                 CreatorPost[]
+  reports               CreatorReport[]
 
   @@index([businessId, status])
 }
@@ -2818,6 +2822,16 @@ model CreatorProfile {
   updatedAt   DateTime            @updatedAt
   campaigns   CampaignCreator[]
   connections CreatorConnection[]
+  bio          String? // a few lines about them, on their marketplace profile
+  location     String? // district or city, e.g. "Kigali, Gasabo"
+  handles      Json? // [{ network, handle, followers }], the same shape as an application's
+  samples      String[] // 1-3 links to their best posts
+  discoverable Boolean   @default(false) // "Let companies find me": listed in the companies' creator search
+  blockedAt    DateTime? // blocked from the marketplace by a BuPulse admin: no applying, not findable
+  blockedReason String?
+  reports      CreatorReport[]
+
+  @@index([discoverable])
 }
 
 // One creator in one campaign, from the application to the end: APPLIED -> SELECTED (invite link sent) -> JOINED, or
@@ -2828,7 +2842,10 @@ model CampaignCreator {
   campaign        CreatorCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   profileId       String?
   profile         CreatorProfile?     @relation(fields: [profileId], references: [id], onDelete: SetNull)
-  status          String              @default("APPLIED") // APPLIED | SELECTED | JOINED | DECLINED | REMOVED
+  status          String              @default("APPLIED") // APPLIED | SELECTED | JOINED | DECLINED | REMOVED | OFFERED (the company invited a marketplace creator, waiting for their answer)
+  source          String              @default("LINK") // LINK: applied on /c/<slug> | MARKETPLACE: applied from their creator account | OFFER: the company invited them
+  offeredBy       String?             @db.Uuid
+  offeredAt       DateTime?
   name            String
   email           String // lowercase
   phone           String? // WhatsApp, E.164 when it could be read
@@ -2996,4 +3013,26 @@ model CreatorPayout {
 
   @@unique([periodId, campaignCreatorId])
   @@index([campaignCreatorId, status])
+}
+
+// A report from the marketplace (docs/CREATOR_MARKETPLACE.md): a creator reports a campaign (e.g. a company that does
+// not pay), or a company reports a creator (e.g. fake views). It lands in the admin console's inbox.
+model CreatorReport {
+  id             String           @id @default(cuid())
+  kind           String // CAMPAIGN | CREATOR: what is reported
+  campaignId     String?
+  campaign       CreatorCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  profileId      String?
+  profile        CreatorProfile?  @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  reporterUserId String           @db.Uuid // the person who reported (a creator's or a company member's login)
+  businessId     String? // the reporting company, when a company reported
+  reason         String // SCAM | NOT_PAID | FAKE_VIEWS | SPAM | OFFENSIVE | OTHER
+  details        String?
+  status         String           @default("OPEN") // OPEN | RESOLVED
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  resolution     String?
+  createdAt      DateTime         @default(now())
+
+  @@index([status, createdAt])
 }
