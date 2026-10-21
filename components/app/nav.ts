@@ -17,6 +17,7 @@ import {
   ImagePlus,
   KeyRound,
   Link2,
+  Megaphone,
   MessageCircle,
   Mic,
   Image as ImageIcon,
@@ -33,7 +34,7 @@ import {
   Webhook,
   type LucideIcon,
 } from "lucide-react";
-import { featureForRoute, type FeatureKey } from "@/lib/features";
+import { featureForRoute, featureOf, type FeatureKey } from "@/lib/features";
 import { can, type Permission, type Role } from "@/lib/team/roles";
 
 // The dashboard's menu (docs/guide/features/35-finding-your-way.md): groups of pages, the + Create actions, the phone
@@ -50,9 +51,14 @@ export type NavItem = {
   feature: FeatureKey | null;
   /** Other words people may type in "Find a page" (MoMo for Billing, Instagram for Channels). */
   keywords?: string;
+  /** The page's feature is "Coming soon" (lib/features.ts): listed in the menu as such, never a link. */
+  soon?: boolean;
 };
 
-const item = (href: string, label: string, icon: LucideIcon, keywords: string, permission?: Permission): NavItem => ({ href, label, icon, permission, feature: featureForRoute(href), keywords });
+const item = (href: string, label: string, icon: LucideIcon, keywords: string, permission?: Permission): NavItem => {
+  const feature = featureForRoute(href);
+  return { href, label, icon, permission, feature, keywords, soon: feature !== null && featureOf(feature).status === "coming_soon" };
+};
 
 export type NavGroupId = "home" | "create" | "publish" | "customers" | "results" | "business" | "account";
 /** `title` null: no heading (Home, at the top). */
@@ -77,6 +83,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       item("/dashboard/calendar", "Calendar", CalendarDays, "schedule planner dates publish post later"),
       item("/dashboard/connections", "Channels", Plug, "connections connect apps social accounts instagram facebook tiktok linkedin youtube whatsapp", "channels"),
+      item("/dashboard/creators", "Creators", Megaphone, "creator campaigns influencers ambassadors challenge views payouts", "creators"),
       item("/dashboard/bio", "Link in bio", Link2, "bio linktree link page instagram profile", "settings"),
     ],
   },
@@ -118,14 +125,18 @@ export const FOLDED_GROUP: NavGroupId = "account";
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
-/** True when the role and the plan may open the page. */
-export function canSee(item: Pick<NavItem, "permission" | "feature">, role: Role, features: readonly FeatureKey[]): boolean {
-  return (!item.permission || can(role, item.permission)) && (!item.feature || features.includes(item.feature));
+/** True when the role and the plan may open the page (a "Coming soon" page opens for nobody). */
+export function canSee(item: Pick<NavItem, "permission" | "feature" | "soon">, role: Role, features: readonly FeatureKey[]): boolean {
+  return !item.soon && (!item.permission || can(role, item.permission)) && (!item.feature || features.includes(item.feature));
 }
 
-/** The menu for a role and a plan: each group with the pages they may open; a group left empty is not shown. */
+/**
+ * The menu for a role and a plan: each group with the pages they may open, plus the "Coming soon" ones their role
+ * could use (shown, not clickable); a group left empty is not shown.
+ */
 export function navFor(role: Role, features: readonly FeatureKey[]): NavGroup[] {
-  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => canSee(i, role, features)) })).filter((g) => g.items.length > 0);
+  const shown = (i: NavItem) => canSee(i, role, features) || (i.soon === true && (!i.permission || can(role, i.permission)));
+  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter(shown) })).filter((g) => g.items.length > 0);
 }
 
 /** The menu item for the page open now: Home and Settings only on themselves (Team is its own item), the others on their sub-pages too. */
@@ -202,7 +213,7 @@ export type FinderEntry = { key: string; href: string; label: string; group: str
 /** Everything "Find a page" can open for a role and a plan: the Create actions first, then the menu in its order. */
 export function finderEntries(role: Role, features: readonly FeatureKey[], studio: StudioLink = null): FinderEntry[] {
   const actions = createActions(role, features, studio).map((a) => ({ key: `create:${a.id}`, href: a.href, label: a.label, group: "Create", icon: a.icon, keywords: a.keywords, external: a.external }));
-  const pages = navFor(role, features).flatMap((g) => g.items.map((i) => ({ key: i.href, href: i.href, label: i.label, group: g.title ?? "", icon: i.icon, keywords: i.keywords ?? "" })));
+  const pages = navFor(role, features).flatMap((g) => g.items.filter((i) => !i.soon).map((i) => ({ key: i.href, href: i.href, label: i.label, group: g.title ?? "", icon: i.icon, keywords: i.keywords ?? "" })));
   return [...actions, ...pages];
 }
 
@@ -251,4 +262,5 @@ export const FEATURE_ICONS: Record<FeatureKey, LucideIcon> = {
   inbox: Inbox,
   automations: Workflow,
   dailyPosts: Sunrise,
+  creators: Megaphone,
 };

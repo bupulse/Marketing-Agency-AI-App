@@ -18,6 +18,7 @@ import { momoPriceOf } from "@/lib/billing/momo-shared";
 import { formatPlanPrice, formatPrice, intervalWord, planButtonAction, planFeatures, unpaidPlanLabel, yearlyBadge, yearlySavingsLabel, yearlySavingsMinor } from "./helpers";
 import { PriceTag } from "./price-tag";
 import { usePayState } from "./pay-state";
+import { ComingSoonFeatures } from "@/components/billing/coming-soon-features";
 
 type Props = {
   /** The plans a client can pick (active, in sort order), at the company's region's prices. */
@@ -171,6 +172,7 @@ export function PlanPicker({ plans, current, pay }: Props) {
                     {f}
                   </li>
                 ))}
+                <ComingSoonFeatures features={plan.features} />
               </ul>
               {action === "current" ? (
                 <Badge tone="success" className="self-start px-4 py-2 text-sm">

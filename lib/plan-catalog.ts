@@ -14,6 +14,8 @@ import {
   type PlanStatus,
   type UsageMetric,
   postsPerAppLimit,
+  liveCampaignsLimit,
+  creatorsPerCampaignLimit,
 } from "@/lib/plans";
 import type { BillingInterval, BillingProvider } from "@/lib/generated/prisma/client";
 
@@ -114,6 +116,10 @@ export function cleanLimits(value: unknown, base?: PlanLimits): PlanLimits {
     if (typeof perApp === "number" && Number.isInteger(perApp)) out.postsPerAppPerDay = postsPerAppLimit({ postsPerAppPerDay: perApp });
     const perDay = (value as Record<string, unknown>).videosPerDay;
     if (typeof perDay === "number" && Number.isInteger(perDay) && perDay >= 0) out.videosPerDay = Math.min(perDay, 100);
+    const live = (value as Record<string, unknown>).liveCampaigns;
+    if (typeof live === "number" && Number.isInteger(live)) out.liveCampaigns = liveCampaignsLimit({ liveCampaigns: live });
+    const creators = (value as Record<string, unknown>).creatorsPerCampaign;
+    if (typeof creators === "number" && Number.isInteger(creators)) out.creatorsPerCampaign = creatorsPerCampaignLimit({ creatorsPerCampaign: creators });
   }
   return out;
 }

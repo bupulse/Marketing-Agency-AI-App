@@ -1,5 +1,6 @@
 import { Check, Minus } from "lucide-react";
 import { formatPrice } from "@/components/billing/helpers";
+import { comingSoonIn, featureLabel } from "@/lib/features";
 import type { PublicPlan } from "@/lib/plan-catalog";
 
 type Cell = string | boolean;
@@ -21,6 +22,10 @@ function rowsFor(plans: PublicPlan[], trialDays: number): { label: string; cells
     { label: "Use your own Composio account", cells: each((p) => p.features.includes("ownComposio")) },
     { label: "Video and voiceover (when released)", cells: each((p) => p.limits.videos > 0 || p.limits.voiceCharacters > 0) },
   ];
+  // Features a plan has that are not ready yet (lib/features.ts "coming_soon"): said so, never ticked as included.
+  for (const key of comingSoonIn(plans.flatMap((p) => p.features))) {
+    rows.push({ label: featureLabel(key), cells: each((p) => (p.features.includes(key) ? "Coming soon" : false)) });
+  }
   return rows;
 }
 

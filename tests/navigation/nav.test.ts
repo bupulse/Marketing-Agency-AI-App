@@ -30,7 +30,7 @@ describe("menu groups", () => {
     expect(labels([...NAV_GROUPS])).toEqual([
       [null, ["Home"]],
       ["Create", ["Posts", "Videos", "Designs", "Photos", "Autopilot"]],
-      ["Publish", ["Calendar", "Channels", "Link in bio"]],
+      ["Publish", ["Calendar", "Channels", "Creators", "Link in bio"]],
       ["Customers", ["Inbox", "Leads", "Contacts", "Automations", "Website chat"]],
       ["Results", ["Analytics"]],
       ["My business", ["Business info", "Brand"]],
@@ -49,6 +49,20 @@ describe("menu groups", () => {
 
   it("shows an owner on a full plan everything", () => {
     expect(navFor("OWNER", ALL).flatMap((g) => g.items)).toHaveLength(NAV_ITEMS.length);
+  });
+
+  it('lists "Coming soon" pages as such, never as a link: the inbox, contacts and automations (owner decision)', () => {
+    expect(NAV_ITEMS.filter((i) => i.soon).map((i) => i.label)).toEqual(["Inbox", "Contacts", "Automations"]);
+    // Shown to everyone whose role could use them, whatever the plan, and never opened from the bar or "Find a page".
+    const soon = navFor("MEMBER", []).flatMap((g) => g.items).filter((i) => i.soon);
+    expect(soon.map((i) => i.label)).toEqual(["Inbox", "Contacts", "Automations"]);
+    expect(finderEntries("OWNER", [...ALL, "inbox", "automations"]).map((e) => e.label)).not.toContain("Inbox");
+    expect(hrefs(bottomBarItems("OWNER", [...ALL, "inbox"]))).not.toContain("/dashboard/inbox");
+  });
+
+  it("puts Creators under Publish, for the roles that may run campaigns", () => {
+    expect(NAV_ITEMS.find((i) => i.label === "Creators")).toMatchObject({ href: "/dashboard/creators", feature: "creators", permission: "creators" });
+    expect(navFor("MEMBER", ALL).flatMap((g) => g.items.map((i) => i.label))).not.toContain("Creators");
   });
 
   it("hides pages a role may not open, and a group left empty", () => {
@@ -70,6 +84,7 @@ describe("menu groups", () => {
     expect(labels(navFor("MEMBER", []))).toEqual([
       [null, ["Home"]],
       ["Create", ["Videos"]],
+      ["Customers", ["Inbox", "Contacts", "Automations"]],
       ["My business", ["Business info"]],
       ["Account & settings", ["Usage", "Settings"]],
     ]);
@@ -112,14 +127,14 @@ describe("+ Create", () => {
 });
 
 describe("phone bottom bar", () => {
-  it("is Home, Calendar and Inbox around the +", () => {
-    expect(hrefs(bottomBarItems("MEMBER", ALL))).toEqual(["/dashboard", "/dashboard/calendar", "/dashboard/inbox"]);
+  it("is Home, Calendar and Posts around the + while the inbox is coming soon", () => {
+    expect(hrefs(bottomBarItems("MEMBER", ALL))).toEqual(["/dashboard", "/dashboard/calendar", "/dashboard/content"]);
   });
 
   it("gives a missing page's place to the next that fits, never twice", () => {
-    expect(hrefs(bottomBarItems("OWNER", without("inbox")))).toEqual(["/dashboard", "/dashboard/calendar", "/dashboard/content"]);
-    expect(hrefs(bottomBarItems("OWNER", without("calendar")))).toEqual(["/dashboard", "/dashboard/content", "/dashboard/inbox"]);
-    expect(hrefs(bottomBarItems("OWNER", without("calendar", "inbox")))).toEqual(["/dashboard", "/dashboard/content", "/dashboard/leads"]);
+    expect(hrefs(bottomBarItems("OWNER", without("content")))).toEqual(["/dashboard", "/dashboard/calendar", "/dashboard/leads"]);
+    expect(hrefs(bottomBarItems("OWNER", without("calendar")))).toEqual(["/dashboard", "/dashboard/content", "/dashboard/leads"]);
+    expect(hrefs(bottomBarItems("OWNER", without("calendar", "content")))).toEqual(["/dashboard", "/dashboard/designs", "/dashboard/leads"]);
     expect(hrefs(bottomBarItems("OWNER", []))).toEqual(["/dashboard"]);
   });
 });
@@ -138,7 +153,7 @@ describe("Find a page", () => {
     expect(find("payment")).toEqual(["Billing"]);
     expect(find("MoMo")).toEqual(["Billing"]);
     expect(find("mobile money")).toEqual(["Billing"]);
-    expect(find("chat").slice(0, 2)).toEqual(["Website chat", "Inbox"]);
+    expect(find("chat")[0]).toBe("Website chat");
     expect(find("Instagram")[0]).toBe("Channels");
     expect(find("knowledge")).toContain("Business info");
     expect(find("gallery")).toContain("Photos");
