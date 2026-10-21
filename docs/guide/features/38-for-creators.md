@@ -1,31 +1,71 @@
 # For creators
 
-This page is for the content creators who post for a company's creator campaign. The company's side (making the
+This page is for the content creators who post for companies' creator campaigns. The company's side (making the
 campaign, picking creators, paying them) is [Creator campaigns](37-creator-campaigns.md). The rules behind it are in
-[docs/CREATOR_CAMPAIGNS.md](../../CREATOR_CAMPAIGNS.md).
+[docs/CREATOR_CAMPAIGNS.md](../../CREATOR_CAMPAIGNS.md) and [docs/CREATOR_MARKETPLACE.md](../../CREATOR_MARKETPLACE.md).
 
-**Where:** the campaign's own link, `bupulse.com/c/<campaign>`, to apply; then **bupulse.com/creator** (Campaigns,
-Earnings, Connections) after you are picked. A creator login is free and never needs a company.
+**Where:** **bupulse.com/creators** to find campaigns, a campaign's own page `bupulse.com/c/<campaign>`, and
+**bupulse.com/creator** (Campaigns, Tasks, Earnings, Connections, Profile) once you have an account. A creator account
+is free and never needs a company.
 
-## 1. Apply
+## 1. Find campaigns
 
-Open the link the company shared. It shows the brief, the rules, the platforms, the dates and how you are paid, for
-example "2,000 RWF for every 1,000 views, up to 50,000 views a month". Fill in the form:
+**bupulse.com/creators** lists every campaign open to creators now. Each card shows the company and its logo, the
+campaign, the platforms, the dates, the pay ("2,500 RWF for every 1,000 views"), the places left and the company's
+**payment record**:
 
-- your name, your WhatsApp number and your email (the email becomes your login if you are picked);
-- your name and follower count on each platform you post on (at least one);
-- one to three links to your best posts;
-- the company's own questions.
+- "Paid 12 creators · Usually within 3 days of the month's end": worked out by BuPulse from the payouts the company
+  marked paid. Nobody types it.
+- "New on BuPulse": the company has not paid anyone through BuPulse yet.
+- "Some payments late": a payout is more than 14 days past its month's end and not paid.
 
-One application per email per campaign. The company reads it; if they pick you, you get an email with a link.
+Filter by platform, by business type, by **Open now** or **Starting soon** (only campaigns with places left), and sort
+by **Best pay**. A filtered list is a link you can share. Tap a card for the campaign's page: the brief, the pay and
+the rules.
 
-## 2. Join
+## 2. Make your creator account
 
-The link in the email works once, for 14 days. It makes your creator login: choose a password and you are in. If your
-email already has a BuPulse login, sign in with it and the campaign is added. One login holds every campaign, from
-every company.
+**Make a creator account** (bupulse.com/creators/signup, also linked from the sign-in page): your name, email,
+WhatsApp number and a password. Open the link in the email from register@bupulse.com, and you land on your
+**Profile**.
 
-## 3. Connect your accounts
+**Profile** (once, it fills every application):
+
+- your name, WhatsApp number, where you are (district or city) and a few lines about you;
+- your name and follower count on each network you post on;
+- up to three links to your best posts;
+- **Let companies find me**: when on, companies on BuPulse can see your profile and invite you. They see your WhatsApp
+  and email only after you apply to or join one of their campaigns.
+
+Accounts you connect (Connections) show as **Verified** on your profile.
+
+## 3. Apply
+
+Signed in, a campaign's page shows **Apply with my profile**: answer the company's own questions, and that's it. If
+your profile is missing your WhatsApp number or an account on one of the campaign's platforms, **Complete my profile**
+takes you there and back. One application per campaign. When a company picks you, you join at once: you get an email
+and the campaign shows under **Joined**.
+
+Without an account you can still apply with the form on the campaign's page (name, WhatsApp, email, your accounts,
+best posts, the company's questions). If picked, you get an email with a link (it works once, for 14 days) that makes
+your login, or adds the campaign to the one you have.
+
+## 4. Invitations
+
+A company can invite you to its campaign (when "Let companies find me" is on). It shows under **Invitations** on
+your Campaigns page, with the pay and a link to the brief: **Accept** to join (if a place is still free), or
+**Decline**. An invitation lasts 14 days, then shows **Expired**.
+
+## 5. Your campaigns
+
+**Campaigns** groups everything: Invitations, **Joined**, **Waiting for the company** (applied, or picked and waiting
+for you to open the email's link) and **Ended** (ended campaigns, ones you left, and applications not picked). **Find
+campaigns** goes back to the marketplace.
+
+**Report this campaign** (on the campaign's page, and at the bottom of a joined campaign) tells BuPulse's team about a
+scam, a company that does not pay, spam or offensive content. Every report is read.
+
+## 6. Connect your accounts
 
 **Connections**: connect the accounts you post from. BuPulse reads your posts' views from them (through
 BuPulse-Socials) and never posts anything.
@@ -37,9 +77,10 @@ BuPulse-Socials) and never posts anything.
 
 Screenshots are not accepted: only posts of a connected account count.
 
-## 4. Post and hand in
+## 7. Post and hand in
 
-**Campaigns** shows today's tasks across your campaigns. Each task says what to post, how many posts a day, and where:
+**Tasks** lists your joined campaigns with what is due today; tap one to see its tasks (with one campaign it opens
+straight in). Each task says what to post, how many posts a day, and where:
 on each of its platforms, or on any one of them. Post it on your account, then tap **Hand in**:
 
 - a title and the caption you used;
@@ -55,7 +96,7 @@ BuPulse checks each link at once:
 A link that passes says **Counting views**. One that fails says **Not accepted** with the reason: fix the post (or
 make a new one) and hand it in again. A post counts in one campaign only.
 
-## 5. Views and pay
+## 8. Views and pay
 
 Views are read every 6 hours (once a day for posts older than a week). Each campaign is paid per month (30 days): the
 views your posts make in that month earn, by the campaign's pay rules. **Earnings** shows what you made so far this
