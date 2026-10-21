@@ -23,7 +23,9 @@ Plans → Live creator campaigns, Creators per campaign).
 4. Set the **goals** of each 30-day period: views per creator, views of all creators, and a **budget**. Views past a
    target do not earn; when all creators together pass the campaign target, everyone's counted views shrink by the
    same share. Leave a field empty for no limit.
-5. Add **your questions** for the application form (optional), then **Save as a draft**.
+5. Add **your questions** for the application form (optional). Leave **Show on the marketplace** on (it is on by
+   default) to list the campaign on **bupulse.com/creators**, where creators find campaigns themselves. Then **Save as
+   a draft**.
 
 The campaign is split into 30-day **pay periods** (the last one can be shorter), each with the goals you set.
 
@@ -42,13 +44,50 @@ cannot be deleted; change it instead.
 your rules, the platforms, the dates and the pay; creators apply there. **Pause** stops hand-ins until you **Resume**.
 **Settings → Close applications** keeps the page up without taking applications.
 
+**The marketplace.** While a campaign is live, taking applications and **shown on the marketplace**, it is listed on
+**bupulse.com/creators** with your name and logo, the pay in words, the places left and your payment record (how many
+creators you paid and how fast). **Settings → Take off the marketplace** removes it from that list; your link `/c/…`
+keeps working for anyone who has it. If BuPulse hides a campaign (for example after reports), Settings shows **Hidden by
+BuPulse** with the reason, and the switch has no effect until BuPulse shows it again.
+
 ## Applicants
 
 Each application shows the name, WhatsApp number, email, accounts with follower counts, links to their best posts and
 the answers to your questions. **Select** picks them: a link to make their creator login (it works once, for 14 days)
 is emailed to them and shown to you with **Copy link** and **Send on WhatsApp**. Lost it? **New link** makes another
-(the old one stops working). **Decline** says no; declined applicants can still be picked later. Invited and joined
-creators count towards your plan's creators per campaign.
+(the old one stops working). **Decline** says no; declined applicants can still be picked later.
+
+An applicant marked **Has a creator account** applied with their BuPulse creator login. **Select** adds them to the
+campaign at once: no link to send. They get an email and see the campaign in their creator account.
+
+**Invited by you, waiting for their answer** lists the creators you invited from **Find creators**. They have 14 days
+to accept or decline; after that the invitation shows **Expired** and **Invite again** sends a new one. **Withdraw**
+takes an invitation back. Their WhatsApp and email show once they join.
+
+**Places:** invited and joined creators, and invitations still waiting for an answer, count towards your plan's
+creators per campaign.
+
+## Find creators
+
+**Creators → Find creators** (`/dashboard/creators/find`) lists creators who chose **Let companies find me** in their
+creator profile. Filter by **platform**, **followers** (from and up to, on the platform picked), **location** and
+**Verified only** (they connected that account to BuPulse, so its views are real readings). The filters are in the
+page's address, so you can share a filtered list. Each creator shows their location, a few lines about them, their
+accounts with followers (**Verified** marked), their best posts and their **record in BuPulse campaigns**: campaigns
+joined and ended, posts that counted, total views, and posts removed or rejected. The record counts every company's
+campaigns but never shows another company's name or pay. Their WhatsApp and email show only once they applied to or
+joined one of your campaigns.
+
+**Invite** picks one of your live or draft campaigns. The creator gets an email and the invitation in their creator
+account, and accepts or declines. The invitation takes one of the campaign's places while it waits (14 days at most).
+You cannot invite someone already in that campaign, who applied to it, or whom you invited less than 14 days ago.
+
+## Report a creator
+
+**Report** (on a creator in the campaign's **Creators** tab and in **Find creators**) tells BuPulse about fake or
+bought views, spam, offensive content or something else, with what happened. The creator is not told who reported
+them. BuPulse can block a creator from the marketplace: they can no longer apply or be found, and open invitations are
+withdrawn; campaigns they already joined go on unless you remove them.
 
 ## Creators and posts
 
@@ -85,8 +124,11 @@ applications and hand-ins: the period running now still closes on its last day a
 ## For developers
 
 - Spec and the owner's decisions: `docs/CREATOR_CAMPAIGNS.md`.
-- Pages: `app/dashboard/creators/**` (list, `new`, `[id]` overview, `tasks`, `applicants`, `creators`,
+- Pages: `app/dashboard/creators/**` (list, `new`, `find`, `[id]` overview, `tasks`, `applicants`, `creators`,
   `creators/[creatorId]`, `posts`, `payouts`, `settings`); server actions in `app/dashboard/creators/actions.ts`.
+- Marketplace (company side): `lib/creators/finder.ts` (Find creators, the record, reporting a creator),
+  `lib/creators/offers.ts` (invitations), `docs/CREATOR_MARKETPLACE.md`. Admin: Admin → Clients → Creator marketplace
+  (`/admin/creators`, `lib/admin/creators-marketplace.ts`); open reports show in Admin → Inbox.
 - Components: `components/creators/company/**`.
 - Services: `lib/creators/campaigns.ts` (campaigns, tasks, applicants, invites, rejecting, payouts, goals),
   `lib/creators/analytics.ts` (overview, views per day, creators, posts, payout periods), `lib/creators/company-forms.ts`
@@ -94,4 +136,5 @@ applications and hand-ins: the period running now still closes on its last day a
   `periods.ts`, `ledger.ts`.
 - Tables: `CreatorCampaign`, `CreatorTask`, `CampaignCreator`, `CreatorSubmission`, `CreatorPost`,
   `CreatorPostSnapshot`, `CreatorPeriod`, `CreatorPayout`.
-- Tests: `tests/creators/`.
+- Tests: `tests/creators/`, `tests/admin/creators-marketplace.test.ts`; against the TEST database:
+  `RUN_DB_TESTS=1 node --env-file=.env node_modules/vitest/vitest.mjs run tests/creators/marketplace-company.db.test.ts`.

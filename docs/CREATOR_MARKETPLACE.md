@@ -87,6 +87,57 @@ without asking.
   them with a note and can hide or block from there.
 - **Payment record** (above): keeps companies honest in public.
 
+## Company side and admin: details decided while building (21 October 2026)
+
+Not owner decisions; change them freely.
+
+- **Listing switch.** The new-campaign form has "Show on the marketplace" (on). Afterwards it is its own switch in
+  Settings (`setListed`, not part of the settings form, so saving the form never flips it); showing needs the feature,
+  hiding never does. An ENDED campaign cannot be listed again. A campaign hidden by an admin shows "Hidden by BuPulse"
+  in its header, in the campaign list and, with the reason, in Settings; the switch keeps its value and applies again
+  once the admin shows it.
+- **Places.** `placesTaken()` (lib/creators/campaigns.ts) is the one count of `creatorsPerCampaign`: SELECTED + JOINED
+  + OFFERED with `offeredAt` less than 14 days ago, under the campaign's advisory lock. The Applicants line uses the same
+  rule, and so should the marketplace's "places left" (open offers hold a place).
+- **Picking someone with an account.** A row with `profileId` set (the creator applied from their account) goes
+  APPLIED or DECLINED → JOINED in one conditional update (`selectedAt` and `joinedAt` now, no token), and gets a
+  "You're in" email linking to `/creator`; the portal shows it because the row is JOINED. A blocked creator cannot be
+  picked. A row the company made itself (source OFFER) is never "selected": they answer the offer, or the company
+  invites them again.
+- **Offers** (lib/creators/offers.ts). To LIVE or DRAFT campaigns only, of creators who are `discoverable` and not
+  blocked. Refused when the creator already applied (pick them on Applicants), is SELECTED, JOINED or REMOVED there,
+  was declined after applying (Select after all), or has an offer under 14 days old. An expired offer, or one they
+  declined or the company withdrew, is made again on the same row (the `(campaignId, email)` unique key), with the
+  profile copied again. Email of the row: the creator's login email. Expiry is computed, not stored:
+  `offerExpiresAt(offeredAt)` / `offerExpired()` in lib/creators/company-forms.ts (shared with the creator's Accept).
+  Withdrawing sets DECLINED (offeredAt kept). Rate limit: 60 offers an hour per person.
+- **Contact details.** Shown in Find creators and on Applicants once the creator applied to one of the company's
+  campaigns (source LINK or MARKETPLACE, any status, also matched by email for link applications made before the
+  account existed) or joined one (`joinedAt` set). An OFFERED row shows "Their WhatsApp and email show once they join".
+- **Find creators.** One SQL query (`matchingIds`) filters and orders, 20 a page, most followers first. Followers: the
+  biggest typed count, on the platform picked when there is one; a creator without a count drops out of a follower
+  filter. Platform: a typed handle or an ACTIVE connection on it. Verified: an ACTIVE `CreatorConnection` (on the
+  platform picked). Location: contains, case-insensitive, `%` and `_` typed literally. A typed handle is marked
+  verified when an ACTIVE connection on that network has the same username; a connected account not typed is added,
+  verified, without a count.
+- **The record**: memberships with `joinedAt` set, in any company; "ended" counts those whose campaign is ENDED;
+  posts that counted are TRACKING or FINAL with their latest views; "removed or rejected" counts REMOVED and REJECTED
+  posts. INVALID links don't count either way. A creator with no joined campaign shows "New to BuPulse campaigns".
+- **Company reports.** Report on a creator in the campaign's Creators tab and in Find creators. Allowed for a creator
+  the company can find, or who has any row in its campaigns. Works without the feature (like the other safety steps).
+- **Admin console** (Admin → Clients → Creator marketplace, `/admin/creators`, page permission `clients.view`,
+  actions `clients.manage`): tabs Reports (open first, oldest first; resolved, newest first), Campaigns (search name,
+  link or company; listed, not listed, hidden) and Creators (search name, email, WhatsApp or location; findable,
+  blocked). Hide and block need a reason (3+ characters; the company sees a hide's reason); unhide and unblock take an
+  optional one; resolving needs a note. Hiding or blocking from a report resolves that report in the same
+  transaction, with the note "Campaign hidden: …" or "Creator blocked: …". Unblocking does not bring back withdrawn
+  offers. Audit actions: `creators_hide_campaign`, `creators_unhide_campaign`, `creators_block_creator` (with
+  `offersWithdrawn`), `creators_unblock_creator`, `creators_resolve_report`.
+- **Inbox.** OPEN reports are the inbox section "Creator marketplace reports" (key `reports`), counted in the Inbox
+  badge for people with `clients.manage`, and the page's own sidebar badge.
+- **Report reasons** live in `lib/creators/report-reasons.ts` (pure, for the forms); lib/creators/reports.ts
+  re-exports them.
+
 ## Code map
 
 | Part | Where |
