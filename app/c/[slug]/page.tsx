@@ -1,30 +1,49 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, Coins, Megaphone, ShieldCheck } from "lucide-react";
-import { BackgroundBlobs } from "@/components/motion";
-import { Logo } from "@/components/brand/logo";
-import { ThemeToggle } from "@/components/theme";
-import { Badge, GlassCard } from "@/components/ui";
+import { CalendarDays, Coins, Megaphone, ShieldCheck, Users } from "lucide-react";
+import { Badge, Button, GlassCard } from "@/components/ui";
+import { CompanyLogo, placesInWords } from "@/components/creators/marketplace/campaign-card";
+import { CreatorsFrame } from "@/components/creators/marketplace/header";
+import { PaymentRecordLine } from "@/components/creators/marketplace/payment-record";
 import { ApplyForm } from "@/components/creators/portal/apply-form";
-import { canPreview, loadPublicCampaign, takesApplications } from "@/lib/creators/apply";
+import { QuickApplyForm } from "@/components/creators/portal/quick-apply-form";
+import { ReportCampaign } from "@/components/creators/portal/report-campaign";
+import { reportCampaignAction } from "@/app/creator/(portal)/actions";
+import { canPreview, loadPublicCampaign, takesApplications, type PublicCampaign } from "@/lib/creators/apply";
+import { publicViewer } from "@/lib/creators/auth";
 import { formatSpan, NETWORK_ACCOUNT, NETWORK_LABEL, isCreatorNetwork, listWords, creatorPayInWords } from "@/lib/creators/describe";
-import { getCurrentUser } from "@/lib/supabase/server";
-import { applyAction } from "./actions";
+import { placesLeftIn } from "@/lib/creators/marketplace";
+import { dayIn } from "@/lib/creators/periods";
+import { gapsInWords } from "@/lib/creators/profile-form";
+import { viewerOf } from "@/lib/creators/quick-apply";
+import { paymentRecord } from "@/lib/creators/record";
+import { CAMPAIGN_REPORT_REASONS, REPORT_REASON_LABEL } from "@/lib/creators/reports";
+import { applyAction, quickApplyAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-// A campaign's public application page (docs/CREATOR_CAMPAIGNS.md, "Applying"): the brief, the rules, the platforms,
-// the dates and the pay rules in plain words, and the form. Open while the campaign is LIVE and taking applications;
-// the company's own people can preview it before that. Shared as a link, never indexed.
+// A campaign's public application page (docs/CREATOR_CAMPAIGNS.md, "Applying"; docs/CREATOR_MARKETPLACE.md): the
+// brief, the rules, the platforms, the dates, the pay rules in plain words, the places left and the company's payment
+// record. Visitors get the form; a signed-in creator applies in one tap with their profile (and can report the
+// campaign); a company person is told creators apply with a creator account. Open while the campaign is LIVE and
+// taking applications; the company's own people can preview it before that. Indexed only while it is on the
+// marketplace (listed, not hidden); unlisted and hidden campaigns keep their link, noindex.
+
+/** On the marketplace now, so search engines may list its page (lib/creators/market-filters.ts isListed). */
+const onMarket = (c: PublicCampaign) => takesApplications(c) && c.listed && !c.hidden && c.endsOn >= dayIn(new Date(), c.company.timezone);
 
 export async function generateMetadata({ params }: PageProps<"/c/[slug]">): Promise<Metadata> {
   const { slug } = await params;
   const c = await loadPublicCampaign(slug.toLowerCase()).catch(() => null);
+  const shown = c && c.status !== "DRAFT" ? c : null;
+  const description = shown ? `A creator campaign by ${shown.company.name} on BuPulse. ${creatorPayInWords(shown.payRules, shown.goals, shown.currency)[0] ?? "Read the brief"}. Apply as a creator.` : undefined;
   return {
-    title: c ? `${c.name} · ${c.company.name}` : "Creator campaign",
-    description: c ? `A creator campaign by ${c.company.name} on BuPulse. Read the brief and apply.` : undefined,
-    robots: { index: false, follow: false },
+    title: shown ? `${shown.name} · ${shown.company.name}` : "Creator campaign",
+    description,
+    alternates: shown ? { canonical: `/c/${shown.slug}` } : undefined,
+    openGraph: shown ? { title: `${shown.name} · ${shown.company.name}`, description, url: `/c/${shown.slug}`, type: "website" } : undefined,
+    robots: shown && onMarket(shown) ? { index: true, follow: true } : { index: false, follow: false },
   };
 }
 
@@ -44,24 +63,21 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
   const { slug } = await params;
   const campaign = await loadPublicCampaign(slug.toLowerCase());
   if (!campaign) notFound();
-  const open = takesApplications(campaign);
-  const preview = !open && campaign.status === "DRAFT" && (await canPreview(campaign, (await getCurrentUser())?.id));
+  const { kind, user } = await publicViewer();
+  // Hidden by a BuPulse admin: the page stays for the creators already in it, but takes no new applications.
+  const open = takesApplications(campaign) && !campaign.hidden;
+  const preview = !open && campaign.status === "DRAFT" && (await canPreview(campaign, user?.id));
   if (campaign.status === "DRAFT" && !preview) notFound();
+  const [viewer, places, record] = await Promise.all([viewerOf(campaign, user), placesLeftIn({ id: campaign.id, businessId: campaign.company.id }), paymentRecord(campaign.company.id)]);
 
   const pay = creatorPayInWords(campaign.payRules, campaign.goals, campaign.currency);
   const networks = campaign.platforms.filter(isCreatorNetwork);
-  const closed = campaign.status === "ENDED" ? "This campaign has ended." : "This campaign is not taking applications right now.";
+  const closed = campaign.status === "ENDED" ? "This campaign has ended." : places === 0 && open ? "All places in this campaign are taken right now." : "This campaign is not taking applications right now.";
+  const canApply = open && places > 0;
+  const back = `/c/${campaign.slug}`;
 
   return (
-    <div className="relative min-h-dvh">
-      <BackgroundBlobs />
-      <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-4 pt-5 sm:px-6">
-        <Link href="/" aria-label="BuPulse home" className="inline-flex min-h-11 items-center">
-          <Logo height={28} priority />
-        </Link>
-        <ThemeToggle />
-      </header>
-
+    <CreatorsFrame viewer={kind}>
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pb-16 pt-6 sm:px-6">
         {preview && (
           <p role="status" className="rounded-field bg-new-bg px-4 py-3 text-sm font-medium text-new">
@@ -69,10 +85,7 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
           </p>
         )}
         <div className="flex items-center gap-3">
-          {campaign.company.logoUrl && (
-            // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed Storage URL
-            <img src={campaign.company.logoUrl} alt="" width={48} height={48} className="size-12 rounded-2xl bg-surface object-contain" />
-          )}
+          <CompanyLogo name={campaign.company.name} url={campaign.company.logoUrl} />
           <div className="min-w-0">
             <p className="text-sm font-medium text-muted">Creator campaign by {campaign.company.name}</p>
             <h1 className="text-3xl font-bold leading-tight tracking-[-0.03em] sm:text-4xl">{campaign.name}</h1>
@@ -88,7 +101,14 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
               {NETWORK_LABEL[n]}
             </Badge>
           ))}
+          {open && (
+            <Badge tone={places === 0 ? "danger" : "success"}>
+              <Users aria-hidden className="size-3.5" />
+              {placesInWords(places)}
+            </Badge>
+          )}
         </div>
+        <PaymentRecordLine record={record} className="text-sm" />
 
         <Section icon={Megaphone} title="The brief">
           <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{campaign.brief}</p>
@@ -119,17 +139,59 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
           </ul>
         </Section>
 
-        {open || preview ? (
-          <ApplyForm apply={applyAction.bind(null, campaign.slug)} platforms={campaign.platforms} questions={campaign.questions} companyName={campaign.company.name} preview={preview} />
-        ) : (
+        {preview ? (
+          <ApplyForm apply={applyAction.bind(null, campaign.slug)} platforms={campaign.platforms} questions={campaign.questions} companyName={campaign.company.name} preview />
+        ) : viewer.kind === "creator" && viewer.applied ? (
+          <GlassCard strong padding="lg" role="status" className="flex flex-col items-start gap-3">
+            <p className="text-[15px] font-medium">{viewer.applied.status === "OFFERED" ? `${campaign.company.name} invited you to this campaign. Answer on your Campaigns page.` : viewer.applied.status === "JOINED" ? "You are in this campaign." : "You applied to this campaign."}</p>
+            <Button href="/creator" size="sm">Your campaigns</Button>
+          </GlassCard>
+        ) : !canApply ? (
           <GlassCard strong padding="lg" role="status">
             <p className="text-[15px] font-medium">{closed}</p>
           </GlassCard>
+        ) : viewer.kind === "company" ? (
+          <GlassCard strong padding="lg" role="status" className="flex flex-col items-start gap-2">
+            <p className="text-[15px] font-medium">Creators apply with a creator account.</p>
+            <p className="text-sm text-muted">You are signed in as a company. To apply, sign out and make a creator account with another email.</p>
+          </GlassCard>
+        ) : viewer.kind === "creator" ? (
+          viewer.blocked ? (
+            <GlassCard strong padding="lg" role="status">
+              <p className="text-[15px] font-medium">Your creator account cannot apply to campaigns right now. Write to BuPulse if you think this is a mistake.</p>
+            </GlassCard>
+          ) : viewer.gaps.length ? (
+            <GlassCard strong padding="lg" className="flex flex-col items-start gap-3">
+              <h2 className="text-xl font-semibold tracking-tight">Apply in one tap</h2>
+              <p className="text-[15px] text-muted">{gapsInWords(viewer.gaps, campaign.platforms)} to your profile first, then come back here.</p>
+              <Button href={`/creator/profile?next=${encodeURIComponent(back)}`}>Complete my profile</Button>
+            </GlassCard>
+          ) : (
+            <QuickApplyForm apply={quickApplyAction.bind(null, campaign.slug)} questions={campaign.questions} companyName={campaign.company.name} profileName={viewer.name} slug={campaign.slug} />
+          )
+        ) : (
+          <>
+            <GlassCard padding="none" className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[15px] font-medium">Have a creator account? Apply in one tap with your profile.</p>
+              <div className="flex shrink-0 gap-2">
+                <Button href={`/login?next=${encodeURIComponent(back)}`} size="sm" variant="outline">Sign in</Button>
+                <Button href="/creators/signup" size="sm">Make one</Button>
+              </div>
+            </GlassCard>
+            <ApplyForm apply={applyAction.bind(null, campaign.slug)} platforms={campaign.platforms} questions={campaign.questions} companyName={campaign.company.name} />
+          </>
         )}
+
+        {viewer.kind === "creator" && <ReportCampaign report={reportCampaignAction.bind(null, campaign.id)} reasons={CAMPAIGN_REPORT_REASONS.map((r) => ({ value: r, label: REPORT_REASON_LABEL[r] }))} />}
         <p className="text-center text-xs text-muted">
-          Run with <Link href="/" className="underline">BuPulse</Link>. Already picked? <Link href="/login?next=/creator" className="underline">Sign in</Link>.
+          Run with <Link href="/" className="underline">BuPulse</Link>. <Link href="/creators" className="underline">More campaigns</Link>
+          {kind === "guest" && (
+            <>
+              {" "}· Already picked? <Link href="/login?next=/creator" className="underline">Sign in</Link>
+            </>
+          )}
         </p>
       </main>
-    </div>
+    </CreatorsFrame>
   );
 }

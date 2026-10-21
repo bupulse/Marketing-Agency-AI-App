@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { ResendByEmail } from "@/components/auth/resend-by-email";
@@ -48,6 +49,12 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </p>
       ) : null}
       <LoginForm next={next} defaultEmail={email} />
+      <p className="text-center text-sm text-muted">
+        A content creator?{" "}
+        <Link href="/creators/signup" className="inline-flex min-h-11 items-center font-semibold text-pulse-blue underline">
+          Make a creator account
+        </Link>
+      </p>
     </AuthShell>
   );
 }
