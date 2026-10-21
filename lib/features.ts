@@ -34,7 +34,10 @@ export const FEATURE_KEYS = [
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
-/** built: sellable and enforced. coming_soon: listed as "Coming soon", cannot be put in a plan. */
+/**
+ * built: sellable and enforced. coming_soon: listed as "Coming soon", cannot be added to a plan, and never granted. A
+ * plan that already has a coming-soon key keeps it, dormant, so the feature comes back to it when it is built again.
+ */
 export type FeatureStatus = "built" | "coming_soon";
 
 export interface FeatureDef {
@@ -270,7 +273,9 @@ export const FEATURES: readonly FeatureDef[] = [
     description: "One inbox for website chats and social messages, where your team answers, plus every contact with tags and details.",
     requires: [],
     services: [],
-    status: "built",
+    // Coming soon (owner decision, 21 October 2026): plans that have it keep the key, dormant (lib/entitlements.ts
+    // grants no coming-soon feature). Set "built" again to switch it back on for them.
+    status: "coming_soon",
     kind: "app",
     routes: ["/dashboard/inbox", "/dashboard/contacts"],
   },
@@ -281,7 +286,8 @@ export const FEATURES: readonly FeatureDef[] = [
     requires: ["inbox"],
     metric: "chat",
     services: [],
-    status: "built",
+    // Coming soon with the inbox it needs (owner decision, 21 October 2026).
+    status: "coming_soon",
     kind: "app",
     routes: ["/dashboard/automations"],
   },
@@ -334,6 +340,11 @@ export function featureLabel(key: FeatureKey): string {
   return BY_KEY[key].label;
 }
 
+/** The coming-soon keys among `keys` (a plan's dormant features). */
+export function comingSoonIn(keys: Iterable<string>): FeatureKey[] {
+  return sortFeatureKeys([...keys].filter((k): k is FeatureKey => isFeatureKey(k) && BY_KEY[k].status === "coming_soon"));
+}
+
 /** Keys that can be put in a plan today. */
 export const BUILT_FEATURE_KEYS: FeatureKey[] = FEATURES.filter((f) => f.status === "built").map((f) => f.key);
 
@@ -372,14 +383,16 @@ export type FeatureSetProblem =
 
 /**
  * Checks a plan's feature list: every key exists, none is "coming soon", and every prerequisite is in the list.
- * `message` is one sentence an admin can act on; `keys` is the cleaned, ordered list when there is no problem.
+ * `dormant` are coming-soon keys the plan already had: they are kept, not refused. `message` is one sentence an admin
+ * can act on; `keys` is the cleaned, ordered list when there is no problem.
  */
-export function validateFeatureSet(input: Iterable<string>): { ok: true; keys: FeatureKey[] } | { ok: false; problems: FeatureSetProblem[]; message: string } {
+export function validateFeatureSet(input: Iterable<string>, dormant: Iterable<string> = []): { ok: true; keys: FeatureKey[] } | { ok: false; problems: FeatureSetProblem[]; message: string } {
   const problems: FeatureSetProblem[] = [];
   const keys = new Set<FeatureKey>();
+  const kept = new Set<string>(dormant);
   for (const key of input) {
     if (!isFeatureKey(key)) problems.push({ kind: "unknown", key: String(key) });
-    else if (BY_KEY[key].status === "coming_soon") problems.push({ kind: "coming_soon", key });
+    else if (BY_KEY[key].status === "coming_soon" && !kept.has(key)) problems.push({ kind: "coming_soon", key });
     else keys.add(key);
   }
   for (const need of FEATURE_KEYS) {

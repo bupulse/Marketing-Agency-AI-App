@@ -172,6 +172,19 @@ function NavLink({ href, label, icon: Icon, pathname, badge, onNavigate }: { hre
   );
 }
 
+/** A menu page whose feature is "Coming soon" (lib/features.ts): listed, not a link. */
+function SoonItem({ label, icon: Icon }: { label: string; icon: NavGroup["items"][number]["icon"] }) {
+  return (
+    <div aria-disabled="true" className="flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium text-muted opacity-70">
+      <Icon aria-hidden className="size-[18px] shrink-0" />
+      <span className="flex min-w-0 flex-col py-1 leading-tight">
+        {label}
+        <span className="text-[12px] font-semibold text-new">Coming soon</span>
+      </span>
+    </div>
+  );
+}
+
 function BrandMark({ name, brand, size }: { name: string; brand: ShellBrand; size: number }) {
   if (brand.logoUrl) {
     return (
@@ -286,7 +299,13 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, studio, 
       </Link>
     ) : null;
   const links = (g: NavGroup) =>
-    g.items.map((i) => <NavLink key={i.href} href={i.href} label={i.label} icon={i.icon} pathname={pathname} badge={i.href === "/dashboard/inbox" ? inboxUnread : undefined} onNavigate={onNavigate} />);
+    g.items.map((i) =>
+      i.soon ? (
+        <SoonItem key={i.href} label={i.label} icon={i.icon} />
+      ) : (
+        <NavLink key={i.href} href={i.href} label={i.label} icon={i.icon} pathname={pathname} badge={i.href === "/dashboard/inbox" ? inboxUnread : undefined} onNavigate={onNavigate} />
+      ),
+    );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">

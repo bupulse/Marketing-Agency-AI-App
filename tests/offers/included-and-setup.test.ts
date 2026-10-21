@@ -66,7 +66,7 @@ describe("included amounts", () => {
 
 describe("features that are not set up are not sold", () => {
   const none = {};
-  const all = { GOOGLE_PICKER_API_KEY: "k", GOOGLE_PICKER_APP_ID: "1", GOOGLE_CLIENT_ID: "c", DROPBOX_APP_KEY: "d", SHOPIFY_API_KEY: "s", SHOPIFY_API_SECRET: "t", CANVA_CLIENT_ID: "c", CANVA_CLIENT_SECRET: "s", ELEVENLABS_API_KEY: "e" };
+  const all = { GOOGLE_PICKER_API_KEY: "k", GOOGLE_PICKER_APP_ID: "1", GOOGLE_CLIENT_ID: "c", DROPBOX_APP_KEY: "d", SHOPIFY_API_KEY: "s", SHOPIFY_API_SECRET: "t", CANVA_CLIENT_ID: "c", CANVA_CLIENT_SECRET: "s", ELEVENLABS_API_KEY: "e", COMPOSIO_API_KEY: "c" };
 
   it("Drive and Dropbox import needs a Google Picker key (with an OAuth client) or a Dropbox app key", () => {
     expect(notSetUpFeatures(none)).toContain("driveImport");

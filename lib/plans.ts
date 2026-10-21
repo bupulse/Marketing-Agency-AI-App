@@ -34,7 +34,16 @@ export const PLAN_STATUSES: PlanStatus[] = ["active", "hidden", "retired"];
  * metric; and `postsPerAppPerDay`: how many posts "Create today's content" and Autopilot make per app per day
  * (docs/CONTENT.md), 1 when missing.
  */
-export type PlanLimits = Record<UsageMetric, number> & { seats: number; postsPerAppPerDay?: number; /** Videos a company may make in one day (Kigali), 4 when missing (docs/CONTENT_VISUALS.md). */ videosPerDay?: number };
+export type PlanLimits = Record<UsageMetric, number> & {
+  seats: number;
+  postsPerAppPerDay?: number;
+  /** Videos a company may make in one day (Kigali), 4 when missing (docs/CONTENT_VISUALS.md). */
+  videosPerDay?: number;
+  /** Creator campaigns LIVE or PAUSED at once, LIVE_CAMPAIGNS when missing (docs/CREATOR_CAMPAIGNS.md). */
+  liveCampaigns?: number;
+  /** Creators picked (SELECTED or JOINED) in one creator campaign, CREATORS_PER_CAMPAIGN when missing. */
+  creatorsPerCampaign?: number;
+};
 export const SEATS_MIN = 1;
 export const SEATS_MAX = 1000;
 export const POSTS_PER_APP_MIN = 1;
@@ -44,6 +53,24 @@ export const POSTS_PER_APP_MAX = 10;
 export function postsPerAppLimit(limits: Pick<PlanLimits, "postsPerAppPerDay"> | null | undefined): number {
   const v = limits?.postsPerAppPerDay;
   return typeof v === "number" && Number.isInteger(v) ? Math.min(Math.max(v, POSTS_PER_APP_MIN), POSTS_PER_APP_MAX) : POSTS_PER_APP_MIN;
+}
+
+/** Creator campaigns (docs/CREATOR_CAMPAIGNS.md, "Limits"): the defaults of a plan that does not set its own. */
+export const LIVE_CAMPAIGNS = 2;
+export const LIVE_CAMPAIGNS_MAX = 50;
+export const CREATORS_PER_CAMPAIGN = 20;
+export const CREATORS_PER_CAMPAIGN_MAX = 1000;
+
+/** Creator campaigns a plan allows LIVE or PAUSED at once (1 to 50; LIVE_CAMPAIGNS when missing). */
+export function liveCampaignsLimit(limits: Pick<PlanLimits, "liveCampaigns"> | null | undefined): number {
+  const v = limits?.liveCampaigns;
+  return typeof v === "number" && Number.isInteger(v) ? Math.min(Math.max(v, 1), LIVE_CAMPAIGNS_MAX) : LIVE_CAMPAIGNS;
+}
+
+/** Creators a plan allows picked in one campaign (1 to 1000; CREATORS_PER_CAMPAIGN when missing). */
+export function creatorsPerCampaignLimit(limits: Pick<PlanLimits, "creatorsPerCampaign"> | null | undefined): number {
+  const v = limits?.creatorsPerCampaign;
+  return typeof v === "number" && Number.isInteger(v) ? Math.min(Math.max(v, 1), CREATORS_PER_CAMPAIGN_MAX) : CREATORS_PER_CAMPAIGN;
 }
 
 export interface PlanConfig {

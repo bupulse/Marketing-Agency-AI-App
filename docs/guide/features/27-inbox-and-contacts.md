@@ -1,5 +1,7 @@
 # Inbox and contacts
 
+> **Coming soon (owner decision, 21 October 2026).** Inbox and contacts is switched off for now: the menu shows it as "Coming soon", its pages say it is on its way, and plans that include it keep it, dormant, until it is switched back on (`status` in `lib/features.ts`). The website chat still collects leads.
+
 The Inbox is one place for every conversation: the website chat today, and the Instagram and Facebook comments and DMs
 of accounts that have "Answer comments and messages" switched on. The team reads, answers, writes notes only the team
 sees, assigns conversations to each other and closes them. Contacts is the list of everyone who wrote, on any channel,

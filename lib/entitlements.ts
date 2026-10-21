@@ -151,7 +151,8 @@ export const companyEntitlements = cache(async (businessId: string): Promise<Com
   const off = await disabledServices();
   // A read-only account keeps its plan's features for viewing; `block` says they may not be acted on. Its answer is
   // definite (resolved), never "plan_unknown": a company waiting for its demo is refused with 403, not 503.
-  const inPlan = new Set<FeatureKey>(plan?.features ?? []);
+  // A coming-soon feature a plan still lists is dormant (lib/features.ts): never granted, whatever the plan says.
+  const inPlan = new Set<FeatureKey>((plan?.features ?? []).filter((k) => featureOf(k).status === "built"));
   return { inPlan, usable: new Set([...inPlan].filter((k) => serviceUp(k, off))), resolved: plan !== null || block !== null, block };
 });
 

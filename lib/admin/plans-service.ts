@@ -20,8 +20,8 @@ import {
   type PaddlePriceRecord,
   type PlanView,
 } from "@/lib/plan-catalog";
-import { validateFeatureSet, type FeatureKey } from "@/lib/features";
-import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY } from "@/lib/plans";
+import { comingSoonIn, validateFeatureSet, type FeatureKey } from "@/lib/features";
+import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY, CREATORS_PER_CAMPAIGN, CREATORS_PER_CAMPAIGN_MAX, LIVE_CAMPAIGNS, LIVE_CAMPAIGNS_MAX } from "@/lib/plans";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -35,6 +35,9 @@ const MAX_PRICE_CENTS = 10_000_000;
 export const NOTICE_DAYS = 30;
 export const CUSTOM_PRICE_MESSAGE = "A custom plan's price comes from its offer and cannot be changed here. To change it, make a new offer from the company's page.";
 
+/** Every limit a plan sets: the usage metrics and the plain numbers next to them. */
+type LimitKey = UsageMetric | "seats" | "postsPerAppPerDay" | "videosPerDay" | "liveCampaigns" | "creatorsPerCampaign";
+
 export type PlanInput = {
   key?: string;
   name: string;
@@ -45,8 +48,11 @@ export type PlanInput = {
   status?: PlanStatus;
   sortOrder?: number;
   highlight?: boolean;
-  /** The usage limits, `seats` (users per company, 1 to 1000) and `postsPerAppPerDay` (1 to 10, docs/CONTENT.md). */
-  limits?: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay" | "videosPerDay", number>>;
+  /**
+   * The usage limits, `seats` (users per company, 1 to 1000), `postsPerAppPerDay` (1 to 10, docs/CONTENT.md), and the
+   * creator campaign limits `liveCampaigns` (1 to 50) and `creatorsPerCampaign` (1 to 1000, docs/CREATOR_CAMPAIGNS.md).
+   */
+  limits?: Partial<Record<LimitKey, number>>;
   /** Marketing bullets on the pricing card. */
   highlights?: string[];
   /** Feature keys (lib/features.ts). Every prerequisite must be in the list; "coming soon" features are refused. */
@@ -144,7 +150,15 @@ export function mergePlan(base: Snapshot, patch: Partial<PlanInput>, isTrial: bo
         next.limits.videosPerDay = int(value, "Videos per day", 0, 100);
         continue;
       }
-      if (!(USAGE_METRICS as string[]).includes(metric)) throw new AdminError("invalid", `Unknown limit "${metric}". Use: seats, postsPerAppPerDay, videosPerDay, ${USAGE_METRICS.join(", ")}.`);
+      if (metric === "liveCampaigns") {
+        next.limits.liveCampaigns = int(value, "Live creator campaigns", 1, LIVE_CAMPAIGNS_MAX);
+        continue;
+      }
+      if (metric === "creatorsPerCampaign") {
+        next.limits.creatorsPerCampaign = int(value, "Creators per campaign", 1, CREATORS_PER_CAMPAIGN_MAX);
+        continue;
+      }
+      if (!(USAGE_METRICS as string[]).includes(metric)) throw new AdminError("invalid", `Unknown limit "${metric}". Use: seats, postsPerAppPerDay, videosPerDay, liveCampaigns, creatorsPerCampaign, ${USAGE_METRICS.join(", ")}.`);
       next.limits[metric as UsageMetric] = int(value, `The ${metric} limit`, 0, MAX_LIMIT);
     }
   }
@@ -163,8 +177,12 @@ export function mergePlan(base: Snapshot, patch: Partial<PlanInput>, isTrial: bo
     }
   }
   if (features !== null) {
+    // Coming-soon features the plan already has stay stored, dormant (nothing grants them), so the plan still saves and
+    // gets them back when they are built again. They cannot be added or taken off meanwhile (the form cannot tick them).
+    const dormant = comingSoonIn(base.features);
+    features = [...features.filter((k) => !dormant.includes(k as FeatureKey)), ...dormant];
     // Prerequisites are not added quietly: the form ticks them itself, and the API is told what is missing.
-    const checked = validateFeatureSet(features);
+    const checked = validateFeatureSet(features, dormant);
     if (!checked.ok) throw new AdminError("invalid", checked.message);
     next.features = checked.keys;
   }
@@ -661,16 +679,28 @@ export async function retryFailedPriceItems(ctx: AdminContext, id: string) {
 // ---- limits only (the update_plan_limits tool) -----------------------------------------------------------------------------------
 
 /** Sets a plan's limits. A metric set to null goes back to the value the plan was seeded with (0 for plans created later). */
-export async function setPlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay" | "videosPerDay", number | null>> }) {
+export async function setPlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<LimitKey, number | null>> }) {
   const plan = await loadPlan(input.plan);
   const entries = Object.entries(input.limits ?? {});
   if (entries.length === 0) throw new AdminError("invalid", "limits must set at least one metric.");
-  const patch: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay" | "videosPerDay", number>> = {};
+  const patch: Partial<Record<LimitKey, number>> = {};
   for (const [metric, value] of entries) {
     if (metric === "videosPerDay") {
       if (value === null) patch.videosPerDay = VIDEOS_PER_DAY;
       else if (!Number.isInteger(value) || value < 0 || value > 100) throw new AdminError("invalid", "videosPerDay must be a whole number from 0 to 100, or null to reset.");
       else patch.videosPerDay = value;
+      continue;
+    }
+    if (metric === "liveCampaigns") {
+      if (value === null) patch.liveCampaigns = LIVE_CAMPAIGNS;
+      else if (!Number.isInteger(value) || value < 1 || value > LIVE_CAMPAIGNS_MAX) throw new AdminError("invalid", `liveCampaigns must be a whole number from 1 to ${LIVE_CAMPAIGNS_MAX}, or null to reset.`);
+      else patch.liveCampaigns = value;
+      continue;
+    }
+    if (metric === "creatorsPerCampaign") {
+      if (value === null) patch.creatorsPerCampaign = CREATORS_PER_CAMPAIGN;
+      else if (!Number.isInteger(value) || value < 1 || value > CREATORS_PER_CAMPAIGN_MAX) throw new AdminError("invalid", `creatorsPerCampaign must be a whole number from 1 to ${CREATORS_PER_CAMPAIGN_MAX}, or null to reset.`);
+      else patch.creatorsPerCampaign = value;
       continue;
     }
     if (metric === "postsPerAppPerDay") {

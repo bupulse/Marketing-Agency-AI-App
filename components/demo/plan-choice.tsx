@@ -9,6 +9,7 @@ import type { RegionalPlan } from "@/lib/region-prices";
 import { paymentMethodLabel } from "@/lib/region-format";
 import { cn } from "@/lib/cn";
 import { choosePlanAction, type BookDemoState } from "@/app/book-demo/actions";
+import { ComingSoonFeatures } from "@/components/billing/coming-soon-features";
 
 /** Step 1 of /book-demo: the region's plans as radio cards. `suggested`: the /pricing quiz's pick (lib/plan-quiz.ts). */
 export function PlanChoice({ plans, current, suggested = null }: { plans: RegionalPlan[]; current: string | null; suggested?: string | null }) {
@@ -71,6 +72,7 @@ export function PlanChoice({ plans, current, suggested = null }: { plans: Region
                     {h}
                   </li>
                 ))}
+                <ComingSoonFeatures features={plan.features} className="gap-2 [&_svg]:size-4" />
               </ul>
             </label>
           );

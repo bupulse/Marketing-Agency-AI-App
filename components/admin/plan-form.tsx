@@ -7,7 +7,7 @@ import { formatPrice } from "@/components/billing/helpers";
 import { Badge, Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FEATURES, dependentsOf, featureLabel, withPrerequisites, type FeatureKey } from "@/lib/features";
-import { USAGE_METRICS, type PlanLimits, type PlanStatus, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY } from "@/lib/plans";
+import { USAGE_METRICS, type PlanLimits, type PlanStatus, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY, CREATORS_PER_CAMPAIGN_MAX, creatorsPerCampaignLimit, LIVE_CAMPAIGNS_MAX, liveCampaignsLimit } from "@/lib/plans";
 
 export type PlanFormInitial = {
   key: string;
@@ -39,6 +39,8 @@ const METRIC_LABELS: Record<string, string> = {
   seats: "Team seats",
   postsPerAppPerDay: "Posts per app per day",
   videosPerDay: "Videos per day",
+  liveCampaigns: "Live creator campaigns",
+  creatorsPerCampaign: "Creators per campaign",
 };
 
 const cents = (dollars: string) => {
@@ -71,7 +73,7 @@ export function FeatureChecklist({ selected, onChange }: { selected: FeatureKey[
             <span>
               <span className="flex flex-wrap items-center gap-2">
                 <strong>{f.label}</strong>
-                {soon && <Badge tone="violet">Coming soon</Badge>}
+                {soon && <Badge tone="violet">{on ? "Coming soon: kept in this plan" : "Coming soon"}</Badge>}
                 {f.kind === "service" && <Badge tone="neutral">Service</Badge>}
                 {neededBy.length > 0 && <Badge tone="blue">Needed by {neededBy.map(featureLabel).join(", ")}</Badge>}
               </span>
@@ -130,7 +132,7 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
   // Every field is controlled, so nothing is lost when the form action finishes (React resets uncontrolled fields).
   const [key, setKey] = useState(initial.key);
   const [sortOrder, setSortOrder] = useState(String(initial.sortOrder));
-  const [limits, setLimits] = useState<Record<string, string>>(Object.fromEntries([...[...USAGE_METRICS, "seats"].map((m) => [m, String(initial.limits[m as keyof PlanLimits])]), ["postsPerAppPerDay", String(postsPerAppLimit(initial.limits))], ["videosPerDay", String(initial.limits.videosPerDay ?? VIDEOS_PER_DAY)]]));
+  const [limits, setLimits] = useState<Record<string, string>>(Object.fromEntries([...[...USAGE_METRICS, "seats"].map((m) => [m, String(initial.limits[m as keyof PlanLimits])]), ["postsPerAppPerDay", String(postsPerAppLimit(initial.limits))], ["videosPerDay", String(initial.limits.videosPerDay ?? VIDEOS_PER_DAY)], ["liveCampaigns", String(liveCampaignsLimit(initial.limits))], ["creatorsPerCampaign", String(creatorsPerCampaignLimit(initial.limits))]]));
   // "Back" hides the confirm step of one particular answer; a changed price hides it too (it was not reviewed).
   const [backed, setBacked] = useState<object | null>(null);
   const highlightList = highlights.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -222,6 +224,8 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
             ))}
             <Field label={METRIC_LABELS.postsPerAppPerDay} hint={`Posts "Create today's content" and Autopilot make per app a day for one product or campaign (${POSTS_PER_APP_MIN} to ${POSTS_PER_APP_MAX}).`}><Input name="limit_postsPerAppPerDay" type="number" min={POSTS_PER_APP_MIN} max={POSTS_PER_APP_MAX} step={1} value={limits.postsPerAppPerDay} onChange={(e) => setLimits({ ...limits, postsPerAppPerDay: e.target.value })} required /></Field>
             <Field label={METRIC_LABELS.videosPerDay} hint="Videos BuPulse makes a day at most (Kigali day). Each video is at most 30 seconds; the monthly number is Videos a month."><Input name="limit_videosPerDay" type="number" min={0} max={100} step={1} value={limits.videosPerDay} onChange={(e) => setLimits({ ...limits, videosPerDay: e.target.value })} required /></Field>
+            <Field label={METRIC_LABELS.liveCampaigns} hint={`Creator campaigns live or paused at once (1 to ${LIVE_CAMPAIGNS_MAX}). Only counts with Creator campaigns in the plan.`}><Input name="limit_liveCampaigns" type="number" min={1} max={LIVE_CAMPAIGNS_MAX} step={1} value={limits.liveCampaigns} onChange={(e) => setLimits({ ...limits, liveCampaigns: e.target.value })} required /></Field>
+            <Field label={METRIC_LABELS.creatorsPerCampaign} hint={`Creators picked in one campaign (1 to ${CREATORS_PER_CAMPAIGN_MAX}).`}><Input name="limit_creatorsPerCampaign" type="number" min={1} max={CREATORS_PER_CAMPAIGN_MAX} step={1} value={limits.creatorsPerCampaign} onChange={(e) => setLimits({ ...limits, creatorsPerCampaign: e.target.value })} required /></Field>
           </div>
         </GlassCard>
 

@@ -113,6 +113,53 @@ Page. Personal accounts can't share views, and screenshots aren't accepted.
 - Uploads go to the private Storage bucket `creator-media`, at most 100 MB per file and 6 files per submission. They're
   deleted 60 days after the campaign ends, because the free Supabase Storage is 1 GB.
 
+## The company's dashboard (decisions made while building it)
+
+Menu → Publish → **Creators**, `/dashboard/creators`, permission `creators` (Owner and Admin, lib/team/roles.ts).
+Client guide: `docs/guide/features/37-creator-campaigns.md`. These details were left open by the owner and decided so:
+
+- **Statuses.** A new campaign is a `DRAFT`. Going `LIVE` needs at least one task, a last day still ahead and a free
+  place under `liveCampaigns`; `LIVE` ⇄ `PAUSED`; any status → `ENDED`. Ending turns applications off and deletes the
+  periods that had not started; the period running now closes on its day and pays as usual. A draft nobody applied to
+  can be deleted.
+- **Dates and currency** change only while the campaign is a draft (its periods are made again). The first day cannot
+  be in the past. The currency starts as the company's region's (RWF in Rwanda).
+- **Pay rules** are the campaign's own, so a change applies to every period still `OPEN` (the running one from its
+  start); closed periods keep their payouts. New default targets and budget go to periods that have not started; the
+  running period's goals change on Payouts. The campaign has no budget column: the budget lives on each period, and
+  the settings form starts from the next period's.
+- **Platforms** can change; tasks keep only the platforms the campaign still has, and a change that would leave a task
+  with none is refused.
+- **Tasks** must fall inside the campaign's dates and use its platforms. "One per week" makes 7-day tasks from the
+  span's first day (the last can be shorter), titled "(week n)"; "one per day" titles them with the day. A task with
+  hand-ins cannot be deleted (cascade would delete posts and pay), only changed.
+- **Invites.** Selecting sets `SELECTED` and writes a new token (sha-256 in `inviteTokenHash`, `inviteExpiresAt` 14 days,
+  `newInviteToken`/`hashToken` of lib/team/service.ts). The link `/creator/join/<token>` is emailed and returned once
+  for Copy and WhatsApp (wa.me); "New link" replaces it. `creatorsPerCampaign` counts `SELECTED` + `JOINED` and is
+  checked under a per-campaign advisory lock. A `DECLINED` applicant can be selected later; declining an invited
+  creator cancels the link.
+- **Removing** a creator (`REMOVED`) stops hand-ins; posts already handed in keep what they earn in the running period
+  (reject them to take that away), and written payouts stay theirs.
+- **Rejecting** works on `CHECKING`, `TRACKING` and `FINAL` posts, needs a reason (3+ characters, shown to the
+  creator), sets `REJECTED` and applies `withoutPost()` to the creator's `DUE` payouts. `PAID` ones are left to the
+  period close (`deductionsFor`). Rejecting a hand-in rejects its earning posts and sets the submission `REJECTED`.
+- **Marking paid** needs the Mobile Money reference (3 to 60 characters), only `DUE` → `PAID`, with `paidAt` and
+  `paidBy` (the person). Pausing, ending, declining, removing, rejecting and marking paid work without the feature in
+  the plan, so a company that lost it can still stop things and settle up; everything else needs it.
+- **Analytics.** "Views per day" adds each post's last reading of each day (company timezone), carrying it forward,
+  for the last 90 days of the campaign. Totals count `TRACKING` and `FINAL` posts.
+- **Slugs** (`lib/creators/slug.ts`): the name in lowercase words with dashes (at most 48 characters), with a 5-character
+  random ending when taken or shorter than 3 characters.
+
+## Inbox and Automations are "Coming soon" (owner decision, 21 October 2026)
+
+`inbox` and `automations` have `status: "coming_soon"` in lib/features.ts. Plans that list them keep the keys, dormant:
+lib/entitlements.ts grants no coming-soon feature, Admin → Plans keeps them when a plan is saved (they cannot be added
+or taken off meanwhile), the menu shows them as "Coming soon" (not links), their pages show the "on its way" page, and
+the plan cards and comparison say "Coming soon". The website chat still collects leads (lib/inbox/website.ts skips the
+inbox). Setting them back to `"built"` switches everything on again for the plans that have them. A new custom plan or
+an addition made from an offer meanwhile does not carry the dormant keys over (offers drop coming-soon features).
+
 ## Creator side: details decided while building (21 October 2026)
 
 Not owner decisions; change them freely.
@@ -205,10 +252,32 @@ What the docs say, and where:
   share_count`; user info (https://developers.tiktok.com/doc/tiktok-api-v2-get-user-info) `open_id, union_id,
   avatar_url, display_name` (`user.info.basic`), `username` (`user.info.profile`). TikTok answers HTTP 200 with
   `error.code` "ok" on success.
-- **Not checked yet, for the owner's first real test:** that Composio's managed Instagram and Facebook apps hold the
-  insights permissions (without them views read 0 and the posts earn nothing), that the insights expansion works in
-  the list calls (otherwise each post costs one more call per reading), and how a deleted post answers on each network
-  (the code treats "does not exist" / `(#100)` on a by-id read as gone, and asks twice before removing).
+- **Not checked yet, for the owner's first real test** (each one has a fallback in the code):
+  - Composio's managed Instagram and Facebook apps hold the insights permissions. Without them views read 0 and the
+    posts earn nothing.
+  - The `insights.metric(...)` expansion inside the list calls (not documented). Refused: one insights call per post
+    per reading, so more Composio calls.
+  - Instagram's `caption` with Instagram Login (Meta lists it under Facebook Login). Missing: the mention check reads
+    the caption the creator handed in instead.
+  - `like_count` is left out when the creator hides likes (likes then stay at their last number).
+  - How a deleted post answers on each network: "does not exist" / `(#100)` on a by-id read counts as gone, asked
+    twice 6 hours apart before the post is REMOVED.
+  - Facebook Reels: whether `FACEBOOK_GET_PAGE_POSTS` lists them, with a permalink holding the reel's id, and whether
+    `post_media_view` counts their plays (Meta has `blue_reels_play_count` on video insights; not used).
+  - The link formats and short links (vm.tiktok.com, tiktok.com/t/, fb.watch, facebook.com/share/,
+    instagram.com/share/): read from real links, not from any network's docs.
+  - `TIKTOK_LIST_VIDEOS` does not say which fields it returns, so it is not used (the proxy call names its fields).
+
+## Owner to-do before creators can use it
+
+1. **TikTok:** create a TikTok developer app (Display API, scopes `user.info.basic`, `user.info.profile`,
+   `video.list`; TikTok reviews it), add its client key and secret in Composio as a custom auth config for the TikTok
+   toolkit, and put that config's id in `COMPOSIO_TIKTOK_AUTH_CONFIG_ID` (Admin -> Services keys or the host's
+   variables). Until then TikTok shows "Coming soon" on the creators' Connections page; campaigns can still list it.
+   BuPulse never makes a managed TikTok config by itself (`authConfigFor` is not called for TikTok).
+2. **First real test** with a creator's own Instagram professional account and Facebook Page: connect, post, hand in,
+   and check the points above (views not 0 after a reading, the caption read, a deleted post removed).
+3. **Uploads over 50 MB** need Supabase Pro (the Free plan caps every upload at 50 MB).
 
 ## Code map
 
@@ -216,7 +285,7 @@ What the docs say, and where:
 | --- | --- |
 | Tables | `prisma/schema.prisma` (CreatorCampaign … CreatorPayout), migration `20261028100000_creator_campaigns` |
 | Pay rules, periods, ledger | `lib/creators/pay.ts`, `periods.ts`, `ledger.ts` |
-| Company side | `lib/creators/campaigns.ts`, `lib/creators/analytics.ts`, `app/dashboard/creators/**`, `components/creators/company/**` |
+| Company side | `lib/creators/campaigns.ts`, `lib/creators/analytics.ts`, `lib/creators/company-forms.ts`, `lib/creators/slug.ts`, `app/dashboard/creators/**`, `components/creators/company/**` |
 | Creator side | `lib/creators/portal.ts`, `auth.ts`, `join.ts`, `apply.ts`, `application.ts`, `handin.ts`, `media.ts`, `connections.ts`, `connect-flow.ts`, `describe.ts`, `tasks.ts`, `app/c/[slug]`, `app/creator/**`, `app/api/creator/[network]/{connect,callback}`, `components/creators/portal/**` |
 | Reading posts | `lib/creators/tracking/**` (links, checks, adapters, resolve, the 6-hourly job, close, removal, notify, cleanup), `app/api/cron/creator-views`, `netlify/functions/cron-creator-views.mts` (every 6 hours at :31 UTC, cursor calls), `worker-crons.ts` `CREATOR_VIEWS_CRON` |
 | Tests | `tests/creators/*.test.ts`; against the TEST database: `RUN_DB_TESTS=1 node --env-file=.env node_modules/vitest/vitest.mjs run tests/creators/flow.db.test.ts` |

@@ -10,6 +10,7 @@ import { paymentMethodLabel } from "@/lib/region-format";
 import type { RegionalPlan } from "@/lib/region-prices";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { cn } from "@/lib/cn";
+import { ComingSoonFeatures } from "@/components/billing/coming-soon-features";
 
 /** Plan cards with a Monthly/Yearly switch. The plans and their prices are the visitor's region's (lib/region-prices.ts), via the page. */
 export function PricingPlans({ plans }: { plans: RegionalPlan[] }) {
@@ -71,6 +72,7 @@ export function PricingPlans({ plans }: { plans: RegionalPlan[] }) {
                   <span>{feature}</span>
                 </li>
               ))}
+              <ComingSoonFeatures features={plan.features} className="gap-3" />
             </ul>
             <Button href="/signup" size="lg" variant={plan.highlight ? "primary" : "ghost"}>
               Book a free demo

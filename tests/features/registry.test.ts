@@ -31,10 +31,11 @@ describe("the feature registry", () => {
   });
 
   it("covers the catalog of the launch plan (section 4)", () => {
-    expect(BUILT_FEATURE_KEYS).toEqual(["content", "designs", "aiPhotos", "calendar", "gallery", "websiteChat", "autopilot", "analytics", "canva", "storeImport", "driveImport", "webhooks", "apiAccess", "ownComposio", "managed", "video", "voice", "inbox", "automations", "dailyPosts", "creators"]);
+    expect(BUILT_FEATURE_KEYS).toEqual(["content", "designs", "aiPhotos", "calendar", "gallery", "websiteChat", "autopilot", "analytics", "canva", "storeImport", "driveImport", "webhooks", "apiAccess", "ownComposio", "managed", "video", "voice", "dailyPosts", "creators"]);
     // The Video Studio's two features stay "coming soon" in plans: videos are made on the studio's own site
     // (docs/VIDEO_STUDIO_SPLIT.md), and plans with video credits open it.
-    expect(FEATURES.filter((f) => f.status === "coming_soon").map((f) => f.key)).toEqual(["videoStudio", "aiVideo"]);
+    // The inbox and automations are "coming soon" too (owner decision, 21 October 2026): plans keep them, dormant.
+    expect(FEATURES.filter((f) => f.status === "coming_soon").map((f) => f.key)).toEqual(["videoStudio", "aiVideo", "inbox", "automations"]);
     expect(FEATURES.find((f) => f.key === "videoStudio")).toMatchObject({ requires: ["video"], metric: "videoCredits", services: ["claude"] });
     expect(FEATURES.find((f) => f.key === "aiVideo")).toMatchObject({ requires: ["videoStudio"], metric: "videoCredits", services: ["seedance"] });
     expect(FEATURES.filter((f) => f.kind === "service").map((f) => f.key)).toEqual(["ownComposio", "managed"]);

@@ -176,3 +176,36 @@ describe("assertFeature and friends", () => {
     expect(upgradeHref("canva", "service_off")).toBe("/dashboard/upgrade?feature=canva&reason=service_off");
   });
 });
+
+describe("coming-soon features a plan still lists (the inbox and automations, owner decision 21 October 2026)", () => {
+  async function planWithInbox() {
+    await createPlan(CONSOLE, { key: "biz", name: "Business", monthlyPriceCents: 1000, yearlyPriceCents: 10000, features: ["content", "designs", "calendar", "gallery", "creators"] });
+    // Saved while the inbox was built: the key is still in the row.
+    const row = h.db.planDefinition.rows.find((r) => r.key === "biz")!;
+    row.featureKeys = [...(row.featureKeys as string[]), "inbox", "automations"];
+    resetPlanCache();
+    company("bz", "biz");
+  }
+
+  it("are never granted, though the plan keeps them", async () => {
+    await planWithInbox();
+    const e = await companyEntitlements("bz");
+    expect(e.inPlan.has("inbox")).toBe(false);
+    expect(e.usable.has("automations")).toBe(false);
+    expect(await featureStatus("bz", "inbox")).toBe("not_in_plan");
+    expect(await hasFeature("bz", "creators")).toBe(true);
+    expect((await getPlan("biz"))!.features).toEqual(expect.arrayContaining(["inbox", "automations"]));
+  });
+
+  it("stay stored, dormant, when the plan is saved without them (the form cannot tick them), and cannot be added to another plan", async () => {
+    await planWithInbox();
+    await updatePlan(CONSOLE, "biz", { features: ["content", "designs", "calendar", "gallery"], limits: { liveCampaigns: 3, creatorsPerCampaign: 40 } });
+    resetPlanCache();
+    const plan = (await getPlan("biz"))!;
+    expect(plan.features).toEqual(["content", "designs", "calendar", "gallery", "inbox", "automations"]);
+    expect(plan.limits).toMatchObject({ liveCampaigns: 3, creatorsPerCampaign: 40 });
+    const code = async (p: Promise<unknown>) => p.then(() => null, (e: { code: string; message: string }) => `${e.code}: ${e.message}`);
+    expect(await code(updatePlan(CONSOLE, "STANDARD", { features: [...CORE_FEATURES, "inbox"] }))).toMatch(/^invalid: Inbox and contacts is coming soon/);
+    expect(await code(updatePlan(CONSOLE, "biz", { limits: { creatorsPerCampaign: 0 } }))).toMatch(/^invalid: Creators per campaign must be a whole number from 1 to 1000/);
+  });
+});
