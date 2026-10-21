@@ -35,8 +35,8 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 24 | Instagram and Facebook replies (social inbox) | `/dashboard/connections` (the switch per account), Admin → Services | [24-social-inbox.md](24-social-inbox.md) |
 | 25 | Partner programme | `/partners`, `/partners/me/[token]`, Admin → Sales → Partners | [25-partners.md](25-partners.md) |
 | 26 | Revenue goal tracker (Admin) | `/admin/revenue`, `/admin/settings#goal` | [26-revenue-goal-tracker.md](26-revenue-goal-tracker.md) |
-| 27 | Inbox and contacts | `/dashboard/inbox`, `/dashboard/contacts`, `/dashboard/contacts/[id]` | [27-inbox-and-contacts.md](27-inbox-and-contacts.md) |
-| 28 | Automations | `/dashboard/automations`, `/dashboard/automations/[id]` | [28-automations.md](28-automations.md) |
+| 27 | Inbox and contacts (coming soon) | `/dashboard/inbox`, `/dashboard/contacts`, `/dashboard/contacts/[id]` | [27-inbox-and-contacts.md](27-inbox-and-contacts.md) |
+| 28 | Automations (coming soon) | `/dashboard/automations`, `/dashboard/automations/[id]` | [28-automations.md](28-automations.md) |
 | 29 | The Video Studio, for clients (open it, credits per action, where videos go) | studio.bupulse.com; BuPulse Videos | [29-video-studio-for-clients.md](29-video-studio-for-clients.md) |
 | 30 | The Video Studio, for the owner (switches, costs, viral library, checks) | Admin → Services, Plans, Usage; studio `/viral` | [30-video-studio-for-the-owner.md](30-video-studio-for-the-owner.md) |
 | 31 | Free first-post preview (before the demo) | the demo screen, Admin → Settings → Free first-post preview | [31-first-post-preview.md](31-first-post-preview.md) |
@@ -45,6 +45,7 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 34 | Testimonials on the website (Admin) | `/admin/testimonials`, shown on `/` and `/pricing` | [34-testimonials.md](34-testimonials.md) |
 | 35 | Finding your way (grouped menu, + Create, the phone bar, Find a page) | every dashboard page; ⌘K / Ctrl+K | [35-finding-your-way.md](35-finding-your-way.md) |
 | 36 | Daily posts made for you (every night, ready to approve in the morning) | Posts (Today: needs review), Posts → Settings; Admin → Settings → Daily posts for clients | [36-daily-posts.md](36-daily-posts.md) |
+| 37 | Creator campaigns (campaigns, tasks, applicants, creators, posts, payouts) | `/dashboard/creators`, `/dashboard/creators/[id]/…` | [37-creator-campaigns.md](37-creator-campaigns.md) |
 
 ## Which plan has what
 

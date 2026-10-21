@@ -1,5 +1,7 @@
 # Automations
 
+> **Coming soon (owner decision, 21 October 2026).** Automations is switched off for now: the menu shows it as "Coming soon", its pages say it is on its way, and plans that include it keep it, dormant, until it is switched back on (`status` in `lib/features.ts`). The website chat still collects leads.
+
 Automations answer messages, comments and Story mentions by themselves: send the price when someone comments PRICE,
 greet first-time visitors with a menu, ask for a phone number and save the lead, have the AI answer questions from your
 knowledge base, follow up the next day, and hand people to your team. You draw them on a canvas, step by step, or start

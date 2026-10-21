@@ -113,13 +113,60 @@ Page. Personal accounts can't share views, and screenshots aren't accepted.
 - Uploads go to the private Storage bucket `creator-media`, at most 100 MB per file and 6 files per submission. They're
   deleted 60 days after the campaign ends, because the free Supabase Storage is 1 GB.
 
+## The company's dashboard (decisions made while building it)
+
+Menu → Publish → **Creators**, `/dashboard/creators`, permission `creators` (Owner and Admin, lib/team/roles.ts).
+Client guide: `docs/guide/features/37-creator-campaigns.md`. These details were left open by the owner and decided so:
+
+- **Statuses.** A new campaign is a `DRAFT`. Going `LIVE` needs at least one task, a last day still ahead and a free
+  place under `liveCampaigns`; `LIVE` ⇄ `PAUSED`; any status → `ENDED`. Ending turns applications off and deletes the
+  periods that had not started; the period running now closes on its day and pays as usual. A draft nobody applied to
+  can be deleted.
+- **Dates and currency** change only while the campaign is a draft (its periods are made again). The first day cannot
+  be in the past. The currency starts as the company's region's (RWF in Rwanda).
+- **Pay rules** are the campaign's own, so a change applies to every period still `OPEN` (the running one from its
+  start); closed periods keep their payouts. New default targets and budget go to periods that have not started; the
+  running period's goals change on Payouts. The campaign has no budget column: the budget lives on each period, and
+  the settings form starts from the next period's.
+- **Platforms** can change; tasks keep only the platforms the campaign still has, and a change that would leave a task
+  with none is refused.
+- **Tasks** must fall inside the campaign's dates and use its platforms. "One per week" makes 7-day tasks from the
+  span's first day (the last can be shorter), titled "(week n)"; "one per day" titles them with the day. A task with
+  hand-ins cannot be deleted (cascade would delete posts and pay), only changed.
+- **Invites.** Selecting sets `SELECTED` and writes a new token (sha-256 in `inviteTokenHash`, `inviteExpiresAt` 14 days,
+  `newInviteToken`/`hashToken` of lib/team/service.ts). The link `/creator/join/<token>` is emailed and returned once
+  for Copy and WhatsApp (wa.me); "New link" replaces it. `creatorsPerCampaign` counts `SELECTED` + `JOINED` and is
+  checked under a per-campaign advisory lock. A `DECLINED` applicant can be selected later; declining an invited
+  creator cancels the link.
+- **Removing** a creator (`REMOVED`) stops hand-ins; posts already handed in keep what they earn in the running period
+  (reject them to take that away), and written payouts stay theirs.
+- **Rejecting** works on `CHECKING`, `TRACKING` and `FINAL` posts, needs a reason (3+ characters, shown to the
+  creator), sets `REJECTED` and applies `withoutPost()` to the creator's `DUE` payouts. `PAID` ones are left to the
+  period close (`deductionsFor`). Rejecting a hand-in rejects its earning posts and sets the submission `REJECTED`.
+- **Marking paid** needs the Mobile Money reference (3 to 60 characters), only `DUE` → `PAID`, with `paidAt` and
+  `paidBy` (the person). Pausing, ending, declining, removing, rejecting and marking paid work without the feature in
+  the plan, so a company that lost it can still stop things and settle up; everything else needs it.
+- **Analytics.** "Views per day" adds each post's last reading of each day (company timezone), carrying it forward,
+  for the last 90 days of the campaign. Totals count `TRACKING` and `FINAL` posts.
+- **Slugs** (`lib/creators/slug.ts`): the name in lowercase words with dashes (at most 48 characters), with a 5-character
+  random ending when taken or shorter than 3 characters.
+
+## Inbox and Automations are "Coming soon" (owner decision, 21 October 2026)
+
+`inbox` and `automations` have `status: "coming_soon"` in lib/features.ts. Plans that list them keep the keys, dormant:
+lib/entitlements.ts grants no coming-soon feature, Admin → Plans keeps them when a plan is saved (they cannot be added
+or taken off meanwhile), the menu shows them as "Coming soon" (not links), their pages show the "on its way" page, and
+the plan cards and comparison say "Coming soon". The website chat still collects leads (lib/inbox/website.ts skips the
+inbox). Setting them back to `"built"` switches everything on again for the plans that have them. A new custom plan or
+an addition made from an offer meanwhile does not carry the dormant keys over (offers drop coming-soon features).
+
 ## Code map
 
 | Part | Where |
 | --- | --- |
 | Tables | `prisma/schema.prisma` (CreatorCampaign … CreatorPayout), migration `20261028100000_creator_campaigns` |
 | Pay rules, periods, ledger | `lib/creators/pay.ts`, `periods.ts`, `ledger.ts` |
-| Company side | `lib/creators/campaigns.ts`, `lib/creators/analytics.ts`, `app/dashboard/creators/**`, `components/creators/company/**` |
+| Company side | `lib/creators/campaigns.ts`, `lib/creators/analytics.ts`, `lib/creators/company-forms.ts`, `lib/creators/slug.ts`, `app/dashboard/creators/**`, `components/creators/company/**` |
 | Creator side | `lib/creators/portal.ts`, `lib/creators/auth.ts`, `app/c/[slug]`, `app/creator/**`, `components/creators/portal/**` |
 | Reading posts | `lib/creators/tracking/**` (Composio adapters, checks, the 6-hourly job, period close), `app/api/cron/creator-views`, `netlify/functions/cron-creator-views.mts` |
 | Client guide | `docs/guide/features/37-creator-campaigns.md` |
