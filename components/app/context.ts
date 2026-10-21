@@ -11,6 +11,7 @@ import { getVoice } from "@/lib/brand/voices";
 import { resolveCompany } from "@/lib/team/company";
 import { can, type Role } from "@/lib/team/roles";
 import { heartbeat } from "@/lib/staff/heartbeat";
+import { isCreatorOnly } from "@/lib/creators/auth";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -28,6 +29,8 @@ export const getAppContext = cache(async () => {
   // The company comes through Membership. `ownerId` (Business.userId) is the company account that owns the plan,
   // the credits and the Storage folder, so a teammate sees and spends the company's, not their own.
   const company = await resolveCompany(user.id);
+  // A creator (docs/CREATOR_CAMPAIGNS.md) has no company: their side of BuPulse is /creator.
+  if (!company && (await isCreatorOnly(user.id))) redirect("/creator");
   const ownerId = company?.ownerId ?? user.id;
   const [business, usage] = await Promise.all([
     prisma.business.findUnique({ where: { userId: ownerId } }),

@@ -4,6 +4,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { WelcomeForm } from "@/components/auth/welcome-form";
 import { prisma } from "@/lib/db";
 import { ensureAccount } from "@/lib/account";
+import { isCreatorOnly } from "@/lib/creators/auth";
 import { resolveCompany } from "@/lib/team/company";
 import { can } from "@/lib/team/roles";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -25,6 +26,7 @@ export default async function WelcomePage() {
 
   // A teammate sees the company's setup, not an account of their own.
   const company = await resolveCompany(user.id);
+  if (!company && (await isCreatorOnly(user.id))) redirect("/creator");
   const ownerId = company?.ownerId ?? user.id;
   const [business, account, industries] = await Promise.all([
     prisma.business.findUnique({ where: { userId: ownerId }, include: { industryRef: { select: { slug: true } } } }),
