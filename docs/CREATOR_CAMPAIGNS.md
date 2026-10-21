@@ -110,7 +110,7 @@ Page. Personal accounts can't share views, and screenshots aren't accepted.
 
 - Plan limits `liveCampaigns` (LIVE or PAUSED campaigns at once) and `creatorsPerCampaign` (SELECTED + JOINED), in
   `PlanDefinition.limits`. When missing: Business 2 and 20, custom plans as their admin sets.
-- Uploads go to the private Storage bucket `creator-media`, at most 100 MB per file and 6 files per submission. They're
+- Uploads go to the private Storage bucket `creator-media`, at most 50 MB per file (the Supabase Free plan limit; the bucket itself takes 100 MB for when BuPulse moves to Pro) and 6 files per submission. They're
   deleted 60 days after the campaign ends, because the free Supabase Storage is 1 GB.
 
 ## The company's dashboard (decisions made while building it)

@@ -9,8 +9,8 @@ import { ymdOf } from "./periods";
 export type TaskSpan = { id: string; startsOn: Date; endsOn: Date; postsPerDay: number; platforms: string[]; platformMode: string; mediaKind: string };
 
 export const MAX_FILES = 6;
-/** 100 MB per file (owner decision). */
-export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+/** 50 MB per file: the Supabase Free plan refuses bigger uploads whatever the bucket allows (the bucket takes 100 MB, ready for Pro). */
+export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 export const TITLE_MAX = 120;
 export const CAPTION_MAX = 2200;
 export const URL_MAX = 500;

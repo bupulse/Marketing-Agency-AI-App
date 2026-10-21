@@ -43,7 +43,7 @@ Screenshots are not accepted: only posts of a connected account count.
 on each of its platforms, or on any one of them. Post it on your account, then tap **Hand in**:
 
 - a title and the caption you used;
-- the photos or video you posted (up to 6 files, 100 MB each);
+- the photos or video you posted (up to 6 files, 50 MB each);
 - the link of the post on each platform (on the post: Share, then Copy link).
 
 BuPulse checks each link at once:
