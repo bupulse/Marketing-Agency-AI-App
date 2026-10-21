@@ -9,6 +9,14 @@ export type PortalRow = { status: string; source: string; offeredAt: Date | null
 export const OFFER_DAYS = 14;
 const OFFER_MS = OFFER_DAYS * 86_400_000;
 
+/**
+ * The rows that hold a place in a campaign (plan limit `creatorsPerCampaign`): SELECTED, JOINED, and invitations
+ * (OFFERED) not expired yet. A Prisma `where` on CampaignCreator.
+ * TODO(merge): the company side's placesTaken() in lib/creators/campaigns.ts (branch creators-mk-company) counts the
+ * same; use it instead at merge, with offerExpired() from lib/creators/company-forms.ts.
+ */
+export const holdsPlace = (now = new Date()) => ({ OR: [{ status: { in: ["SELECTED", "JOINED"] } }, { status: "OFFERED", offeredAt: { gt: new Date(now.getTime() - OFFER_MS) } }] });
+
 /** An invitation more than 14 days old (or with no date) can no longer be answered. */
 export const offerExpired = (offeredAt: Date | null, now = new Date()) => !offeredAt || now.getTime() - offeredAt.getTime() > OFFER_MS;
 

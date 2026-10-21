@@ -20,7 +20,8 @@ without asking.
   - platform (Instagram, Facebook, TikTok);
   - pay, sorted by best pay (highest rate per 1,000 views, then fee per post);
   - business type, from the company's industry (`Business.industryRef` / `industry`);
-  - when: open now or starting soon, with the places left (plan limit `creatorsPerCampaign` minus SELECTED and JOINED).
+  - when: open now or starting soon, with the places left (plan limit `creatorsPerCampaign` minus SELECTED, JOINED and
+    open invitations: an OFFERED row less than 14 days old holds its place, as the company side counts).
   Filters are query parameters, so a filtered list can be shared.
 - **Campaign card:** company name and logo, campaign name, platforms, dates, pay in words (`creatorPayInWords`),
   places left, and the company's **payment record** (below).
@@ -119,9 +120,11 @@ Not owner decisions; change them freely.
 - **One-tap apply** (lib/creators/quick-apply.ts): the email is the login's; only the handles on the campaign's
   platforms are copied; 20 an hour per creator; refused when the profile or the email already has a row in the campaign
   (an open invitation says so), and when no place is left (APPLIED does not take a place, so there is no lock).
-- **Invitations** (lib/creators/offer-answers.ts): an expired invitation can't be accepted or declined. Accepting
-  counts SELECTED + JOINED (the invitation itself is OFFERED) against `creatorsPerCampaign` under the company's
-  per-campaign lock, refuses ENDED campaigns and blocked creators, and opens the campaign. The company is not emailed
+- **Invitations** (lib/creators/offer-answers.ts): an expired invitation can't be accepted or declined. An open
+  invitation already holds its place, so accepting counts every other place holder (SELECTED, JOINED, open
+  invitations) against `creatorsPerCampaign` under the company's per-campaign lock (refused only if the plan shrank),
+  refuses ENDED campaigns and blocked creators, and opens the campaign. Withdrawn invitations and admin blocks turn
+  OFFERED into DECLINED on the company side; they show under Ended. The company is not emailed
   on an answer (it sees the status). Expired invitations stay under Invitations (marked Expired) for 14 more days, then
   move to Ended.
 - **Campaigns page groups** (lib/creators/portal-groups.ts): Invitations, Joined (JOINED, campaign not ENDED), Waiting

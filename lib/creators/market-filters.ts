@@ -62,7 +62,7 @@ export function isListed(c: ListingFacts): boolean {
   return c.status === "LIVE" && c.acceptingApplications && c.listed && c.hiddenAt === null && c.hasFeature && c.endsOn >= c.today;
 }
 
-/** Places left in a campaign: the plan's `creatorsPerCampaign` minus the creators picked (SELECTED and JOINED). */
+/** Places left in a campaign: the plan's `creatorsPerCampaign` minus the places held (SELECTED, JOINED, open invitations). */
 export const placesLeft = (limit: number, picked: number) => Math.max(0, limit - picked);
 
 /** What the filters and the order read of a listed campaign. */

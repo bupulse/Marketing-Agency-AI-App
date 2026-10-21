@@ -44,7 +44,8 @@ describe("answerOffer", () => {
     expect(await answerOffer("p1", "cc1", "accept", NOW)).toBe("JOINED");
     expect(h.findFirst.mock.calls[0][0].where).toEqual({ id: "cc1", profileId: "p1" });
     expect(h.tx.$executeRaw).toHaveBeenCalledTimes(1);
-    expect(h.tx.campaignCreator.count).toHaveBeenCalledWith({ where: { campaignId: "c1", status: { in: ["SELECTED", "JOINED"] } } });
+    // Every place holder but this invitation itself: SELECTED, JOINED and other open invitations.
+    expect(h.tx.campaignCreator.count).toHaveBeenCalledWith({ where: { campaignId: "c1", id: { not: "cc1" }, OR: [{ status: { in: ["SELECTED", "JOINED"] } }, { status: "OFFERED", offeredAt: { gt: ago(14) } }] } });
     expect(h.tx.campaignCreator.updateMany).toHaveBeenCalledWith({ where: { id: "cc1", profileId: "p1", status: "OFFERED" }, data: { status: "JOINED", joinedAt: NOW } });
   });
 
