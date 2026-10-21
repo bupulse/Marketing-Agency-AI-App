@@ -59,6 +59,8 @@ export function CampaignForm({ mode, campaignId, initial, draft = true }: { mode
   const [targetCampaign, setTargetCampaign] = useState(str(initial.viewTargetCampaign));
   const [budget, setBudget] = useState(str(initial.budget));
   const [questions, setQuestions] = useState(initial.questions);
+  // Only the new campaign form has the switch; Settings changes it on its own (CampaignSettingsExtras).
+  const [listed, setListed] = useState(true);
 
   const payRules: PayRules = {
     ratePerThousand: num(rate),
@@ -81,6 +83,7 @@ export function CampaignForm({ mode, campaignId, initial, draft = true }: { mode
     viewTargetCampaign: num(targetCampaign),
     budget: num(budget),
     questions: questions.filter((q) => q.label.trim()),
+    ...(mode === "create" ? { listed } : {}),
   };
   const words = payRulesInWords({ ...payRules, milestones: payRules.milestones?.filter((m) => m.views > 0 && m.amount > 0) }, currency);
 
@@ -255,6 +258,18 @@ export function CampaignForm({ mode, campaignId, initial, draft = true }: { mode
           </Button>
         )}
       </GlassCard>
+
+      {mode === "create" && (
+        <GlassCard className={section}>
+          <label className="flex min-h-11 cursor-pointer items-start gap-3">
+            <input type="checkbox" className="mt-1 size-5" checked={listed} onChange={(e) => setListed(e.target.checked)} />
+            <span className="flex flex-col gap-1">
+              <span className="text-[16px] font-semibold">Show on the marketplace</span>
+              <span className="text-[14px] text-muted">Creators find it on bupulse.com/creators while it is live and taking applications. Off, only people with your campaign link /c/… can apply. You can change it later in Settings.</span>
+            </span>
+          </label>
+        </GlassCard>
+      )}
 
       {error && (
         <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-[15px] font-medium text-danger">

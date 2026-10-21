@@ -1,22 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
+import { CAMPAIGN_REPORT_REASONS, CREATOR_REPORT_REASONS } from "./report-reasons";
 
 // Marketplace reports (docs/CREATOR_MARKETPLACE.md, "Safety"): a creator reports a campaign, a company reports a
 // creator. Shared by the creator portal and the company dashboard; the admin console lists and resolves them.
 
-export const CAMPAIGN_REPORT_REASONS = ["SCAM", "NOT_PAID", "SPAM", "OFFENSIVE", "OTHER"] as const;
-export const CREATOR_REPORT_REASONS = ["FAKE_VIEWS", "SPAM", "OFFENSIVE", "OTHER"] as const;
-export type ReportReason = (typeof CAMPAIGN_REPORT_REASONS)[number] | (typeof CREATOR_REPORT_REASONS)[number];
-
-export const REPORT_REASON_LABEL: Record<ReportReason, string> = {
-  SCAM: "It looks like a scam",
-  NOT_PAID: "They did not pay what they owe",
-  FAKE_VIEWS: "Fake or bought views",
-  SPAM: "Spam",
-  OFFENSIVE: "Offensive content",
-  OTHER: "Something else",
-};
+// The reasons and their words live in ./report-reasons (no server imports), so the report forms can use them too.
+export { CAMPAIGN_REPORT_REASONS, CREATOR_REPORT_REASONS, REPORT_REASON_LABEL, type ReportReason } from "./report-reasons";
 
 export class ReportError extends Error {}
 

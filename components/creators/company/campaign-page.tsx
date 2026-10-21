@@ -48,6 +48,7 @@ export function CampaignHeader({ campaign, tab }: { campaign: CampaignView; tab:
             <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.03em] sm:text-[30px]">{campaign.name}</h1>
             <Badge tone={STATUS_TONE[campaign.status] ?? "neutral"}>{CAMPAIGN_STATUS_LABEL[campaign.status as CampaignStatus] ?? campaign.status}</Badge>
             {campaign.status === "LIVE" && !campaign.acceptingApplications && <Badge tone="neutral">Applications closed</Badge>}
+            {campaign.hiddenAt && <Badge tone="danger">Hidden by BuPulse</Badge>}
           </div>
           <PublicLink slug={campaign.slug} live={campaign.status === "LIVE"} />
         </div>

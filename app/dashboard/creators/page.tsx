@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui";
 import { CampaignList } from "@/components/creators/company/campaign-list";
@@ -18,7 +18,14 @@ export default async function CreatorsPage() {
       <PageHeader
         title="Creator campaigns"
         description="Creators post your tasks on their own accounts. BuPulse counts the views and works out their pay; you pay them by Mobile Money."
-        action={campaigns.length > 0 ? <Button href="/dashboard/creators/new" leading={<Plus aria-hidden className="size-4" />}>New campaign</Button> : undefined}
+        action={
+          campaigns.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              <Button href="/dashboard/creators/find" variant="outline" leading={<Search aria-hidden className="size-4" />}>Find creators</Button>
+              <Button href="/dashboard/creators/new" leading={<Plus aria-hidden className="size-4" />}>New campaign</Button>
+            </div>
+          ) : undefined
+        }
       />
       <CampaignList campaigns={campaigns} />
       {campaigns.length > 0 && (

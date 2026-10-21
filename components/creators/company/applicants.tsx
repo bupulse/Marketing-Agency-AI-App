@@ -1,12 +1,13 @@
 "use client";
 
 import { Check, Copy, ExternalLink, MessageCircle, X } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { declineApplicantAction, resendInviteAction, selectApplicantAction } from "@/app/dashboard/creators/actions";
+import { declineApplicantAction, offerCreatorAction, resendInviteAction, selectApplicantAction, withdrawOfferAction } from "@/app/dashboard/creators/actions";
 import { formatCompact } from "@/components/analytics/format";
 import { Badge, Button, Dialog, GlassCard, useToast } from "@/components/ui";
-import { CREATOR_STATUS_LABEL, inviteMessage, PLATFORM_LABEL, whatsappLink, type CampaignQuestion, type Platform } from "@/lib/creators/company-forms";
+import { CREATOR_STATUS_LABEL, inviteMessage, offerExpired, offerExpiresAt, PLATFORM_LABEL, whatsappLink, type CampaignQuestion, type Platform } from "@/lib/creators/company-forms";
 import type { CampaignCreatorRow } from "@/lib/creators/campaigns";
 import { useCopy } from "./campaign-controls";
 
@@ -48,12 +49,20 @@ function ApplicantCard({ row, questions, children }: { row: CampaignCreatorRow; 
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-[16px] font-semibold">
             {row.name}
-            {row.status !== "APPLIED" && <Badge tone={row.status === "SELECTED" ? "violet" : "neutral"}>{CREATOR_STATUS_LABEL[row.status] ?? row.status}</Badge>}
+            {row.status !== "APPLIED" && row.status !== "OFFERED" && <Badge tone={row.status === "SELECTED" ? "violet" : "neutral"}>{CREATOR_STATUS_LABEL[row.status] ?? row.status}</Badge>}
+            {row.status === "OFFERED" && (offerExpired(row.offeredAt) ? <Badge tone="neutral">Expired</Badge> : <Badge tone="violet">Waiting for their answer</Badge>)}
+            {row.profileId && row.source !== "OFFER" && <Badge tone="blue">Has a creator account</Badge>}
           </p>
-          <p className="text-[13px] text-muted">
-            Applied {ago(row.appliedAt)} · {row.email}
-            {row.phone ? ` · ${row.phone}` : ""}
-          </p>
+          {row.source === "OFFER" ? (
+            <p className="text-[13px] text-muted">
+              Invited by you {row.offeredAt ? ago(row.offeredAt) : ""} from Find creators.{row.email ? ` ${row.email}${row.phone ? ` · ${row.phone}` : ""}` : " Their WhatsApp and email show once they join."}
+            </p>
+          ) : (
+            <p className="text-[13px] text-muted">
+              Applied {ago(row.appliedAt)} · {row.email}
+              {row.phone ? ` · ${row.phone}` : ""}
+            </p>
+          )}
         </div>
       </div>
       {row.handles.length > 0 && (
@@ -92,7 +101,10 @@ function ApplicantCard({ row, questions, children }: { row: CampaignCreatorRow; 
   );
 }
 
-/** Applicants waiting for an answer, invited creators who have not joined yet, and those declined. */
+/**
+ * Applicants waiting for an answer, creators the company invited from the marketplace (waiting for theirs), invited
+ * applicants who have not joined yet, and those declined. Picking someone with a creator account adds them at once.
+ */
 export function Applicants({ campaignId, rows, questions, places, ended }: { campaignId: string; rows: CampaignCreatorRow[]; questions: CampaignQuestion[]; places: { taken: number; limit: number }; ended: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -101,6 +113,7 @@ export function Applicants({ campaignId, rows, questions, places, ended }: { cam
   const [showDeclined, setShowDeclined] = useState(false);
   const applied = rows.filter((r) => r.status === "APPLIED");
   const invited = rows.filter((r) => r.status === "SELECTED");
+  const offered = rows.filter((r) => r.status === "OFFERED");
   const declined = rows.filter((r) => r.status === "DECLINED");
   const full = places.taken >= places.limit;
 
@@ -109,7 +122,27 @@ export function Applicants({ campaignId, rows, questions, places, ended }: { cam
     const r = again ? await resendInviteAction(campaignId, row.id) : await selectApplicantAction(campaignId, row.id);
     setBusy(null);
     if (!r.ok) return toast(r.error, "error");
-    setInvite(r.invite);
+    const picked = "picked" in r ? r.picked : { joined: false as const, ...r.invite };
+    // A creator with an account is in at once: no link to send.
+    if (picked.joined) toast(`${picked.name} is in the campaign. ${picked.sent ? "We emailed them, and it shows" : "It shows"} in their creator account.`, "success");
+    else setInvite(picked);
+    router.refresh();
+  }
+  async function withdraw(row: CampaignCreatorRow) {
+    setBusy(row.id);
+    const r = await withdrawOfferAction(campaignId, row.id);
+    setBusy(null);
+    if (!r.ok) return toast(r.error, "error");
+    toast(`Invitation to ${row.name} withdrawn.`, "success");
+    router.refresh();
+  }
+  async function offerAgain(row: CampaignCreatorRow) {
+    if (!row.profileId) return;
+    setBusy(row.id);
+    const r = await offerCreatorAction(campaignId, row.profileId);
+    setBusy(null);
+    if (!r.ok) return toast(r.error, "error");
+    toast(`${row.name} is invited again. ${r.offer.sent ? "We emailed them." : ""}`.trim(), "success");
     router.refresh();
   }
   async function decline(row: CampaignCreatorRow) {
@@ -130,11 +163,19 @@ export function Applicants({ campaignId, rows, questions, places, ended }: { cam
   return (
     <div className="flex flex-col gap-5">
       <p className="px-1 text-[14px] text-muted">
-        {places.taken} of {places.limit} places taken on your plan (invited and joined creators).{full ? " Remove a creator or decline an invite to pick someone else." : ""}
+        {places.taken} of {places.limit} places taken on your plan (invited and joined creators, and invitations waiting for an answer).{full ? " Remove a creator, or cancel or withdraw an invitation, to pick someone else." : ""}
       </p>
       <section className="flex flex-col gap-3">
         <h2 className="px-1 text-[17px] font-semibold">Waiting for your answer ({applied.length})</h2>
-        {applied.length === 0 && <p className="px-1 text-[15px] text-muted">Nobody is waiting. Share the campaign&apos;s application page to get applicants.</p>}
+        {applied.length === 0 && (
+          <p className="px-1 text-[15px] text-muted">
+            Nobody is waiting. Share the campaign&apos;s application page to get applicants, or{" "}
+            <Link href="/dashboard/creators/find" className="font-medium text-[color:var(--bp-link)] underline">
+              find creators
+            </Link>{" "}
+            and invite them.
+          </p>
+        )}
         {applied.map((row) => (
           <ApplicantCard key={row.id} row={row} questions={questions}>
             {selectButton(row)}
@@ -144,6 +185,27 @@ export function Applicants({ campaignId, rows, questions, places, ended }: { cam
           </ApplicantCard>
         ))}
       </section>
+      {offered.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="px-1 text-[17px] font-semibold">Invited by you, waiting for their answer ({offered.length})</h2>
+          {offered.map((row) => {
+            const expired = offerExpired(row.offeredAt);
+            return (
+              <ApplicantCard key={row.id} row={row} questions={questions}>
+                <span className="self-center text-[13px] text-muted">{expired ? "They did not answer in 14 days." : row.offeredAt ? `They can answer until ${ago(offerExpiresAt(row.offeredAt).toISOString())}.` : ""}</span>
+                {expired && row.profileId && (
+                  <Button size="sm" disabled={busy !== null || full || ended} onClick={() => offerAgain(row)}>
+                    {busy === row.id ? "One moment…" : "Invite again"}
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => withdraw(row)}>
+                  Withdraw
+                </Button>
+              </ApplicantCard>
+            );
+          })}
+        </section>
+      )}
       {invited.length > 0 && (
         <section className="flex flex-col gap-3">
           <h2 className="px-1 text-[17px] font-semibold">Invited, not joined yet ({invited.length})</h2>
@@ -165,7 +227,18 @@ export function Applicants({ campaignId, rows, questions, places, ended }: { cam
           <button type="button" onClick={() => setShowDeclined(!showDeclined)} aria-expanded={showDeclined} className="min-h-11 self-start px-1 text-[15px] font-semibold text-muted hover:text-text">
             {showDeclined ? "Hide" : "Show"} declined ({declined.length})
           </button>
-          {showDeclined && declined.map((row) => <ApplicantCard key={row.id} row={row} questions={questions}>{selectButton(row, "Select after all")}</ApplicantCard>)}
+          {showDeclined &&
+            declined.map((row) => (
+              <ApplicantCard key={row.id} row={row} questions={questions}>
+                {row.source !== "OFFER" ? (
+                  selectButton(row, "Select after all")
+                ) : row.profileId ? (
+                  <Button size="sm" variant="outline" disabled={busy !== null || full || ended} onClick={() => offerAgain(row)}>
+                    {busy === row.id ? "One moment…" : "Invite again"}
+                  </Button>
+                ) : null}
+              </ApplicantCard>
+            ))}
         </section>
       )}
       <InviteDialog invite={invite} onClose={() => setInvite(null)} />

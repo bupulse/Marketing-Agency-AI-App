@@ -13,6 +13,7 @@ import {
   CREATOR_INVITE_DAYS,
   firstProblem,
   goalsSchema,
+  OFFER_DAYS,
   readQuestions,
   taskSchema,
   taskSpans,
@@ -26,7 +27,7 @@ import { dayIn, periodsFor, ymdOf } from "./periods";
 import { uniqueSlug } from "./slug";
 
 // The company side of creator campaigns (docs/CREATOR_CAMPAIGNS.md): campaigns and their pay periods, tasks, picking
-// applicants (single-use invite links), removing creators, rejecting posts, marking payouts paid and changing an open
+// applicants (single-use invite links, or straight in for creators with an account), removing creators, rejecting posts, marking payouts paid and changing an open
 // period's goals. Every function takes the acting person's company (from requireActiveUser) and checks the `creators`
 // permission itself, and every row is looked up inside that company, so the pages, the actions and the tests share the
 // rules. The feature (`creators` in the plan) is checked by the server actions (app/dashboard/creators/actions.ts).
@@ -60,9 +61,21 @@ function parse<T>(result: { success: true; data: T } | { success: false; error: 
 }
 
 /** One lock per campaign (or company) for the counted limits: the second request waits, then counts again. */
-async function lock(tx: Pick<typeof prisma, "$executeRaw">, key: string) {
+export async function lock(tx: Pick<typeof prisma, "$executeRaw">, key: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`creators:${key}`}))`;
 }
+
+/**
+ * The places of a campaign taken under the plan's `creatorsPerCampaign`: invited (SELECTED), joined, and offers still
+ * waiting for an answer (OFFERED, less than 14 days old). Call it under `lock(tx, campaignId)` before taking a place.
+ */
+export async function placesTaken(tx: Pick<typeof prisma, "campaignCreator">, campaignId: string, now = new Date()): Promise<number> {
+  const since = new Date(now.getTime() - OFFER_DAYS * 24 * 60 * 60 * 1000);
+  return tx.campaignCreator.count({ where: { campaignId, OR: [{ status: { in: ["SELECTED", "JOINED"] } }, { status: "OFFERED", offeredAt: { gt: since } }] } });
+}
+
+/** The words of the refusal when every place is taken. */
+export const placesFullMessage = (limit: number) => `Your plan allows ${limit} creators in one campaign, and all places are taken. Remove someone first, or ask for a bigger plan.`;
 
 async function company(businessId: string) {
   const b = await prisma.business.findUnique({ where: { id: businessId }, select: { name: true, timezone: true, userId: true } });
@@ -90,7 +103,7 @@ export async function listCampaigns(actor: CampaignActor) {
   const rows = await prisma.creatorCampaign.findMany({
     where: { businessId: actor.businessId },
     orderBy: [{ createdAt: "desc" }],
-    select: { id: true, name: true, slug: true, status: true, startsOn: true, endsOn: true, platforms: true, acceptingApplications: true, _count: { select: { tasks: true } } },
+    select: { id: true, name: true, slug: true, status: true, startsOn: true, endsOn: true, platforms: true, acceptingApplications: true, listed: true, hiddenAt: true, _count: { select: { tasks: true } } },
   });
   const groups = rows.length
     ? await prisma.campaignCreator.groupBy({ by: ["campaignId", "status"], where: { campaignId: { in: rows.map((r) => r.id) } }, _count: { _all: true } })
@@ -105,6 +118,8 @@ export async function listCampaigns(actor: CampaignActor) {
     endsOn: ymdOf(r.endsOn),
     platforms: r.platforms,
     acceptingApplications: r.acceptingApplications,
+    listed: r.listed,
+    hidden: r.hiddenAt !== null,
     tasks: r._count.tasks,
     applied: n(r.id, "APPLIED"),
     joined: n(r.id, "JOINED"),
@@ -125,6 +140,11 @@ export async function getCampaign(actor: CampaignActor, id: string) {
     rules: c.rules,
     status: c.status,
     acceptingApplications: c.acceptingApplications,
+    /** "Show on the marketplace": the company's switch. */
+    listed: c.listed,
+    /** Hidden from the marketplace by a BuPulse admin (whatever `listed` says), with the reason the company sees. */
+    hiddenAt: c.hiddenAt?.toISOString() ?? null,
+    hiddenReason: c.hiddenReason,
     startsOn: ymdOf(c.startsOn),
     endsOn: ymdOf(c.endsOn),
     platforms: c.platforms,
@@ -166,25 +186,36 @@ export async function listTasks(actor: CampaignActor, campaignId: string) {
 }
 export type TaskRow = Awaited<ReturnType<typeof listTasks>>[number];
 
-/** Everyone who applied to the campaign, newest first, with what they sent. */
+/**
+ * Everyone who applied to the campaign or was invited from the marketplace, newest first, with what they sent. A
+ * creator the company invited (source OFFER) who has not joined keeps their email and WhatsApp hidden: contact details
+ * show once a creator applied or joined (docs/CREATOR_MARKETPLACE.md).
+ */
 export async function listCampaignCreators(actor: CampaignActor, campaignId: string) {
   assertManager(actor);
   await campaignOf(actor, campaignId);
   const rows = await prisma.campaignCreator.findMany({ where: { campaignId }, orderBy: [{ createdAt: "desc" }] });
-  return rows.map((r) => ({
-    id: r.id,
-    status: r.status,
-    name: r.name,
-    email: r.email,
-    phone: r.phone,
-    handles: readHandles(r.handles),
-    samples: r.samples,
-    answers: (r.answers && typeof r.answers === "object" ? r.answers : {}) as Record<string, string>,
-    inviteExpiresAt: r.inviteExpiresAt?.toISOString() ?? null,
-    appliedAt: r.createdAt.toISOString(),
-    joinedAt: r.joinedAt?.toISOString() ?? null,
-    removedAt: r.removedAt?.toISOString() ?? null,
-  }));
+  return rows.map((r) => {
+    const hideContact = r.source === "OFFER" && !r.joinedAt;
+    return {
+      id: r.id,
+      status: r.status,
+      source: r.source as "LINK" | "MARKETPLACE" | "OFFER",
+      /** The creator has a BuPulse creator account (applied from it, or was invited from the marketplace). */
+      profileId: r.profileId,
+      name: r.name,
+      email: hideContact ? null : r.email,
+      phone: hideContact ? null : r.phone,
+      handles: readHandles(r.handles),
+      samples: r.samples,
+      answers: (r.answers && typeof r.answers === "object" ? r.answers : {}) as Record<string, string>,
+      inviteExpiresAt: r.inviteExpiresAt?.toISOString() ?? null,
+      offeredAt: r.offeredAt?.toISOString() ?? null,
+      appliedAt: r.createdAt.toISOString(),
+      joinedAt: r.joinedAt?.toISOString() ?? null,
+      removedAt: r.removedAt?.toISOString() ?? null,
+    };
+  });
 }
 export type CampaignCreatorRow = Awaited<ReturnType<typeof listCampaignCreators>>[number];
 
@@ -226,6 +257,7 @@ export async function createCampaign(actor: CampaignActor, input: CampaignInput)
       viewTargetPerCreator: v.viewTargetPerCreator ?? null,
       viewTargetCampaign: v.viewTargetCampaign ?? null,
       questions: json(v.questions),
+      listed: v.listed ?? true,
       startsOn: day(v.startsOn),
       endsOn: day(v.endsOn),
       createdBy: actor.actorId,
@@ -278,6 +310,7 @@ export async function updateCampaign(actor: CampaignActor, id: string, input: Ca
         viewTargetPerCreator: v.viewTargetPerCreator ?? null,
         viewTargetCampaign: v.viewTargetCampaign ?? null,
         questions: json(v.questions),
+        ...(v.listed === undefined ? {} : { listed: v.listed }),
         startsOn: day(v.startsOn),
         endsOn: day(v.endsOn),
       },
@@ -341,6 +374,17 @@ export async function setAcceptingApplications(actor: CampaignActor, id: string,
   await prisma.creatorCampaign.update({ where: { id }, data: { acceptingApplications: on } });
 }
 
+/**
+ * "Show on the marketplace" on or off. Off, the campaign leaves /creators but its /c/<slug> page keeps working for
+ * anyone with the link. A campaign a BuPulse admin hid stays hidden either way.
+ */
+export async function setListed(actor: CampaignActor, id: string, on: boolean) {
+  assertManager(actor);
+  const c = await campaignOf(actor, id);
+  if (c.status === "ENDED" && on) throw new CreatorCampaignError("conflict", "This campaign has ended.");
+  await prisma.creatorCampaign.update({ where: { id }, data: { listed: on } });
+}
+
 /** A draft nobody applied to can be deleted; anything else is ended instead (its history stays). */
 export async function deleteCampaign(actor: CampaignActor, id: string) {
   assertManager(actor);
@@ -401,7 +445,7 @@ export async function deleteTask(actor: CampaignActor, taskId: string) {
 
 // ---- applicants and creators ----------------------------------------------------------------------------------------
 
-async function creatorOf(actor: CampaignActor, campaignCreatorId: string) {
+export async function creatorOf(actor: CampaignActor, campaignCreatorId: string) {
   const row = await prisma.campaignCreator.findFirst({ where: { id: campaignCreatorId, campaign: { businessId: actor.businessId } }, include: { campaign: { select: { id: true, name: true, status: true } } } });
   if (!row) throw new CreatorCampaignError("not_found", "That creator is no longer in this campaign.");
   return row;
@@ -425,6 +469,17 @@ async function issueInvite(id: string, tx: Pick<typeof prisma, "campaignCreator"
   return { token, expiresAt };
 }
 
+/** "You're in": a creator with an account was picked and joined at once; their campaign is in their portal. */
+async function sendJoinedEmail(to: string, name: string, campaign: string, companyName: string, link: string): Promise<boolean> {
+  const { html, text } = renderEmail({
+    heading: `You're in: ${campaign}`,
+    intro: `Hi ${name.trim().split(/\s+/)[0] || "there"}, ${companyName} picked you for their creator campaign "${campaign}" on BuPulse. It is in your creator account now: connect your accounts if you have not yet, and see your tasks.`,
+    button: { label: "Open my campaigns", url: link },
+    footer: "You get this email because you applied to this campaign with your BuPulse creator account.",
+  });
+  return sendEmail({ to, subject: `${companyName} picked you for "${campaign}"`, html, text }).catch(() => false);
+}
+
 async function deliver(actor: CampaignActor, row: { name: string; email: string; phone: string | null; campaign: { name: string } }, token: string, expiresAt: Date) {
   const link = `${await linkSiteUrl()}/creator/join/${token}`;
   const b = await company(actor.businessId);
@@ -433,24 +488,33 @@ async function deliver(actor: CampaignActor, row: { name: string; email: string;
 }
 
 /**
- * Picks an applicant: SELECTED, with a single-use invite link (only its sha-256 is stored, 14 days) emailed to them and
- * returned for WhatsApp. Refused past the plan's `creatorsPerCampaign` (SELECTED and JOINED count).
+ * Picks an applicant. One who applied with their creator account (`profileId` set) joins at once: JOINED, no invite
+ * link, and an email tells them (the campaign is in their portal). Anyone else becomes SELECTED, with a single-use
+ * invite link (only its sha-256 is stored, 14 days) emailed to them and returned for WhatsApp. Refused past the plan's
+ * `creatorsPerCampaign` (invited, joined and open offers count), and for creators the company invited itself (they
+ * answer the offer instead).
  */
-export async function selectApplicant(actor: CampaignActor, campaignCreatorId: string) {
+export async function selectApplicant(actor: CampaignActor, campaignCreatorId: string, now = new Date()) {
   assertManager(actor);
   const row = await creatorOf(actor, campaignCreatorId);
   if (row.campaign.status === "ENDED") throw new CreatorCampaignError("conflict", "This campaign has ended.");
+  if (row.source === "OFFER") throw new CreatorCampaignError("conflict", row.status === "OFFERED" ? "You invited this creator: wait for their answer." : "This creator did not apply. Invite them again from Find creators.");
   if (row.status !== "APPLIED" && row.status !== "DECLINED") throw new CreatorCampaignError("conflict", row.status === "SELECTED" ? "Already invited. Send a new link instead." : "This creator is not waiting for an answer.");
+  const profile = row.profileId ? await prisma.creatorProfile.findUnique({ where: { id: row.profileId }, select: { blockedAt: true } }) : null;
+  if (profile?.blockedAt) throw new CreatorCampaignError("conflict", "BuPulse blocked this creator from the marketplace, so they cannot be picked.");
   const { creatorsPerCampaign } = await campaignLimits(actor.businessId);
   const invite = await prisma.$transaction(async (tx) => {
     await lock(tx, row.campaign.id);
-    const picked = await tx.campaignCreator.count({ where: { campaignId: row.campaign.id, status: { in: ["SELECTED", "JOINED"] } } });
-    if (picked >= creatorsPerCampaign) throw new CreatorCampaignError("limit", `Your plan allows ${creatorsPerCampaign} creators in one campaign, and all places are taken. Remove someone first, or ask for a bigger plan.`);
-    const done = await tx.campaignCreator.updateMany({ where: { id: row.id, status: row.status }, data: { status: "SELECTED", selectedAt: new Date() } });
+    if ((await placesTaken(tx, row.campaign.id, now)) >= creatorsPerCampaign) throw new CreatorCampaignError("limit", placesFullMessage(creatorsPerCampaign));
+    const data = profile ? { status: "JOINED", selectedAt: now, joinedAt: now, inviteTokenHash: null, inviteExpiresAt: null } : { status: "SELECTED", selectedAt: now };
+    const done = await tx.campaignCreator.updateMany({ where: { id: row.id, status: row.status }, data });
     if (done.count === 0) throw new CreatorCampaignError("conflict", "Someone changed this application just now. Open the page again.");
-    return issueInvite(row.id, tx);
+    return profile ? null : issueInvite(row.id, tx);
   });
-  return deliver(actor, row, invite.token, invite.expiresAt);
+  if (invite) return { joined: false as const, ...(await deliver(actor, row, invite.token, invite.expiresAt)) };
+  const b = await company(actor.businessId);
+  const sent = await sendJoinedEmail(row.email, row.name, row.campaign.name, b.name, `${await linkSiteUrl()}/creator`);
+  return { joined: true as const, sent, name: row.name };
 }
 
 /** A new link for an invited creator who has not joined yet (the old link stops working). */

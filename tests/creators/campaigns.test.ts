@@ -16,6 +16,7 @@ const h = vi.hoisted(() => {
     creatorPost: { findFirst: fn(), update: fn(), updateMany: fn() },
     creatorSubmission: { findFirst: fn(), update: fn() },
     creatorPayout: { findFirst: fn(), findMany: fn(), update: fn(), updateMany: fn() },
+    creatorProfile: { findUnique: fn() },
     $executeRaw: fn(),
     $transaction: vi.fn(),
   };
@@ -169,13 +170,36 @@ describe("picking applicants", () => {
     expect(h.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "aline@example.com" }));
   });
 
-  it("refuses past the plan's creators per campaign (invited and joined count)", async () => {
+  it("refuses past the plan's creators per campaign (invited, joined and offers under 14 days count)", async () => {
     h.limits.creatorsPerCampaign = 5;
     h.prisma.campaignCreator.findFirst.mockResolvedValue(applicant);
     h.prisma.campaignCreator.count.mockResolvedValue(5);
     expect(await code(selectApplicant(OWNER, "cc1"))).toMatch(/^limit: Your plan allows 5 creators in one campaign/);
-    expect(h.prisma.campaignCreator.count).toHaveBeenCalledWith({ where: { campaignId: "c1", status: { in: ["SELECTED", "JOINED"] } } });
+    expect(h.prisma.campaignCreator.count).toHaveBeenCalledWith({
+      where: { campaignId: "c1", OR: [{ status: { in: ["SELECTED", "JOINED"] } }, { status: "OFFERED", offeredAt: { gt: new Date(NOW.getTime() - 14 * 864e5) } }] },
+    });
     expect(h.prisma.campaignCreator.update).not.toHaveBeenCalled();
+  });
+
+  it("adds a creator who applied with their account at once: JOINED, no invite link, and an email", async () => {
+    h.prisma.campaignCreator.findFirst.mockResolvedValue({ ...applicant, source: "MARKETPLACE", profileId: "p1" });
+    h.prisma.creatorProfile.findUnique.mockResolvedValue({ blockedAt: null });
+    h.prisma.campaignCreator.count.mockResolvedValue(3);
+    const picked = await selectApplicant(OWNER, "cc1");
+    expect(picked).toEqual({ joined: true, sent: true, name: "Aline Uwase" });
+    expect(h.prisma.campaignCreator.updateMany).toHaveBeenCalledWith({ where: { id: "cc1", status: "APPLIED" }, data: { status: "JOINED", selectedAt: NOW, joinedAt: NOW, inviteTokenHash: null, inviteExpiresAt: null } });
+    // No token anywhere: nothing to claim.
+    expect(h.prisma.campaignCreator.update).not.toHaveBeenCalled();
+    expect(h.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "aline@example.com", subject: 'LEAF picked you for "Summer"' }));
+  });
+
+  it("never 'selects' a creator the company invited itself, nor a blocked one", async () => {
+    h.prisma.campaignCreator.findFirst.mockResolvedValue({ ...applicant, status: "DECLINED", source: "OFFER", profileId: "p1" });
+    expect(await code(selectApplicant(OWNER, "cc1"))).toMatch(/^conflict: This creator did not apply/);
+    h.prisma.campaignCreator.findFirst.mockResolvedValue({ ...applicant, source: "MARKETPLACE", profileId: "p1" });
+    h.prisma.creatorProfile.findUnique.mockResolvedValue({ blockedAt: new Date() });
+    expect(await code(selectApplicant(OWNER, "cc1"))).toMatch(/^conflict: BuPulse blocked this creator/);
+    expect(h.prisma.campaignCreator.updateMany).not.toHaveBeenCalled();
   });
 });
 

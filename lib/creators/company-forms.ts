@@ -15,11 +15,21 @@ export const CAMPAIGN_STATUSES = ["DRAFT", "LIVE", "PAUSED", "ENDED"] as const;
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
 export const CAMPAIGN_STATUS_LABEL: Record<CampaignStatus, string> = { DRAFT: "Draft", LIVE: "Live", PAUSED: "Paused", ENDED: "Ended" };
 
-export const CREATOR_STATUS_LABEL: Record<string, string> = { APPLIED: "Applied", SELECTED: "Invited", JOINED: "Joined", DECLINED: "Declined", REMOVED: "Removed" };
+export const CREATOR_STATUS_LABEL: Record<string, string> = { APPLIED: "Applied", SELECTED: "Invited", JOINED: "Joined", DECLINED: "Declined", REMOVED: "Removed", OFFERED: "Invited by you" };
 export const POST_STATUS_LABEL: Record<string, string> = { CHECKING: "Checking", TRACKING: "Counting views", INVALID: "Not valid", REMOVED: "Removed", REJECTED: "Rejected", FINAL: "Final" };
 
 /** Days an invite link works (like team invites, but longer: creators may take a while to answer). */
 export const CREATOR_INVITE_DAYS = 14;
+
+/** Days a company's offer to a marketplace creator waits for their answer (docs/CREATOR_MARKETPLACE.md). */
+export const OFFER_DAYS = 14;
+const OFFER_MS = OFFER_DAYS * 24 * 60 * 60 * 1000;
+
+/** When an offer made at `offeredAt` stops counting: it shows "Expired" and a new offer can be made. */
+export const offerExpiresAt = (offeredAt: Date | string) => new Date(new Date(offeredAt).getTime() + OFFER_MS);
+
+/** True once an OFFERED row has waited its 14 days (no date: treated as expired). */
+export const offerExpired = (offeredAt: Date | string | null | undefined, now = new Date()) => !offeredAt || offerExpiresAt(offeredAt) <= now;
 
 const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date.");
 const count = z.number().int().min(1, "Use a number above 0, or leave it empty.").max(1_000_000_000).nullable().optional();
@@ -72,6 +82,8 @@ export const campaignSchema = z
     /** The budget of each period, all creators together. */
     budget: count,
     questions: z.array(questionSchema).max(10, "Ask at most 10 questions."),
+    /** "Show on the marketplace" (/creators). On when left out; the Settings page changes it with its own switch. */
+    listed: z.boolean().optional(),
   })
   .superRefine((c, ctx) => {
     const days = daysInclusive(c.startsOn, c.endsOn);

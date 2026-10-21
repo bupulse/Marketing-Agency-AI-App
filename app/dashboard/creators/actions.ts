@@ -22,11 +22,15 @@ import {
   selectApplicant,
   setAcceptingApplications,
   setCampaignStatus,
+  setListed,
   updateCampaign,
   updatePeriodGoals,
   updateTask,
   type CampaignActor,
 } from "@/lib/creators/campaigns";
+import { reportCreator } from "@/lib/creators/finder";
+import { offerCreator, withdrawOffer } from "@/lib/creators/offers";
+import { ReportError } from "@/lib/creators/reports";
 
 export type CreatorActionResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -49,7 +53,7 @@ async function guarded<T extends object>(run: () => Promise<T>): Promise<Creator
     return { ok: true, ...(await run()) };
   } catch (error) {
     if (error instanceof Error && "digest" in error && String((error as { digest: unknown }).digest).startsWith("NEXT_REDIRECT")) throw error;
-    if (error instanceof CreatorCampaignError || error instanceof ForbiddenError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
+    if (error instanceof CreatorCampaignError || error instanceof ForbiddenError || error instanceof FeatureRequiredError || error instanceof ReportError) return { ok: false, error: error.message };
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     if (error instanceof z.ZodError) return { ok: false, error: "Please check the form." };
     console.error("[creators.actions]", error instanceof Error ? error.message : error);
@@ -99,6 +103,16 @@ export async function setAcceptingAction(campaignId: string, on: boolean) {
   });
 }
 
+/** "Show on the marketplace": hiding needs nothing, showing needs the feature. */
+export async function setListedAction(campaignId: string, on: boolean) {
+  return guarded(async () => {
+    const actor = await manager({ gated: on });
+    await setListed(actor, id.parse(campaignId), on === true);
+    refresh();
+    return {};
+  });
+}
+
 export async function deleteCampaignAction(campaignId: string) {
   return guarded(async () => {
     const actor = await manager({ gated: false });
@@ -135,14 +149,17 @@ export async function deleteTaskAction(campaignId: string, taskId: string) {
   });
 }
 
-/** Picks an applicant; the answer carries the invite link once, for Copy and WhatsApp. */
+/**
+ * Picks an applicant. A creator with an account joins at once (`picked.joined`); anyone else gets an invite link, which
+ * the answer carries once, for Copy and WhatsApp.
+ */
 export async function selectApplicantAction(campaignId: string, campaignCreatorId: string) {
   return guarded(async () => {
     const actor = await manager();
     await rateLimit(`creators:invite:${actor.actorId}`, { limit: 60, windowSeconds: 3600 });
-    const invite = await selectApplicant(actor, id.parse(campaignCreatorId));
+    const picked = await selectApplicant(actor, id.parse(campaignCreatorId));
     refresh();
-    return { invite };
+    return { picked };
   });
 }
 
@@ -206,6 +223,35 @@ export async function updatePeriodGoalsAction(campaignId: string, periodId: stri
     const actor = await manager();
     await updatePeriodGoals(actor, id.parse(periodId), goals);
     refresh();
+    return {};
+  });
+}
+
+/** Invites a marketplace creator to one of the company's live or draft campaigns (Find creators). */
+export async function offerCreatorAction(campaignId: string, profileId: string) {
+  return guarded(async () => {
+    const actor = await manager();
+    await rateLimit(`creators:offer:${actor.actorId}`, { limit: 60, windowSeconds: 3600 });
+    const offer = await offerCreator(actor, { campaignId: id.parse(campaignId), profileId: id.parse(profileId) });
+    refresh();
+    return { offer };
+  });
+}
+
+export async function withdrawOfferAction(campaignId: string, campaignCreatorId: string) {
+  return guarded(async () => {
+    const actor = await manager({ gated: false });
+    await withdrawOffer(actor, id.parse(campaignCreatorId));
+    refresh();
+    return {};
+  });
+}
+
+/** Reports a creator to BuPulse (createReport rate limits it). Works without the feature, like the other safety steps. */
+export async function reportCreatorAction(profileId: string, reason: string, details: string) {
+  return guarded(async () => {
+    const actor = await manager({ gated: false });
+    await reportCreator(actor, { profileId: id.parse(profileId), reason: z.string().max(40).parse(reason), details: z.string().max(2000).parse(details) });
     return {};
   });
 }

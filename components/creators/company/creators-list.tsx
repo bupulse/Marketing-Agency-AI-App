@@ -9,6 +9,7 @@ import { formatCompact } from "@/components/analytics/format";
 import { Badge, Button, Dialog, GlassCard, useToast } from "@/components/ui";
 import { formatAmount, PLATFORM_LABEL, type Platform } from "@/lib/creators/company-forms";
 import type { CreatorTotalsRow } from "@/lib/creators/analytics";
+import { ReportCreator } from "./report-creator";
 
 /** The creators who joined, with their totals; removing one stops their hand-ins. */
 export function CreatorsList({ campaignId, rows, currency }: { campaignId: string; rows: CreatorTotalsRow[]; currency: string }) {
@@ -37,7 +38,7 @@ export function CreatorsList({ campaignId, rows, currency }: { campaignId: strin
         {rows.map((r) => (
           <li key={r.id}>
             <GlassCard className="flex flex-wrap items-center gap-3 p-4">
-              <Link href={`/dashboard/creators/${campaignId}/creators/${r.id}`} className="flex min-w-0 flex-1 flex-col gap-1 no-underline">
+              <Link href={`/dashboard/creators/${campaignId}/creators/${r.id}`} className="flex min-w-[12rem] flex-1 flex-col gap-1 no-underline">
                 <span className="flex flex-wrap items-center gap-2 text-[15px] font-semibold">
                   {r.name}
                   {r.status === "REMOVED" && <Badge tone="neutral">Removed</Badge>}
@@ -54,6 +55,7 @@ export function CreatorsList({ campaignId, rows, currency }: { campaignId: strin
                   Remove
                 </Button>
               )}
+              {r.profileId && <ReportCreator profileId={r.profileId} name={r.name} />}
               <ChevronRight aria-hidden className="size-5 text-muted" />
             </GlassCard>
           </li>

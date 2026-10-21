@@ -29,6 +29,7 @@ export function CampaignList({ campaigns }: { campaigns: CampaignRow[] }) {
               <span className="truncate text-[15px] font-semibold">{c.name}</span>
               <Badge tone={STATUS_TONE[c.status] ?? "neutral"}>{CAMPAIGN_STATUS_LABEL[c.status as CampaignStatus] ?? c.status}</Badge>
               {c.applied > 0 && <Badge tone="violet">{c.applied} new {c.applied === 1 ? "applicant" : "applicants"}</Badge>}
+              {c.hidden && <Badge tone="danger">Hidden by BuPulse</Badge>}
             </span>
             <span className="text-[13px] text-muted">
               {formatShortDate(c.startsOn)} to {formatShortDate(c.endsOn)} · {c.platforms.map((p) => PLATFORM_LABEL[p as Platform] ?? p).join(", ")}

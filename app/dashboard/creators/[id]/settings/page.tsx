@@ -14,7 +14,7 @@ export default async function CampaignSettingsPage({ params }: PageProps<"/dashb
   return (
     <div className="flex flex-col gap-6">
       <CampaignHeader campaign={campaign} tab="settings" />
-      <CampaignSettingsExtras campaignId={campaign.id} status={campaign.status} accepting={campaign.acceptingApplications} />
+      <CampaignSettingsExtras campaignId={campaign.id} status={campaign.status} accepting={campaign.acceptingApplications} listed={campaign.listed} hiddenReason={campaign.hiddenAt ? campaign.hiddenReason : false} />
       {campaign.status === "ENDED" ? (
         <p className="px-1 text-[15px] text-muted">This campaign has ended, so its settings can no longer change.</p>
       ) : (

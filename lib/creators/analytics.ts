@@ -138,7 +138,7 @@ export async function creatorTotals(actor: CampaignActor, campaignId: string, no
   assertManager(actor);
   await campaignOf(actor, campaignId);
   const [rows, posts, payouts, periods] = await Promise.all([
-    prisma.campaignCreator.findMany({ where: { campaignId, status: { in: ["JOINED", "REMOVED"] } }, orderBy: [{ status: "asc" }, { joinedAt: "asc" }], select: { id: true, name: true, phone: true, email: true, status: true, handles: true, joinedAt: true, removedAt: true } }),
+    prisma.campaignCreator.findMany({ where: { campaignId, status: { in: ["JOINED", "REMOVED"] } }, orderBy: [{ status: "asc" }, { joinedAt: "asc" }], select: { id: true, profileId: true, name: true, phone: true, email: true, status: true, handles: true, joinedAt: true, removedAt: true } }),
     prisma.creatorPost.groupBy({ by: ["campaignCreatorId"], where: { campaignId, status: { in: EARNING } }, _sum: { views: true }, _count: { _all: true } }),
     prisma.creatorPayout.groupBy({ by: ["campaignCreatorId", "status"], where: { period: { campaignId } }, _sum: { amount: true } }),
     prisma.creatorPeriod.findMany({ where: { campaignId, status: "OPEN", startsAt: { lte: now } }, select: PERIOD_SELECT }),
@@ -150,6 +150,8 @@ export async function creatorTotals(actor: CampaignActor, campaignId: string, no
     const own = posts.find((p) => p.campaignCreatorId === r.id);
     return {
       id: r.id,
+      /** Their creator profile (for Report). */
+      profileId: r.profileId,
       name: r.name,
       phone: r.phone,
       email: r.email,
