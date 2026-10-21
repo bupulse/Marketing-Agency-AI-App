@@ -45,6 +45,7 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 34 | Testimonials on the website (Admin) | `/admin/testimonials`, shown on `/` and `/pricing` | [34-testimonials.md](34-testimonials.md) |
 | 35 | Finding your way (grouped menu, + Create, the phone bar, Find a page) | every dashboard page; ⌘K / Ctrl+K | [35-finding-your-way.md](35-finding-your-way.md) |
 | 36 | Daily posts made for you (every night, ready to approve in the morning) | Posts (Today: needs review), Posts → Settings; Admin → Settings → Daily posts for clients | [36-daily-posts.md](36-daily-posts.md) |
+| 38 | For creators: applying to a campaign, the creator login, handing in posts, views and pay | /c/&lt;campaign&gt;, /creator (Campaigns, Earnings, Connections) | [38-for-creators.md](38-for-creators.md) |
 
 ## Which plan has what
 
