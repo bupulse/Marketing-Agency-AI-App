@@ -129,7 +129,7 @@ Not owner decisions; change them freely.
   move to Ended.
 - **Campaigns page groups** (lib/creators/portal-groups.ts): Invitations, Joined (JOINED, campaign not ENDED), Waiting
   for the company (APPLIED, SELECTED; also applications sent with the form under the login's email before the account
-  existed), Ended (ENDED campaigns, REMOVED, DECLINED: "Not picked" or "You said no"). Today's tasks moved to Tasks; the
+  existed), Ended (ENDED campaigns, REMOVED, DECLINED: "Not picked", or "Invitation closed" for an invitation declined, withdrawn or closed by a block). Today's tasks moved to Tasks; the
   home shows a "N tasks to hand in today" link, and a "Complete your profile" notice while it is incomplete.
 - **Tasks tab**: JOINED campaigns not ENDED, with "N tasks to hand in today"; a campaign shows Today and Other days.
   The hand-in page's back link goes to the campaign's tasks.

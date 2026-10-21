@@ -58,7 +58,8 @@ export function rowLabel(row: PortalRow, now = new Date()): string {
     case "REMOVED":
       return "Left";
     case "DECLINED":
-      return row.source === "OFFER" ? "You said no" : "Not picked";
+      // An invitation is DECLINED by the creator, by the company withdrawing it, or by an admin block: one neutral word.
+      return row.source === "OFFER" ? "Invitation closed" : "Not picked";
     default:
       return row.status;
   }

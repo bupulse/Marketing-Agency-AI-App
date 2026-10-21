@@ -106,7 +106,7 @@ describe("the Campaigns page's groups", () => {
   it("labels the rows", () => {
     expect(rowLabel(row("OFFERED", "LIVE", { offeredAt: ago(1) }), NOW)).toBe("Invitation");
     expect(rowLabel(row("OFFERED", "LIVE", { offeredAt: ago(15) }), NOW)).toBe("Expired");
-    expect(rowLabel(row("DECLINED", "LIVE", { source: "OFFER" }), NOW)).toBe("You said no");
+    expect(rowLabel(row("DECLINED", "LIVE", { source: "OFFER" }), NOW)).toBe("Invitation closed");
     expect(rowLabel(row("DECLINED"), NOW)).toBe("Not picked");
     expect(rowLabel(row("JOINED", "PAUSED"), NOW)).toBe("Paused");
     expect(offerExpired(null, NOW)).toBe(true);
