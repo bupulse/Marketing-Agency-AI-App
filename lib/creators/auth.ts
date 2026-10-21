@@ -38,3 +38,13 @@ export const requireCreator = cache(async (): Promise<CreatorSession> => {
 
 /** The Composio user a creator's connections belong to (never a business id, so the two never mix). */
 export const composioCreatorId = (profileId: string) => `creator_${profileId}`;
+
+export type PublicViewer = { kind: "guest" | "creator" | "company"; user: Awaited<ReturnType<typeof getCurrentUser>> };
+
+/** Who opens a public creator page (/creators, /c/<slug>): a visitor, a creator (has a profile), or a company person. */
+export async function publicViewer(): Promise<PublicViewer> {
+  const user = await getCurrentUser().catch(() => null);
+  if (!user?.email_confirmed_at) return { kind: "guest", user: null };
+  const profile = await prisma.creatorProfile.findUnique({ where: { userId: user.id }, select: { id: true } });
+  return { kind: profile ? "creator" : "company", user };
+}

@@ -38,7 +38,8 @@ export function readWhatsapp(raw: string, companyCountry: string | null | undefi
   return (v.startsWith("+") ? parsePhone(v, null) : parsePhone(v, phoneCountry(companyCountry) ?? "RW"))?.number ?? null;
 }
 
-const isLink = (v: string) => {
+/** An http(s) link with a real host name. */
+export const isLink = (v: string) => {
   try {
     const u = new URL(v);
     return (u.protocol === "https:" || u.protocol === "http:") && u.hostname.includes(".");
@@ -85,12 +86,18 @@ export function readApplication(
     if (!isLink(v) || v.length > 500) errors[`sample_${i + 1}`] = "Paste the full link, starting with https://";
   });
 
+  const answers = readAnswers(form, campaign.questions, errors);
+  if (Object.keys(errors).length) return { ok: false, errors };
+  return { ok: true, value: { name, email, phone: phone!, handles, samples, answers } };
+}
+
+/** The answers to the company's own questions (`q_<id>` fields); a missing required one adds its error to `errors`. */
+export function readAnswers(form: { get(name: string): unknown }, questions: CampaignQuestion[], errors: ApplicationErrors): Record<string, string> {
   const answers: Record<string, string> = {};
-  for (const q of campaign.questions) {
-    const a = s(`q_${q.id}`).slice(0, ANSWER_MAX);
+  for (const q of questions) {
+    const a = String(form.get(`q_${q.id}`) ?? "").trim().slice(0, ANSWER_MAX);
     if (q.required && !a) errors[`q_${q.id}`] = "Please answer this question.";
     if (a) answers[q.id] = a;
   }
-  if (Object.keys(errors).length) return { ok: false, errors };
-  return { ok: true, value: { name, email, phone: phone!, handles, samples, answers } };
+  return answers;
 }
