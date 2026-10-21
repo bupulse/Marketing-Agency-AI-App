@@ -6,6 +6,7 @@ import { creatorPayInWords } from "./describe";
 import { logoUrls } from "./logos";
 import { filterMarket, isListed, placesLeft, type MarketFilters, type MarketItem } from "./market-filters";
 import { readPayRules } from "./pay";
+import { holdsPlace } from "./portal-groups";
 import { dayIn, ymdOf } from "./periods";
 import { NEW_RECORD, paymentRecords, type PaymentRecord } from "./record";
 
@@ -26,11 +27,11 @@ export type MarketCard = MarketItem & {
 
 const DAY = 86_400_000;
 
-/** Places a campaign has left (plan limit minus SELECTED and JOINED). */
-export async function placesLeftIn(campaign: { id: string; businessId: string }): Promise<number> {
+/** Places a campaign has left (plan limit minus SELECTED, JOINED and open invitations). */
+export async function placesLeftIn(campaign: { id: string; businessId: string }, now = new Date()): Promise<number> {
   const [{ creatorsPerCampaign }, picked] = await Promise.all([
     campaignLimits(campaign.businessId),
-    prisma.campaignCreator.count({ where: { campaignId: campaign.id, status: { in: ["SELECTED", "JOINED"] } } }),
+    prisma.campaignCreator.count({ where: { campaignId: campaign.id, ...holdsPlace(now) } }),
   ]);
   return placesLeft(creatorsPerCampaign, picked);
 }
@@ -65,7 +66,7 @@ export async function listedCampaigns(now = new Date(), opts: { details?: boolea
       businessId: true,
       business: { select: { name: true, logoUrl: true, timezone: true, industry: true, industryRef: { select: { slug: true, name: true } } } },
       periods: { where: { endsAt: { gt: now } }, orderBy: { index: "asc" }, take: 1, select: { viewTargetPerCreator: true, viewTargetCampaign: true, budget: true } },
-      _count: { select: { creators: { where: { status: { in: ["SELECTED", "JOINED"] } } } } },
+      _count: { select: { creators: { where: holdsPlace(now) } } },
     },
   });
 

@@ -12,6 +12,13 @@ export type PortalRow = { status: string; source: string; offeredAt: Date | null
 // One rule for when an invitation expires, shared with the company side (lib/creators/company-forms.ts).
 export { OFFER_DAYS, offerExpired } from "./company-forms";
 
+/**
+ * The rows that hold a place in a campaign (plan limit `creatorsPerCampaign`): SELECTED, JOINED, and invitations
+ * (OFFERED) not expired yet, as a Prisma `where` on CampaignCreator for the lists' "places left". The same rows
+ * placesTaken() in lib/creators/campaigns.ts counts when a place is taken.
+ */
+export const holdsPlace = (now = new Date()) => ({ OR: [{ status: { in: ["SELECTED", "JOINED"] } }, { status: "OFFERED", offeredAt: { gt: new Date(now.getTime() - OFFER_MS) } }] });
+
 /** The moment an invitation stops working. */
 export const offerEndsAt = (offeredAt: Date) => offerExpiresAt(offeredAt);
 
@@ -50,7 +57,8 @@ export function rowLabel(row: PortalRow, now = new Date()): string {
     case "REMOVED":
       return "Left";
     case "DECLINED":
-      return row.source === "OFFER" ? "You said no" : "Not picked";
+      // An invitation is DECLINED by the creator, by the company withdrawing it, or by an admin block: one neutral word.
+      return row.source === "OFFER" ? "Invitation closed" : "Not picked";
     default:
       return row.status;
   }

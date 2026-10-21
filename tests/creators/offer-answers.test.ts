@@ -22,6 +22,8 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/creators/campaigns", () => ({
   campaignLimits: vi.fn(async () => ({ liveCampaigns: 2, ...h.limits })),
   lock: vi.fn(async (tx: { $executeRaw: (...a: unknown[]) => unknown }) => { await tx.$executeRaw("lock"); }),
+  // The real one counts SELECTED, JOINED and open invitations, this one included: the mocked count is the others.
+  placesTaken: vi.fn(async (tx: { campaignCreator: { count: (a: unknown) => Promise<number> } }, campaignId: string) => (await tx.campaignCreator.count({ where: { campaignId } })) + 1),
 }));
 
 import { answerOffer, OfferError } from "@/lib/creators/offer-answers";
@@ -47,7 +49,8 @@ describe("answerOffer", () => {
     expect(await answerOffer("p1", "cc1", "accept", NOW)).toBe("JOINED");
     expect(h.findFirst.mock.calls[0][0].where).toEqual({ id: "cc1", profileId: "p1" });
     expect(h.tx.$executeRaw).toHaveBeenCalledTimes(1);
-    expect(h.tx.campaignCreator.count).toHaveBeenCalledWith({ where: { campaignId: "c1", status: { in: ["SELECTED", "JOINED"] } } });
+    // Every place holder but this invitation itself: SELECTED, JOINED and other open invitations.
+    expect(h.tx.campaignCreator.count).toHaveBeenCalledWith({ where: { campaignId: "c1" } });
     expect(h.tx.campaignCreator.updateMany).toHaveBeenCalledWith({ where: { id: "cc1", profileId: "p1", status: "OFFERED" }, data: { status: "JOINED", joinedAt: NOW } });
   });
 
@@ -108,7 +111,7 @@ describe("the Campaigns page's groups", () => {
   it("labels the rows", () => {
     expect(rowLabel(row("OFFERED", "LIVE", { offeredAt: ago(1) }), NOW)).toBe("Invitation");
     expect(rowLabel(row("OFFERED", "LIVE", { offeredAt: ago(15) }), NOW)).toBe("Expired");
-    expect(rowLabel(row("DECLINED", "LIVE", { source: "OFFER" }), NOW)).toBe("You said no");
+    expect(rowLabel(row("DECLINED", "LIVE", { source: "OFFER" }), NOW)).toBe("Invitation closed");
     expect(rowLabel(row("DECLINED"), NOW)).toBe("Not picked");
     expect(rowLabel(row("JOINED", "PAUSED"), NOW)).toBe("Paused");
     expect(offerExpired(null, NOW)).toBe(true);
