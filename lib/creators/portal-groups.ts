@@ -1,19 +1,19 @@
 // The portal's Campaigns page (docs/CREATOR_MARKETPLACE.md, "The creator's dashboard"): every campaign a creator is in,
 // by status. Pure, so the grouping has tests; lib/creators/portal.ts reads the rows.
 
+import { OFFER_DAYS, offerExpired, offerExpiresAt } from "./company-forms";
+
+const OFFER_MS = OFFER_DAYS * 86_400_000;
+
 export type CampaignGroup = "joined" | "waiting" | "invitations" | "ended";
 
 export type PortalRow = { status: string; source: string; offeredAt: Date | null; campaign: { status: string } };
 
-/** A company's invitation is open this many days from offeredAt (lib/creators/offer-answers.ts answers it). */
-export const OFFER_DAYS = 14;
-const OFFER_MS = OFFER_DAYS * 86_400_000;
-
-/** An invitation more than 14 days old (or with no date) can no longer be answered. */
-export const offerExpired = (offeredAt: Date | null, now = new Date()) => !offeredAt || now.getTime() - offeredAt.getTime() > OFFER_MS;
+// One rule for when an invitation expires, shared with the company side (lib/creators/company-forms.ts).
+export { OFFER_DAYS, offerExpired } from "./company-forms";
 
 /** The moment an invitation stops working. */
-export const offerEndsAt = (offeredAt: Date) => new Date(offeredAt.getTime() + OFFER_MS);
+export const offerEndsAt = (offeredAt: Date) => offerExpiresAt(offeredAt);
 
 /** Which group a row goes in. */
 export function groupOf(row: PortalRow, now = new Date()): CampaignGroup {

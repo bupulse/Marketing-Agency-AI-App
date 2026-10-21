@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { campaignLimits } from "./campaigns";
+import { campaignLimits, lock } from "./campaigns";
 import { offerExpired } from "./portal-groups";
 
 // A creator answers a company's invitation (docs/CREATOR_MARKETPLACE.md, "Companies finding creators"): an OFFERED
@@ -42,8 +42,8 @@ export async function answerOffer(profileId: string, campaignCreatorId: string, 
   if (row.campaign.status === "ENDED") throw new OfferError("conflict", "This campaign has ended.");
   const { creatorsPerCampaign } = await campaignLimits(row.campaign.businessId);
   await prisma.$transaction(async (tx) => {
-    // The same lock key as the company's picks (lib/creators/campaigns.ts, lock()).
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`creators:${row.campaignId}`}))`;
+    // The company's picks take the same lock (lib/creators/campaigns.ts).
+    await lock(tx, row.campaignId);
     const picked = await tx.campaignCreator.count({ where: { campaignId: row.campaignId, status: { in: ["SELECTED", "JOINED"] } } });
     if (picked >= creatorsPerCampaign) throw new OfferError("limit", "All places in this campaign are taken, so the invitation cannot be accepted now.");
     const done = await tx.campaignCreator.updateMany({ where: { id: row.id, profileId, status: "OFFERED" }, data: { status: "JOINED", joinedAt: now } });

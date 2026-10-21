@@ -19,7 +19,10 @@ vi.mock("@/lib/db", () => ({
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(h.tx)),
   },
 }));
-vi.mock("@/lib/creators/campaigns", () => ({ campaignLimits: vi.fn(async () => ({ liveCampaigns: 2, ...h.limits })) }));
+vi.mock("@/lib/creators/campaigns", () => ({
+  campaignLimits: vi.fn(async () => ({ liveCampaigns: 2, ...h.limits })),
+  lock: vi.fn(async (tx: { $executeRaw: (...a: unknown[]) => unknown }) => { await tx.$executeRaw("lock"); }),
+}));
 
 import { answerOffer, OfferError } from "@/lib/creators/offer-answers";
 import { groupCampaigns, groupOf, offerExpired, rowLabel } from "@/lib/creators/portal-groups";
