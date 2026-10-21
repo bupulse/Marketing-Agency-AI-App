@@ -49,7 +49,7 @@ export async function resolvePost(postId: string, deps: ResolveDeps): Promise<Re
       url: true,
       createdAt: true,
       campaignId: true,
-      submission: { select: { day: true } },
+      submission: { select: { day: true, caption: true } },
       campaign: { select: { mentions: true, business: { select: { timezone: true } } } },
       campaignCreator: { select: { profileId: true } },
     },
@@ -109,7 +109,10 @@ export async function resolvePost(postId: string, deps: ResolveDeps): Promise<Re
   const checks: Checks = {
     ownAccount: true,
     onTime: found.postedAt ? onTime(found.postedAt, day, tz) : false,
-    mention: hasMention(found.caption, post.campaign.mentions),
+    // The network's caption. Meta lists IG Media `caption` under Facebook Login, and Composio's Instagram sign-in is
+    // Instagram Login: when the network gives none, the caption the creator handed in is checked instead (to confirm
+    // on the owner's first real test, docs/CREATOR_CAMPAIGNS.md).
+    mention: hasMention(found.caption ?? post.submission.caption, post.campaign.mentions),
   };
   const reason = failReason(checks, post.campaign.mentions, label);
   if (reason) return invalid(post.id, reason, checks, found);

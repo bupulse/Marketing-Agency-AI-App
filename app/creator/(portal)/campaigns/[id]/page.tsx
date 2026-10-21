@@ -5,7 +5,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Button, GlassCard } from "@/components/ui";
 import { PayoutStatus, PostStatus } from "@/components/creators/portal/post-status";
 import { requireCreator } from "@/lib/creators/auth";
-import { amount, count, formatDay, formatSpan, networkLabel, payRulesInWords, taskRuleInWords } from "@/lib/creators/describe";
+import { amount, count, formatDay, formatSpan, networkLabel, creatorPayInWords, taskRuleInWords } from "@/lib/creators/describe";
 import { dayIn, ymdOf } from "@/lib/creators/periods";
 import { campaignForCreator } from "@/lib/creators/portal";
 import { coversDay } from "@/lib/creators/tasks";
@@ -24,7 +24,7 @@ export default async function CreatorCampaignPage({ params }: PageProps<"/creato
   const tz = campaign.business.timezone || "UTC";
   const today = dayIn(new Date(), tz);
   const open = periods.find((p) => p.status === "OPEN");
-  const pay = payRulesInWords(campaign.payRules, { viewTargetPerCreator: campaign.viewTargetPerCreator, viewTargetCampaign: campaign.viewTargetCampaign }, campaign.currency);
+  const pay = creatorPayInWords(campaign.payRules, { viewTargetPerCreator: campaign.viewTargetPerCreator, viewTargetCampaign: campaign.viewTargetCampaign }, campaign.currency);
   const canHandIn = membership.status === "JOINED" && campaign.status === "LIVE";
 
   return (

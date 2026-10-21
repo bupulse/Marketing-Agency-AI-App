@@ -1,19 +1,21 @@
-// A campaign's pay rules and platforms in plain words, for the public application page (/c/<slug>) and the creator's
-// portal (docs/CREATOR_CAMPAIGNS.md). Pure. Amounts are whole units of the campaign's currency ("2,000 RWF").
+// A campaign's pay rules and platforms in plain words for creators, on the public application page (/c/<slug>) and
+// the creator's portal (docs/CREATOR_CAMPAIGNS.md). Pure. Built on the company side's words (company-forms.ts), with
+// what a creator also needs to know: the view targets and the month's budget. Amounts are whole units ("2,000 RWF").
 
+import { formatAmount, payRulesInWords, PLATFORM_LABEL, PLATFORMS, type Platform } from "./company-forms";
 import type { PayRules, PeriodGoals } from "./pay";
 
-export const CREATOR_NETWORKS = ["instagram", "facebook", "tiktok"] as const;
-export type CreatorNetwork = (typeof CREATOR_NETWORKS)[number];
+export const CREATOR_NETWORKS = PLATFORMS;
+export type CreatorNetwork = Platform;
 export const isCreatorNetwork = (v: unknown): v is CreatorNetwork => typeof v === "string" && (CREATOR_NETWORKS as readonly string[]).includes(v);
 
-export const NETWORK_LABEL: Record<CreatorNetwork, string> = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" };
+export const NETWORK_LABEL = PLATFORM_LABEL;
 /** What a creator connects on each network (owner decision: professional Instagram, Facebook Pages). */
 export const NETWORK_ACCOUNT: Record<CreatorNetwork, string> = { instagram: "Instagram professional account (Creator or Business)", facebook: "Facebook Page", tiktok: "TikTok account" };
 
 export const networkLabel = (n: string) => (isCreatorNetwork(n) ? NETWORK_LABEL[n] : n);
 
-export const amount = (n: number, currency: string) => `${Math.floor(n).toLocaleString("en-US")} ${currency}`;
+export const amount = formatAmount;
 export const count = (n: number) => Math.floor(n).toLocaleString("en-US");
 
 /** "Instagram, TikTok and Facebook". */
@@ -23,18 +25,16 @@ export function listWords(items: string[], last = "and"): string {
 }
 
 /**
- * The pay rules as short sentences, most important first, e.g. "2,000 RWF for every 1,000 views, up to 50,000 views a
- * month". "A month" is one 30-day pay period (lib/creators/periods.ts).
+ * The pay rules as a creator reads them, e.g. "2,000 RWF for every 1,000 views, up to 50,000 views a month": the
+ * company's words (payRulesInWords) with the month's goals added. "A month" is one 30-day pay period.
  */
-export function payRulesInWords(rules: PayRules, goals: PeriodGoals, currency: string): string[] {
-  const lines: string[] = [];
+export function creatorPayInWords(rules: PayRules, goals: PeriodGoals, currency: string): string[] {
+  const lines = payRulesInWords(rules, currency);
   const target = goals.viewTargetPerCreator && goals.viewTargetPerCreator > 0 ? goals.viewTargetPerCreator : null;
-  if (rules.ratePerThousand) lines.push(`${amount(rules.ratePerThousand, currency)} for every 1,000 views${target ? `, up to ${count(target)} views a month` : ""}`);
-  else if (target) lines.push(`Views count up to ${count(target)} a month`);
-  for (const m of rules.milestones ?? []) lines.push(`${amount(m.amount, currency)} once a post reaches ${count(m.views)} views`);
-  if (rules.feePerPost) lines.push(`${amount(rules.feePerPost, currency)} for every post you hand in`);
-  if (rules.capPerPost) lines.push(`At most ${amount(rules.capPerPost, currency)} for one post in a month`);
-  if (rules.capPerCreator) lines.push(`At most ${amount(rules.capPerCreator, currency)} for one creator in a month`);
+  if (target) {
+    if (rules.ratePerThousand) lines[0] = `${lines[0]}, up to ${count(target)} views a month`;
+    else lines.unshift(`Views count up to ${count(target)} a month`);
+  }
   if (goals.viewTargetCampaign && goals.viewTargetCampaign > 0) {
     lines.push(`When all creators together pass ${count(goals.viewTargetCampaign)} views in a month, everyone's views are counted by the same share`);
   }

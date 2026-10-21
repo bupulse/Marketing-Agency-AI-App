@@ -5,7 +5,9 @@ import { rateLimit, RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readPayRules } from "./pay";
 import { ymdOf } from "./periods";
-import { readApplication, readQuestions, type ApplicationErrors, type Question } from "./application";
+import { readApplication, type ApplicationErrors } from "./application";
+import { readQuestions, type CampaignQuestion } from "./company-forms";
+import { isSlug } from "./slug";
 
 // The public application page /c/<slug> (docs/CREATOR_CAMPAIGNS.md, "Applying"): what the page shows, and saving an
 // application as a CampaignCreator row (APPLIED). One application per email per campaign, limited per address and
@@ -26,13 +28,13 @@ export type PublicCampaign = {
   currency: string;
   payRules: ReturnType<typeof readPayRules>;
   goals: { viewTargetPerCreator: number | null; viewTargetCampaign: number | null; budget: number | null };
-  questions: Question[];
+  questions: CampaignQuestion[];
   company: { id: string; name: string; country: string | null; timezone: string; logoUrl: string | null };
 };
 
 /** The campaign behind a slug, or null when there is none or its company no longer has the feature. */
 export async function loadPublicCampaign(slug: string, now = new Date()): Promise<PublicCampaign | null> {
-  if (!/^[a-z0-9-]{1,80}$/.test(slug)) return null;
+  if (!isSlug(slug)) return null;
   const c = await prisma.creatorCampaign.findUnique({
     where: { slug },
     include: {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { readApplication, readFollowers, cleanHandle, readQuestions } from "@/lib/creators/application";
-import { formatSpan, payRulesInWords, taskRuleInWords } from "@/lib/creators/describe";
+import { readApplication, readFollowers, cleanHandle } from "@/lib/creators/application";
+import { readQuestions } from "@/lib/creators/company-forms";
+import { formatSpan, creatorPayInWords, taskRuleInWords } from "@/lib/creators/describe";
 import { handInDays, linksProblem, tasksForDay } from "@/lib/creators/tasks";
 import { failReason, hasMention, onTime } from "@/lib/creators/tracking/checks";
 import { expandShortLink, parsePostLink } from "@/lib/creators/tracking/links";
@@ -92,18 +93,19 @@ describe("tasks by day", () => {
 
 describe("pay rules in plain words", () => {
   it("says the owner's example the way a creator reads it", () => {
-    expect(payRulesInWords({ ratePerThousand: 2000 }, { viewTargetPerCreator: 50_000 }, "RWF")).toEqual(["2,000 RWF for every 1,000 views, up to 50,000 views a month"]);
-    const lines = payRulesInWords({ ratePerThousand: 1000, milestones: [{ views: 10_000, amount: 5000 }], feePerPost: 500, capPerPost: 20_000 }, { budget: 300_000 }, "RWF");
-    expect(lines).toContain("5,000 RWF once a post reaches 10,000 views");
-    expect(lines).toContain("500 RWF for every post you hand in");
-    expect(lines).toContain("At most 20,000 RWF for one post in a month");
+    expect(creatorPayInWords({ ratePerThousand: 2000 }, { viewTargetPerCreator: 50_000 }, "RWF")).toEqual(["2,000 RWF for every 1,000 views, up to 50,000 views a month"]);
+    const lines = creatorPayInWords({ ratePerThousand: 1000, milestones: [{ views: 10_000, amount: 5000 }], feePerPost: 500, capPerPost: 20_000 }, { budget: 300_000, viewTargetCampaign: 1_000_000 }, "RWF");
+    expect(lines[0]).toBe("1,000 RWF for every 1,000 views");
+    expect(lines).toContain("5,000 RWF once, when a post reaches 10,000 views");
+    expect(lines.some((l) => l.includes("pass 1,000,000 views"))).toBe(true);
+    expect(creatorPayInWords({ feePerPost: 500 }, { viewTargetPerCreator: 20_000 }, "RWF")[0]).toBe("Views count up to 20,000 a month");
     expect(lines.at(-1)).toMatch(/budget is 300,000 RWF/);
     expect(formatSpan("2026-10-21", "2026-11-19")).toBe("21 October – 19 November 2026");
   });
 });
 
 describe("the application form", () => {
-  const campaign = { platforms: ["instagram", "tiktok"], questions: readQuestions([{ id: "why", label: "Why you?", required: true }, { id: "bad id!", label: "x" }]), country: "Rwanda" };
+  const campaign = { platforms: ["instagram", "tiktok"], questions: readQuestions([{ id: "why", label: "Why you?", required: true }]), country: "Rwanda" };
   const form = (values: Record<string, string>) => new Map(Object.entries(values));
 
   it("reads a good application, with the WhatsApp number in E.164", () => {

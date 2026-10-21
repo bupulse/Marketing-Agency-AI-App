@@ -53,7 +53,7 @@ beforeEach(() => {
       url: "https://www.instagram.com/reel/DAbC123xyz/",
       createdAt: new Date("2026-10-20T14:00:00Z"),
       campaignId: "camp1",
-      submission: { day: new Date("2026-10-20T00:00:00Z") },
+      submission: { day: new Date("2026-10-20T00:00:00Z"), caption: "Typed by the creator" },
       campaign: { mentions: ["@leafshop"], business: { timezone: "Africa/Kigali" } },
       campaignCreator: { profileId: "prof1" },
     },
@@ -85,6 +85,11 @@ describe("checking a handed-in link", () => {
   it("mention: a caption without the campaign's mention is INVALID", async () => {
     expect(await resolvePost("p1", deps(adapter(async () => found({ caption: "My look" }))))).toBe("invalid");
     expect(last()).toMatchObject({ status: "INVALID", checks: { mention: false }, statusReason: expect.stringContaining("@leafshop") });
+  });
+
+  it("checks the handed-in caption when the network gives none", async () => {
+    (db.state.post as { submission: { caption: string } }).submission.caption = "Look @LeafShop";
+    expect(await resolvePost("p1", deps(adapter(async () => found({ caption: null }))))).toBe("tracking");
   });
 
   it("a post already earning in another campaign is refused nicely", async () => {

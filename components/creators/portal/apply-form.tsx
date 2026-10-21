@@ -5,12 +5,12 @@ import { useActionState } from "react";
 import { Button, Field, GlassCard, Input, Textarea } from "@/components/ui";
 import type { ApplyState } from "@/app/c/[slug]/actions";
 import { NETWORK_LABEL, isCreatorNetwork } from "@/lib/creators/describe";
-import type { Question } from "@/lib/creators/application";
+import type { CampaignQuestion } from "@/lib/creators/company-forms";
 
 const initial: ApplyState = { status: "idle" };
 
 /** The application form of /c/<slug> (`apply`: applyAction bound to the slug). `preview`: the company looking at a campaign that is not live (nothing is sent). */
-export function ApplyForm({ apply, platforms, questions, companyName, preview }: { apply: (prev: ApplyState, form: FormData) => Promise<ApplyState>; platforms: string[]; questions: Question[]; companyName: string; preview?: boolean }) {
+export function ApplyForm({ apply, platforms, questions, companyName, preview }: { apply: (prev: ApplyState, form: FormData) => Promise<ApplyState>; platforms: string[]; questions: CampaignQuestion[]; companyName: string; preview?: boolean }) {
   const [state, action, pending] = useActionState(apply, initial);
   const errors = state.errors ?? {};
   const values = state.values ?? {};

@@ -2,9 +2,9 @@
 // rules have tests; lib/creators/apply.ts saves it.
 
 import { parsePhone, phoneCountry } from "@/lib/phone";
+import type { CampaignQuestion } from "./company-forms";
 import { isCreatorNetwork, networkLabel, type CreatorNetwork } from "./describe";
 
-export type Question = { id: string; label: string; required: boolean };
 export type Handle = { network: CreatorNetwork; handle: string; followers: number };
 export type Application = { name: string; email: string; phone: string; handles: Handle[]; samples: string[]; answers: Record<string, string> };
 export type ApplicationErrors = Partial<Record<string, string>>;
@@ -12,16 +12,6 @@ export type ApplicationErrors = Partial<Record<string, string>>;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export const MAX_SAMPLES = 3;
 export const ANSWER_MAX = 1000;
-
-/** The company's own questions as stored (Json): anything unreadable is left out. */
-export function readQuestions(value: unknown): Question[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((q): q is Record<string, unknown> => !!q && typeof q === "object")
-    .map((q) => ({ id: String(q.id ?? "").slice(0, 40), label: String(q.label ?? "").trim().slice(0, 300), required: q.required === true }))
-    .filter((q) => /^[A-Za-z0-9_-]+$/.test(q.id) && q.label)
-    .slice(0, 20);
-}
 
 /** "@ana.rw", "ana.rw" or a profile link -> "ana.rw". */
 export function cleanHandle(raw: string): string {
@@ -60,7 +50,7 @@ const isLink = (v: string) => {
 /** Reads the form for a campaign with these platforms and questions. Either the application, or the errors per field. */
 export function readApplication(
   form: { get(name: string): unknown },
-  campaign: { platforms: string[]; questions: Question[]; country: string | null },
+  campaign: { platforms: string[]; questions: CampaignQuestion[]; country: string | null },
 ): { ok: true; value: Application } | { ok: false; errors: ApplicationErrors } {
   const s = (name: string) => String(form.get(name) ?? "").trim();
   const errors: ApplicationErrors = {};

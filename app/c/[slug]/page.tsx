@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/theme";
 import { Badge, GlassCard } from "@/components/ui";
 import { ApplyForm } from "@/components/creators/portal/apply-form";
 import { canPreview, loadPublicCampaign, takesApplications } from "@/lib/creators/apply";
-import { formatSpan, NETWORK_ACCOUNT, NETWORK_LABEL, isCreatorNetwork, listWords, payRulesInWords } from "@/lib/creators/describe";
+import { formatSpan, NETWORK_ACCOUNT, NETWORK_LABEL, isCreatorNetwork, listWords, creatorPayInWords } from "@/lib/creators/describe";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { applyAction } from "./actions";
 
@@ -48,7 +48,7 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
   const preview = !open && campaign.status === "DRAFT" && (await canPreview(campaign, (await getCurrentUser())?.id));
   if (campaign.status === "DRAFT" && !preview) notFound();
 
-  const pay = payRulesInWords(campaign.payRules, campaign.goals, campaign.currency);
+  const pay = creatorPayInWords(campaign.payRules, campaign.goals, campaign.currency);
   const networks = campaign.platforms.filter(isCreatorNetwork);
   const closed = campaign.status === "ENDED" ? "This campaign has ended." : "This campaign is not taking applications right now.";
 
