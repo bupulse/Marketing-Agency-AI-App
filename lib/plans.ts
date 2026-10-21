@@ -99,7 +99,7 @@ export function videosLeftNow(usage: { used: { videos: number }; limits: { video
  * features. Videos came later (docs/CONTENT_VISUALS.md) and come with videos a month, which only Pro has.
  */
 /** Features added after the plan builder (October 2026): plans get them from their own migrations, never from these seeds. */
-const LATER_FEATURES: FeatureKey[] = ["inbox", "automations", "dailyPosts"];
+const LATER_FEATURES: FeatureKey[] = ["inbox", "automations", "dailyPosts", "creators"];
 export const CORE_FEATURES: FeatureKey[] = BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice" && !LATER_FEATURES.includes(k));
 /** Every built feature of the app plus the client's own Composio account: Pro. (Managed by BuPulse is sold apart.) */
 export const PRO_FEATURES: FeatureKey[] = sortFeatureKeys([...BUILT_APP_FEATURE_KEYS.filter((k) => !LATER_FEATURES.includes(k)), "ownComposio"]);

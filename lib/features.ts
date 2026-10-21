@@ -30,6 +30,7 @@ export const FEATURE_KEYS = [
   "inbox",
   "automations",
   "dailyPosts",
+  "creators",
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -295,6 +296,17 @@ export const FEATURES: readonly FeatureDef[] = [
     kind: "app",
     // Its switch and choices are in Content -> Settings (a `content` route); there is no page of its own.
     routes: [],
+  },
+  {
+    key: "creators",
+    label: "Creator campaigns",
+    description: "Run campaigns for content creators: they apply, post your daily tasks on their own accounts, and BuPulse counts each post's views and works out their pay.",
+    requires: [],
+    // Views are read and creators connect their accounts through BuPulse-Socials (docs/CREATOR_CAMPAIGNS.md).
+    services: ["composio"],
+    status: "built",
+    kind: "app",
+    routes: ["/dashboard/creators"],
   },
 ];
 

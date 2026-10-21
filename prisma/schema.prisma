@@ -52,6 +52,7 @@ model User {
   manualPayments       ManualPayment[]
   renewalNotices       RenewalNotice[]
   pushSubscriptions    PushSubscription[]
+  creator              CreatorProfile?
 
   @@index([lastSeenAt])
   assignedConversations Conversation[] @relation("ConversationAssignee")
@@ -132,6 +133,7 @@ model Business {
   autopilot        AutopilotSettings?
   autopilotRuns    AutopilotRun[]
   dailyPostRuns    DailyPostRun[]
+  creatorCampaigns CreatorCampaign[]
   chatWidgets      ChatWidget[]
   chatSessions     ChatSession[]
   contacts         Contact[]
@@ -2745,4 +2747,253 @@ model SiteTestimonial {
   updatedAt  DateTime @updatedAt
 
   @@index([published, position])
+}
+
+// Creator campaigns (docs/CREATOR_CAMPAIGNS.md): a company runs a campaign for content creators, who post the daily
+// tasks on their own Instagram (professional), Facebook Page or TikTok and are paid by the company for the views their
+// posts make. BuPulse reads each post's views through BuPulse-Socials (Composio) and works out what each creator earned
+// per 30-day period (lib/creators/pay.ts); the company pays by Mobile Money itself and marks it paid. Amounts are whole
+// units of the campaign's currency (RWF has no cents).
+model CreatorCampaign {
+  id                    String              @id @default(cuid())
+  businessId            String
+  business              Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  slug                  String              @unique // the public application page /c/<slug> (lib/creators/slug.ts)
+  name                  String
+  brief                 String // the challenge and what the videos should show, for the whole campaign
+  rules                 String? // the company's own written rules, shown to creators before they apply and on every task
+  status                String              @default("DRAFT") // DRAFT | LIVE | PAUSED | ENDED
+  acceptingApplications Boolean             @default(true)
+  startsOn              DateTime            @db.Date // first day, in the company's timezone
+  endsOn                DateTime            @db.Date // last day (inclusive)
+  platforms             String[] // "instagram" | "facebook" | "tiktok"
+  mentions              String[] // the caption must contain at least one of these: @handle, #hashtag or a link (empty: no check)
+  currency              String              @default("RWF")
+  payRules              Json // PayRules (lib/creators/pay.ts): rate per 1,000 views, milestones, fee per post, caps
+  viewTargetPerCreator  Int? // default for new periods: views per creator per period that earn; more do not count
+  viewTargetCampaign    Int? // default for new periods: views of all creators together per period that earn
+  questions             Json? // the company's own application questions: [{ id, label, required }]
+  createdBy             String?             @db.Uuid
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  tasks                 CreatorTask[]
+  creators              CampaignCreator[]
+  periods               CreatorPeriod[]
+  submissions           CreatorSubmission[]
+  posts                 CreatorPost[]
+
+  @@index([businessId, status])
+}
+
+// What creators must post. A task covers a span of days (one day, a week, the whole month...) and repeats every day
+// of it: each day the creator hands in `postsPerDay` posts for it.
+model CreatorTask {
+  id           String              @id @default(cuid())
+  campaignId   String
+  campaign     CreatorCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  title        String
+  instructions String
+  startsOn     DateTime            @db.Date
+  endsOn       DateTime            @db.Date
+  postsPerDay  Int                 @default(1)
+  platforms    String[] // a subset of the campaign's platforms
+  platformMode String              @default("ANY") // ALL: a post on every platform | ANY: one post on any of them
+  mediaKind    String              @default("ANY") // VIDEO | IMAGE | ANY
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  submissions  CreatorSubmission[]
+
+  @@index([campaignId, startsOn, endsOn])
+}
+
+// The person who posts. One login across companies (owner decision, 21 October 2026): a creator's User row has no
+// Business and no Membership; their campaigns come from CampaignCreator rows.
+model CreatorProfile {
+  id          String              @id @default(cuid())
+  userId      String              @unique @db.Uuid
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  phone       String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  campaigns   CampaignCreator[]
+  connections CreatorConnection[]
+}
+
+// One creator in one campaign, from the application to the end: APPLIED -> SELECTED (invite link sent) -> JOINED, or
+// DECLINED; REMOVED by the company later. Before they join, the row holds the application only (profileId null).
+model CampaignCreator {
+  id              String              @id @default(cuid())
+  campaignId      String
+  campaign        CreatorCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  profileId       String?
+  profile         CreatorProfile?     @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  status          String              @default("APPLIED") // APPLIED | SELECTED | JOINED | DECLINED | REMOVED
+  name            String
+  email           String // lowercase
+  phone           String? // WhatsApp, E.164 when it could be read
+  handles         Json // [{ network, handle, followers }]
+  samples         String[] // 1-3 links to their best posts
+  answers         Json? // { [questionId]: answer }
+  inviteTokenHash String?             @unique // sha-256 of the invite link's token (single use)
+  inviteExpiresAt DateTime?
+  selectedAt      DateTime?
+  joinedAt        DateTime?
+  removedAt       DateTime?
+  note            String? // the company's private note
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  submissions     CreatorSubmission[]
+  posts           CreatorPost[]
+  payouts         CreatorPayout[]
+
+  @@unique([campaignId, email])
+  @@index([campaignId, status])
+  @@index([profileId])
+}
+
+// A creator's own Instagram, Facebook Page or TikTok, connected through BuPulse-Socials (Composio, user id
+// "creator_<profileId>"). Views are read with it, and a handed-in link must be a post of one of these accounts.
+model CreatorConnection {
+  id                         String         @id @default(cuid())
+  profileId                  String
+  profile                    CreatorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  network                    String // instagram | facebook | tiktok
+  composioConnectedAccountId String
+  externalAccountId          String // Instagram user id, Facebook Page id, TikTok open_id
+  username                   String?
+  displayName                String?
+  accountType                String? // "business" | "creator" | "page" | ...
+  avatarUrl                  String?
+  status                     String         @default("ACTIVE") // ACTIVE | EXPIRED | REVOKED
+  lastError                  String?
+  lastCheckedAt              DateTime?
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
+  posts                      CreatorPost[]
+
+  @@unique([profileId, network, externalAccountId])
+  @@index([status])
+}
+
+// A task handed in for one day: what the creator wrote and the files they used. Auto-approved (owner decision); the
+// company can reject it later, which takes away its pay.
+model CreatorSubmission {
+  id                String          @id @default(cuid())
+  campaignId        String
+  campaign          CreatorCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  taskId            String
+  task              CreatorTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  campaignCreatorId String
+  campaignCreator   CampaignCreator @relation(fields: [campaignCreatorId], references: [id], onDelete: Cascade)
+  day               DateTime        @db.Date // the task day it is for
+  title             String
+  caption           String
+  mediaPaths        String[] // Storage paths of the uploaded images and videos (bucket "creator-media")
+  status            String          @default("ACCEPTED") // ACCEPTED | REJECTED
+  rejectedAt        DateTime?
+  rejectReason      String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  posts             CreatorPost[]
+
+  @@index([campaignId, day])
+  @@index([campaignCreatorId, day])
+}
+
+// One post link of a submission, on one platform. Its views are read every 6 hours (lib/creators/tracking) and kept
+// as snapshots, so a period counts the views that happened inside it.
+model CreatorPost {
+  id                String                @id @default(cuid())
+  submissionId      String
+  submission        CreatorSubmission     @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  campaignId        String
+  campaign          CreatorCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignCreatorId String
+  campaignCreator   CampaignCreator       @relation(fields: [campaignCreatorId], references: [id], onDelete: Cascade)
+  connectionId      String?
+  connection        CreatorConnection?    @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  network           String
+  url               String
+  externalId        String? // the network's id of the post, found from the link on the creator's account
+  postedAt          DateTime? // from the network
+  networkCaption    String? // the caption as the network has it (the mention check reads this)
+  checks            Json? // { ownAccount, onTime, mention }: true | false | null (not checked yet)
+  status            String                @default("CHECKING") // CHECKING | TRACKING | INVALID | REMOVED | REJECTED | FINAL
+  statusReason      String?
+  removedAt         DateTime?
+  views             Int                   @default(0) // latest reading
+  impressions       Int                   @default(0)
+  likes             Int                   @default(0)
+  comments          Int                   @default(0)
+  shares            Int                   @default(0)
+  lastReadAt        DateTime?
+  nextReadAt        DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  snapshots         CreatorPostSnapshot[]
+
+  // A post earns in one campaign only.
+  @@unique([network, externalId])
+  @@index([campaignId, status])
+  @@index([campaignCreatorId])
+  @@index([status, nextReadAt])
+}
+
+model CreatorPostSnapshot {
+  id          String      @id @default(cuid())
+  postId      String
+  post        CreatorPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  capturedAt  DateTime    @default(now())
+  views       Int
+  impressions Int         @default(0)
+  likes       Int         @default(0)
+  comments    Int         @default(0)
+  shares      Int         @default(0)
+
+  @@index([postId, capturedAt])
+}
+
+// A 30-day pay period of a campaign (the last one can be shorter), with its own goals. CLOSED when its final counts
+// were taken and the payouts written; nothing in it changes after that.
+model CreatorPeriod {
+  id                   String          @id @default(cuid())
+  campaignId           String
+  campaign             CreatorCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  index                Int // 1, 2, 3...
+  startsAt             DateTime // start of its first day in the company's timezone
+  endsAt               DateTime // start of the day after its last day
+  viewTargetPerCreator Int?
+  viewTargetCampaign   Int?
+  budget               Int? // most the company pays for this period, all creators together
+  status               String          @default("OPEN") // OPEN | CLOSED
+  closedAt             DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  payouts              CreatorPayout[]
+
+  @@unique([campaignId, index])
+  @@index([status, endsAt])
+}
+
+// What one creator earned in one period: written when the period closes, then marked paid by the company.
+model CreatorPayout {
+  id                String          @id @default(cuid())
+  periodId          String
+  period            CreatorPeriod   @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  campaignCreatorId String
+  campaignCreator   CampaignCreator @relation(fields: [campaignCreatorId], references: [id], onDelete: Cascade)
+  countedViews      Int
+  amount            Int // what is owed: earnings minus deductions
+  deductions        Int             @default(0) // pay taken back for posts removed or rejected after an earlier period was paid
+  breakdown         Json // PayoutBreakdown (lib/creators/pay.ts): per post views, rate pay, milestones, fees, caps
+  status            String          @default("DUE") // DUE | PAID
+  paidAt            DateTime?
+  paidBy            String?         @db.Uuid
+  reference         String? // the Mobile Money reference the company typed
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([periodId, campaignCreatorId])
+  @@index([campaignCreatorId, status])
 }
