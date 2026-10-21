@@ -52,7 +52,7 @@ hides behind it, and messages that pop up appear above it.
 
 ## Find a page
 
-The **Find a page** box is at the bottom of the menu. On a computer, **⌘K** (Mac) or **Ctrl+K** (Windows) opens it
+The **Find a page** box is at the top of the menu, under the BuPulse logo. On a computer, **⌘K** (Mac) or **Ctrl+K** (Windows) opens it
 from anywhere.
 
 1. Type a page name or a word you know: "payment" or "MoMo" finds **Billing**, "photos" or "gallery" finds **Photos**,

@@ -295,6 +295,21 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, studio, 
           <Logo height={28} />
         </Link>
       </div>
+      {/* At the top, so any page is one search away (owner's request). */}
+      <button
+        type="button"
+        onClick={(e) => onFind(e.currentTarget)}
+        aria-haspopup="dialog"
+        className="glass -mt-1 flex min-h-11 cursor-pointer items-center gap-2.5 rounded-2xl px-3.5 text-left text-[15px] text-muted hover:text-text"
+      >
+        <Search aria-hidden className="size-[18px] shrink-0" />
+        <span className="flex-1">Find a page</span>
+        {hint && (
+          <kbd aria-hidden className="hidden rounded-md border border-line px-1.5 py-0.5 font-sans text-[11px] lg:inline">
+            {hint}
+          </kbd>
+        )}
+      </button>
       {can(role, "settings") ? (
         <Link
           href="/dashboard/brand"
@@ -358,20 +373,6 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, studio, 
         </nav>
       )}
       <div className="mt-auto flex flex-col gap-3">
-        <button
-          type="button"
-          onClick={(e) => onFind(e.currentTarget)}
-          aria-haspopup="dialog"
-          className="glass flex min-h-11 cursor-pointer items-center gap-2.5 rounded-2xl px-3.5 text-left text-[15px] text-muted hover:text-text"
-        >
-          <Search aria-hidden className="size-[18px] shrink-0" />
-          <span className="flex-1">Find a page</span>
-          {hint && (
-            <kbd aria-hidden className="hidden rounded-md border border-line px-1.5 py-0.5 font-sans text-[11px] lg:inline">
-              {hint}
-            </kbd>
-          )}
-        </button>
         <div className="glass-strong flex flex-col gap-2.5 rounded-[20px] p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px]">
             <strong>{plan.name}</strong>
