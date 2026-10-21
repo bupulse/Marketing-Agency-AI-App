@@ -8,7 +8,7 @@ import { CreatorNav } from "./nav";
 
 /**
  * The creator's portal frame (/creator): BuPulse's look, but none of the company dashboard. Phone first: a top bar,
- * the page, and the three tabs at the bottom (at the top from the sm breakpoint).
+ * the page, and the tabs at the bottom (at the top from the sm breakpoint).
  */
 export function CreatorShell({ name, children }: { name: string; children: ReactNode }) {
   return (

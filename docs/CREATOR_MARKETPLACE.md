@@ -138,11 +138,57 @@ Not owner decisions; change them freely.
 - **Report reasons** live in `lib/creators/report-reasons.ts` (pure, for the forms); lib/creators/reports.ts
   re-exports them.
 
+## Creator side: details decided while building (21 October 2026)
+
+Not owner decisions; change them freely.
+
+- **Listing.** `isListed()` (lib/creators/market-filters.ts) is the one rule, used by `/creators`, the sitemap and the
+  `index` robots tag of `/c/<slug>`. "Last day has not passed" is in the company's timezone. A campaign whose places
+  are all taken stays on the list, marked **Full** and after the others; the **When** filter ("Open now", "Starting
+  soon") keeps only campaigns with places left. Default order: newest first; `sort=pay` is best pay. The business
+  types offered are the industries of the companies listed right now (`type=<industry slug>`). Up to 500 campaigns are
+  read per page view.
+- **Payment record** (lib/creators/record.ts): "creators paid" counts different people (by email) across the company's
+  campaigns; the median days are rounded up, "within a day" for 0 or 1; a payout paid before its month's end counts
+  as 0 days. A new company with a late payout shows both "New on BuPulse" and "Some payments late".
+- **Hidden campaigns** (admin) take no new applications at all, neither one-tap nor the form; their page stays for
+  the creators already in it, `noindex`. Unlisted campaigns take both kinds through their link.
+- **`/c/<slug>`** shows the places left and the payment record. A visitor gets the form (plus "Sign in to apply in one
+  tap"); a signed-in creator gets one-tap (or "Complete my profile", or "You applied" / "invited you"); a signed-in
+  person without a creator profile gets "Creators apply with a creator account". With no place left the page says so
+  and shows no form (the form's action itself still follows phase 1). Shared pictures: `app/creators/opengraph-image`
+  and `app/c/[slug]/opengraph-image` (text only: campaign, company, first pay line).
+- **Sign-up.** `/creators/signup` is `noindex`; the same per-address and per-email limits and Turnstile as the company
+  sign-up; a known email is sent to sign in (`next=/creator`). The confirmation link opens `/auth/confirm?next=/creator/profile`,
+  where `ensureAccount` makes the User row and profile (name from `full_name`, WhatsApp read as Rwandan without "+").
+  No sign-up event or referral is recorded for creators. A signed-in company person on `/creators/signup` is told to
+  sign out first. The login page links to it ("A content creator?").
+- **Profile.** WhatsApp is required to save. Handles for any network (not only one campaign's), each with followers.
+  A network shows **Verified** when the creator has an ACTIVE connected account on it. One-tap needs WhatsApp and a
+  typed handle on one of the campaign's platforms (a connection alone has no follower count); samples are optional.
+  `?next=/c/<slug>` brings them back to the campaign after saving.
+- **One-tap apply** (lib/creators/quick-apply.ts): the email is the login's; only the handles on the campaign's
+  platforms are copied; 20 an hour per creator; refused when the profile or the email already has a row in the campaign
+  (an open invitation says so), and when no place is left (APPLIED does not take a place, so there is no lock).
+- **Invitations** (lib/creators/offer-answers.ts): an expired invitation can't be accepted or declined. Accepting
+  counts SELECTED + JOINED (the invitation itself is OFFERED) against `creatorsPerCampaign` under the company's
+  per-campaign lock, refuses ENDED campaigns and blocked creators, and opens the campaign. The company is not emailed
+  on an answer (it sees the status). Expired invitations stay under Invitations (marked Expired) for 14 more days, then
+  move to Ended.
+- **Campaigns page groups** (lib/creators/portal-groups.ts): Invitations, Joined (JOINED, campaign not ENDED), Waiting
+  for the company (APPLIED, SELECTED; also applications sent with the form under the login's email before the account
+  existed), Ended (ENDED campaigns, REMOVED, DECLINED: "Not picked" or "You said no"). Today's tasks moved to Tasks; the
+  home shows a "N tasks to hand in today" link, and a "Complete your profile" notice while it is incomplete.
+- **Tasks tab**: JOINED campaigns not ENDED, with "N tasks to hand in today"; a campaign shows Today and Other days.
+  The hand-in page's back link goes to the campaign's tasks.
+- **Reports**: "Report this campaign" (folded) on `/c/<slug>` for signed-in creators and at the bottom of the portal's
+  campaign page.
+
 ## Code map
 
 | Part | Where |
 | --- | --- |
 | Tables | migration `20261029100000_creator_marketplace` (CreatorCampaign.listed/hiddenAt, CreatorProfile fields, CampaignCreator.source/offeredBy/offeredAt and OFFERED, CreatorReport) |
-| Marketplace, creator sign-up, profile, one-tap apply, portal changes, creator reports | `lib/creators/marketplace.ts`, `lib/creators/profile.ts`, `app/creators/**`, `app/creator/(portal)/**`, `components/creators/marketplace/**` |
+| Marketplace, creator sign-up, profile, one-tap apply, portal changes, creator reports | `lib/creators/market-filters.ts` (rules), `lib/creators/marketplace.ts`, `lib/creators/logos.ts`, `lib/creators/profile-form.ts` (forms), `lib/creators/profile.ts`, `lib/creators/quick-apply.ts`, `lib/creators/offer-answers.ts`, `lib/creators/portal-groups.ts`, `lib/account.ts` (creator branch of `ensureAccount`), `app/creators/**`, `app/c/[slug]/**`, `app/creator/(portal)/**`, `components/creators/marketplace/**` |
 | Company finder, offers, company reports, listing switch, payment record, admin hide, block and reports | `lib/creators/finder.ts`, `lib/creators/offers.ts`, `lib/creators/record.ts`, `lib/creators/reports.ts`, `app/dashboard/creators/find/**`, admin console pages |
 | Client guide | `docs/guide/features/37-creator-campaigns.md` (company: listing, finding creators), `38-for-creators.md` (creators: marketplace, profile, offers) |

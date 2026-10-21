@@ -4,11 +4,14 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Button, GlassCard } from "@/components/ui";
 import { PayoutStatus, PostStatus } from "@/components/creators/portal/post-status";
+import { ReportCampaign } from "@/components/creators/portal/report-campaign";
 import { requireCreator } from "@/lib/creators/auth";
 import { amount, count, formatDay, formatSpan, networkLabel, creatorPayInWords, taskRuleInWords } from "@/lib/creators/describe";
 import { dayIn, ymdOf } from "@/lib/creators/periods";
 import { campaignForCreator } from "@/lib/creators/portal";
+import { CAMPAIGN_REPORT_REASONS, REPORT_REASON_LABEL } from "@/lib/creators/reports";
 import { coversDay } from "@/lib/creators/tasks";
+import { reportCampaignAction } from "../../actions";
 
 export const metadata: Metadata = { title: "Campaign" };
 
@@ -148,6 +151,8 @@ export default async function CreatorCampaignPage({ params }: PageProps<"/creato
           )}
         </GlassCard>
       </section>
+
+      <ReportCampaign report={reportCampaignAction.bind(null, campaign.id)} reasons={CAMPAIGN_REPORT_REASONS.map((r) => ({ value: r, label: REPORT_REASON_LABEL[r] }))} />
     </>
   );
 }

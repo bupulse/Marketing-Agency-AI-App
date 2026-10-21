@@ -11,6 +11,7 @@ import { noteRegionMismatch } from "@/lib/region-check";
 import { assignPartnerReferral } from "@/lib/partners/service";
 import { assignReferral, refFromCookie } from "@/lib/sales/referral";
 import { timezoneForCountryName } from "@/lib/region-format";
+import { readWhatsapp } from "@/lib/creators/application";
 
 type SignUpDetails = {
   organisationName: string | null;
@@ -82,8 +83,10 @@ function signUpMethodOf(authUser: AuthUser): SignUpMethod {
 // User row, the Business (from the sign-up details when there are any, with its
 // pricing region from the country) and a subscription that waits for a demo
 // (PENDING_DEMO: no trial starts at sign-up, an admin starts it after the demo,
-// docs/REGIONS.md) the first time; does nothing for returning users. Returns false
-// without creating anything when the email has not been confirmed yet.
+// docs/REGIONS.md) the first time; does nothing for returning users. A creator's
+// sign-up (user_metadata.account_kind "creator") gets the User row and a creator
+// profile instead. Returns false without creating anything when the email has not
+// been confirmed yet.
 export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: string | null } = {}): Promise<boolean> {
   const email = authUser.email;
   if (!email) throw new Error("Signed-in user has no email address");
@@ -93,6 +96,19 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
   // below runs a transaction, so it is kept for the first visit and for email changes.
   const existing = await prisma.user.findUnique({ where: { id: authUser.id }, select: { email: true } });
   if (existing && existing.email === email) return true;
+
+  // A creator's own sign-up (/creators/signup, docs/CREATOR_MARKETPLACE.md): the User row and their creator profile,
+  // never a Business, subscription, membership or referral. Their portal is /creator.
+  if (!existing && authUser.user_metadata?.account_kind === "creator") {
+    const creatorName = text(authUser.user_metadata?.full_name, 100) ?? email.split("@")[0].slice(0, 100);
+    const raw = text(authUser.user_metadata?.phone, 30);
+    await prisma.user.upsert({
+      where: { id: authUser.id },
+      update: { email },
+      create: { id: authUser.id, email, name: creatorName, signUpMethod: signUpMethodOf(authUser), creator: { create: { name: creatorName, phone: raw ? readWhatsapp(raw, null) : null } } },
+    });
+    return true;
+  }
 
   const details = signUpDetails(authUser.user_metadata);
   const name =

@@ -51,6 +51,27 @@ export async function myCampaigns(profileId: string) {
   });
 }
 
+/**
+ * Every campaign row of the creator, for the Campaigns page's groups (lib/creators/portal-groups.ts): their own rows,
+ * plus applications sent with the form under their login's email before they had an account (not linked yet).
+ */
+export async function myCampaignRows(profileId: string, email: string) {
+  const address = email.trim().toLowerCase();
+  return prisma.campaignCreator.findMany({
+    where: { OR: [{ profileId }, ...(address ? [{ profileId: null, email: address, status: { in: ["APPLIED", "SELECTED"] } }] : [])] },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      status: true,
+      source: true,
+      offeredAt: true,
+      joinedAt: true,
+      createdAt: true,
+      campaign: { select: { id: true, slug: true, name: true, status: true, startsOn: true, endsOn: true, platforms: true, currency: true, payRules: true, viewTargetPerCreator: true, viewTargetCampaign: true, business: { select: { name: true, logoUrl: true } } } },
+    },
+  });
+}
+
 export type TodayTask = DayTask<{ id: string; title: string; instructions: string; startsOn: Date; endsOn: Date; postsPerDay: number; platforms: string[]; platformMode: string; mediaKind: string }> & {
   campaign: { id: string; name: string; companyName: string };
 };

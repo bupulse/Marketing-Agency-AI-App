@@ -21,6 +21,9 @@ export type PublicCampaign = {
   rules: string | null;
   status: string;
   acceptingApplications: boolean;
+  /** On the marketplace: the company's switch on and not hidden by an admin (docs/CREATOR_MARKETPLACE.md). */
+  listed: boolean;
+  hidden: boolean;
   startsOn: string;
   endsOn: string;
   platforms: string[];
@@ -58,6 +61,8 @@ export async function loadPublicCampaign(slug: string, now = new Date()): Promis
     rules: c.rules,
     status: c.status,
     acceptingApplications: c.acceptingApplications,
+    listed: c.listed,
+    hidden: c.hiddenAt !== null,
     startsOn: ymdOf(c.startsOn),
     endsOn: ymdOf(c.endsOn),
     platforms: c.platforms,
@@ -94,7 +99,8 @@ export type ApplyResult = { ok: true } | { ok: false; error?: string; errors?: A
 /** Saves an application from the form. */
 export async function submitApplication(slug: string, form: FormData, ip: string | null): Promise<ApplyResult> {
   const campaign = await loadPublicCampaign(slug);
-  if (!campaign || !takesApplications(campaign)) return { ok: false, error: "This campaign is not taking applications right now." };
+  // Hidden by a BuPulse admin (docs/CREATOR_MARKETPLACE.md, "Safety"): no new applications.
+  if (!campaign || !takesApplications(campaign) || campaign.hidden) return { ok: false, error: "This campaign is not taking applications right now." };
   try {
     await rateLimit(`creator-apply:${campaign.id}:${await shortHash(ip ?? "unknown")}`, APPLY_LIMIT);
   } catch (error) {

@@ -2,10 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import type { ApplicationErrors } from "@/lib/creators/application";
 import { requireCreator } from "@/lib/creators/auth";
 import { disconnectCreator, saveCreatorConnection } from "@/lib/creators/connections";
 import { handIn, HandInError, startUploads } from "@/lib/creators/handin";
 import type { UploadRequest, UploadTarget } from "@/lib/creators/media";
+import { answerOffer, OfferError } from "@/lib/creators/offer-answers";
+import { saveProfile } from "@/lib/creators/profile";
+import { readProfileForm } from "@/lib/creators/profile-form";
+import { createReport, ReportError } from "@/lib/creators/reports";
 import { checkHandedIn } from "@/lib/creators/tracking/check-now";
 import { logError } from "@/lib/errors";
 import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
@@ -88,4 +94,63 @@ export async function pickPageAction(_prev: PickState, formData: FormData): Prom
   for (const name of pendingCookieNames()) jar.delete({ name, path: PENDING_PATH });
   revalidatePath("/creator/connections");
   return { done: true };
+}
+
+export type ProfileState = { status: "idle" | "saved" | "error"; error?: string; errors?: ApplicationErrors; values?: Record<string, string> };
+
+/** Saves the creator's profile; back to the campaign they came from (`next`, a /c/<slug> page) once it is complete. */
+export async function saveProfileAction(_prev: ProfileState, formData: FormData): Promise<ProfileState> {
+  const { profile } = await requireCreator();
+  const values = Object.fromEntries([...formData.entries()].filter(([k, v]) => typeof v === "string" && !k.startsWith("$")).map(([k, v]) => [k, String(v).slice(0, 1000)]));
+  const read = readProfileForm(formData);
+  if (!read.ok) return { status: "error", errors: read.errors, values };
+  try {
+    await rateLimit(`creator-profile:${profile.id}`, { limit: 60, windowSeconds: HOUR });
+    await saveProfile(profile.id, read.value);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { status: "error", error: rateLimitMessage(error), values };
+    await logError(error, { source: "creators.profile" });
+    return { status: "error", error: "We could not save your profile. Please try again.", values };
+  }
+  revalidatePath("/creator", "layout");
+  const next = String(formData.get("next") ?? "");
+  if (/^\/c\/[a-z0-9-]{3,80}$/.test(next)) redirect(next);
+  return { status: "saved" };
+}
+
+export type OfferState = { error?: string };
+
+/** Accepts or declines a company's invitation (lib/creators/offer-answers.ts). */
+export async function answerOfferAction(_prev: OfferState, formData: FormData): Promise<OfferState> {
+  const { profile } = await requireCreator();
+  const answer = formData.get("answer") === "accept" ? "accept" : "decline";
+  let status: "JOINED" | "DECLINED";
+  try {
+    status = await answerOffer(profile.id, String(formData.get("id") ?? ""), answer);
+  } catch (error) {
+    if (error instanceof OfferError) return { error: error.message };
+    await logError(error, { source: "creators.offer-answer" });
+    return { error: "We could not save your answer. Please try again." };
+  }
+  revalidatePath("/creator", "layout");
+  // Joined: straight to the campaign, where its tasks are.
+  const campaignId = String(formData.get("campaignId") ?? "");
+  if (status === "JOINED" && /^[a-z0-9]{10,40}$/.test(campaignId)) redirect(`/creator/campaigns/${campaignId}`);
+  return {};
+}
+
+export type ReportState = { status: "idle" | "sent" | "error"; error?: string };
+
+/** A creator reports a campaign (lib/creators/reports.ts: one open report per creator and campaign, rate limited). */
+export async function reportCampaignAction(campaignId: string, _prev: ReportState, formData: FormData): Promise<ReportState> {
+  const session = await requireCreator();
+  try {
+    await createReport({ kind: "CAMPAIGN", campaignId, reporterUserId: session.userId, reason: String(formData.get("reason") ?? ""), details: String(formData.get("details") ?? "") });
+    return { status: "sent" };
+  } catch (error) {
+    if (error instanceof ReportError) return { status: "error", error: error.message };
+    if (error instanceof RateLimitError) return { status: "error", error: rateLimitMessage(error) };
+    await logError(error, { source: "creators.report" });
+    return { status: "error", error: "We could not send your report. Please try again." };
+  }
 }
