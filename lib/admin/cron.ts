@@ -25,6 +25,7 @@ export const CRON_JOBS: CronJob[] = [
   { job: "media-cleanup", label: "Video clean-up", cron: "19 3 * * *", via: "Cloudflare", what: "Deletes content videos 30 days after their posts went out" },
   { job: "content-summary", label: "Auto-scheduled summary", cron: "7 * * * *", via: "Cloudflare", what: "Daily email of posts scheduled without approval, from 08:00 local" },
   { job: "daily-posts", label: "Daily posts", cron: "13 * * * *", via: "Cloudflare", what: "Makes the day's posts for companies with daily posts, from local midnight to midday" },
+  { job: "creator-views", label: "Creator views", cron: "31 */6 * * *", via: "Cloudflare", what: "Reads creators' post views, checks hand-ins, closes pay periods and writes payouts" },
   { job: "video-jobs", label: "Video Studio sweep", cron: "*/4 * * * *", via: "Cloudflare", what: "Fails and refunds Video Studio designs whose request died" },
   { job: "purge-accounts", label: "Delete scheduled accounts", cron: "17 3 * * *", via: "GitHub Actions", what: "Erases accounts past their 30-day grace period" },
   { job: "social-refresh", label: "Refresh social tokens", cron: "43 4 * * *", via: "GitHub Actions", what: "Renews channel tokens before they expire" },

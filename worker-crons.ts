@@ -31,6 +31,8 @@ export const CONTENT_SUMMARY_CRON = "7 * * * *";
 export const VIDEO_JOBS_CRON = "*/4 * * * *";
 /** Hourly at :13: daily posts made for you, from local midnight until midday per company (docs/CONTENT.md), cursor calls. */
 export const DAILY_POSTS_CRON = "13 * * * *";
+/** Every 6 hours at :31: creators' post views, link checks, period closes and payouts (docs/CREATOR_CAMPAIGNS.md), cursor calls. */
+export const CREATOR_VIEWS_CRON = "31 */6 * * *";
 
 export const CRON_ROUTES: Record<string, string> = {
   [PUBLISH_CRON]: "/api/cron/publish",
@@ -46,6 +48,7 @@ export const CRON_ROUTES: Record<string, string> = {
   [CONTENT_SUMMARY_CRON]: "/api/cron/content-summary",
   [VIDEO_JOBS_CRON]: "/api/cron/video-jobs",
   [DAILY_POSTS_CRON]: "/api/cron/daily-posts",
+  [CREATOR_VIEWS_CRON]: "/api/cron/creator-views",
 };
 
 /** The route for a schedule, or null for one this worker doesn't know (never fall back to publishing). */
