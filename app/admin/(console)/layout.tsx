@@ -19,6 +19,7 @@ export default async function AdminConsoleLayout({ children }: { children: React
     payments: { count: inbox.payments, tone: "danger", label: plural(inbox.payments, "Mobile Money payment to check", "Mobile Money payments to check") },
     approvals: { count: inbox.approvals, tone: "danger", label: plural(inbox.approvals, "request waiting for approval", "requests waiting for approval") },
     requests: { count: inbox.requests, tone: "violet", label: plural(inbox.requests, "new plan request", "new plan requests") },
+    reports: { count: inbox.reports, tone: "violet", label: plural(inbox.reports, "open creator marketplace report", "open creator marketplace reports") },
     errors: { count: inbox.errors, tone: "neutral", label: plural(inbox.errors, "error in the last 24 hours", "errors in the last 24 hours") },
     health: health.status === "ok" ? undefined : { count: health.issues.length, tone: health.status === "problem" ? "danger" : "violet", label: plural(health.issues.length, "health issue", "health issues") },
   };

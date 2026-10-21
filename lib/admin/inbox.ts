@@ -11,10 +11,11 @@ import { money } from "./format";
 import type { Permission } from "@/lib/staff/permissions";
 import { kigaliDayStart } from "@/lib/time/kigali";
 import { TO_CHECK_WHERE } from "@/lib/billing/momo-shared";
+import { REPORT_REASON_LABEL, type ReportReason } from "@/lib/creators/report-reasons";
 
 export type InboxItem = { id: string; text: string; sub?: string; href: string; at?: string };
 export type InboxSection = { key: InboxKey; title: string; why: string; href: string; count: number; tone: "danger" | "violet" | "neutral"; items: InboxItem[] };
-export type InboxKey = "payments" | "approvals" | "demos" | "requests" | "invoices" | "offers" | "contests" | "regions" | "errors";
+export type InboxKey = "payments" | "approvals" | "demos" | "requests" | "invoices" | "offers" | "contests" | "regions" | "reports" | "errors";
 
 const SHOW = 5;
 
@@ -28,6 +29,7 @@ export const INBOX_PERMISSION: Record<InboxKey, readonly Permission[]> = {
   offers: ["requests"],
   contests: ["clients.view"],
   regions: ["clients.manage"],
+  reports: ["clients.manage"],
   errors: ["system"],
 };
 
@@ -35,7 +37,7 @@ const sees = (key: InboxKey, permissions: readonly Permission[]) => INBOX_PERMIS
 
 /** The inbox badge for one person: only the to-dos they can act on (errors are shown, never counted). */
 export function inboxTotalFor(counts: Record<InboxKey, number>, permissions: readonly Permission[]): number {
-  return (Object.keys(INBOX_PERMISSION) as InboxKey[]).filter((k) => k !== "errors" && sees(k, permissions)).reduce((s, k) => s + counts[k], 0);
+  return (Object.keys(INBOX_PERMISSION) as InboxKey[]).filter((k) => k !== "errors" && sees(k, permissions)).reduce((s, k) => s + (counts[k] ?? 0), 0);
 }
 
 /** The inbox sections one person may see. */
@@ -50,7 +52,7 @@ const safe = async <T>(p: Promise<T>, empty: T): Promise<T> => p.catch(() => emp
 export const getInboxCounts = cache(async (): Promise<Record<InboxKey, number> & { total: number }> => {
   const now = new Date();
   const since24h = new Date(now.getTime() - 24 * HOUR);
-  const [payments, approvals, demos, requests, invoices, offers, contests, regions, errors] = await Promise.all([
+  const [payments, approvals, demos, requests, invoices, offers, contests, regions, reports, errors] = await Promise.all([
     safe(prisma.manualPayment.count({ where: TO_CHECK_WHERE }), 0),
     safe(prisma.adminApproval.count({ where: { status: "pending", createdAt: { gt: new Date(now.getTime() - APPROVAL_TTL_MS) } } }), 0),
     safe(prisma.demoBooking.count({ where: demoWhere(now) }), 0),
@@ -59,11 +61,12 @@ export const getInboxCounts = cache(async (): Promise<Record<InboxKey, number> &
     safe(prisma.planOffer.count({ where: { status: "accepted" } }), 0),
     safe(contestCount(), 0),
     safe(prisma.business.count({ where: { regionMismatchAt: { not: null } } }), 0),
+    safe(prisma.creatorReport.count({ where: { status: "OPEN" } }), 0),
     safe(prisma.errorLog.count({ where: { level: "error", createdAt: { gte: since24h } } }), 0),
   ]);
-  const counts = { payments, approvals, demos, requests, invoices, offers, contests, regions, errors };
+  const counts = { payments, approvals, demos, requests, invoices, offers, contests, regions, reports, errors };
   // Errors are shown, but they are not a to-do item of their own (Health and Errors own them).
-  return { ...counts, total: payments + approvals + demos + requests + invoices + offers + contests + regions };
+  return { ...counts, total: payments + approvals + demos + requests + invoices + offers + contests + regions + reports };
 });
 
 /** Who the console keeps the counts live for: anyone who sees one of the counted lists (or the Overview). */
@@ -88,7 +91,7 @@ async function contestCount(): Promise<number> {
 export async function getInbox(now = new Date()): Promise<{ sections: InboxSection[]; total: number; errors24h: number }> {
   const counts = await getInboxCounts();
   const since24h = new Date(now.getTime() - 24 * HOUR);
-  const [payments, approvals, demos, requests, invoices, offers, contests, regions, errors] = await Promise.all([
+  const [payments, approvals, demos, requests, invoices, offers, contests, regions, reports, errors] = await Promise.all([
     safe(prisma.manualPayment.findMany({ where: TO_CHECK_WHERE, orderBy: { submittedAt: "asc" }, take: SHOW, select: { id: true, reference: true, amountMinor: true, currency: true, network: true, submittedAt: true, user: { select: { email: true, business: { select: { name: true } } } } } }), []),
     safe(prisma.adminApproval.findMany({ where: { status: "pending", createdAt: { gt: new Date(now.getTime() - APPROVAL_TTL_MS) } }, orderBy: { createdAt: "asc" }, take: SHOW, select: { id: true, kind: true, requestedBy: true, createdAt: true } }), []),
     safe(prisma.demoBooking.findMany({ where: demoWhere(now), orderBy: { startsAt: "asc" }, take: SHOW, select: { id: true, kind: true, startsAt: true, planKey: true, business: { select: { id: true, name: true } } } }), []),
@@ -100,6 +103,7 @@ export async function getInbox(now = new Date()): Promise<{ sections: InboxSecti
       WHERE p."contest" IS NOT NULL AND NOT (p."contest" ? 'confirmedAt') AND p."status" NOT IN ('PUBLISHED', 'FAILED', 'CANCELLED')
       GROUP BY 1, 2 ORDER BY 4 ASC LIMIT ${SHOW}`, []),
     safe(openRegionMismatches(SHOW), []),
+    safe(prisma.creatorReport.findMany({ where: { status: "OPEN" }, orderBy: { createdAt: "asc" }, take: SHOW, select: { id: true, kind: true, reason: true, createdAt: true, campaign: { select: { name: true } }, profile: { select: { name: true } } } }), []),
     safe(prisma.errorLog.findMany({ where: { level: "error", createdAt: { gte: since24h } }, orderBy: { createdAt: "desc" }, take: SHOW, select: { id: true, source: true, message: true, createdAt: true } }), []),
   ]);
 
@@ -135,6 +139,10 @@ export async function getInbox(now = new Date()): Promise<{ sections: InboxSecti
     {
       key: "regions", title: "Region mismatches", why: "Paid or signed up from a dearer region than the one on file. Check, and change the region if needed.", href: "/admin/companies", count: counts.regions, tone: "neutral",
       items: regions.map((r) => ({ id: r.businessId, text: r.name, sub: `on ${r.pricingRegion}, seen from ${r.flag.country}`, href: `/admin/companies/${r.businessId}` })),
+    },
+    {
+      key: "reports", title: "Creator marketplace reports", why: "A creator reported a campaign, or a company reported a creator. Look into it, then resolve it, hide the campaign or block the creator.", href: "/admin/creators?tab=reports", count: counts.reports, tone: "violet",
+      items: reports.map((r) => ({ id: r.id, text: r.kind === "CAMPAIGN" ? `Campaign: ${r.campaign?.name ?? "deleted campaign"}` : `Creator: ${r.profile?.name ?? "deleted profile"}`, sub: REPORT_REASON_LABEL[r.reason as ReportReason] ?? r.reason, href: "/admin/creators?tab=reports", at: r.createdAt.toISOString() })),
     },
     {
       key: "errors", title: "Errors in the last 24 hours", why: "Server errors. Open Errors for details; Health shows whether anything is down.", href: "/admin/errors", count: counts.errors, tone: "danger",

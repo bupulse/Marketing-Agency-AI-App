@@ -6,6 +6,7 @@ import {
   Building2,
   CalendarCheck,
   ChartLine,
+  Clapperboard,
   CloudDownload,
   Coins,
   Cpu,
@@ -50,7 +51,7 @@ import type { Permission } from "@/lib/staff/permissions";
 // breadcrumbs, the page headers and the search (Cmd/Ctrl+K) all read this list, so a page added here is findable
 // everywhere. The files live in matching route groups: app/admin/(console)/(clients|money|content|ai|system)/.
 
-export type BadgeKey = "inbox" | "approvals" | "payments" | "requests" | "health" | "errors";
+export type BadgeKey = "inbox" | "approvals" | "payments" | "requests" | "reports" | "health" | "errors";
 /** `perm`: the permission the page needs (any of a list); the page checks it and the menu hides what you cannot open. */
 export type AdminNavItem = { href: string; perm: Permission | readonly Permission[]; label: string; icon: LucideIcon; description: string; badge?: BadgeKey; keywords?: string };
 export type AdminNavGroup = { id: string; title: string | null; icon?: LucideIcon; items: AdminNavItem[] };
@@ -87,6 +88,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/demos", perm: "demos", label: "Demos", icon: CalendarCheck, description: "Booked demos, your availability and the meeting link.", keywords: "calendar booking" },
       { href: "/admin/requests", perm: "requests", label: "Plan requests", icon: MessageSquarePlus, badge: "requests", description: "Businesses asking for a custom plan." },
       { href: "/admin/connections", perm: "clients.view", label: "Connections", icon: Plug, description: "Clients' social accounts and stores, and their health.", keywords: "facebook instagram tiktok shopify" },
+      { href: "/admin/creators", perm: "clients.view", label: "Creator marketplace", icon: Clapperboard, badge: "reports", description: "Creator campaigns on the marketplace, creator profiles and reports: hide, block and resolve.", keywords: "creators influencers campaigns reports block hide moderation" },
     ],
   },
   {
