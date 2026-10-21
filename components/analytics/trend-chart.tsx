@@ -6,7 +6,7 @@ const H = 120;
 const PAD = { top: 8, bottom: 2, left: 4, right: 4 };
 
 /** One bar series as plain SVG: scales with its container, no script, works in Safari and on phones. */
-function Bars({ points, pick, color, label }: { points: TrendPoint[]; pick: (p: TrendPoint) => number; color: string; label: string }) {
+export function Bars<P extends { start: string }>({ points, pick, color, label }: { points: P[]; pick: (p: P) => number; color: string; label: string }) {
   const max = Math.max(1, ...points.map(pick));
   const innerW = W - PAD.left - PAD.right;
   const innerH = H - PAD.top - PAD.bottom;

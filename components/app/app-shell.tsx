@@ -177,8 +177,10 @@ function SoonItem({ label, icon: Icon }: { label: string; icon: NavGroup["items"
   return (
     <div aria-disabled="true" className="flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium text-muted opacity-70">
       <Icon aria-hidden className="size-[18px] shrink-0" />
-      {label}
-      <span className="ml-auto rounded-full bg-new-bg px-2 py-0.5 text-[11px] font-semibold text-new">Coming soon</span>
+      <span className="flex min-w-0 flex-col py-1 leading-tight">
+        {label}
+        <span className="text-[12px] font-semibold text-new">Coming soon</span>
+      </span>
     </div>
   );
 }
