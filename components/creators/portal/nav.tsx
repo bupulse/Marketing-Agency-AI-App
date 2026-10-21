@@ -2,22 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { House, Link2, Wallet } from "lucide-react";
+import { House, Link2, ListChecks, UserRound, Wallet } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 const ITEMS = [
   { href: "/creator", label: "Campaigns", icon: House },
+  { href: "/creator/tasks", label: "Tasks", icon: ListChecks },
   { href: "/creator/earnings", label: "Earnings", icon: Wallet },
   { href: "/creator/connections", label: "Connections", icon: Link2 },
+  { href: "/creator/profile", label: "Profile", icon: UserRound },
 ];
 
-const activeFor = (pathname: string, href: string) => (href === "/creator" ? pathname === href || pathname.startsWith("/creator/campaigns") || pathname.startsWith("/creator/tasks") : pathname.startsWith(href));
+const activeFor = (pathname: string, href: string) => (href === "/creator" ? pathname === href || pathname.startsWith("/creator/campaigns") : pathname.startsWith(href));
 
-/** The portal's three tabs: a bottom bar on phones, a row of pills above the page from sm up. */
+/** The portal's tabs: a bottom bar on phones, a row of pills above the page from sm up. */
 export function CreatorNav({ bottom }: { bottom?: boolean }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Creator" className={cn("flex", bottom ? "items-end gap-1" : "gap-2")}>
+    <nav aria-label="Creator" className={cn("flex", bottom ? "items-end gap-1" : "flex-wrap gap-2")}>
       {ITEMS.map(({ href, label, icon: Icon }) => {
         const active = activeFor(pathname, href);
         return bottom ? (

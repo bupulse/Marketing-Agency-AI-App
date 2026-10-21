@@ -42,7 +42,7 @@ export default async function TaskPage({ params, searchParams }: PageProps<"/cre
 
   return (
     <>
-      <Link href={`/creator/campaigns/${task.campaignId}`} className="inline-flex min-h-11 items-center gap-1.5 self-start text-sm font-medium text-muted no-underline hover:text-text">
+      <Link href={`/creator/tasks?campaign=${task.campaignId}`} className="inline-flex min-h-11 items-center gap-1.5 self-start text-sm font-medium text-muted no-underline hover:text-text">
         <ArrowLeft aria-hidden className="size-4" /> {task.campaign.name}
       </Link>
       <div>
