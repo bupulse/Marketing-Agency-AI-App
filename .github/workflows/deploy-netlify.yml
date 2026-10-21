@@ -154,7 +154,7 @@ jobs:
       # Uploads what the build step made (the publish directory, the functions and edge functions under .netlify/, the
       # runtime's blobs) as the production deploy; --no-build: nothing is built or run with the token in reach.
       - name: Deploy to Netlify
-        run: npx --yes "$NETLIFY_CLI" deploy --no-build --prod --context production --message "Deploy ${{ steps.build.outputs.sha }} (run ${{ github.run_id }})"
+        run: npx --yes "$NETLIFY_CLI" deploy --no-build --prod --dir .netlify/static --message "Deploy ${{ steps.build.outputs.sha }} (run ${{ github.run_id }})"
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
@@ -268,7 +268,7 @@ jobs:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
       - name: Deploy the release to Netlify
         working-directory: release-src
-        run: npx --yes "$NETLIFY_CLI" deploy --no-build --prod --context production --message "Release ${{ steps.release.outputs.version }} (run ${{ github.run_id }})"
+        run: npx --yes "$NETLIFY_CLI" deploy --no-build --prod --dir .netlify/static --message "Release ${{ steps.release.outputs.version }} (run ${{ github.run_id }})"
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

@@ -1,6 +1,6 @@
 # Netlify (free plan) build and runtime settings. Step-by-step setup: docs/DEPLOY_NETLIFY.md.
 # Production deploys run from GitHub Actions (.github/workflows/deploy-netlify.yml: migrations first, then
-# `netlify build --offline`, then `netlify deploy --no-build --prod` with the token), so Netlify's own builds stay stopped (each production deploy costs 15 credits).
+# `netlify build --offline`, then `netlify deploy --no-build --prod --dir .netlify/static` with the token), so Netlify's own builds stay stopped (each production deploy costs 15 credits).
 # Cloudflare Workers keeps working from wrangler.jsonc / worker.ts; the GitHub variable DEPLOY_TARGET picks the host.
 
 [build]
@@ -39,3 +39,23 @@
   for = "/widget-chat.js"
   [headers.values]
     Cache-Control = "public, max-age=300, stale-while-revalidate=86400"
+
+# Next.js images go to Netlify's image service. The Next.js runtime adds these rules itself during `netlify build`, but
+# only to the build's own config (.netlify/netlify.toml); a deploy from that build with `netlify deploy --no-build`
+# reads this file, so without them every /_next/image answered 400 ("isn't a valid image", seen on 21 Oct 2026).
+[[redirects]]
+  from = "/_next/image"
+  to = "/.netlify/images?url=:url&w=:width&q=:quality"
+  status = 200
+  query = { url = ":url", w = ":width", q = ":quality" }
+
+[[redirects]]
+  from = "/_ipx/*"
+  to = "/.netlify/images?url=:url&w=:width&q=:quality"
+  status = 200
+  query = { url = ":url", w = ":width", q = ":quality" }
+
+[[redirects]]
+  from = "/_next/image"
+  to = "/.netlify/images"
+  status = 200
