@@ -27,9 +27,12 @@ export async function quizEntry(business: Parameters<typeof knowledgeProgress>[0
     const s = sectionByKey(r.section);
     return (!s.permission || can(role, s.permission)) && (!s.feature || usable.has(s.feature));
   });
-  // "Continue" opens the first round whose section is not complete (for Products: Photos once there are products).
+  // "Continue" opens the round that fixes the first incomplete section, in the quiz's order (for Products: Photos once
+  // there are products; a profile that lacks only its service area: Find us).
   const ids = rounds.map((r) => r.id);
-  const next = overall > 0 && overall < 100 ? rounds.find((r) => (progress[r.section]?.percent ?? 0) < 100 && roundForSection(r.section, progress[r.section], ids) === r.id) : undefined;
+  const first = overall > 0 && overall < 100 ? rounds.find((r) => (progress[r.section]?.percent ?? 0) < 100) : undefined;
+  const nextId = first ? roundForSection(first.section, progress[first.section], ids) : null;
+  const next = nextId ? { id: nextId } : undefined;
   return {
     progress,
     overall,

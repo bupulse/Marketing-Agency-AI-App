@@ -10,6 +10,10 @@ import { profileInputSchema, type ProfileFormValues } from "@/lib/knowledge/prof
 import { templateDraft, type QuizContext } from "@/lib/knowledge/quiz-draft";
 import {
   EMPTY_NOTE,
+  areaAnswerOf,
+  areaOptions,
+  areaText,
+  reviewSlots,
   lookSaveFrom,
   paletteOptions,
   photosSaveFrom,
@@ -342,11 +346,11 @@ describe("📍 Find us -> saveKnowledge", () => {
   it("saves nothing when the round was skipped or nothing changed", () => {
     expect(knowledgeInputFrom(brand, answers().find, none, "Rwanda")).toBeNull();
     const withAll = { ...brand, openingHours: HOURS_PRESETS.monSat, contacts: [{ type: "whatsapp" as const, value: "+250788000000", country: "Rwanda", primary: true }] };
-    expect(knowledgeInputFrom(withAll, { hours: "monSat", custom: HOURS_PRESETS.weekdays[0], phone: "+250788000000", address: "" }, all, "Rwanda")).toBeNull();
+    expect(knowledgeInputFrom(withAll, { hours: "monSat", custom: HOURS_PRESETS.weekdays[0], phone: "+250788000000", address: "", area: { choice: "", text: "" } }, all, "Rwanda")).toBeNull();
   });
 
   it("puts the hours, phone and address on the whole stored card, which then passes the essentials check", () => {
-    const input = knowledgeInputFrom(brand, { hours: "weekdays", custom: HOURS_PRESETS.weekdays[0], phone: "+250788000000", address: "KN 4 Ave, Kiyovu, Kigali" }, all, "Rwanda");
+    const input = knowledgeInputFrom(brand, { hours: "weekdays", custom: HOURS_PRESETS.weekdays[0], phone: "+250788000000", address: "KN 4 Ave, Kiyovu, Kigali", area: { choice: "", text: "" } }, all, "Rwanda");
     expect(input).not.toBeNull();
     expect(input!.hours).toBe("Closed on public holidays");
     expect(input!.faqs).toEqual(brand.faqs);
@@ -488,9 +492,10 @@ describe("to 100%: the new questions", () => {
     ];
     const photo = (id: string) => ({ id, url: `https://example.test/${id}.jpg`, kind: "photo" });
     const a = { added: { "n-cake": [photo("m1")] }, picked: { "p-p1": [photo("m2"), photo("m2")] } };
-    expect(photosSaveFrom(targets, a, all)).toEqual({ links: [{ productId: "p1", assetIds: ["m2"] }], activate: ["p9"] });
+    // Every quiz draft is sent: the server activates the ones with a photo, also one added outside the quiz.
+    expect(photosSaveFrom(targets, a, all)).toEqual({ links: [{ productId: "p1", assetIds: ["m2"] }], activate: ["p9", "p10"] });
     // Skipped: the picks are not linked; an upload is in the album already.
-    expect(photosSaveFrom(targets, a, none)).toEqual({ links: [], activate: ["p9"] });
+    expect(photosSaveFrom(targets, a, none)).toEqual({ links: [], activate: ["p9", "p10"] });
   });
 
   it("saves the logo and colours over what is stored, and nothing when unchanged", () => {
@@ -553,5 +558,51 @@ describe("to 100%: the new questions", () => {
     expect(roundForSection("brand", undefined, all)).toBe("look");
     expect(roundForSection("channels", undefined, all)).toBe("golive");
     expect(roundForSection("campaigns", undefined, all)).toBeNull();
+  });
+});
+
+describe("📍 Find us: the service area", () => {
+  it("offers tiles from the address and the country, saved as their words", () => {
+    const options = areaOptions("KG 11 Ave, Remera, Kigali", "Rwanda");
+    expect(options.map((o) => o.label)).toEqual(["Remera and nearby", "All of Kigali", "All of Rwanda", "Online, anywhere", "Something else"]);
+    expect(areaOptions("KG 11 Ave, Remera, Kigali, Rwanda", "Rwanda").map((o) => o.label)[0]).toBe("Remera and nearby");
+    expect(areaOptions("", "").map((o) => o.value)).toEqual(["online", "other"]);
+    expect(areaText({ choice: "city", text: "" }, options)).toBe("All of Kigali");
+    expect(areaText({ choice: "other", text: " Kigali and Musanze " }, options)).toBe("Kigali and Musanze");
+  });
+
+  it("keeps a stored area (as its tile, or as Something else), else guesses the neighbourhood", () => {
+    const options = areaOptions("KG 11 Ave, Remera, Kigali", "Rwanda");
+    expect(areaAnswerOf("all of kigali", options)).toEqual({ answer: { choice: "city", text: "" }, guessed: false });
+    expect(areaAnswerOf("Kicukiro and Gikondo", options)).toEqual({ answer: { choice: "other", text: "Kicukiro and Gikondo" }, guessed: false });
+    expect(areaAnswerOf("", options)).toEqual({ answer: { choice: "near", text: "" }, guessed: true });
+  });
+
+  it("saves it into the business info card (knowledge.area), and nothing when skipped", () => {
+    const base = { ...brand, area: "", openingHours: HOURS_PRESETS.monSat, contacts: [{ type: "whatsapp" as const, value: "+250788000000", country: "Rwanda", primary: true }] };
+    const find = { hours: "monSat" as const, custom: HOURS_PRESETS.weekdays[0], phone: "+250788000000", address: "KG 11 Ave, Remera, Kigali", area: { choice: "near", text: "" } };
+    const input = knowledgeInputFrom(base, find, all, "Rwanda");
+    expect(input?.area).toBe("Remera and nearby");
+    expect(input?.hours).toBe("Closed on public holidays");
+    expect(validateKnowledge(input!, { country: "Rwanda", requireEssentials: true }).ok).toBe(true);
+    expect(knowledgeInputFrom({ ...base, locations: [{ ...emptyLocation("head"), address: "KG 11 Ave, Remera, Kigali" }] }, find, except("find.area"), "Rwanda")).toBeNull();
+  });
+
+  it("sends a profile that lacks only its service area to Find us", () => {
+    expect(roundForSection("profile", { summary: "Add your service area" }, QUIZ_ROUND_IDS)).toBe("find");
+    expect(roundForSection("profile", { summary: "Add your tagline and service area" }, QUIZ_ROUND_IDS)).toBe("you");
+    expect(roundForSection("profile", { summary: "Add your service area" }, ["you"])).toBe("you");
+  });
+});
+
+describe("💬 Love notes counts the shared reviews already stored", () => {
+  it("asks only for the rest of the three, at least one", () => {
+    expect(reviewSlots({ sharedReviews: 0 })).toBe(3);
+    expect(reviewSlots({ sharedReviews: 1 })).toBe(2);
+    expect(reviewSlots({ sharedReviews: 5 })).toBe(1);
+    const note = (quote: string) => ({ ...EMPTY_NOTE, quote, customerName: "A." });
+    const a = { ...answers(), love: [note("One"), note("Two"), note("Three")] };
+    const quotes = (shared: number) => quizSteps(["love"], a, { ...stored, sharedReviews: shared }, { canGrant: false }).filter((x) => x.id.startsWith("love.quote")).length;
+    expect([quotes(0), quotes(1), quotes(3)]).toEqual([3, 2, 1]);
   });
 });

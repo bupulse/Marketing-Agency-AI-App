@@ -37,6 +37,11 @@ describe("where the Business info quiz starts (Business info page and dashboard 
     expect((await quizEntry(business, "OWNER", all)).href).toBe("/dashboard/knowledge/quiz?round=look");
   });
 
+  it("sends a profile that lacks only its service area to Find us", async () => {
+    progress = { profile: { percent: 95, summary: "Add your service area" }, products: p(100) };
+    expect((await quizEntry(business, "OWNER", all)).href).toBe("/dashboard/knowledge/quiz?round=find");
+  });
+
   it("says play again when everything is complete", async () => {
     progress = { profile: p(100) };
     const e = await quizEntry(business, "OWNER", all);

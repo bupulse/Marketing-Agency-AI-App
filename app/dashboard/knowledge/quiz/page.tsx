@@ -62,7 +62,7 @@ export default async function QuizPage({ searchParams }: { searchParams: Promise
   }
 
   const on = new Set(rounds);
-  const [sector, personas, competitors, faqs, products, currency, ctx, photoless, connections] = await Promise.all([
+  const [sector, personas, competitors, faqs, products, currency, ctx, photoless, connections, sharedReviews] = await Promise.all([
     on.has("you") ? prisma.business.findUnique({ where: { id: business.id }, select: { industryId: true, industryOther: true, industryDescription: true, industryRef: { select: { slug: true } } } }) : null,
     on.has("customers") ? listPersonas(business.id) : [],
     on.has("why") ? listCompetitors(business.id) : [],
@@ -74,6 +74,7 @@ export default async function QuizPage({ searchParams }: { searchParams: Promise
       ? prisma.product.findMany({ where: { businessId: business.id, status: { not: "ARCHIVED" }, photos: { none: {} } }, orderBy: { updatedAt: "desc" }, take: MAX_QUIZ_PHOTO_STEPS, select: { id: true, name: true } })
       : [],
     on.has("golive") ? prisma.connection.count({ where: { businessId: business.id, kind: "SOCIAL" } }) : 0,
+    on.has("love") ? prisma.testimonial.count({ where: { businessId: business.id, canPublish: true } }) : 0,
   ]);
   const knowledge = readKnowledge(business.knowledge);
   const marketing = readMarketingProfile(business.marketingProfile);
@@ -95,6 +96,7 @@ export default async function QuizPage({ searchParams }: { searchParams: Promise
     productIds: {},
     look: on.has("look") ? { logoPath: business.logoUrl, logoUrl, colors: business.brandColors.filter(isHexColor) } : null,
     connected: connections > 0,
+    sharedReviews,
   };
   const start = isQuizRound(params.round) && on.has(params.round) ? params.round : null;
   const postsHref = entitlements.usable.has("calendar") ? "/dashboard/content/general?create=1" : "/dashboard/content";

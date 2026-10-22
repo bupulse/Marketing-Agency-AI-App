@@ -54,8 +54,11 @@ export const quizRound = (id: QuizRoundId) => QUIZ_ROUNDS.find((r) => r.id === i
  * Photos once there are products: its to-do then says "Add photos…"). Null when no round fills it.
  */
 export function roundForSection(key: SectionKey, progress: { next?: string; summary?: string } | undefined, available: readonly QuizRoundId[]): QuizRoundId | null {
+  const line = progress?.next ?? progress?.summary ?? "";
+  // The service area is asked in Find us: a profile that lacks only it opens there.
+  if (key === "profile" && /^Add your service area$/.test(line) && available.includes("find")) return "find";
   const rounds = QUIZ_ROUNDS.filter((r) => r.section === key && available.includes(r.id)).map((r) => r.id);
-  if (key === "products" && rounds.length > 1) return /^Add photos/.test(progress?.next ?? progress?.summary ?? "") ? "photos" : "sell";
+  if (key === "products" && rounds.length > 1) return /^Add photos/.test(line) ? "photos" : "sell";
   return rounds[0] ?? null;
 }
 
@@ -76,7 +79,7 @@ export type QuizAnswers = {
   customers: { picked: string[]; ageRange: AgeRange | ""; gender: Gender | ""; channels: string[]; needs: string[]; pains: string[]; triggers: string[] };
   why: { competitors: string[]; differentiators: string[]; statement: string };
   rules: { payment: PaymentMethod[]; delivery: PolicyAnswer; returns: PolicyAnswer; warranty: PolicyAnswer; booking: PolicyAnswer; faqs: { id: string; question: string; answer: string }[]; faqKept: string[]; faqEdited?: string[] };
-  find: { hours: HoursChoice | ""; custom: Schedule; phone: string; address: string };
+  find: { hours: HoursChoice | ""; custom: Schedule; phone: string; address: string; area: PolicyAnswer };
   voice: { tone: "friendly" | "formal" | ""; emojis: "yes" | "no" | ""; length: "short" | "detailed" | ""; pick: string };
   love: LoveNote[];
   /** Per photo question (its target's key): what was uploaded or imported (already in the album) and gallery picks (linked when the round saves). */
@@ -199,7 +202,8 @@ export function photosSaveFrom(targets: readonly PhotoTarget[], a: QuizAnswers["
     if (!t.productId) continue;
     const picked = given(photoStepId(t.key)) ? (a.picked[t.key] ?? []).map((p) => p.id) : [];
     if (picked.length) links.push({ productId: t.productId, assetIds: [...new Set(picked)] });
-    if (t.isNew && (picked.length || (a.added[t.key] ?? []).length)) activate.push(t.productId);
+    // Every draft the quiz made: the server makes active the ones that have a photo, wherever it was added.
+    if (t.isNew) activate.push(t.productId);
   }
   return { links, activate };
 }
@@ -464,8 +468,44 @@ export function mainPhone(contacts: BrandValues["contacts"]): string {
 }
 
 /**
- * The whole business info card (every stored field: the save replaces the card) with the quiz's hours, phone and
- * address on top. Null when none of them changed, so a skipped round saves nothing.
+ * "Where do your customers come from?": tiles made from the address and the country ("Remera and nearby", "All of
+ * Kigali", "All of Rwanda", "Online, anywhere"), each saved as its label in Business.knowledge.area (the service area,
+ * the same field as the Locations form and the profile's "Area you serve"), plus "Something else".
+ */
+export function areaOptions(address: string, country: string): { value: string; label: string; emoji: string }[] {
+  const land = country.trim();
+  const parts = address.split(",").map((p) => p.trim()).filter((p) => p && !/^\d/.test(p) && (!land || p.toLowerCase() !== land.toLowerCase()));
+  const city = parts.length >= 2 ? parts[parts.length - 1] : "";
+  const near = parts.length >= 3 ? parts[parts.length - 2] : parts.length === 1 ? parts[0] : "";
+  const tiles = [
+    near && near !== city ? { value: "near", label: `${near} and nearby`, emoji: "📍" } : null,
+    city ? { value: "city", label: `All of ${city}`, emoji: "🏙️" } : null,
+    land ? { value: "country", label: `All of ${land}`, emoji: "🗺️" } : null,
+    { value: "online", label: "Online, anywhere", emoji: "🌍" },
+  ].filter((t): t is { value: string; label: string; emoji: string } => !!t);
+  return [...tiles.filter((t) => t.label.length <= 200), { value: "other", label: "Something else", emoji: "✏️" }];
+}
+
+/** The area text an answer stands for ("" for none). */
+export function areaText(a: PolicyAnswer, options: readonly { value: string; label: string }[]): string {
+  if (a.choice === "other") return a.text.trim().slice(0, 200);
+  return options.find((o) => o.value === a.choice && o.value !== "other")?.label ?? "";
+}
+
+/** A stored area as the question shows it: its tile when it is one, else "Something else" with it; else a guess. */
+export function areaAnswerOf(stored: string, options: readonly { value: string; label: string }[]): { answer: PolicyAnswer; guessed: boolean } {
+  const text = stored.trim();
+  if (text) {
+    const tile = options.find((o) => o.value !== "other" && sameKey(o.label) === sameKey(text));
+    return { answer: tile ? { choice: tile.value, text: "" } : { choice: "other", text }, guessed: false };
+  }
+  const guess = options.find((o) => o.value === "near") ?? options.find((o) => o.value === "city");
+  return { answer: { choice: guess?.value ?? "", text: "" }, guessed: !!guess };
+}
+
+/**
+ * The whole business info card (every stored field: the save replaces the card) with the quiz's hours, phone,
+ * address and service area on top. Null when none of them changed, so a skipped round saves nothing.
  */
 export function knowledgeInputFrom(stored: BrandValues, a: QuizAnswers["find"], given: Given, country: string): KnowledgeInput | null {
   let openingHours = stored.openingHours;
@@ -491,8 +531,11 @@ export function knowledgeInputFrom(stored: BrandValues, a: QuizAnswers["find"], 
     locations = [next, ...stored.locations.filter((l) => l.kind !== "head")];
   }
 
-  if (!hoursChanged && !phoneChanged && !addressChanged) return null;
-  return { hours: stored.hours, area: stored.area, contact: stored.contact, faqs: stored.faqs, openingHours, locations, contacts };
+  const area = given("find.area") ? areaText(a.area, areaOptions(address || headAddress(stored.locations), country)) || stored.area : stored.area;
+  const areaChanged = area !== stored.area;
+
+  if (!hoursChanged && !phoneChanged && !addressChanged && !areaChanged) return null;
+  return { hours: stored.hours, area, contact: stored.contact, faqs: stored.faqs, openingHours, locations, contacts };
 }
 
 // ---- 🎙️ Your voice -> approveVoice ("quiz") -------------------------------------------------------------------------
@@ -544,6 +587,11 @@ export function voiceSaveFrom(stored: VoiceSummary | null, options: readonly Voi
 
 export const loveStepId = (part: "quote" | "source" | "consent", i: number) => `love.${part}.${i}`;
 
+/** Review slots in Love notes: the shared reviews still missing of the three, at least one. */
+export function reviewSlots(stored: Pick<QuizStored, "sharedReviews">): number {
+  return Math.max(1, MAX_QUIZ_REVIEWS - (stored.sharedReviews ?? 0));
+}
+
 /** One review from its slot `i` (its quote, where it came from, consent); null without a quote. */
 export function reviewInputFrom(a: LoveNote, given: Given, i = 0): ReviewInput | null {
   if (!given(loveStepId("quote", i)) || !a.quote.trim()) return null;
@@ -577,7 +625,7 @@ const FIELD_STEPS: Record<QuizRoundId, [RegExp, string][]> = {
   customers: [[/^ageRange/, "customers.age"], [/^gender/, "customers.gender"], [/^channels/, "customers.online"], [/^needs/, "customers.needs"], [/^pains/, "customers.pains"], [/^triggers/, "customers.triggers"]],
   why: [[/^(name|link)/, "why.competitors"], [/^differentiators/, "why.differentiators"], [/^statement/, "why.statement"]],
   rules: [[/^paymentMethods/, "rules.payment"], [/^delivery/, "rules.delivery"], [/^returns/, "rules.returns"], [/^warranty/, "rules.warranty"], [/^booking/, "rules.booking"], [/^(question|answer)/, "rules.faqs"]],
-  find: [[/^openingHours/, "find.hours"], [/^contacts/, "find.phone"], [/^locations/, "find.address"]],
+  find: [[/^openingHours/, "find.hours"], [/^contacts/, "find.phone"], [/^locations/, "find.address"], [/^area/, "find.area"]],
   voice: [],
   love: [[/^(quote|customerName|receivedOn)/, "love.quote.0"], [/^source/, "love.source.0"], [/^canPublish/, "love.consent.0"]],
 };
@@ -613,6 +661,8 @@ export type QuizStored = {
   look: StoredLook | null;
   /** A social account is connected (Go live). */
   connected: boolean;
+  /** Stored reviews the customer agreed to share: Love notes asks only for the rest of the three. */
+  sharedReviews?: number;
 };
 
 /** New products asked about in one quiz (more can be added on the Products page). */
@@ -631,11 +681,12 @@ export function quizSteps(rounds: readonly QuizRoundId[], a: QuizAnswers, stored
   add("customers", "customers.pick", "customers.age", "customers.gender", "customers.online", "customers.needs", "customers.pains", "customers.triggers");
   add("why", "why.competitors", "why.differentiators", "why.statement");
   add("rules", "rules.payment", "rules.delivery", "rules.returns", "rules.warranty", "rules.booking", "rules.faqs");
-  add("find", "find.hours", "find.phone", "find.address");
+  add("find", "find.hours", "find.phone", "find.address", "find.area");
   add("look", "look.logo", "look.colors");
   add("voice", "voice.tone", "voice.emojis", "voice.length", "voice.pick");
-  // A review slot opens once the one before it has a quote; each review asks where it came from and (Owners and Admins) consent.
-  for (let i = 0; i < MAX_QUIZ_REVIEWS; i++) {
+  // A review slot opens once the one before it has a quote; each review asks where it came from and (Owners and Admins)
+  // consent. The slots are what is missing of the three shared reviews (at least one, to add more).
+  for (let i = 0; i < reviewSlots(stored); i++) {
     if (i > 0 && !a.love[i - 1]?.quote.trim()) break;
     add("love", loveStepId("quote", i), ...(a.love[i]?.quote.trim() ? [loveStepId("source", i), ...(opts.canGrant ? [loveStepId("consent", i)] : [])] : []));
   }
@@ -689,7 +740,7 @@ const asGender = (v: string | null | undefined): Gender | "" => (v === "female" 
 /** An empty review slot. */
 export const EMPTY_NOTE: LoveNote = { quote: "", customerName: "", source: "WHATSAPP", canPublish: false };
 
-export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { likelyKind: ProductKindValue; reasonIdeas?: readonly string[]; places: Places }): { answers: QuizAnswers; guessed: string[] } {
+export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { likelyKind: ProductKindValue; reasonIdeas?: readonly string[]; places: Places; country?: string }): { answers: QuizAnswers; guessed: string[] } {
   const guessed: string[] = [];
   const pick = (id: string, have: string | null | undefined, guess: string | undefined): string => {
     if (have?.trim()) return have;
@@ -714,6 +765,8 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
   const brand = stored.brand;
   const hours = brand ? hoursChoiceOf(brand.openingHours) : "";
   if (!hours) guessed.push("find.hours");
+  const area = areaAnswerOf(brand?.area ?? "", areaOptions(brand ? headAddress(brand.locations) : "", opts.country ?? opts.places.country));
+  if (area.guessed) guessed.push("find.area");
 
   const answer = (topic: string) => stored.voiceAnswers.find((x) => x.topic === topic)?.answer ?? "";
   const formality = answer("formality");
@@ -783,6 +836,7 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
         custom: brand?.openingHours[0] ?? HOURS_PRESETS.weekdays[0],
         phone: brand ? mainPhone(brand.contacts) : "",
         address: brand ? headAddress(brand.locations) : "",
+        area: area.answer,
       },
       voice: {
         tone: tone || "friendly",

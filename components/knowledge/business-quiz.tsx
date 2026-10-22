@@ -39,7 +39,9 @@ import {
   photoTargets,
   policyTitle,
   reviewInputsFrom,
+  reviewSlots,
   roundForSection,
+  areaOptions,
   type LoveNote,
   type PhotoTarget,
   type QuizPhoto,
@@ -211,7 +213,7 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
   // The policy tiles that fit this business (a salon is not asked about food returns).
   const places = useMemo(() => ({ ...where, type: draft.businessType }), [where, draft.businessType]);
   // Read once: the page's props refresh after every save (the actions revalidate), the quiz's state must not.
-  const [first] = useState(() => initialAnswers(storedAtStart, draft, { likelyKind, reasonIdeas, places: { ...where, type: draft.businessType } }));
+  const [first] = useState(() => initialAnswers(storedAtStart, draft, { likelyKind, reasonIdeas, places: { ...where, type: draft.businessType }, country }));
   const [answers, setAnswers] = useState<QuizAnswers>(first.answers);
   const [stored, setStored] = useState<QuizStored>(storedAtStart);
   const [guessed, setGuessed] = useState<Set<string>>(() => new Set(first.guessed));
@@ -396,7 +398,12 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
           const [field, message] = Object.entries(r.fieldErrors ?? {})[0] ?? [];
           return { ok: false, stepId: field ? stepForField("find", field, "find.hours") : "find.hours", error: message ?? r.error };
         }
-        setStored((x) => ({ ...x, brand: { ...x.brand!, openingHours: input.openingHours ?? [], locations: input.locations as NonNullable<QuizStored["brand"]>["locations"], contacts: input.contacts as NonNullable<QuizStored["brand"]>["contacts"] } }));
+        // The service area is also the profile's "Area you serve": You, played again, must not put the old one back.
+        setStored((x) => ({
+          ...x,
+          brand: { ...x.brand!, area: input.area ?? "", openingHours: input.openingHours ?? [], locations: input.locations as NonNullable<QuizStored["brand"]>["locations"], contacts: input.contacts as NonNullable<QuizStored["brand"]>["contacts"] },
+          ...(x.profile ? { profile: { ...x.profile, serviceArea: input.area ?? "" } } : {}),
+        }));
         return { ok: true, line: "Your opening hours, phone and address are saved. Your chat assistant and your posts use them." };
       }
       case "voice": {
@@ -712,7 +719,7 @@ function Question({ id, head, answers: a, set, setNote, media, stored, places, s
     return target ? <PhotoQuestion target={target} head={head} a={a} set={set} media={media} /> : null;
   }
   const slot = /^love\.(quote|source|consent)\.(\d)$/.exec(id);
-  if (slot) return <LoveQuestion part={slot[1] as "quote" | "source" | "consent"} i={Number(slot[2])} head={head} a={a} setNote={setNote} onTap={onTap} />;
+  if (slot) return <LoveQuestion part={slot[1] as "quote" | "source" | "consent"} i={Number(slot[2])} shared={stored.sharedReviews ?? 0} slots={reviewSlots(stored)} head={head} a={a} setNote={setNote} onTap={onTap} />;
   if (id.startsWith("sell.item.")) {
     const name = newProductNames(startProducts, a.sell.picked).find((n) => productStepId(n) === id) ?? "";
     return <ProductQuestion name={name} head={head} a={a} set={set} draft={draft} likelyKind={likelyKind} reasonIdeas={reasonIdeas} currency={currency} />;
@@ -983,6 +990,25 @@ function Question({ id, head, answers: a, set, setNote, media, stored, places, s
           <TextAnswer label="Phone or WhatsApp" value={a.find.phone} onChange={(phone) => set("find", { phone })} inputMode="tel" placeholder="e.g. 0788 000 000" maxLength={30} />
         </>
       );
+    case "find.area": {
+      const options = areaOptions(a.find.address, places.country);
+      return (
+        <>
+          {head("Where do your customers come from?", "The area you serve. Your posts and chat assistant use it.")}
+          <Tiles
+            label="Where your customers come from"
+            options={options}
+            value={a.find.area.choice || null}
+            onPick={(choice) => {
+              set("find", { area: { ...a.find.area, choice } });
+              if (choice !== "other") onTap();
+            }}
+            columns={2}
+          />
+          {a.find.area.choice === "other" && <TextAnswer label="The area you serve" value={a.find.area.text} onChange={(text) => set("find", { area: { choice: "other", text } })} placeholder="e.g. Kigali and Musanze" maxLength={200} />}
+        </>
+      );
+    }
     case "find.address":
       return (
         <>
@@ -1490,14 +1516,16 @@ function ColorsQuestion({ head, a, set, stored, draft }: { head: QuestionProps["
 
 // ---- 💬 Love notes ------------------------------------------------------------------------------------------------------
 
-function LoveQuestion({ part, i, head, a, setNote, onTap }: { part: "quote" | "source" | "consent"; i: number; head: QuestionProps["head"]; a: QuizAnswers; setNote: QuestionProps["setNote"]; onTap: () => void }) {
+function LoveQuestion({ part, i, shared, slots, head, a, setNote, onTap }: { part: "quote" | "source" | "consent"; i: number; shared: number; slots: number; head: QuestionProps["head"]; a: QuizAnswers; setNote: QuestionProps["setNote"]; onTap: () => void }) {
   const note = a.love[i] ?? EMPTY_NOTE;
   if (part === "quote") {
     return (
       <>
-        {i === 0
+        {i === 0 && shared === 0
           ? head("Got a nice message from a customer?", "Paste it here, word for word. No message yet? Skip this.")
-          : head(`Another one? (${i + 1} of ${MAX_QUIZ_REVIEWS})`, "Three reviews customers agreed to share make this part complete. No more? Skip.")}
+          : shared + i < MAX_QUIZ_REVIEWS
+            ? head(`${i === 0 ? "Another nice message?" : "Another one?"} (${shared + i + 1} of ${MAX_QUIZ_REVIEWS})`, `Three reviews customers agreed to share make this part complete${shared ? `: you have ${shared} already` : ""}. No more? Skip.`)
+            : head(i === 0 ? "Got another nice message?" : `Another one? (${i + 1} of ${slots})`, "You have three shared reviews already: more is a bonus. No more? Skip.")}
         <Textarea aria-label="What the customer said" rows={4} maxLength={1000} placeholder="“Best service in town, thank you!”" value={note.quote} onChange={(e) => setNote(i, { quote: e.target.value })} />
         {note.quote.trim() && <Input aria-label="Customer's name or initials" maxLength={80} placeholder="Their name or initials, e.g. Aline K." value={note.customerName} onChange={(e) => setNote(i, { customerName: e.target.value })} />}
       </>
