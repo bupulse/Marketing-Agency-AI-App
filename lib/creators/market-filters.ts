@@ -2,7 +2,7 @@
 // filters (platform, best pay, business type, open now or starting soon) read from the query string, and the order.
 // Pure, so the rules have tests; lib/creators/marketplace.ts reads the database.
 
-import type { PayRules } from "./pay";
+import { ratePerThousandViews, type PayRules } from "./pay";
 import { isCreatorNetwork, type CreatorNetwork } from "./describe";
 
 export type MarketSort = "new" | "pay";
@@ -70,7 +70,7 @@ export type MarketItem = { platforms: string[]; payRules: PayRules; industrySlug
 
 /** Best pay first: the highest rate per 1,000 views, then the highest fee per post. */
 export function byBestPay(a: Pick<MarketItem, "payRules">, b: Pick<MarketItem, "payRules">): number {
-  return (b.payRules.ratePerThousand ?? 0) - (a.payRules.ratePerThousand ?? 0) || (b.payRules.feePerPost ?? 0) - (a.payRules.feePerPost ?? 0);
+  return ratePerThousandViews(b.payRules) - ratePerThousandViews(a.payRules) || (b.payRules.feePerPost ?? 0) - (a.payRules.feePerPost ?? 0);
 }
 
 /** "Open now" (started) or "Starting soon" (first day still ahead). */

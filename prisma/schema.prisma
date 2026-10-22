@@ -334,6 +334,7 @@ model Campaign {
   designs  Design[]
   posts    Post[]
   videoJobs VideoJob[]
+  creatorCampaigns CreatorCampaign[]
 
   @@index([businessId, status, createdAt])
 }
@@ -2775,7 +2776,24 @@ model CreatorCampaign {
   payRules              Json // PayRules (lib/creators/pay.ts): rate per 1,000 views, milestones, fee per post, caps
   viewTargetPerCreator  Int? // default for new periods: views per creator per period that earn; more do not count
   viewTargetCampaign    Int? // default for new periods: views of all creators together per period that earn
-  questions             Json? // the company's own application questions: [{ id, label, required }]
+  questions             Json? // the company's own application questions: [{ id, label, required }] (campaigns made before the wizard)
+  // The step-by-step creation wizard (docs/CREATOR_CAMPAIGN_WIZARD.md, lib/creators/wizard.ts).
+  setupStep             Int? // null: all steps done; 1-12: a draft left at that step ("Continue")
+  idea                  String? // the owner's one line the AI fills the other steps from
+  kind                  String? // PRODUCT_REVIEW | CHALLENGE | UNBOXING | TUTORIAL | EVENT | LAUNCH | TESTIMONIAL | OTHER
+  goal                  String? // VIEWS | SALES | VISITS | FOLLOWERS | DOWNLOADS
+  knowledgeCampaignId   String? // the Business info campaign it promotes, if any
+  knowledgeCampaign     Campaign?           @relation(fields: [knowledgeCampaignId], references: [id], onDelete: SetNull)
+  productIds            String[] // Business info products it promotes
+  requirements          Json? // CreatorRequirements (lib/creators/requirements.ts): niches, locations, languages, min followers, how many
+  formats               String[] // REEL | STORY | POST | CAROUSEL | SHORT_VIDEO | LIVE
+  platformMode          String              @default("ANY") // ALL: post on every platform | ANY: on any one of them (new tasks' default)
+  briefEvery            String? // MONTH | WEEK | DAY: how often a new brief (task) comes
+  dos                   String[]
+  donts                 String[]
+  applicationForm       Json? // ApplicationForm (lib/creators/form-fields.ts); null: the default form plus `questions`
+  files                 Json? // CampaignFiles (lib/creators/wizard.ts): the Photos folders, a Drive link, example links
+  look                  Json? // CampaignLook (lib/creators/wizard.ts): the application page's cover
   createdBy             String?             @db.Uuid
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
@@ -2882,6 +2900,8 @@ model CreatorConnection {
   displayName                String?
   accountType                String? // "business" | "creator" | "page" | ...
   avatarUrl                  String?
+  followers                  Int? // read from the network when connected and at each check: verifies what they typed when applying
+  followersAt                DateTime?
   status                     String         @default("ACTIVE") // ACTIVE | EXPIRED | REVOKED
   lastError                  String?
   lastCheckedAt              DateTime?

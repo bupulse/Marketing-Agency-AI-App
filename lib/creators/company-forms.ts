@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { addDaysYmd } from "@/lib/demo/slots";
 import { paysAnything, payRulesSchema, type PayRules, type PeriodPay } from "./pay";
+import { rateProblem } from "./pay-floor";
 import { daysInclusive, MAX_CAMPAIGN_DAYS } from "./periods";
 
 export const PLATFORMS = ["instagram", "facebook", "tiktok"] as const;
@@ -91,7 +92,9 @@ export const campaignSchema = z
     else if (days > MAX_CAMPAIGN_DAYS) ctx.addIssue({ code: "custom", path: ["endsOn"], message: "A campaign can run for a year at most." });
     const bad = c.mentions.find((m) => !isMention(m));
     if (bad) ctx.addIssue({ code: "custom", path: ["mentions"], message: `"${bad}" is not a mention: use @yourhandle, #yourhashtag or a link.` });
-    if (!paysAnything(c.payRules)) ctx.addIssue({ code: "custom", path: ["payRules"], message: "Set how creators earn: a rate per 1,000 views, a fee per post or a milestone." });
+    if (!paysAnything(c.payRules)) ctx.addIssue({ code: "custom", path: ["payRules"], message: "Set how creators earn: a rate per views, a fee per post or a milestone." });
+    const rate = rateProblem(c.payRules, c.currency);
+    if (rate) ctx.addIssue({ code: "custom", path: ["payRules"], message: rate });
     const caps = c.payRules.milestones ?? [];
     if (new Set(caps.map((m) => m.views)).size !== caps.length) ctx.addIssue({ code: "custom", path: ["payRules"], message: "Two milestones have the same number of views." });
   });
@@ -151,7 +154,7 @@ export function formatAmount(amount: number, currency: string): string {
 export function payRulesInWords(rules: PayRules, currency: string): string[] {
   const money = (n: number) => formatAmount(n, currency);
   const out: string[] = [];
-  if (rules.ratePerThousand) out.push(`${money(rules.ratePerThousand)} for every 1,000 views`);
+  if (rules.ratePerThousand) out.push(`${money(rules.ratePerThousand)} for every ${(rules.rateViews ?? 1000).toLocaleString("en-US")} views`);
   for (const m of [...(rules.milestones ?? [])].sort((a, b) => a.views - b.views)) out.push(`${money(m.amount)} once, when a post reaches ${m.views.toLocaleString("en-US")} views`);
   if (rules.feePerPost) out.push(`${money(rules.feePerPost)} for every post handed in`);
   if (rules.capPerPost) out.push(`At most ${money(rules.capPerPost)} per post in a pay period`);

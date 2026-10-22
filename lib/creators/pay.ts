@@ -21,8 +21,10 @@ export const milestoneSchema = z.object({
 });
 
 export const payRulesSchema = z.object({
-  /** Paid for every 1,000 counted views. */
+  /** Paid for every `rateViews` counted views (1,000 when left out; the name is from before the owner could pick). */
   ratePerThousand: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
+  /** The views the rate is for: 1,000, 10,000, 100,000 or 1,000,000 (the owner picks, docs/CREATOR_CAMPAIGN_WIZARD.md). */
+  rateViews: z.union([z.literal(1_000), z.literal(10_000), z.literal(100_000), z.literal(1_000_000)]).optional(),
   /** One-off amounts when a post's total views reach a number (each paid once per post). */
   milestones: z.array(milestoneSchema).max(10).optional(),
   /** Paid for every tracked post handed in during the period. */
@@ -41,6 +43,11 @@ export function readPayRules(value: unknown): PayRules {
   if (!parsed.success) return {};
   const milestones = [...(parsed.data.milestones ?? [])].sort((a, b) => a.views - b.views);
   return { ...parsed.data, milestones };
+}
+
+/** The rate for 1,000 views, whatever number of views the owner priced (0 without a rate): to compare campaigns. */
+export function ratePerThousandViews(rules: PayRules): number {
+  return rules.ratePerThousand ? (rules.ratePerThousand * 1000) / (rules.rateViews ?? 1000) : 0;
 }
 
 /** True when the rules can pay anything at all (the campaign form refuses rules that cannot). */
@@ -176,7 +183,7 @@ export function computePeriodPay(rules: PayRules, goals: PeriodGoals, posts: Pos
     const counted = splitWhole(c.counted, c.views);
     const postPays: PostPay[] = c.list.map((p, i) => {
       if (!c.earning[i]) return { postId: p.postId, views: 0, countedViews: 0, rate: 0, milestones: [], milestonePay: 0, fee: 0, amount: 0 };
-      const rate = positive(rules.ratePerThousand) ? whole((counted[i] * rules.ratePerThousand) / 1000) : 0;
+      const rate = positive(rules.ratePerThousand) ? whole((counted[i] * rules.ratePerThousand) / (rules.rateViews ?? 1000)) : 0;
       const already = new Set(p.milestonesPaid ?? []);
       const reached = milestones.filter((m) => whole(p.viewsAtEnd) >= m.views && !already.has(m.views));
       const milestonePay = reached.reduce((s, m) => s + m.amount, 0);
