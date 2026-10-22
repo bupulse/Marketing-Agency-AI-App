@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { knowledgeAction, type Result } from "@/lib/knowledge/guard";
-import { answerInputSchema, summarySchema, type AnswerInput, type VoiceSummaryInput } from "@/lib/knowledge/interview";
-import { answerStep, approveProfile, InterviewInProgressError, startInterview as start, stepBack, updateApprovedProfile } from "@/lib/knowledge/interview-service";
+import { answerInputSchema, OTHER_MAX, summarySchema, type AnswerInput, type VoiceSummaryInput } from "@/lib/knowledge/interview";
+import { answerStep, approveProfile, InterviewInProgressError, saveQuizVoice, startInterview as start, stepBack, updateApprovedProfile } from "@/lib/knowledge/interview-service";
 import { fieldErrorMap } from "@/lib/knowledge/products";
 
 /**
@@ -52,12 +53,21 @@ export async function previousQuestion(): Promise<Result> {
   return result;
 }
 
-/** Approves the summary the owner edited (after the interview), or saves edits to the approved one (`edit`). */
-export async function approveVoice(input: VoiceSummaryInput, mode: "approve" | "edit" = "approve"): Promise<Result> {
+/** The this-or-that answers of the Business info quiz, kept with the voice it approves. */
+const quizAnswersSchema = z.array(z.object({ topic: z.enum(["formality", "emojis", "followup"]), answer: z.string().trim().min(1).max(OTHER_MAX) })).max(5).default([]);
+
+/**
+ * Approves the summary the owner edited (after the interview), saves edits to the approved one (`edit`), or approves
+ * the voice picked in the Business info quiz (`quiz`, no interview needed) with its this-or-that answers.
+ */
+export async function approveVoice(input: VoiceSummaryInput, mode: "approve" | "edit" | "quiz" = "approve", quizAnswers: { topic: string; answer: string }[] = []): Promise<Result> {
   const parsed = summarySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields.", fieldErrors: fieldErrorMap(parsed.error) };
+  const answers = quizAnswersSchema.safeParse(quizAnswers);
+  if (!answers.success) return { ok: false, error: "Check your answers." };
   const result = await knowledgeAction({ permission: "settings", feature: "content", limit: "interviewStep", source: "knowledge.interview.approve" }, async ({ businessId }) => {
     if (mode === "edit") await updateApprovedProfile(businessId, parsed.data);
+    else if (mode === "quiz") await saveQuizVoice(businessId, parsed.data, answers.data);
     else await approveProfile(businessId, parsed.data);
     return {};
   });
