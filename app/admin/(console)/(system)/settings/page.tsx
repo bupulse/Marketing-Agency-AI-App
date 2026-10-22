@@ -49,12 +49,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Settings" description="The trial, payments (Mobile Money and card), card prices, and the demo calls new clients book. Every change is written to the audit log." />
+      <PageHeader title="Settings" description="The trial, payments (Mobile Money and card), card prices, and the calls clients book (custom plan calls, and demos still on the books). Every change is written to the audit log." />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Trial" description="New clients get no trial at sign-up: they book a demo, and Start trial (Demos, or the company page) opens the dashboard for this long. The TRIAL plan's own length no longer drives sign-ups.">
+        <Panel title="Trial" description="A new client's trial starts when they pick the plan they want to try (the one screen after onboarding, no demo needed), and lasts this long. Start trial (Demos, or the company page) does the same for a company still waiting from the demo-first days. The TRIAL plan's own length no longer drives sign-ups.">
           <form action={saveSettingsAction} className="flex flex-wrap items-end gap-3">
             <Field label="Trial length (days)" required>
               <Input name="trialDays" type="number" min={1} max={90} defaultValue={s.trialDays} required className="w-28" />

@@ -10,7 +10,7 @@ import type { RegionalPlan } from "@/lib/region-prices";
 
 const CUSTOM_PLAN_SIGNUP = `/signup?next=${encodeURIComponent("/custom-plan?from=quiz")}`;
 
-/** Keeps the pick for /book-demo, which starts its plan step on it (lib/plan-quiz.ts). Only a plan key. */
+/** Keeps the pick for /start-trial, which preselects it (lib/plan-quiz.ts). Only a plan key. */
 function rememberPick(planKey: string) {
   try {
     document.cookie = `${PLAN_PICK_COOKIE}=${encodeURIComponent(planKey)}; path=/; max-age=${PLAN_PICK_MAX_AGE}; samesite=lax${location.protocol === "https:" ? "; secure" : ""}`;
@@ -21,7 +21,7 @@ function rememberPick(planKey: string) {
 
 /**
  * "Pick your plan in 30 seconds": three questions, then one recommendation from the visitor's region plans (the same
- * plans and prices as the cards above), with Book a free demo and Sign up and pay.
+ * plans and prices as the cards above), with Start your free trial and Sign up and pay.
  */
 export function PlanQuiz({ plans }: { plans: RegionalPlan[] }) {
   const [answers, setAnswers] = useState<Partial<QuizAnswers>>({});
@@ -83,7 +83,7 @@ export function PlanQuiz({ plans }: { plans: RegionalPlan[] }) {
             {result.kind === "plan" && (
               <>
                 <Button href="/signup" onClick={() => rememberPick(result.plan.key)} trailing={<ArrowRight aria-hidden className="size-4" />}>
-                  Book a free demo
+                  Start your free trial
                 </Button>
                 <Button href="/signup" variant="outline" onClick={() => rememberPick(result.plan.key)}>
                   Sign up and pay now
@@ -93,7 +93,7 @@ export function PlanQuiz({ plans }: { plans: RegionalPlan[] }) {
             {result.kind === "managed" && (
               <>
                 <Button href="/signup" trailing={<ArrowRight aria-hidden className="size-4" />}>
-                  Book a free demo
+                  Start your free trial
                 </Button>
                 <Button href="/done-for-you" variant="outline">
                   See done-for-you
@@ -109,7 +109,7 @@ export function PlanQuiz({ plans }: { plans: RegionalPlan[] }) {
               Start again
             </Button>
           </div>
-          {result.kind === "plan" && <p className="text-[13px] text-muted">Paying now? After signing up, choose {result.plan.name} and pay from the next screen; you can still have the demo.</p>}
+          {result.kind === "plan" && <p className="text-[13px] text-muted">Paying now? After signing up, start your trial on {result.plan.name}, then pay from the Billing page whenever you are ready.</p>}
         </div>
       )}
     </GlassCard>

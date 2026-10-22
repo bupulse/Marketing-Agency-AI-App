@@ -5,7 +5,7 @@ import { AccountMenu, useSignedInEmail } from "./account-menu";
 import { MobileMenu } from "./mobile-menu";
 
 /**
- * The right side of the marketing header after the theme toggle: Log in and "Book a demo" for visitors; for a signed-in
+ * The right side of the marketing header after the theme toggle: Log in and "Start your free trial" for visitors; for a signed-in
  * client, the Account menu and "Go to dashboard" (they already have an account).
  */
 export function HeaderActions({ links }: { links: { label: string; href: string }[] }) {
@@ -18,8 +18,8 @@ export function HeaderActions({ links }: { links: { label: string; href: string 
           "Go to dashboard"
         ) : (
           <>
-            <span className="lg:hidden">Book a demo</span>
-            <span className="hidden lg:inline">Book a free demo</span>
+            <span className="lg:hidden">Try it free</span>
+            <span className="hidden lg:inline">Start your free trial</span>
           </>
         )}
       </Button>

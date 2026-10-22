@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/theme";
 import { GlassCard } from "@/components/ui";
 
 const FACTS = [
-  { icon: CalendarCheck, text: "A free demo first, then a free trial" },
+  { icon: CalendarCheck, text: "Your free trial starts when you choose a plan" },
   { icon: CreditCard, text: "No credit card needed to start" },
   { icon: Sparkles, text: "Posts, images and ads in your brand voice" },
 ];

@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = pageMetadata({
   title: "Pricing",
-  description: "Simple plans priced for where you are. Book a free demo, try your plan free, then pay monthly or yearly with a discount. Marketing help for every small business.",
+  description: "Simple plans priced for where you are. Start your free trial, no card needed, then pay monthly or yearly with a discount. Marketing help for every small business.",
   path: "/pricing",
 });
 
@@ -39,7 +39,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       <PageHero
         eyebrow="Pricing"
         title="Simple pricing for every small business"
-        text={`Prices for ${region.name}. Book a free demo, try your plan free for ${days}, then pay monthly or yearly. No card needed to start.`}
+        text={`Prices for ${region.name}. Try it free for ${days}, no card needed, then pay monthly or yearly.`}
       />
 
       <Container className="pb-16">
@@ -72,14 +72,14 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
           <GlassCard padding="lg" className="flex flex-col gap-3">
             <h2 className="text-2xl font-bold tracking-tight">How it works</h2>
             <ol className="flex flex-col gap-2 text-muted">
-              <li><strong className="text-text">1. Sign up and choose a plan.</strong> Tell us about your business in a few minutes.</li>
-              <li><strong className="text-text">2. Book a free demo.</strong> A short video call where we show BuPulse on your own business and answer your questions.</li>
-              <li><strong className="text-text">3. Try it free for {days}.</strong> Right after the demo, with everything your plan includes. No card needed.</li>
+              <li><strong className="text-text">1. Sign up.</strong> Tell us about your business in a few minutes.</li>
+              <li><strong className="text-text">2. Choose the plan you want to try.</strong> Your free trial starts right away.</li>
+              <li><strong className="text-text">3. Try it free for {days}.</strong> With everything your plan includes. No card needed.</li>
               <li><strong className="text-text">4. Keep going.</strong> Pay to continue. If you do nothing, nothing is charged and your work stays saved.</li>
             </ol>
             <div>
               <Button href="/signup" trailing={<ArrowRight aria-hidden className="size-4" />}>
-                Book a free demo
+                Start your free trial
               </Button>
             </div>
           </GlassCard>
@@ -91,7 +91,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
           <GlassCard padding="lg" className="flex flex-col gap-3">
             <h2 className="text-2xl font-bold tracking-tight">Need something different?</h2>
             <p className="text-muted">
-              Only some features, more posts, website chat or Autopilot on top of a plan, or the BuPulse team running it for you: request a custom plan. Sign up first (it takes a few minutes; already have an account? you go straight to the form), tell us what you need, and we talk it through in your free demo and send you an offer.
+              Only some features, more posts, website chat or Autopilot on top of a plan, or the BuPulse team running it for you: request a custom plan. Sign up first (it takes a few minutes; already have an account? you go straight to the form), tell us what you need, and we send you an offer (and can talk it through on a short call if you like).
             </p>
             <div>
               <Button href={`/signup?next=${encodeURIComponent("/custom-plan?from=pricing")}`} variant="outline" trailing={<ArrowRight aria-hidden className="size-4" />}>
@@ -115,7 +115,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
             <Sparkles aria-hidden className="size-8 text-pulse-violet" />
             <h2 className="text-2xl font-bold tracking-tight">Rather not do it yourself?</h2>
             <p className="text-muted">
-              Our done-for-you service runs your social content and lead capture for you, using BuPulse. Ask about it on your demo call.
+              Our done-for-you service runs your social content and lead capture for you, using BuPulse. Ask us about it any time.
             </p>
             <div>
               <Button href="/done-for-you" variant="outline">

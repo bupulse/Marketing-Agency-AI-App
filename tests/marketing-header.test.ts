@@ -24,9 +24,10 @@ describe("marketing header", () => {
     }
   });
 
-  it("keeps the theme toggle and the demo button outside the menu", () => {
-    expect(html).toMatch(/Book a demo/);
-    expect(html).toMatch(/Book a free demo/);
-    expect(html).toMatch(/hidden whitespace-nowrap sm:inline-flex/); // phones (under 640 px): the demo button is in the menu, so the menu button always fits
+  it("keeps the theme toggle and the free trial button outside the menu", () => {
+    expect(html).toMatch(/Try it free/);
+    expect(html).toMatch(/Start your free trial/);
+    expect(html).not.toMatch(/demo/i);
+    expect(html).toMatch(/hidden whitespace-nowrap sm:inline-flex/); // phones (under 640 px): the free trial button is in the menu, so the menu button always fits
   });
 });

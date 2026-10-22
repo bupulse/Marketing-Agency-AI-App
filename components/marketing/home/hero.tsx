@@ -27,14 +27,14 @@ export function Hero() {
         </p>
         <div className="animate-rise flex flex-wrap gap-3 [animation-delay:360ms]">
           <Button href="/signup" size="lg" trailing={<ArrowRight aria-hidden className="size-[18px]" />}>
-            Book a free demo
+            Start your free trial
           </Button>
           <Button href="#how" variant="ghost" size="lg">
             See how it works
           </Button>
         </div>
         <p className="animate-rise m-0 text-[13px] text-muted [animation-delay:360ms]">
-          Free demo, then a free trial · No marketing experience needed · Cancel anytime
+          Free trial, no card needed · No marketing experience needed · Cancel anytime
         </p>
       </div>
       <HeroScene />
