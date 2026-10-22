@@ -484,28 +484,17 @@ describe("to 100%: the new questions", () => {
     expect(ids.slice(0, 4)).toEqual(["sell.pick", productStepId("Birthday cake"), photoStepId("p-p1"), photoStepId("n-birthday-cake")]);
   });
 
-  it("links the gallery picks and makes a new product with a photo active", () => {
+  it("links the gallery picks (uploads and imports are in the album already)", () => {
     const targets: PhotoTarget[] = [
       { key: "p-p1", name: "Sourdough loaf", productId: "p1", isNew: false },
       { key: "n-cake", name: "Birthday cake", productId: "p9", isNew: true },
-      { key: "n-bun", name: "Bun", productId: "p10", isNew: true },
+      { key: "n-bun", name: "Bun", productId: null, isNew: true },
     ];
     const photo = (id: string) => ({ id, url: `https://example.test/${id}.jpg`, kind: "photo" });
-    const a = { added: { "n-cake": [photo("m1")] }, picked: { "p-p1": [photo("m2"), photo("m2")] } };
-    // Every quiz draft of this visit is sent, and a stored product given a photo here (a draft from an earlier visit):
-    // the server activates the drafts among them that have a photo.
-    expect(photosSaveFrom(targets, a, all)).toEqual({ links: [{ productId: "p1", assetIds: ["m2"] }], activate: ["p1", "p9", "p10"] });
-    // Skipped: the picks are not linked; an upload is in the album already.
-    expect(photosSaveFrom(targets, a, none)).toEqual({ links: [], activate: ["p9", "p10"] });
-  });
-
-  it("activates a stored draft from an earlier quiz visit that gets an upload or import in this round", () => {
-    const targets: PhotoTarget[] = [
-      { key: "p-p1", name: "Classic Manicure", productId: "p1", isNew: false },
-      { key: "p-p2", name: "Pedicure", productId: "p2", isNew: false },
-    ];
-    const a = { added: { "p-p1": [{ id: "m1", url: "https://example.test/m1.mp4", kind: "video" }] }, picked: {} };
-    expect(photosSaveFrom(targets, a, all).activate).toEqual(["p1"]);
+    const a = { added: { "n-cake": [photo("m1")] }, picked: { "p-p1": [photo("m2"), photo("m2")], "n-bun": [photo("m3")] } };
+    expect(photosSaveFrom(targets, a, all)).toEqual({ links: [{ productId: "p1", assetIds: ["m2"] }] });
+    // Skipped: the picks are not linked.
+    expect(photosSaveFrom(targets, a, none)).toEqual({ links: [] });
   });
 
   it("saves the logo and colours over what is stored, and nothing when unchanged", () => {

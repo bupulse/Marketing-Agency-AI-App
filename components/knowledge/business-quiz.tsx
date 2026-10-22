@@ -202,6 +202,13 @@ export function BusinessQuiz(props: Props) {
 
 type Saved = { ok: true; line: string } | { ok: false; stepId: string; error: string };
 
+/** "A", "A and B", "A, B and 2 more". */
+function nameList(names: readonly string[]): string {
+  if (names.length <= 2) return names.join(" and ");
+  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
+  return `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
+}
+
 /** After the Photos round saved, the gallery picks are in the albums too: shown with the uploads, not linked again. */
 function mergePhotos(added: Record<string, QuizPhoto[]>, picked: Record<string, QuizPhoto[]>): Record<string, QuizPhoto[]> {
   const out = { ...added };
@@ -318,18 +325,25 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
         // The ids: each new product's photo question needs its album.
         const ids = Object.fromEntries((r.products ?? []).map((p) => [itemKey(p.name), p.id]));
         setStored((x) => ({ ...x, products: [...x.products, ...added], productIds: { ...x.productIds, ...ids } }));
-        return { ok: true, line: `${added.length === 1 ? `${added[0]} is` : `${added.length} products are`} saved.${rounds.includes("photos") ? ` Next, a photo of ${added.length === 1 ? "it" : "each"}: that makes ${added.length === 1 ? "it" : "them"} ready for posts.` : ""}` };
+        const live = r.activated ?? [];
+        return {
+          ok: true,
+          line: `${added.length === 1 ? `${added[0]} is` : `${added.length} products are`} saved.${rounds.includes("photos") ? ` Next, a photo of ${added.length === 1 ? "it" : "each"}: a product goes live for posts once it has one.` : ""}${live.length ? ` ${nameList(live)} ${live.length === 1 ? "is" : "are"} live now.` : ""}`,
+        };
       }
       case "photos": {
         const targets = photoTargets({ ...s, products: startProducts }, a);
         const save = photosSaveFrom(targets, a.photos, given);
         const count = targets.filter((t) => (a.photos.added[t.key]?.length ?? 0) + (given(photoStepId(t.key)) ? (a.photos.picked[t.key]?.length ?? 0) : 0) > 0).length;
-        if (save.links.length || save.activate.length) {
-          const r = await saveQuizRound({ round: "photos", ...save });
-          if (!r.ok) return { ok: false, stepId: steps.find((x) => x.round === "photos")?.id ?? "photos", error: r.error };
-          setAnswers((x) => ({ ...x, photos: { added: mergePhotos(x.photos.added, x.photos.picked), picked: {} } }));
-        }
-        return { ok: true, line: count ? `${count === 1 ? "1 product has" : `${count} products have`} a photo now: ready for posts.` : "No photos this time. You can add them on the Products page." };
+        // Always one request: it also makes active every draft that is now ready, from earlier visits too.
+        const r = await saveQuizRound({ round: "photos", ...save });
+        if (!r.ok) return { ok: false, stepId: steps.find((x) => x.round === "photos")?.id ?? "photos", error: r.error };
+        setAnswers((x) => ({ ...x, photos: { added: mergePhotos(x.photos.added, x.photos.picked), picked: {} } }));
+        // "Ready for posts" only for the products that really went live.
+        const live = r.activated ?? [];
+        if (live.length) return { ok: true, line: `${nameList(live)} ${live.length === 1 ? "is" : "are"} live now: ready for posts.` };
+        if (count) return { ok: true, line: `Photos added to ${count === 1 ? "1 product" : `${count} products`}. A product goes live once it has a description, a reason to buy and a price (or On request): check the Products page.` };
+        return { ok: true, line: "No photos this time. You can add them on the Products page." };
       }
       case "look": {
         if (!s.look) return { ok: true, line: "" };

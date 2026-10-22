@@ -129,8 +129,11 @@ the questions then use. Each screen is the album card's own tools (components/kn
 your phone" (`useGalleryUpload`, `UPLOAD_ACCEPT`: photos and videos), "From your photos" (`MediaPicker`, videos too) and
 the gallery's Import menu (`ImportMenu`: From a link, and Google Drive and Dropbox when their keys are set). The picker
 saves its own uploads and imports there too (`saveTo`). Uploads and imports go straight into the product's album (`product:<id>`) and show on the screen;
-gallery picks are linked when the round saves. The round's save (one request) links the picks and makes the quiz's
-drafts that now have a photo active, wherever the photo was added. Next waits while an upload or import runs.
+gallery picks are linked when the round saves. The round's save (one request) links the picks and then makes active
+every draft that is now ready for posts (`activateReadyDrafts`: productReadiness, so a description, a reason to buy, a
+price or "on request", and a photo, however it was added and in whichever visit; a half-finished draft stays a draft).
+The What you sell save does the same. The round's "done" line says "ready for posts" only for the products that really
+went live. Next waits while an upload or import runs.
 
 **The finish screen.** `quizScore` recomputes the overall % on the server and returns "To reach 100%": up to 4
 incomplete sections the person may edit (their role and plan), the furthest from complete first, each with its to-do

@@ -6,10 +6,11 @@ const tx = vi.hoisted(() => ({
   competitor: { count: vi.fn(), findFirst: vi.fn(), createManyAndReturn: vi.fn() },
   product: { count: vi.fn(), createManyAndReturn: vi.fn() },
 }));
-vi.mock("@/lib/db", () => ({ prisma: { $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx) } }));
+const db = vi.hoisted(() => ({ product: { findMany: vi.fn(), updateMany: vi.fn() } }));
+vi.mock("@/lib/db", () => ({ prisma: { $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx), product: db.product } }));
 
 import { createCompetitors, createFaqs } from "@/lib/knowledge/records";
-import { createProducts } from "@/lib/knowledge/service";
+import { activateReadyDrafts, createProducts } from "@/lib/knowledge/service";
 import { MAX_FAQS } from "@/lib/knowledge/policies";
 import { MAX_PRODUCTS_PER_BUSINESS, productInputSchema } from "@/lib/knowledge/products";
 
@@ -49,5 +50,24 @@ describe("the quiz's batch creates", () => {
     expect(tx.product.createManyAndReturn.mock.calls[0][0].data[0]).toMatchObject({ businessId: "b1", name: "Passion Juice", priceModel: "ON_REQUEST", status: "DRAFT" });
     tx.product.count.mockResolvedValue(MAX_PRODUCTS_PER_BUSINESS);
     await expect(createProducts("b1", [data])).rejects.toThrow(/limit/);
+  });
+});
+
+describe("activateReadyDrafts", () => {
+  // Placeholder products (fixtures use fake names).
+  const draft = (id: string, name: string, patch: Record<string, unknown> = {}) => ({ id, name, summary: "Done with care", usps: ["Lasts two weeks"], priceModel: "ON_REQUEST", priceAmount: null, priceNote: null, _count: { photos: 1 }, ...patch });
+
+  it("makes every ready draft active, from any visit, and leaves half-finished ones as drafts", async () => {
+    db.product.findMany.mockResolvedValue([draft("p1", "Classic Manicure"), draft("p2", "Hair Braiding", { _count: { photos: 2 } }), draft("p3", "Half done", { usps: [] }), draft("p4", "No price", { priceModel: "FIXED" })]);
+    db.product.updateMany.mockResolvedValue({ count: 2 });
+    expect(await activateReadyDrafts("b1")).toEqual(["Classic Manicure", "Hair Braiding"]);
+    expect(db.product.findMany.mock.calls[0][0].where).toEqual({ businessId: "b1", status: "DRAFT", photos: { some: {} } });
+    expect(db.product.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["p1", "p2"] }, businessId: "b1", status: "DRAFT" }, data: { status: "ACTIVE" } });
+  });
+
+  it("writes nothing when no draft is ready", async () => {
+    db.product.findMany.mockResolvedValue([draft("p3", "Half done", { summary: "" })]);
+    expect(await activateReadyDrafts("b1")).toEqual([]);
+    expect(db.product.updateMany).not.toHaveBeenCalled();
   });
 });
