@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { ownSuggestInputSchema, suggestOwnCampaign, type OwnSuggestInput } from "@/lib/knowledge/campaign-ai";
+import type { OwnSuggestion } from "@/lib/knowledge/campaign-quiz";
 import { campaignInputSchema, type CampaignInput } from "@/lib/knowledge/campaigns";
 import { knowledgeAction, type Result } from "@/lib/knowledge/guard";
 import { ITEM_STATUSES, fieldErrorMap } from "@/lib/knowledge/products";
@@ -28,6 +30,16 @@ export async function createCampaign(input: CampaignInput): Promise<Result<{ cam
   const result = await knowledgeAction({ permission: "content", feature: "content", limit: "projectCreate", source: "knowledge.campaign.create" }, async ({ businessId }) => ({ campaignId: await create(businessId, checked.data) }));
   if (result.ok) refresh(result.campaignId);
   return result;
+}
+
+/**
+ * The own campaign quiz's ideas after "What's it about?" (docs/QUIZ_MODE.md): the AI's, or the template of the kind.
+ * Nothing is saved; "Add campaign" saves through createCampaign.
+ */
+export async function suggestOwnCampaignAction(input: OwnSuggestInput): Promise<Result<{ suggestion: OwnSuggestion }>> {
+  const parsed = ownSuggestInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "We could not read that. Please try again." };
+  return knowledgeAction({ permission: "content", feature: "content", source: "knowledge.campaign.suggest" }, async ({ userId, businessId }) => ({ suggestion: await suggestOwnCampaign({ userId, businessId }, parsed.data) }));
 }
 
 export async function updateCampaign(campaignId: string, input: CampaignInput): Promise<Result<{ campaignId: string }>> {
