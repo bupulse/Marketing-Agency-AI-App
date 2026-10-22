@@ -5,7 +5,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { logError } from "@/lib/errors";
 import { getProvider } from "./registry";
 import { deleteConnectedAccount, isComposioResult, scopeAccount } from "./composio/client";
-import { SocialError, type ConnectionCredentials, type Network, type OAuthResult } from "./types";
+import { NETWORKS, SocialError, type ConnectionCredentials, type Network, type OAuthResult } from "./types";
 
 // Everything that touches stored connections: saving after OAuth, handing the publisher decrypted
 // credentials (refreshing first), recording errors and disconnecting. Tokens are always encrypted at rest.
@@ -47,7 +47,7 @@ export async function restoreQueuedPosts(connectionIds: string[], now = new Date
   return { restored: rest?.count ?? 0, needsNewTime: stale?.count ?? 0 };
 }
 
-const SOCIAL_NETWORKS = new Set<string>(["instagram", "facebook", "linkedin", "tiktok", "youtube"]);
+const SOCIAL_NETWORKS = new Set<string>(NETWORKS);
 
 export async function listConnections(businessId: string): Promise<ConnectionSummary[]> {
   const rows = await prisma.connection.findMany({

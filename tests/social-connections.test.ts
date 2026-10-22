@@ -87,6 +87,11 @@ describe("saveConnections", () => {
 });
 
 describe("loadCredentials", () => {
+  it("hands out TikTok and X accounts connected through BuPulse-Socials, with the business as Composio user", async () => {
+    await seed({ id: "x1", provider: "twitter", externalAccountId: "1445", accountType: "profile", method: "COMPOSIO", accessTokenEncrypted: await encrypt("ca_x"), expiresAt: null });
+    expect(await loadCredentials("x1")).toEqual({ connectionId: "x1", externalAccountId: "1445", accountType: "profile", accessToken: "ca_x", method: "COMPOSIO", composioUserId: "biz1" });
+  });
+
   it("returns the decrypted token without refreshing when it is not close to expiry", async () => {
     await seed();
     expect(await loadCredentials("c0")).toEqual({ connectionId: "c0", externalAccountId: "ig1", accountType: "business", accessToken: "old-token" });

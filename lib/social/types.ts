@@ -2,9 +2,10 @@
 // types and on lib/social/registry.ts, never on a network's API, so networks and connection methods
 // (direct OAuth, BuPulse-Socials through Composio, the user's own Composio later) can be added without touching the features.
 
-export type Network = "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube";
+export type Network = "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube" | "twitter";
 
-export const NETWORKS: readonly Network[] = ["instagram", "facebook", "linkedin", "tiktok", "youtube"];
+/** "twitter" is X; the name follows Composio's toolkit slug (lib/social/composio). */
+export const NETWORKS: readonly Network[] = ["instagram", "facebook", "linkedin", "tiktok", "youtube", "twitter"];
 
 /** What a network accepts, used by the composer for validation and by Autopilot to pick formats. */
 export interface NetworkRules {
@@ -20,6 +21,11 @@ export interface NetworkRules {
   formats: ReadonlyArray<"POST" | "CAROUSEL" | "ARTICLE" | "SCRIPT">;
   /** Stage 1 cannot make video, so video-only networks get SCRIPT posts (reminders), not API posts. */
   videoOnly: boolean;
+  /**
+   * Video-only networks: a post with a video goes out through the API instead of the reminder (TikTok through
+   * BuPulse-Socials once BuPulse's TikTok app is set up). Their photo and script posts stay reminders.
+   */
+  videoPosts?: boolean;
 }
 
 /** One account the user can pick after OAuth (e.g. one of several Facebook Pages or LinkedIn organizations). */
@@ -70,6 +76,11 @@ export interface MetricsSnapshot {
   comments?: number;
   saves?: number;
   shares?: number;
+  /**
+   * The post's lasting id and link, when publishing gave only a temporary one (TikTok's publish id): the metrics job
+   * saves them on the post, so later readings use them.
+   */
+  resolved?: { externalId: string; permalink?: string };
 }
 
 /** The decrypted credentials of one connected account, as the publisher hands them to a provider. */

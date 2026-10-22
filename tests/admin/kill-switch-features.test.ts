@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   off: [] as string[],
+  xOn: true,
   queryRaw: vi.fn(async () => [] as unknown[]),
   storeFindMany: vi.fn(async () => [] as unknown[]),
   storeCount: vi.fn(async () => 0),
@@ -14,7 +15,8 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   prisma: {
-    serviceSwitch: { findMany: vi.fn(async () => h.off.map((service) => ({ service }))) },
+    // X is off until the owner switches it on (h.xOn: the owner did).
+    serviceSwitch: { findMany: vi.fn(async () => [...h.off.map((service) => ({ service })), ...(h.xOn ? [{ service: "twitter", enabled: true }] : [])]) },
     $queryRaw: h.queryRaw,
     storeConnection: { findMany: h.storeFindMany, count: h.storeCount, updateMany: vi.fn() },
     canvaConnection: { count: h.canvaCount },
@@ -35,6 +37,7 @@ import { clearSwitchCache, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 beforeEach(() => {
   vi.clearAllMocks();
   h.off = [];
+  h.xOn = true;
   clearSwitchCache();
   process.env.GOOGLE_PICKER_API_KEY = "k";
   process.env.GOOGLE_PICKER_APP_ID = "a";
@@ -64,6 +67,13 @@ describe("publishing", () => {
   it("claims posts of every network while nothing is off", async () => {
     await claimDuePosts({ now: new Date(), limit: 5 });
     expect(sqlOf().sql).not.toMatch(/"network" NOT IN/);
+  });
+
+  it("leaves X posts unclaimed until the owner switches X on", async () => {
+    h.xOn = false;
+    await claimDuePosts({ now: new Date(), limit: 5 });
+    expect(sqlOf().sql).toMatch(/"network" NOT IN/);
+    expect(sqlOf().values).toContain("twitter");
   });
 
   it("leaves the posts of a switched-off network unclaimed (they stay SCHEDULED, not failed)", async () => {

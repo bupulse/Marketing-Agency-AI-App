@@ -2,6 +2,7 @@ import { facebookProvider } from "./providers/facebook";
 import { instagramProvider } from "./providers/instagram";
 import { linkedinProvider } from "./providers/linkedin";
 import { tiktokProvider } from "./providers/tiktok";
+import { twitterProvider } from "./providers/twitter";
 import { youtubeProvider } from "./providers/youtube";
 import { COMPOSIO_NETWORKS } from "./composio/client";
 import { composioNetwork } from "./composio/networks";
@@ -13,6 +14,8 @@ const DIRECT: Record<Network, SocialProvider> = {
   linkedin: linkedinProvider,
   tiktok: tiktokProvider,
   youtube: youtubeProvider,
+  // X has no app of its own: BuPulse-Socials only (lib/social/providers/twitter.ts).
+  twitter: twitterProvider,
 };
 
 const isComposio = (c: ConnectionCredentials) => c.method === "COMPOSIO";

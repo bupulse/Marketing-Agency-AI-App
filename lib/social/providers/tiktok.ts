@@ -1,4 +1,5 @@
 import { errorFrom, socialFetch, classify, describeError, type ErrorHints } from "./http";
+import { tiktokVideoPosts } from "../composio/ways";
 import {
   SocialError,
   type AccountChoice,
@@ -24,6 +25,11 @@ export const tiktokRules: NetworkRules = {
   ...BASE_RULES,
   get formats() {
     return process.env.TIKTOK_PHOTO_POSTING === "true" ? (["POST", "SCRIPT"] as const) : (["SCRIPT"] as const);
+  },
+  // Videos go out through BuPulse-Socials once BuPulse's TikTok app is set up there (lib/social/composio/networks.ts);
+  // until then a TikTok video post is the reminder with the video attached. `formats` stays about photo posts.
+  get videoPosts() {
+    return tiktokVideoPosts();
   },
 };
 
@@ -119,7 +125,8 @@ export const tiktokProvider: SocialProvider = {
 
   async publish(credentials, post: PublishRequest): Promise<PublishResult> {
     const images = post.media.filter((m) => m.mimeType.startsWith("image/"));
-    if (images.length === 0) throw new SocialError("TikTok posts need images; video posts are not supported yet", "invalid", "tiktok");
+    // Videos go through BuPulse-Socials only (lib/social/composio/networks.ts): reconnecting the account moves it there.
+    if (images.length === 0) throw new SocialError("This TikTok account cannot take videos from BuPulse yet. Reconnect it in Channels.", "invalid", "tiktok");
     if (images.length > tiktokRules.maxImages) throw new SocialError(`TikTok takes at most ${tiktokRules.maxImages} photos`, "invalid", "tiktok");
     const description = post.text;
     if (runes(description) > MAX_DESCRIPTION) throw new SocialError(`TikTok descriptions are limited to ${MAX_DESCRIPTION} characters`, "invalid", "tiktok");

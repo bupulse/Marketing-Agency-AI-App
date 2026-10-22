@@ -7,9 +7,9 @@ import { ConnectDialog } from "./connect-dialog";
 import { DisconnectButton } from "./disconnect-button";
 import { InboxSwitch } from "./inbox-switch";
 import { NetworkIcon } from "./network-icon";
-import { canConnect, connectHref, primaryVariant, type AccountInfo, type ChannelInfo } from "./types";
+import { canConnect, connectHref, primaryVariant, SOON_CHANNELS, type AccountInfo, type ChannelInfo } from "./types";
 
-const TYPE_LABEL: Record<string, string> = { business: "Business", creator: "Creator", personal: "Personal", page: "Page", member: "Profile", organization: "Organization", channel: "Channel" };
+const TYPE_LABEL: Record<string, string> = { business: "Business", creator: "Creator", personal: "Personal", page: "Page", member: "Profile", profile: "Profile", organization: "Organization", channel: "Channel" };
 
 function status(a: AccountInfo): { label: string; tone: BadgeTone; reconnect: boolean } {
   if (a.postingMode === "NOTIFY") return { label: "Reminder posting", tone: "violet", reconnect: false };
@@ -90,6 +90,18 @@ export function ChannelList({ channels, accounts }: { channels: ChannelInfo[]; a
             </GlassCard>
           );
         })}
+        {SOON_CHANNELS.map((soon) => (
+          <GlassCard as="li" key={soon.id} className="flex items-center gap-3 rounded-card p-4 sm:p-5">
+            <span aria-hidden className="inline-flex size-11 shrink-0 items-center justify-center">
+              <NetworkIcon network={soon.id} className="size-9" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-semibold">{soon.label}</p>
+              <p className="truncate text-[13px] text-muted">{soon.note}</p>
+            </div>
+            <Badge tone="neutral">Coming soon</Badge>
+          </GlassCard>
+        ))}
       </ul>
       {open && <ConnectDialog channel={open} onClose={() => setOpen(null)} />}
     </>

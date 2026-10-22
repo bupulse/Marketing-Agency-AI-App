@@ -2,6 +2,7 @@
 // Which network gets a video (the owner's own, or one BuPulse makes from the photos), which gets a picture, and which
 // photo leads each post, rotated so the same photo does not lead every day. Pure.
 import type { Network } from "@/lib/social/types";
+import { acceptsVideo } from "@/lib/visuals/post-media";
 import { seed } from "./variety";
 import type { FormatChoice } from "./format";
 import { NETWORK_STYLE, type Shape } from "./networks";
@@ -124,7 +125,7 @@ export function mediaLines(media: PostMedia | { kind: "own"; items: GalleryItem[
 
 export type OwnPostMedia = { format: "POST" | "CAROUSEL" | "SCRIPT"; mediaPaths: string[]; shape: Shape } | { skip: string };
 
-const MAX_IMAGES: Record<Network, number> = { instagram: 10, facebook: 10, linkedin: 9, tiktok: 0, youtube: 0 };
+const MAX_IMAGES: Record<Network, number> = { instagram: 10, facebook: 10, linkedin: 9, tiktok: 0, youtube: 0, twitter: 4 };
 
 /**
  * "Bring my own": the owner's photos and videos on one network, used as they are. A video goes to TikTok, YouTube
@@ -135,13 +136,15 @@ export function ownMediaFor(network: Network, items: GalleryItem[]): OwnPostMedi
   const style = NETWORK_STYLE[network];
   const videos = items.filter(isVideoItem);
   const photos = items.filter((m) => !isVideoItem(m));
-  if (style.video === "always") return videos[0] ? { format: "SCRIPT", mediaPaths: [videos[0].path], shape: style.shape } : { skip: `${style.label} needs a video.` };
+  // A video app's video is the reminder, or a real post where BuPulse can upload it (TikTok through BuPulse-Socials).
+  if (style.video === "always") return videos[0] ? { format: acceptsVideo(network, videos[0].path) ? "POST" : "SCRIPT", mediaPaths: [videos[0].path], shape: style.shape } : { skip: `${style.label} needs a video.` };
   if (network === "instagram") {
     const reel = videos.find(isMp4);
     if (reel) return { format: "POST", mediaPaths: [reel.path], shape: "9:16" };
     if (photos.length === 0) return { skip: "Instagram needs a photo or an MP4 video." };
   }
-  if (network === "facebook" && photos.length === 0 && videos[0]) return { format: "POST", mediaPaths: [videos[0].path], shape: "9:16" };
+  // Facebook and X take a video on its own when there is no photo.
+  if (network !== "instagram" && photos.length === 0 && videos[0] && acceptsVideo(network, videos[0].path)) return { format: "POST", mediaPaths: [videos[0].path], shape: "9:16" };
   const list = photos.slice(0, MAX_IMAGES[network]).map((m) => m.path);
   return { format: list.length >= 2 ? "CAROUSEL" : "POST", mediaPaths: list, shape: style.shape };
 }

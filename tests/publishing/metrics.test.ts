@@ -56,7 +56,30 @@ describe("collectMetrics: who is read", () => {
 
   it("asks only networks and account types that share results, so others do not take the run's places", async () => {
     await run();
-    expect(where().OR).toEqual([{ network: "instagram" }, { network: "facebook" }, { network: "youtube" }, { network: "linkedin", connection: { accountType: { in: ["organization"] } } }]);
+    const day = { metrics: { none: { capturedAt: { gte: new Date("2026-10-13T09:23:00Z") } } } };
+    expect(where().OR).toEqual([
+      { network: "instagram", ...day },
+      { network: "facebook", ...day },
+      { network: "youtube", ...day },
+      { network: "linkedin", connection: { accountType: { in: ["organization"] } }, ...day },
+      // TikTok and X numbers come through BuPulse-Socials only; X is read about once a week (each read costs BuPulse).
+      { network: "tiktok", connection: { method: "COMPOSIO" }, ...day },
+      { network: "twitter", connection: { method: "COMPOSIO" }, metrics: { none: { capturedAt: { gte: new Date("2026-10-07T09:23:00Z") } } } },
+    ]);
+  });
+});
+
+describe("collectMetrics: a post's lasting id", () => {
+  it("keeps the lasting id and link TikTok gives after its checks, and saves the numbers without them", async () => {
+    prisma.post.findMany.mockResolvedValue([post("p1", "c1", "tiktok")]);
+    const update = vi.fn(async () => ({}));
+    (prisma.post as Record<string, unknown>).update = update;
+    provider.metrics.mockResolvedValue({ views: 120, likes: 9, resolved: { externalId: "7300000000000000001", permalink: "https://www.tiktok.com/@nova/video/7300000000000000001" } });
+    const result = await run();
+    expect(update).toHaveBeenCalledWith({ where: { id: "p1" }, data: { externalId: "7300000000000000001", permalink: "https://www.tiktok.com/@nova/video/7300000000000000001" } });
+    expect(prisma.postMetrics.create).toHaveBeenCalledWith({ data: expect.objectContaining({ postId: "p1", views: 120, likes: 9 }) });
+    expect(prisma.postMetrics.create.mock.calls[0][0].data).not.toHaveProperty("resolved");
+    expect(result.saved).toBe(1);
   });
 });
 

@@ -140,7 +140,7 @@ async function loadClaimed(ids: string[]): Promise<ClaimedPost[]> {
   return prisma.post.findMany({ where: { id: { in: ids }, status: "PUBLISHING" }, include: postInclude, orderBy: { scheduledAt: "asc" } });
 }
 
-const NETWORK_LABEL: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube" };
+const NETWORK_LABEL: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube", twitter: "X" };
 const label = (network: string) => NETWORK_LABEL[network] ?? network;
 
 /** Writes the new state of a claimed post; only a post still PUBLISHING is touched. */

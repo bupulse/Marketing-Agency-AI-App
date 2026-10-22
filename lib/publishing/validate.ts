@@ -2,7 +2,7 @@ import type { NetworkRules } from "@/lib/social/types";
 import { CONTEST_NOTE, hasContestPlaceholders } from "@/lib/content-flow/contest";
 
 /** The part of a network's rules the composer needs; plain data so it can be sent to the browser. */
-export type RuleSummary = Pick<NetworkRules, "network" | "label" | "maxText" | "maxHashtags" | "requiresMedia" | "maxImages" | "formats" | "videoOnly">;
+export type RuleSummary = Pick<NetworkRules, "network" | "label" | "maxText" | "maxHashtags" | "requiresMedia" | "maxImages" | "formats" | "videoOnly" | "videoPosts">;
 
 export type PostFormatName = "POST" | "CAROUSEL" | "SCRIPT";
 
@@ -16,9 +16,12 @@ export function composeText(text: string, hashtags: readonly string[]): string {
   return tags ? (body ? `${body}\n\n${tags}` : tags) : body;
 }
 
-/** Video-only networks take a script reminder; everything else a post, or a carousel for several images. */
-export function formatFor(rules: RuleSummary, mediaCount: number): PostFormatName {
-  if (rules.videoOnly) return "SCRIPT";
+/**
+ * Video-only networks take a script reminder, or a real post for a video where BuPulse can upload it (`videoPosts`:
+ * TikTok through BuPulse-Socials); everything else a post, or a carousel for several images.
+ */
+export function formatFor(rules: RuleSummary, mediaCount: number, hasVideo = false): PostFormatName {
+  if (rules.videoOnly) return hasVideo && rules.videoPosts ? "POST" : "SCRIPT";
   if (mediaCount > 1 && rules.formats.includes("CAROUSEL")) return "CAROUSEL";
   return "POST";
 }

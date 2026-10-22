@@ -29,7 +29,7 @@ const FALLBACK_PROBLEM: Record<string, string> = {
 
 function ruleSummary(network: Network): RuleSummary {
   const r = getProvider(network).rules;
-  return { network: r.network, label: r.label, maxText: r.maxText, maxHashtags: r.maxHashtags, requiresMedia: r.requiresMedia, maxImages: r.maxImages, formats: r.formats, videoOnly: r.videoOnly };
+  return { network: r.network, label: r.label, maxText: r.maxText, maxHashtags: r.maxHashtags, requiresMedia: r.requiresMedia, maxImages: r.maxImages, formats: r.formats, videoOnly: r.videoOnly, videoPosts: r.videoPosts ?? false };
 }
 
 /** Everything the composer needs: accounts to pick, each network's rules, the time zone and queue times. */

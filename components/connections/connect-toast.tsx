@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui";
 import { CONNECT_ERRORS, type ConnectErrorCode } from "@/lib/social/connect-errors";
 
-const NAMES: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube" };
+const NAMES: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube", twitter: "X" };
 
 /** Shows the result of a connect (?connected=... or ?error=...) once, then clears it from the address. */
 export function ConnectToast() {

@@ -49,7 +49,7 @@ const imageSchema = z.object({
 });
 
 const versionSchema = z.object({
-  network: z.enum(["instagram", "facebook", "linkedin", "tiktok", "youtube"]),
+  network: z.enum(["instagram", "facebook", "linkedin", "tiktok", "youtube", "twitter"]),
   title: z.string().describe("Article title for ARTICLE posts; empty otherwise"),
   text: z.string().describe("The post text without hashtags (the script for SCRIPT posts)"),
   hashtags: z.array(z.string()).describe("Hashtags each starting with #; empty where the network version needs none"),
@@ -79,7 +79,7 @@ Return only the requested JSON.`;
 const FEED_VIDEO = new Set<Network>(["instagram", "facebook", "linkedin"]);
 
 /** Hashtags kept per network. */
-const HASHTAGS: Record<Network, number> = { instagram: 10, facebook: 3, linkedin: 3, tiktok: 5, youtube: 5 };
+const HASHTAGS: Record<Network, number> = { instagram: 10, facebook: 3, linkedin: 3, tiktok: 5, youtube: 5, twitter: 2 };
 
 const NETWORK_BRIEF: Record<Network, (format: AutopilotFormat) => string> = {
   linkedin: (f) =>
@@ -96,6 +96,7 @@ const NETWORK_BRIEF: Record<Network, (format: AutopilotFormat) => string> = {
     "TikTok video script in `text`: 30 to 45 seconds, timestamped scenes (for example 0-3s), a shot direction and a voiceover or on-screen line for each. A strong hook in the first 3 seconds, casual and quick. Add the caption as the final line starting with 'Caption:'. 3 to 5 hashtags.",
   youtube: () =>
     "YouTube Shorts script in `text`: 30 to 45 seconds, timestamped scenes (for example 0-3s), a shot direction and a voiceover line for each, and a title as the first line starting with 'Title:'. 3 to 5 hashtags.",
+  twitter: () => "X (Twitter) post: one or two short, direct sentences, at most 250 characters, one clear call to action. At most 2 hashtags.",
 };
 
 export function buildPrompt(req: WriteRequest): string {

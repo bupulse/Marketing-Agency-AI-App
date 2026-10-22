@@ -26,17 +26,24 @@ export const RESULTS_ACCOUNT_TYPES: Partial<Record<Network, "all" | readonly str
   youtube: "all",
   // Statistics of a member's own posts need a permission LinkedIn keeps for approved partners: company pages only.
   linkedin: ["organization"],
+  // Through BuPulse-Socials only (SOCIALS_ONLY_RESULTS). TikTok: once the video is public and passed TikTok's checks.
+  tiktok: "all",
+  twitter: "all",
 };
 
 /**
  * Accounts connected through BuPulse-Socials (Composio) share fewer results: Facebook likes, comments and shares and
- * Instagram likes and comments; LinkedIn and YouTube there have no metrics (lib/social/composio/networks.ts).
+ * Instagram likes and comments; TikTok views, likes, comments and shares; X views, likes, replies, reposts and saves.
+ * LinkedIn and YouTube there have no metrics (lib/social/composio/networks.ts).
  */
-export const SOCIALS_RESULTS: readonly Network[] = ["facebook", "instagram"];
+export const SOCIALS_RESULTS: readonly Network[] = ["facebook", "instagram", "tiktok", "twitter"];
+/** Networks whose results only BuPulse-Socials reads (BuPulse's own TikTok app has no metrics; X has no app of its own). */
+export const SOCIALS_ONLY_RESULTS: readonly Network[] = ["tiktok", "twitter"];
 
 /** Whether the network shares post results for this kind of account (and the way it was connected). */
 export function sharesResults(network: string, accountType: string | null | undefined, method?: string | null): boolean {
   if (method === "COMPOSIO" && !SOCIALS_RESULTS.includes(network as Network)) return false;
+  if (method !== "COMPOSIO" && SOCIALS_ONLY_RESULTS.includes(network as Network)) return false;
   const types = RESULTS_ACCOUNT_TYPES[network as Network];
   return types === "all" || Boolean(types && accountType && types.includes(accountType));
 }

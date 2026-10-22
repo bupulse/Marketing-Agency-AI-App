@@ -486,3 +486,102 @@ Checklist:
 - Shopify: https://shopify.dev/docs/apps/launch/distribution , https://shopify.dev/docs/apps/launch/app-store-review/pass-app-review , https://shopify.dev/docs/apps/launch/distribution/revenue-share
 - WooCommerce: https://woocommerce.github.io/woocommerce-rest-api-docs/#authentication
 - Cloudflare: https://developers.cloudflare.com/fundamentals/oauth/ , https://developers.cloudflare.com/changelog/post/2026-06-03-public-oauth-clients/ , https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
+
+---
+
+## 10. TikTok and X through BuPulse-Socials (Composio)
+
+Written 22 October 2026. BuPulse-Socials is BuPulse's own Composio account (`COMPOSIO_API_KEY`). Facebook, Instagram,
+LinkedIn and YouTube use Composio's own approved apps, so they need nothing here. **TikTok and X do not**: Composio's
+toolkit pages say "Composio-managed OAuth available? No" for both (verified:
+https://docs.composio.dev/toolkits/tiktok , https://docs.composio.dev/toolkits/twitter; for X the FAQ adds that
+Composio's managed X credentials were removed in February 2026). So BuPulse brings its own TikTok app and its own X app,
+adds each one to Composio as a **custom auth config**, and gives BuPulse that config's id. Until the id is set, the
+network shows **Coming soon** in Channels and nothing else changes.
+
+How a custom auth config works (verified: https://docs.composio.dev/docs/custom-auth-configs): in the Composio
+dashboard, **Create Auth Config** → the toolkit → OAuth2 → **Use your own developer credentials** → paste the app's
+client id and secret → **Create**. The app must list Composio's redirect URI exactly:
+`https://backend.composio.dev/api/v3/toolkits/auth/callback`. The new config's id starts with `ac_`. With your own
+app, the sign-in page shows BuPulse's app name instead of Composio's.
+
+### 10a. TikTok (free)
+
+1. On https://developers.tiktok.com create the app as in section 2 (Login Kit and Content Posting API, terms and
+   privacy URLs). **Redirect URI:** Composio's, `https://backend.composio.dev/api/v3/toolkits/auth/callback` (not
+   BuPulse's own callback: Composio receives the sign-in and sends the person back to BuPulse).
+2. Scopes: `user.info.basic` (name and picture), `user.info.profile` (the @username; optional, BuPulse falls back
+   without it), `video.upload` (send to the TikTok inbox), `video.publish` (direct posting, after the audit),
+   `video.list` (views and likes of the account's own videos).
+3. In Composio: a custom auth config for the **TikTok** toolkit with the app's client key and secret and those scopes.
+4. Put its id in `COMPOSIO_TIKTOK_AUTH_CONFIG_ID` (Admin → Services → TikTok, or the host's variables). TikTok's
+   Connect button appears in Channels within half a minute.
+5. Leave `TIKTOK_DIRECT_POST` empty until TikTok's Direct Post audit passed (section 2, "The audit"). Until then BuPulse
+   **sends each video to the client's TikTok inbox** (the "send to drafts" plan above): TikTok notifies the client, who
+   adds the caption and posts. Inbox uploads cannot carry a caption, and TikTok allows at most 5 waiting videos per
+   24 hours. With `TIKTOK_DIRECT_POST=true` BuPulse reads the creator's options first and posts the video with its
+   caption, private (`SELF_ONLY`, `TIKTOK_PRIVACY_LEVEL` in `lib/social/providers/tiktok.ts`) until that constant is
+   changed after the audit (the audit also asks for a privacy choice in the composer, which BuPulse does not have yet).
+
+What the code does (`lib/social/composio/networks.ts`, `tiktok`):
+
+- It calls TikTok's own documented endpoints through **Composio's proxy** (`POST /tools/execute/proxy` with the
+  connected account), not Composio's TikTok tools: those tools exist (`TIKTOK_PUBLISH_VIDEO`, `TIKTOK_UPLOAD_VIDEO`,
+  `TIKTOK_QUERY_VIDEOS`, `TIKTOK_GET_USER_STATS`, `TIKTOK_FETCH_PUBLISH_STATUS`, `TIKTOK_QUERY_CREATOR_INFO`,
+  `TIKTOK_LIST_VIDEOS`, `TIKTOK_POST_PHOTO`, `TIKTOK_UPLOAD_VIDEOS`, verified on the toolkit page) but the page does
+  not say which fields they answer.
+- Profile: `GET /v2/user/info/?fields=open_id,avatar_url,display_name,username`.
+- Video: `POST /v2/post/publish/inbox/video/init/` (or `/v2/post/publish/creator_info/query/` then
+  `/v2/post/publish/video/init/` for direct posting) with `FILE_UPLOAD`; BuPulse then `PUT`s the bytes on TikTok's
+  `upload_url` itself (in 10 MB pieces above 64 MB). File upload needs no verified domain; signed storage links could
+  never be verified for `PULL_FROM_URL`. Sources: https://developers.tiktok.com/doc/content-posting-api-reference-upload-video ,
+  https://developers.tiktok.com/doc/content-posting-api-reference-direct-post ,
+  https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide
+- Numbers: the post first holds TikTok's publish id. The hourly results job asks
+  `POST /v2/post/publish/status/fetch/` for the video id, which TikTok gives only once the post is **public** and
+  passed its checks, then reads `POST /v2/video/query/` (views, likes, comments, shares) and saves the video id and
+  its link on the post. Private, still-checked or inbox videos have no numbers.
+- Photo posts stay reminders (TikTok pulls photos only from a verified domain, `TIKTOK_PHOTO_POSTING`).
+- **Not verifiable without a real TikTok app and account:** that Composio's proxy passes TikTok's body back unchanged
+  in `data` (the creators' side relies on the same), whether a brand-new unaudited app may use the inbox upload, and
+  TikTok's daily limits for it.
+
+### 10b. X (Twitter) (costs money)
+
+**Cost (verified on https://docs.x.com/x-api/getting-started/pricing, 22 October 2026):** X has no free plan for new
+developers. It is pay-per-use from credits bought in X's Developer Console: about **$0.015 per post**, **$0.200 per
+post that contains a link**, **$0.005 per post read**, $0.010 per user looked up. A first credit purchase gives $20 of
+credits back (and the first auto-recharge is matched up to $50). You can set a spending limit per month; calls stop
+when it is reached. Rates may change: check the Developer Console.
+
+What that means for BuPulse: 100 posts a month cost about $1.50 ($20 if they all carry a link). BuPulse reads each X
+post's numbers about **once a week** (`FRESH_HOURS_BY_NETWORK` in `lib/publishing/metrics.ts`): about 5 reads in the
+30 days, $0.025 a post. Each new connection looks the profile up once ($0.01). Because of the cost, the **X service is
+off until the owner switches it on** (Admin → Services → X, `defaultOff`): while off, X shows "Coming soon" and X posts
+wait. Free first: leave it off until a paying client asks for X.
+
+Steps (free to set up; the credits are the cost):
+
+1. On https://developer.x.com create a project and an app. In **User authentication settings** choose OAuth 2.0, type
+   **Web App**, callback URL `https://backend.composio.dev/api/v3/toolkits/auth/callback`, website `https://bupulse.com`.
+   Copy the OAuth 2.0 client id and secret.
+2. Scopes: `tweet.read`, `tweet.write`, `users.read`, `media.write` (photos and videos) and `offline.access` (so the
+   login keeps working). Check the names on the day: they are X's OAuth 2.0 scopes, not listed on Composio's page.
+3. Buy credits in the Developer Console and set a monthly spending limit (e.g. $10).
+4. In Composio: a custom auth config for the **Twitter** toolkit with that client id and secret.
+5. Put its id in `COMPOSIO_TWITTER_AUTH_CONFIG_ID` (Admin → Services → X) and switch X on there.
+
+What the code does (`lib/social/composio/networks.ts`, `twitter`; tools verified on the toolkit page):
+
+- Profile: `TWITTER_USER_LOOKUP_ME` with `user_fields` `profile_image_url, username, name`.
+- Post: `TWITTER_CREATION_OF_A_POST` with `text` and `media_media_ids` (up to 4). Photos: `TWITTER_UPLOAD_MEDIA`
+  (`media` file, `media_category` `tweet_image`; JPEG, PNG, WebP, GIF, 5 MB at most). One MP4 video:
+  `TWITTER_UPLOAD_LARGE_MEDIA` (`tweet_video`), then `TWITTER_GET_MEDIA_UPLOAD_STATUS` until it is `succeeded` (BuPulse
+  waits up to about 15 seconds, then tries again later). The post link is `https://x.com/i/web/status/<id>`.
+- Numbers: `TWITTER_POST_LOOKUP_BY_POST_ID` with `tweet_fields` `public_metrics`: views (`impression_count`), likes,
+  replies, reposts and quotes (as shares) and bookmarks (as saves).
+- A used-up credit balance (X answers 402) makes posts wait an hour and try again instead of failing at once.
+- **Not verifiable without a real X app with credits:** the exact field names of the upload answers (BuPulse reads
+  `id`, `media_id_string` or `media_id`), whether `TWITTER_UPLOAD_LARGE_MEDIA` already waits for processing, and
+  whether `public_metrics.impression_count` is filled for the account's own posts on this plan. Composio's page names
+  `TWITTER_GET_POST_ANALYTICS` but says it needs X's Enterprise plan, so BuPulse does not use it.

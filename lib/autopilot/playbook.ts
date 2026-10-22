@@ -46,7 +46,8 @@ export interface Idea {
   weight?: number;
 }
 
-const SOCIAL = { instagram: "POST", facebook: "POST", linkedin: "POST" } as const;
+// X takes the same feed posts (text and a picture), written short for it (lib/autopilot/writer.ts).
+const SOCIAL = { instagram: "POST", facebook: "POST", linkedin: "POST", twitter: "POST" } as const;
 const VIDEO = { tiktok: "SCRIPT", youtube: "SCRIPT" } as const;
 
 export const IDEAS: Idea[] = [

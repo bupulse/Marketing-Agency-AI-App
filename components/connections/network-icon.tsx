@@ -1,7 +1,8 @@
 import type { Network } from "@/lib/social/types";
+import type { SoonNetwork } from "./types";
 
 /** Inline brand icons (24x24, brand colours) so the Channels page needs no image requests. */
-export function NetworkIcon({ network, className = "size-6" }: { network: Network; className?: string }) {
+export function NetworkIcon({ network, className = "size-6" }: { network: Network | SoonNetwork; className?: string }) {
   const common = { viewBox: "0 0 24 24", className, "aria-hidden": true, focusable: false } as const;
   switch (network) {
     case "instagram":
@@ -51,6 +52,20 @@ export function NetworkIcon({ network, className = "size-6" }: { network: Networ
         <svg {...common}>
           <rect x="0" y="3.5" width="24" height="17" rx="5" fill="#FF0000" />
           <path fill="#fff" d="M9.8 8.8v6.4l5.6-3.2z" />
+        </svg>
+      );
+    case "twitter":
+      return (
+        <svg {...common}>
+          <rect width="24" height="24" rx="6" fill="#000" />
+          <path fill="#fff" d="M15.9 5.5h2.2l-4.8 5.5 5.6 7.5h-4.4l-3.5-4.5-4 4.5H4.8l5.2-5.9-5.4-7.1h4.5l3.1 4.1zm-.8 11.7h1.2L8.9 6.8H7.6z" />
+        </svg>
+      );
+    case "pinterest":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="12" fill="#E60023" />
+          <path fill="#fff" d="M12.3 5C8.4 5 6.5 7.8 6.5 10.1c0 1.4.5 2.7 1.7 3.1.2.1.4 0 .4-.2l.2-.7c.1-.2 0-.3-.1-.5-.4-.4-.6-1-.6-1.8 0-2.3 1.7-4.4 4.5-4.4 2.5 0 3.8 1.5 3.8 3.5 0 2.6-1.2 4.9-2.9 4.9-.9 0-1.6-.8-1.4-1.7.3-1.1.8-2.4.8-3.2 0-.7-.4-1.4-1.2-1.4-1 0-1.7 1-1.7 2.3 0 .8.3 1.4.3 1.4l-1.1 4.6c-.3 1.4 0 3.1 0 3.3 0 .1.1.1.2.1.1-.1 1-1.3 1.4-2.6l.5-2.1c.3.5 1.1 1 2 1 2.6 0 4.4-2.4 4.4-5.6C17.7 7.4 15.6 5 12.3 5z" />
         </svg>
       );
   }

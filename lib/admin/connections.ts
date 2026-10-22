@@ -12,7 +12,7 @@ import { AdminError, type Page } from "./types";
 // secret can reach a page, an API response or an MCP tool. Actions are in ./actions/connections.ts.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const SOCIAL = ["instagram", "facebook", "linkedin", "tiktok", "youtube"] as const;
+const SOCIAL = ["instagram", "facebook", "linkedin", "tiktok", "youtube", "twitter"] as const;
 export const SOCIAL_NETWORKS: readonly string[] = SOCIAL;
 export const CHANNEL_STATUSES = ["healthy", "expiring", "expired", "needs_reconnect"] as const;
 export type ChannelStatus = (typeof CHANNEL_STATUSES)[number];

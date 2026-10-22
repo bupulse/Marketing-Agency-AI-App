@@ -22,9 +22,9 @@ export const MAX_RUN_VIDEOS = 5;
 
 /** The share of posts that are videos, per app and preference. TikTok and YouTube are video apps whatever is chosen. */
 export const VIDEO_SHARE: Record<FormatPreference, Record<Network, number>> = {
-  auto: { tiktok: 0.9, youtube: 0.9, instagram: 0.55, facebook: 0.35, linkedin: 0.2 },
-  video: { tiktok: 1, youtube: 1, instagram: 0.85, facebook: 0.7, linkedin: 0.5 },
-  image: { tiktok: 0.9, youtube: 0.9, instagram: 0.15, facebook: 0.1, linkedin: 0.05 },
+  auto: { tiktok: 0.9, youtube: 0.9, instagram: 0.55, facebook: 0.35, linkedin: 0.2, twitter: 0.2 },
+  video: { tiktok: 1, youtube: 1, instagram: 0.85, facebook: 0.7, linkedin: 0.5, twitter: 0.5 },
+  image: { tiktok: 0.9, youtube: 0.9, instagram: 0.15, facebook: 0.1, linkedin: 0.05, twitter: 0.05 },
 };
 
 const CAROUSEL_APPS: readonly Network[] = ["instagram", "facebook", "linkedin"];

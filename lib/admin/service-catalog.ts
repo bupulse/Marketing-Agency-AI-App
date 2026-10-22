@@ -12,6 +12,7 @@ export const SERVICE_IDS = [
   "linkedin",
   "tiktok",
   "youtube",
+  "twitter",
   "google-drive",
   "dropbox",
   "shopify",
@@ -38,6 +39,7 @@ export const NETWORK_SERVICE: Record<string, ServiceId> = {
   linkedin: "linkedin",
   tiktok: "tiktok",
   youtube: "youtube",
+  twitter: "twitter",
 };
 export const networksOf = (service: ServiceId): string[] => Object.entries(NETWORK_SERVICE).filter(([, s]) => s === service).map(([n]) => n);
 
@@ -176,12 +178,24 @@ export const SERVICES: ServiceInfo[] = [
   {
     id: "tiktok",
     name: "TikTok",
-    purpose: "Sends posts to TikTok.",
+    purpose:
+      "Sends posts to TikTok. Two ways: BuPulse's own TikTok app with its own sign-in (TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET), or the same kind of app added in Composio as an auth config, whose id goes in COMPOSIO_TIKTOK_AUTH_CONFIG_ID: clients then connect TikTok through BuPulse-Socials and BuPulse uploads their videos (to the TikTok inbox, or posted directly once TIKTOK_DIRECT_POST=true after TikTok's audit).",
     env: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"],
-    optionalEnv: ["TIKTOK_PHOTO_POSTING"],
+    optionalEnv: ["TIKTOK_PHOTO_POSTING", "COMPOSIO_TIKTOK_AUTH_CONFIG_ID", "TIKTOK_DIRECT_POST"],
     features: ["TikTok posts", "Connecting TikTok"],
     killable: true,
     whenOff: "TikTok posts wait as scheduled and publish when it is back on.",
+  },
+  {
+    id: "twitter",
+    name: "X (Twitter)",
+    purpose:
+      "Posts to X. Composio has no X app of its own, so BuPulse's X developer app is added in Composio as an auth config and its id goes in COMPOSIO_TWITTER_AUTH_CONFIG_ID; clients then connect X through BuPulse-Socials. X has no free plan: it charges BuPulse's X account for every call (about $0.015 a post, $0.20 a post with a link, $0.005 a post read), so it stays off until it is switched on here.",
+    env: ["COMPOSIO_TWITTER_AUTH_CONFIG_ID"],
+    features: ["X posts", "Connecting X", "X post numbers (read about once a week)"],
+    killable: true,
+    defaultOff: true,
+    whenOff: "X shows \"Coming soon\" in Channels and X posts wait as scheduled. Off until the owner switches it on, after the X app has credit.",
   },
   {
     id: "youtube",
@@ -275,10 +289,10 @@ export const SERVICES: ServiceInfo[] = [
   {
     id: "composio",
     name: "Composio",
-    purpose: "\"BuPulse-Socials\": BuPulse's own Composio account. Clients connect Facebook, Instagram, LinkedIn and YouTube through Composio's approved apps (no Composio account for them), and BuPulse posts through it, while BuPulse's own apps wait for Meta, LinkedIn and Google. SOCIALS_DIRECT (optional, e.g. facebook,instagram) sends those networks back to BuPulse's own apps once approved.",
+    purpose: "\"BuPulse-Socials\": BuPulse's own Composio account. Clients connect Facebook, Instagram, LinkedIn and YouTube through Composio's approved apps (no Composio account for them), and BuPulse posts through it, while BuPulse's own apps wait for Meta, LinkedIn and Google. TikTok and X join once BuPulse's own TikTok and X apps are added in Composio (their auth config ids are on the TikTok and X cards). SOCIALS_DIRECT (optional, e.g. facebook,instagram) sends those networks back to BuPulse's own apps once approved.",
     env: ["COMPOSIO_API_KEY"],
     optionalEnv: ["SOCIALS_DIRECT"],
-    features: ["Connecting Facebook, Instagram, LinkedIn and YouTube (BuPulse-Socials)", "Posting and post numbers for accounts connected that way"],
+    features: ["Connecting Facebook, Instagram, LinkedIn and YouTube (BuPulse-Socials), and TikTok and X once their apps are added", "Posting and post numbers for accounts connected that way"],
     killable: true,
     whenOff: "New social connections use BuPulse's own apps instead (\"Coming soon\" where those are not set up). Accounts already connected through BuPulse-Socials keep posting through it.",
   },

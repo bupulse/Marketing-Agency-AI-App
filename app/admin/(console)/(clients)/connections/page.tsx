@@ -44,7 +44,7 @@ const KINDS = [
   ["canva", "Canva"],
   ["files", "Drive and Dropbox"],
 ] as const;
-const NETWORK_NAME: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube" };
+const NETWORK_NAME: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube", twitter: "X" };
 const STATUS_UI: Record<ChannelStatus, { label: string; tone: BadgeTone }> = {
   healthy: { label: "Healthy", tone: "success" },
   expiring: { label: "Token expiring", tone: "violet" },

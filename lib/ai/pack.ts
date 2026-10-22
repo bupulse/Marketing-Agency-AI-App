@@ -37,6 +37,7 @@ const APP_BRIEF: Record<Network, string> = {
   linkedin: "LinkedIn: professional and useful, short paragraphs with blank lines, no emojis unless the voice wants them, 600 to 1200 characters, at most 3 hashtags.",
   tiktok: "TikTok: a punchy caption of one or two lines, 3 to 5 hashtags, and the video script.",
   youtube: "YouTube Shorts: a short title-like caption, 3 to 5 hashtags, and the video script.",
+  twitter: "X (Twitter): one or two short sentences, at most 280 characters with the hashtags, 1 or 2 hashtags, no hashtag walls.",
 };
 
 export interface PackSlot {

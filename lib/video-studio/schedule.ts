@@ -25,7 +25,7 @@ export const STUDIO_NETWORKS: readonly Network[] = ["instagram", "facebook", "ti
  */
 export const CAPTION_PASS = 70;
 
-const LABEL: Record<Network, string> = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube Shorts", linkedin: "LinkedIn" };
+const LABEL: Record<Network, string> = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube Shorts", linkedin: "LinkedIn", twitter: "X (Twitter)" };
 
 export type NetworkCaption = { text: string; hashtags: string[]; score: number; missed: string[]; /** The design's own caption (made for this platform). */ own: boolean };
 export type ScheduleAccount = { id: string; network: Network; name: string; usable: boolean };
