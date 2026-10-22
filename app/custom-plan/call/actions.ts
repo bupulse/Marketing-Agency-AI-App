@@ -8,16 +8,17 @@ import { demoLimited } from "@/lib/demo/limits";
 import { bookPlanCall, cancelPlanCall } from "@/lib/demo/plan-calls";
 import { logError } from "@/lib/errors";
 import { publicLimited } from "@/lib/request-limits";
-import type { BookDemoState } from "@/app/book-demo/actions";
-import type { DemoActionResult } from "@/app/dashboard/demo/actions";
+
+export type PlanCallState = { error?: string };
+export type PlanCallResult = { ok: true } | { ok: false; error: string };
 
 const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
 
 /**
  * The call about a custom plan request (lib/demo/plan-calls.ts): a free slot, or a new one for the live call. The owner
- * (billing permission, like the request itself) with a confirmed email; the same rate limits as booking a demo.
+ * (billing permission, like the request itself) with a confirmed email; the same rate limits demo bookings had.
  */
-export async function bookPlanCallAction(_prev: BookDemoState, formData: FormData): Promise<BookDemoState> {
+export async function bookPlanCallAction(_prev: PlanCallState, formData: FormData): Promise<PlanCallState> {
   const user = await requireActiveUser("billing");
   const startsAt = new Date(String(formData.get("startsAt") ?? ""));
   if (Number.isNaN(startsAt.getTime())) return { error: "Pick a time from the list." };
@@ -36,7 +37,7 @@ export async function bookPlanCallAction(_prev: BookDemoState, formData: FormDat
 }
 
 /** Cancels the live call (owner, at least 2 hours ahead). */
-export async function cancelPlanCallAction(): Promise<DemoActionResult> {
+export async function cancelPlanCallAction(): Promise<PlanCallResult> {
   const user = await requireActiveUser("billing", "throw").catch(() => null);
   if (!user) return { ok: false, error: "Ask your company owner to do this." };
   const limited = await demoLimited(user.businessId, "cancel");

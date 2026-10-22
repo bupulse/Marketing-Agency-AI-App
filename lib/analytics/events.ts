@@ -8,7 +8,7 @@ import { cleanSessionId } from "./collect";
 export const EVENT_NAMES = {
   signup: "signup",
   demoBooked: "demo_booked", // props.plan, props.rescheduled
-  trialStarted: "trial_started", // when an admin starts the trial after the demo
+  trialStarted: "trial_started", // when the client starts the trial on /start-trial (or an admin does: lib/trial/start.ts)
   onboardingStep: "onboarding_step", // props.step: "offer" | "voice" | "look" | "knowledge"
   onboardingComplete: "onboarding_complete",
   textGenerated: "text_generated",

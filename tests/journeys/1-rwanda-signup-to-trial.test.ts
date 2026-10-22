@@ -2,27 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeDb, type FakeDb } from "../admin/fake-db";
 import { code, companyOf, DAY, HOUR, installSignUp, NOW, authUser, seedCatalog, subjects } from "./world";
 
-// Journey 1: a Rwandan business signs up, waits for its demo, books it, an admin starts the 3-day trial, the trial
-// ends and the account is read-only with a "pay on the Billing page" message (docs/RWANDA_LAUNCH_PLAN.md section 12).
+// Journey 1: a Rwandan business signs up, picks the plan it wants to try and starts its 3-day trial itself (no demo,
+// docs/REGIONS.md "Trial first"), the trial ends and the account is read-only with a "pay on the Billing page" message.
 
 const h = vi.hoisted(() => ({
   db: null as unknown as FakeDb,
   email: vi.fn<(email: { to: string; subject: string; text: string; html: string; attachments?: { filename: string; content: string }[] }) => Promise<boolean>>(async () => true),
   track: vi.fn(),
-  busy: [] as { startsAt: Date; endsAt: Date }[],
 }));
 vi.mock("@/lib/db", () => ({ prisma: new Proxy({}, { get: (_t, p) => (h.db as never)[p] }) }));
 vi.mock("@/lib/errors", async (orig) => ({ ...(await orig<typeof import("@/lib/errors")>()), logError: vi.fn(async () => {}) }));
 vi.mock("@/lib/billing/paddle-catalog", () => ({ paddleConnected: () => false, createPaddleProduct: vi.fn(), createPaddlePrice: vi.fn(), archivePaddlePrice: vi.fn(), updatePaddleProduct: vi.fn() }));
 vi.mock("@/lib/publishing/email", async (orig) => ({ ...(await orig<typeof import("@/lib/publishing/email")>()), sendEmail: h.email }));
 vi.mock("@/lib/analytics/events", () => ({ EVENT_NAMES: { signup: "signup", demoBooked: "demo_booked", trialStarted: "trial_started" }, trackEvent: h.track }));
-// The owner's Google Calendar: its busy times come out of the free slots.
-vi.mock("@/lib/google-calendar/calendar", async (orig) => ({ ...(await orig<typeof import("@/lib/google-calendar/calendar")>()), calendarBusy: vi.fn(async () => h.busy) }));
 
 import { ensureAccount } from "@/lib/account";
 import { accountBlock, assertFeature, blockMessage, companyEntitlements, FeatureRequiredError, hasFeature } from "@/lib/entitlements";
 import { consumeUsage } from "@/lib/usage";
-import { availableSlots, bookDemo, choosePlan } from "@/lib/demo/bookings";
+import { startOwnTrial } from "@/lib/trial/start";
 import { startTrial } from "@/lib/admin/demos";
 import { processTrialReminders } from "@/lib/demo/trial-reminders";
 import { startManualPayment } from "@/lib/billing/momo";
@@ -35,14 +32,12 @@ import { clearSwitchCache } from "@/lib/admin/switch";
 import { consoleContext } from "@/lib/admin/types";
 
 const CONSOLE = consoleContext("198.51.100.1");
-const TUE_10 = new Date("2026-10-13T08:00:00Z"); // Tuesday 10:00 Kigali
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
   h.db = createFakeDb();
   installSignUp(h.db);
-  h.busy = [];
   h.email.mockClear();
   h.track.mockClear();
   resetPlanCache();
@@ -60,7 +55,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("journey: Rwanda sign-up -> demo -> trial -> trial over", () => {
+describe("journey: Rwanda sign-up -> start trial -> trial over", () => {
   it("walks the whole way, with the account's rights changing at every step", async () => {
     // 1. Sign-up: Rwanda -> region RW, a subscription that waits for the demo. No trial, no features.
     expect(await ensureAccount(authUser(1, "Rwanda") as never)).toBe(true);
@@ -72,7 +67,7 @@ describe("journey: Rwanda sign-up -> demo -> trial -> trial over", () => {
     await ensureAccount(authUser(1, "Rwanda") as never);
     expect(h.db.subscription.rows).toHaveLength(1);
 
-    // 2. Blocked from every dashboard feature, in words that point at the demo.
+    // 2. Blocked from every dashboard feature until the trial starts, in words that point at starting it.
     expect(accountBlock({ plan: subscription.plan, status: subscription.status, chosenPlan: null })).toBe("pending_demo");
     expect((await companyEntitlements(businessId)).block).toBe("pending_demo");
     for (const feature of ["content", "designs", "calendar", "gallery", "webhooks"] as const) expect(await hasFeature(businessId, feature)).toBe(false);
@@ -80,50 +75,29 @@ describe("journey: Rwanda sign-up -> demo -> trial -> trial over", () => {
     expect(refused).toBeInstanceOf(FeatureRequiredError);
     expect(refused.message).toBe(blockMessage("pending_demo"));
     await expect(consumeUsage(userId, "text")).rejects.toMatchObject({ reason: "pending_demo" });
-    // ...and it cannot pay or start a trial before choosing a plan and having its demo.
-    expect(await code(startTrial(CONSOLE, { businessId }, NOW))).toMatch(/^conflict: The client has not chosen a plan/);
+    // ...and no trial starts without a plan.
+    expect(await code(startOwnTrial({ businessId, actorId: userId, planKey: "" }, NOW))).toMatch(/^no_plan/);
 
-    // 3. The client may choose a plan the region sells and book a demo. STANDARD/PRO are not priced in RW.
-    expect(await code(choosePlan({ businessId, planKey: "PRO" }))).toMatch(/^invalid/);
-    expect(await choosePlan({ businessId, planKey: "BUSINESS" })).toEqual({ planKey: "BUSINESS", planName: "Business" });
-    expect(subscription.chosenPlan).toBe("BUSINESS");
-    expect(await hasFeature(businessId, "content")).toBe(false); // choosing a plan opens nothing
+    // 3. The one screen after onboarding: the plan to try, from the region's plans (STANDARD/PRO are not priced in RW).
+    expect(await code(startOwnTrial({ businessId, actorId: userId, planKey: "PRO" }, NOW))).toMatch(/^not_in_region: Choose one of the plans shown/);
+    expect(subscription).toMatchObject({ status: "PENDING_DEMO", chosenPlan: null });
 
-    // Slot validation: the owner's Google Calendar busy time, weekend, too soon, and a time off the grid are all refused.
-    h.busy = [{ startsAt: TUE_10, endsAt: new Date(TUE_10.getTime() + 30 * 60_000) }];
-    expect((await availableSlots(NOW)).slots.some((s) => s.getTime() === TUE_10.getTime())).toBe(false);
-    expect(await code(bookDemo({ businessId, startsAt: TUE_10, now: NOW }))).toMatch(/^conflict: That time is no longer free/);
-    expect(await code(bookDemo({ businessId, startsAt: new Date("2026-10-17T08:00:00Z"), now: NOW }))).toMatch(/^conflict/); // Saturday
-    expect(await code(bookDemo({ businessId, startsAt: new Date("2026-10-12T07:00:00Z"), now: NOW }))).toMatch(/^conflict/); // an hour away
-    expect(await code(bookDemo({ businessId, startsAt: new Date("2026-10-13T08:07:00Z"), now: NOW }))).toMatch(/^conflict/); // off the grid
-    expect(h.db.demoBooking.rows).toHaveLength(0);
-
-    // The owner's calendar frees up: the same slot books, and the client and every admin get the invite.
-    h.busy = [];
-    h.email.mockClear();
-    const { booking, rescheduled } = await bookDemo({ businessId, startsAt: TUE_10, now: NOW });
-    expect(rescheduled).toBe(false);
-    expect(booking).toMatchObject({ businessId, planKey: "BUSINESS", status: "booked", startsAt: TUE_10 });
-    expect(h.email.mock.calls.map((c) => (c[0] as { to: string }).to)).toEqual(["owner1@example.com", "admin@bupulse.com"]);
-    expect(subjects(h.email.mock.calls)[0]).toMatch(/demo is booked: Tuesday 13 October 2026, 10:00/);
-    expect(h.track).toHaveBeenCalledWith("demo_booked", expect.objectContaining({ businessId }));
-    // Still waiting: a booked demo opens nothing.
-    expect((await companyEntitlements(businessId)).block).toBe("pending_demo");
-    await expect(consumeUsage(userId, "text")).rejects.toMatchObject({ reason: "pending_demo" });
-
-    // 4. After the demo the admin starts the trial: default 3 days, the booking is done, audited, emailed.
+    // 4. "Start my free trial": no demo, no booking; default 3 days, audited as the client, emailed, tracked.
     vi.setSystemTime(new Date("2026-10-13T08:45:00Z"));
     const trialStart = new Date();
     h.email.mockClear();
-    const started = await startTrial(CONSOLE, { businessId }, trialStart);
+    const started = await startOwnTrial({ businessId, actorId: userId, planKey: "BUSINESS" }, trialStart);
     expect(started.days).toBe(3);
     expect(subscription).toMatchObject({ status: "TRIALING", plan: "TRIAL", chosenPlan: "BUSINESS" });
     const trialEnd = new Date(trialStart.getTime() + 3 * DAY);
     expect(subscription.trialEndsAt).toEqual(trialEnd);
-    expect(h.db.demoBooking.rows[0].status).toBe("done");
-    expect(h.db.auditLog.rows.at(-1)).toMatchObject({ action: "start_trial", target: `business:${businessId}`, before: { status: "PENDING_DEMO" }, after: { status: "TRIALING", days: 3 } });
+    expect(h.db.demoBooking.rows).toHaveLength(0);
+    expect(h.db.auditLog.rows.at(-1)).toMatchObject({ actor: `client:${userId}`, action: "start_trial", target: `business:${businessId}`, before: { status: "PENDING_DEMO" }, after: { status: "TRIALING", days: 3 } });
     expect(subjects(h.email.mock.calls)).toEqual(["Your BuPulse trial has started: Business until Friday 16 October 2026, 10:45"]);
+    expect(h.email.mock.calls.map((c) => (c[0] as { to: string }).to)).toEqual(["owner1@example.com"]);
     expect(h.track).toHaveBeenCalledWith("trial_started", expect.objectContaining({ businessId, props: { plan: "BUSINESS", days: 3 } }));
+    // A second tap starts nothing; neither does the admin's Start trial.
+    expect(await code(startOwnTrial({ businessId, actorId: userId, planKey: "BUSINESS" }, trialStart))).toMatch(/^not_pending/);
     expect(await code(startTrial(CONSOLE, { businessId }, trialStart))).toMatch(/^conflict: This company is already on its trial/);
 
     // 5. TRIALING: the chosen plan's features, the trial plan's limits.

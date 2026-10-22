@@ -5,20 +5,15 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatSlotTime } from "@/lib/demo/slots";
-import { bookDemoAction, type BookDemoState } from "@/app/book-demo/actions";
+import type { PlanCallState } from "@/app/custom-plan/call/actions";
 
 type Group = { ymd: string; label: string; slots: string[] };
 type Labels = { book: string; move: string; empty: string };
 
-const DEMO_LABELS: Labels = { book: "Book this time", move: "Move my demo to this time", empty: "No free times in the next two weeks. Reply to your welcome email and we will find one together." };
-
-/**
- * Step 2 of /book-demo: free slots grouped by day. The chosen start time is sent as an ISO instant. The custom plan
- * call (/custom-plan/call) uses it too, with its own action, labels and hidden fields.
- */
-export function SlotPicker({ groups, timeZone, rescheduling, action = bookDemoAction, labels = DEMO_LABELS, hidden = {} }: { groups: Group[]; timeZone: string; rescheduling: boolean; action?: (prev: BookDemoState, formData: FormData) => Promise<BookDemoState>; labels?: Labels; hidden?: Record<string, string> }) {
+/** The custom plan call's free slots (/custom-plan/call), grouped by day. The chosen start time is sent as an ISO instant. */
+export function SlotPicker({ groups, timeZone, rescheduling, action, labels, hidden = {} }: { groups: Group[]; timeZone: string; rescheduling: boolean; action: (prev: PlanCallState, formData: FormData) => Promise<PlanCallState>; labels: Labels; hidden?: Record<string, string> }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const [state, formAction, pending] = useActionState<BookDemoState, FormData>(action, {});
+  const [state, formAction, pending] = useActionState<PlanCallState, FormData>(action, {});
 
   if (groups.length === 0) {
     return <p className="rounded-2xl bg-soft px-4 py-6 text-center text-[15px] text-muted">{labels.empty}</p>;

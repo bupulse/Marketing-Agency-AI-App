@@ -146,9 +146,9 @@ export function blockCopy(reason: UsageBlockReason, opts: { limit?: number; rese
   switch (reason) {
     case "pending_demo":
       return {
-        title: "Your demo comes first",
-        body: "Everything opens after your demo and the free trial that follows it. Your demo details are on the dashboard.",
-        cta: "See your demo",
+        title: "Start your free trial first",
+        body: "Everything opens as soon as you choose the plan you want to try and start your free trial. No card needed.",
+        cta: "Start my free trial",
         action: "dashboard",
       };
     case "trial_expired":
@@ -185,7 +185,7 @@ export function blockCopy(reason: UsageBlockReason, opts: { limit?: number; rese
 export function statusLabel(status: string, cancelAtPeriodEnd = false) {
   if (status === "ACTIVE") return cancelAtPeriodEnd ? "Cancels soon" : "Active";
   if (status === "TRIALING") return "Free trial";
-  if (status === "PENDING_DEMO") return "Waiting for demo";
+  if (status === "PENDING_DEMO") return "Trial not started";
   if (status === "PAST_DUE") return "Payment failed";
   if (status === "CANCELED") return "Cancelled";
   return "Ended";

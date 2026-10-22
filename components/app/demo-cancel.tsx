@@ -3,17 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Dialog, useToast } from "@/components/ui";
-import { cancelDemoAction } from "@/app/dashboard/demo/actions";
 import { cancelPlanCallAction } from "@/app/custom-plan/call/actions";
 
-const TEXT = {
-  demo: { button: "Cancel demo", title: "Cancel your demo?", body: (when: string) => `Your demo on ${when} will be cancelled. You can book a new time afterwards.`, done: "Your demo is cancelled. Book a new time whenever you are ready." },
-  call: { button: "Cancel call", title: "Cancel your call?", body: (when: string) => `Your call on ${when} will be cancelled. We still answer your request by email, and you can book a new time afterwards.`, done: "Your call is cancelled. We still answer your request by email." },
-};
+const TEXT = { button: "Cancel call", title: "Cancel your call?", body: (when: string) => `Your call on ${when} will be cancelled. We still answer your request by email, and you can book a new time afterwards.`, done: "Your call is cancelled. We still answer your request by email." };
 
-/** "Cancel demo" (or the custom plan call) with a confirm step. The action checks the 2-hour rule again on the server. */
-export function DemoCancelButton({ when, kind = "demo" }: { when: string; kind?: "demo" | "call" }) {
-  const text = TEXT[kind];
+/** "Cancel call" for the custom plan call, with a confirm step. The action checks the 2-hour rule again on the server. */
+export function DemoCancelButton({ when }: { when: string }) {
+  const text = TEXT;
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -21,7 +17,7 @@ export function DemoCancelButton({ when, kind = "demo" }: { when: string; kind?:
 
   function confirm() {
     start(async () => {
-      const result = await (kind === "call" ? cancelPlanCallAction() : cancelDemoAction());
+      const result = await cancelPlanCallAction();
       setOpen(false);
       if (result.ok) {
         toast(text.done, "success");

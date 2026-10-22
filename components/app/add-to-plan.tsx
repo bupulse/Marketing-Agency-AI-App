@@ -20,12 +20,12 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
   if (block) {
     return (
       <>
-        <PageHeader title={def.label} description={block === "pending_demo" ? "Opens after your demo." : "Your account is read-only for now."} />
+        <PageHeader title={def.label} description={block === "pending_demo" ? "Opens when your free trial starts." : "Your account is read-only for now."} />
         <EmptyState
           icon={Icon}
-          title={block === "pending_demo" ? "Your demo comes first" : block === "trial_expired" ? "Your free trial has ended" : block === "past_due" ? "Your last payment did not go through" : "Your plan is not active"}
+          title={block === "pending_demo" ? "Start your free trial first" : block === "trial_expired" ? "Your free trial has ended" : block === "past_due" ? "Your last payment did not go through" : "Your plan is not active"}
           text={blockMessage(block)}
-          action={block !== "pending_demo" && can(role, "billing") ? <Button href="/dashboard/billing">Go to Billing</Button> : block !== "pending_demo" ? <p className="text-sm text-muted">{askMessage("billing")}</p> : undefined}
+          action={block === "pending_demo" ? (can(role, "settings") ? <Button href="/start-trial">Start my free trial</Button> : undefined) : can(role, "billing") ? <Button href="/dashboard/billing">Go to Billing</Button> : <p className="text-sm text-muted">{askMessage("billing")}</p>}
         />
       </>
     );

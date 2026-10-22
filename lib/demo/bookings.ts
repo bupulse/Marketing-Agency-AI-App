@@ -19,7 +19,10 @@ import { BOOKING_WINDOW_DAYS, DEMO_TIME_ZONE, formatSlot, freeSlots, MIN_LEAD_MI
 import { linkSiteUrl } from "@/lib/auth/request-site";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 
-// Booking the demo that comes before the trial (section 12 of docs/RWANDA_LAUNCH_PLAN.md). A new company chooses a
+// Booking calls from the owner's availability. Until 22 October 2026 every new company booked a demo before its trial
+// (section 12 of docs/RWANDA_LAUNCH_PLAN.md); since then the trial starts without one (lib/trial/start.ts) and the
+// client app books no demos any more: choosePlan, bookDemo and cancelDemo below are kept for the demos already on the
+// books and their tests, and the Demos admin page still lists them. How a demo booking works: a company chooses a
 // plan from its region, picks a free slot from the owner's availability, and both sides get an email with the
 // meeting link and a calendar invite. Reschedule and cancel are allowed up to MIN_LEAD_MINUTES before the call; a
 // reschedule moves the one booking in place (same calendar UID, SEQUENCE + 1), so calendars move the event. Once a
@@ -132,7 +135,7 @@ function eventBusiness(business: Awaited<ReturnType<typeof pendingSubscription>>
   return { name: business.name, email: business.user.email, contact: business.user.name, phone: business.phone, industry: business.industry, country: business.country, website: business.website, description: business.description };
 }
 
-/** Step 1 of /book-demo: the plan the client wants to try. Only plans offered in the company's region. */
+/** The plan the client wants to try (the old /book-demo step 1; no longer called by the app). Only plans offered in the company's region. */
 export async function choosePlan(input: { businessId: string; planKey: string }) {
   const { business } = await pendingSubscription(input.businessId);
   const { plans } = await companyPlans(business.id);
@@ -231,7 +234,7 @@ function bookingCompany(business: Awaited<ReturnType<typeof pendingSubscription>
   return { id: business.id, userId: business.userId, name: business.name, email: business.user.email, contact: business.user.name, event: eventBusiness(business) };
 }
 
-/** Step 2 of /book-demo: books a free slot for the demo, or moves the live demo booking to it (placeBooking). */
+/** Books a free slot for the demo, or moves the live demo booking to it (placeBooking). The old /book-demo step 2; no longer called by the app. */
 export async function bookDemo(input: { businessId: string; startsAt: Date; now?: Date }): Promise<{ booking: BookingView; rescheduled: boolean }> {
   const now = input.now ?? new Date();
   const { business, sub } = await pendingSubscription(input.businessId);
