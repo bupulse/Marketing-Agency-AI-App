@@ -1,13 +1,15 @@
 "use client";
 
-import { Check, Copy, ExternalLink, MessageCircle, X } from "lucide-react";
+import { BadgeCheck, Check, Copy, ExternalLink, MessageCircle, Paperclip, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { declineApplicantAction, offerCreatorAction, resendInviteAction, selectApplicantAction, withdrawOfferAction } from "@/app/dashboard/creators/actions";
 import { formatCompact } from "@/components/analytics/format";
 import { Badge, Button, Dialog, GlassCard, useToast } from "@/components/ui";
-import { CREATOR_STATUS_LABEL, inviteMessage, offerExpired, offerExpiresAt, PLATFORM_LABEL, whatsappLink, type CampaignQuestion, type Platform } from "@/lib/creators/company-forms";
+import { sortByMatch, type MatchState } from "@/lib/creators/applicant-facts";
+import type { AccountLine, ApplicantDetails } from "@/lib/creators/applicants-view";
+import { CREATOR_STATUS_LABEL, inviteMessage, offerExpired, offerExpiresAt, PLATFORM_LABEL, whatsappLink, type Platform } from "@/lib/creators/company-forms";
 import type { CampaignCreatorRow } from "@/lib/creators/campaigns";
 import { useCopy } from "./campaign-controls";
 
@@ -41,8 +43,37 @@ function InviteDialog({ invite, onClose }: { invite: Invite | null; onClose: () 
   );
 }
 
-function ApplicantCard({ row, questions, children }: { row: CampaignCreatorRow; questions: CampaignQuestion[]; children?: React.ReactNode }) {
-  const answered = questions.filter((q) => row.answers[q.id]);
+/** "Matches", "Doesn't match: <reasons>" or what they did not say (docs/CREATOR_CAMPAIGN_WIZARD.md, "Requirements"). */
+function MatchLine({ match }: { match: MatchState }) {
+  if (match.kind === "none") return null;
+  if (match.kind === "match") return <Badge tone="success">Matches</Badge>;
+  if (match.kind === "unknown") return <span className="text-[13px] text-muted">{match.unknown.join(" · ")}</span>;
+  return (
+    <span className="text-[13px] font-medium text-danger">
+      Doesn&apos;t match: {match.misses.join(" · ")}
+      {match.unknown.length > 0 && <span className="font-normal text-muted"> · {match.unknown.join(" · ")}</span>}
+    </span>
+  );
+}
+
+/** One account: the network, the username, the followers they typed, and the connected account's check once there is one. */
+export function AccountChip({ account }: { account: AccountLine }) {
+  return (
+    <li className="rounded-full bg-soft px-3 py-1.5 text-[14px]">
+      <span className="font-medium">{account.label}</span> {account.handle.startsWith("@") || account.handle.startsWith("http") ? account.handle : `@${account.handle}`}
+      {account.check ? (
+        <span className={account.verified ? "text-success" : "text-danger"}>
+          {" "}
+          · {account.verified && <BadgeCheck aria-hidden className="mb-0.5 inline size-3.5" />} {account.check}
+        </span>
+      ) : (
+        account.followers !== null && <span className="text-muted"> · {formatCompact(account.followers)} followers</span>
+      )}
+    </li>
+  );
+}
+
+function ApplicantCard({ row, details, children }: { row: CampaignCreatorRow; details?: ApplicantDetails; children?: React.ReactNode }) {
   return (
     <GlassCard className="flex flex-col gap-3 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -65,15 +96,24 @@ function ApplicantCard({ row, questions, children }: { row: CampaignCreatorRow; 
           )}
         </div>
       </div>
-      {row.handles.length > 0 && (
+      {details && <MatchLine match={details.match} />}
+      {details?.accounts.length ? (
         <ul className="flex flex-wrap gap-2">
-          {row.handles.map((h) => (
-            <li key={`${h.network}:${h.handle}`} className="rounded-full bg-soft px-3 py-1.5 text-[14px]">
-              <span className="font-medium">{PLATFORM_LABEL[h.network as Platform] ?? h.network}</span> {h.handle.startsWith("@") ? h.handle : `@${h.handle}`}
-              {h.followers !== null && <span className="text-muted"> · {formatCompact(h.followers)} followers</span>}
-            </li>
+          {details.accounts.map((a) => (
+            <AccountChip key={`${a.network}:${a.handle}`} account={a} />
           ))}
         </ul>
+      ) : (
+        row.handles.length > 0 && (
+          <ul className="flex flex-wrap gap-2">
+            {row.handles.map((h) => (
+              <li key={`${h.network}:${h.handle}`} className="rounded-full bg-soft px-3 py-1.5 text-[14px]">
+                <span className="font-medium">{PLATFORM_LABEL[h.network as Platform] ?? h.network}</span> {h.handle.startsWith("@") ? h.handle : `@${h.handle}`}
+                {h.followers !== null && <span className="text-muted"> · {formatCompact(h.followers)} followers</span>}
+              </li>
+            ))}
+          </ul>
+        )
       )}
       {row.samples.length > 0 && (
         <div className="flex flex-col gap-1 text-[14px]">
@@ -86,12 +126,24 @@ function ApplicantCard({ row, questions, children }: { row: CampaignCreatorRow; 
           ))}
         </div>
       )}
-      {answered.length > 0 && (
+      {details && details.answers.length > 0 && (
         <dl className="flex flex-col gap-2 text-[14px]">
-          {answered.map((q) => (
-            <div key={q.id}>
-              <dt className="font-medium">{q.label}</dt>
-              <dd className="whitespace-pre-wrap text-muted">{row.answers[q.id]}</dd>
+          {details.answers.map((a) => (
+            <div key={a.id}>
+              <dt className="font-medium">{a.label}</dt>
+              <dd className="whitespace-pre-wrap text-muted">
+                {a.file !== undefined ? (
+                  a.file ? (
+                    <a href={a.file} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 font-medium text-[color:var(--bp-link)] underline">
+                      <Paperclip aria-hidden className="size-4" /> View file
+                    </a>
+                  ) : (
+                    "File no longer kept"
+                  )
+                ) : (
+                  a.text
+                )}
+              </dd>
             </div>
           ))}
         </dl>
@@ -104,14 +156,17 @@ function ApplicantCard({ row, questions, children }: { row: CampaignCreatorRow; 
 /**
  * Applicants waiting for an answer, creators the company invited from the marketplace (waiting for theirs), invited
  * applicants who have not joined yet, and those declined. Picking someone with a creator account adds them at once.
+ * Each card shows the answers in words, uploads as links, every account's followers (verified once connected) and
+ * whether they match the campaign's requirements; those who match come first.
  */
-export function Applicants({ campaignId, rows, questions, places, ended }: { campaignId: string; rows: CampaignCreatorRow[]; questions: CampaignQuestion[]; places: { taken: number; limit: number }; ended: boolean }) {
+export function Applicants({ campaignId, rows, details, places, ended }: { campaignId: string; rows: CampaignCreatorRow[]; details: Record<string, ApplicantDetails>; places: { taken: number; limit: number }; ended: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [invite, setInvite] = useState<Invite | null>(null);
   const [showDeclined, setShowDeclined] = useState(false);
-  const applied = rows.filter((r) => r.status === "APPLIED");
+  // Those who match the campaign's requirements first (docs/CREATOR_CAMPAIGN_WIZARD.md), newest first within each.
+  const applied = sortByMatch(rows.filter((r) => r.status === "APPLIED"), (r) => details[r.id]?.match);
   const invited = rows.filter((r) => r.status === "SELECTED");
   const offered = rows.filter((r) => r.status === "OFFERED");
   const declined = rows.filter((r) => r.status === "DECLINED");
@@ -177,7 +232,7 @@ export function Applicants({ campaignId, rows, questions, places, ended }: { cam
           </p>
         )}
         {applied.map((row) => (
-          <ApplicantCard key={row.id} row={row} questions={questions}>
+          <ApplicantCard key={row.id} row={row} details={details[row.id]}>
             {selectButton(row)}
             <Button size="sm" variant="outline" disabled={busy !== null} leading={<X aria-hidden className="size-4" />} onClick={() => decline(row)}>
               Decline
@@ -191,7 +246,7 @@ export function Applicants({ campaignId, rows, questions, places, ended }: { cam
           {offered.map((row) => {
             const expired = offerExpired(row.offeredAt);
             return (
-              <ApplicantCard key={row.id} row={row} questions={questions}>
+              <ApplicantCard key={row.id} row={row} details={details[row.id]}>
                 <span className="self-center text-[13px] text-muted">{expired ? "They did not answer in 14 days." : row.offeredAt ? `They can answer until ${ago(offerExpiresAt(row.offeredAt).toISOString())}.` : ""}</span>
                 {expired && row.profileId && (
                   <Button size="sm" disabled={busy !== null || full || ended} onClick={() => offerAgain(row)}>
@@ -210,7 +265,7 @@ export function Applicants({ campaignId, rows, questions, places, ended }: { cam
         <section className="flex flex-col gap-3">
           <h2 className="px-1 text-[17px] font-semibold">Invited, not joined yet ({invited.length})</h2>
           {invited.map((row) => (
-            <ApplicantCard key={row.id} row={row} questions={questions}>
+            <ApplicantCard key={row.id} row={row} details={details[row.id]}>
               <span className="self-center text-[13px] text-muted">{row.inviteExpiresAt && new Date(row.inviteExpiresAt) < new Date() ? "The link expired." : row.inviteExpiresAt ? `Link works until ${ago(row.inviteExpiresAt)}.` : ""}</span>
               <Button size="sm" variant="outline" disabled={busy !== null || ended} onClick={() => pick(row, true)}>
                 {busy === row.id ? "One moment…" : "New link"}
@@ -229,7 +284,7 @@ export function Applicants({ campaignId, rows, questions, places, ended }: { cam
           </button>
           {showDeclined &&
             declined.map((row) => (
-              <ApplicantCard key={row.id} row={row} questions={questions}>
+              <ApplicantCard key={row.id} row={row} details={details[row.id]}>
                 {row.source !== "OFFER" ? (
                   selectButton(row, "Select after all")
                 ) : row.profileId ? (
