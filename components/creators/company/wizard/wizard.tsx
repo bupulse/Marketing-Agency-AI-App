@@ -76,7 +76,21 @@ const setupUrl = (id: string, n: number) => `/dashboard/creators/${id}/setup?ste
  * One step of the campaign wizard: the progress bar, the steps (open the ones reached; all when editing), the step's
  * question and inputs, "Suggest again", and Back / Next, which save the step first.
  */
-export function CampaignWizard({ step, initial, options }: { step: WizardStepId; initial: WizardAnswers; options: WizardOptions }) {
+export function CampaignWizard({
+  step,
+  initial,
+  options,
+  quickHref,
+  returnHref,
+}: {
+  step: WizardStepId;
+  initial: WizardAnswers;
+  options: WizardOptions;
+  /** Quick mode for this campaign (docs/QUIZ_MODE.md): "Prefer quick setup?". */
+  quickHref?: string;
+  /** Opened from quick mode's "Change": "Save and back to quick setup" returns there. */
+  returnHref?: string;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [a, setA] = useState(initial);
@@ -105,7 +119,7 @@ export function CampaignWizard({ step, initial, options }: { step: WizardStepId;
   }
 
   /** Saves the step (always on Next: it moves the draft on), then opens `target`. */
-  async function go(target: number | "close", { force = false } = {}) {
+  async function go(target: number | "close" | "return", { force = false } = {}) {
     const input = stepInput(step, a);
     const checked = checkStep(step, input);
     const dirty = JSON.stringify(input) !== saved.current;
@@ -131,7 +145,7 @@ export function CampaignWizard({ step, initial, options }: { step: WizardStepId;
       }
       saved.current = JSON.stringify(input);
     }
-    router.push(target === "close" ? `/dashboard/creators/${o.campaignId}/settings` : setupUrl(o.campaignId, target));
+    router.push(target === "return" && returnHref ? returnHref : target === "close" || target === "return" ? `/dashboard/creators/${o.campaignId}/settings` : setupUrl(o.campaignId, target));
   }
 
   const Body = BODIES[step];
@@ -145,11 +159,23 @@ export function CampaignWizard({ step, initial, options }: { step: WizardStepId;
           <p className="text-[14px] font-semibold text-muted" aria-live="polite">
             {progressLabel(step)}
           </p>
-          {o.campaignId && (
-            <Link href={o.editing ? `/dashboard/creators/${o.campaignId}/settings` : "/dashboard/creators"} className="inline-flex min-h-11 items-center text-[14px] font-medium text-muted no-underline hover:text-text">
-              {o.editing ? "Back to settings" : "Saved. Finish later"}
-            </Link>
-          )}
+          <div className="flex flex-wrap items-center gap-x-4">
+            {quickHref && !returnHref && (
+              <Link href={quickHref} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-text underline underline-offset-2">
+                <Sparkles aria-hidden className="size-4 text-pulse-violet" /> Prefer quick setup?
+              </Link>
+            )}
+            {o.campaignId && !returnHref && (
+              <Link href={o.editing ? `/dashboard/creators/${o.campaignId}/settings` : "/dashboard/creators"} className="inline-flex min-h-11 items-center text-[14px] font-medium text-muted no-underline hover:text-text">
+                {o.editing ? "Back to settings" : "Saved. Finish later"}
+              </Link>
+            )}
+            {returnHref && (
+              <Link href={returnHref} className="inline-flex min-h-11 items-center gap-1.5 text-[14px] font-medium text-muted no-underline hover:text-text">
+                <ArrowLeft aria-hidden className="size-4" /> Back to quick setup
+              </Link>
+            )}
+          </div>
         </div>
         <div role="progressbar" aria-label="Campaign set-up" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-2 overflow-hidden rounded-full bg-line">
           <div className="h-full rounded-full bg-brand-gradient transition-[width] duration-500 ease-out-soft motion-reduce:transition-none" style={{ width: `${pct}%` }} />
@@ -218,12 +244,17 @@ export function CampaignWizard({ step, initial, options }: { step: WizardStepId;
                 <span />
               )}
               <div className="flex flex-wrap gap-2">
-                {o.editing && o.campaignId && (
+                {returnHref && o.campaignId && (
+                  <Button disabled={busy !== null} leading={<Check aria-hidden className="size-4" />} onClick={() => go("return", { force: true })}>
+                    {busy === "save" ? "Saving…" : "Save and back to quick setup"}
+                  </Button>
+                )}
+                {o.editing && o.campaignId && !returnHref && (
                   <Button variant="outline" disabled={busy !== null} onClick={() => go("close", { force: true })}>
                     Save and close
                   </Button>
                 )}
-                <Button disabled={busy !== null} trailing={busy ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : <ArrowRight aria-hidden className="size-4" />} onClick={() => go(n + 1, { force: true })}>
+                <Button variant={returnHref ? "outline" : "primary"} disabled={busy !== null} trailing={busy ? <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" /> : <ArrowRight aria-hidden className="size-4" />} onClick={() => go(n + 1, { force: true })}>
                   {busy === "save" ? "Saving…" : busy === "create" ? "Writing your campaign…" : "Next"}
                 </Button>
               </div>
