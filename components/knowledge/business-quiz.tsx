@@ -136,7 +136,9 @@ function cachedDraft(key: string): QuizDraft | null {
   try {
     const raw = sessionStorage.getItem(key);
     const d = raw ? (JSON.parse(raw) as QuizDraft) : null;
-    return d && Array.isArray(d.taglines) && Array.isArray(d.voices) && d.voices.length ? d : null;
+    // A draft from an older quiz (before a deploy added a list) is asked for again rather than read with holes.
+    const lists = [d?.taglines, d?.missions, d?.visions, d?.values, d?.languages, d?.products, d?.personas, d?.competitors, d?.differentiators, d?.positioning, d?.faqs, d?.palettes];
+    return d && lists.every(Array.isArray) && d.policies && Array.isArray(d.policies.payment) && d.businessType && Array.isArray(d.voices) && d.voices.length ? d : null;
   } catch {
     return null;
   }
@@ -1324,8 +1326,8 @@ function PhotoQuestion({ target, head, a, set, media }: { target: PhotoTarget; h
             // Uploads and imports made inside the picker go into this product's album too (linking again is harmless).
             saveTo={destination}
             max={Math.max(room, 1)}
-            title={`Photos of ${target.name}`}
-            confirmLabel={(n) => `Add ${n || ""} ${n === 1 ? "photo" : "photos"}`}
+            title={`Photos or videos of ${target.name}`}
+            confirmLabel={(n) => `Add ${n || ""}`.trim()}
             onPick={(picked) => {
               const have = a.photos.picked[target.key] ?? [];
               const add = picked.filter((p) => !shown.some((x) => x.id === p.id)).map((p) => ({ id: p.id, url: p.url, kind: p.mimeType.startsWith("video/") ? "video" : "photo" }));

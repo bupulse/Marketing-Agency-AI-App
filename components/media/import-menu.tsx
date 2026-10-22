@@ -45,6 +45,7 @@ export function ImportMenu({ importer, destinations, defaultDestination, onPicke
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [shift, setShift] = useState(0);
+  const [up, setUp] = useState(false);
   const menuId = useId();
 
   const destination = override !== undefined && destinations.some((d) => d.key === override) ? override : defaultDestination;
@@ -55,14 +56,30 @@ export function ImportMenu({ importer, destinations, defaultDestination, onPicke
   }, []);
 
   // The menu opens under the button, right-aligned; on a phone the button can sit near the left edge, so nudge it back on screen.
+  // A box that clips its content (the quiz card) or the bottom of the screen can cut it off: then it opens above the button
+  // when there is more room there.
   useLayoutEffect(() => {
-    if (!open || !menu.current) return;
+    if (!open || !menu.current || !root.current) return;
     const rect = menu.current.getBoundingClientRect();
     const margin = 16;
     const current = shift;
     const left = rect.left - current;
     const right = rect.right - current;
     setShift(left < margin ? margin - left : right > window.innerWidth - margin ? window.innerWidth - margin - right : 0);
+
+    let top = 0;
+    let bottom = window.innerHeight;
+    for (let el = root.current.parentElement; el; el = el.parentElement) {
+      if (getComputedStyle(el).overflowY === "visible") continue;
+      const box = el.getBoundingClientRect();
+      top = Math.max(top, box.top);
+      bottom = Math.min(bottom, box.bottom);
+      break;
+    }
+    const button = root.current.getBoundingClientRect();
+    const below = bottom - button.bottom;
+    const above = button.top - top;
+    setUp(rect.height + 8 > below && above > below);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps -- measured once per opening
 
   // Load the keys and the provider scripts as soon as the menu opens, so each picker can start from the click itself.
@@ -171,7 +188,7 @@ export function ImportMenu({ importer, destinations, defaultDestination, onPicke
         <ChevronDown aria-hidden className={cn("size-4 transition-transform duration-300 motion-reduce:transition-none", open && "rotate-180")} />
       </button>
       {open && (
-        <div ref={menu} style={shift ? { right: -shift } : undefined} id={menuId} role="menu" aria-label={videos ? "Import photos and videos" : "Import photos"} className="animate-pop absolute right-0 z-30 border border-line bg-surface mt-2 w-[min(18rem,calc(100vw-3rem))] rounded-2xl p-2 shadow-glass">
+        <div ref={menu} style={shift ? { right: -shift } : undefined} id={menuId} role="menu" aria-label={videos ? "Import photos and videos" : "Import photos"} className={cn("animate-pop absolute right-0 z-30 border border-line bg-surface w-[min(18rem,calc(100vw-3rem))] rounded-2xl p-2 shadow-glass", up ? "bottom-full mb-2" : "mt-2")}>
           <label className="flex flex-col gap-1 px-3 pt-2 pb-3 text-xs font-semibold text-muted">
             Save to
             <select

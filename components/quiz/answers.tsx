@@ -4,7 +4,7 @@ import { Check, Pencil, Plus, Sparkles, X } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { GuessTag, typingInField } from "./frame";
+import { GuessTag, keysElsewhere, typingInField } from "./frame";
 
 // The ways to answer a quiz question (docs/QUIZ_MODE.md): one tap on a tile, chips, this or that, keep or drop, a
 // slider, a short text with ready answers to tap. Every one shows BuPulse's guess so the owner only confirms.
@@ -32,7 +32,7 @@ export function Tiles<T extends string>({
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (typingInField(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (typingInField(e) || keysElsewhere(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       const n = Number(e.key);
       if (Number.isInteger(n) && n >= 1 && n <= Math.min(9, options.length)) {
         e.preventDefault();
