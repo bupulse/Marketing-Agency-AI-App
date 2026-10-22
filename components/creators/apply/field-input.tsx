@@ -328,7 +328,7 @@ export function FieldInput({ field, values, error, currency, startUpload, previe
     case "DATE_RANGE":
       return (
         <Question field={field} error={error} group>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {[
               [`${name}.from`, "From"],
               [`${name}.to`, "To"],
