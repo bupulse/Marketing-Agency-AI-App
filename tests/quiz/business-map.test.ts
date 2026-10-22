@@ -19,12 +19,14 @@ import {
   personaSavesFrom,
   policiesFrom,
   positioningFrom,
+  productDefaults,
   productInputsFrom,
   productStepId,
   profileInputFrom,
   quizSteps,
   reviewInputFrom,
   stepForField,
+  stepProblem,
   storedPersonaKey,
   VOICE_RULES,
   voiceSaveFrom,
@@ -148,12 +150,33 @@ describe("🛍️ What you sell -> createProduct", () => {
     expect(parsed.success && parsed.data).toMatchObject({ status: "DRAFT", priceModel: "FIXED", priceAmount: 15000, usps: ["Made to order"] });
   });
 
-  it("'Ask for price' is on request; no price and no reason is refused by the schema, never invented", () => {
+  it("no price typed is 'Ask for price', never an invented price; a missing reason is refused by the schema", () => {
     const [croissant] = productInputsFrom(stored.products, { ...sell, picked: ["Croissant"] }, [], "RWF", all);
     expect(croissant.input).toMatchObject({ priceModel: "ON_REQUEST", price: "" });
-    expect(productInputSchema.safeParse(croissant.input).success).toBe(false); // no reason yet: the error shows on the question
-    const [noPrice] = productInputsFrom(stored.products, { picked: ["Bagel"], details: { bagel: { kind: "PHYSICAL", price: "", onRequest: false, reason: "Soft" } } }, [], "RWF", all);
-    expect(productInputSchema.safeParse(noPrice.input).success).toBe(false);
+    expect(productInputSchema.safeParse(croissant.input).success).toBe(false); // no reason
+    const [noPrice] = productInputsFrom(stored.products, { picked: ["Bagel"], details: { bagel: { kind: "PHYSICAL", price: " ", onRequest: false, reason: "Soft" } } }, [], "RWF", all);
+    expect(noPrice.input).toMatchObject({ priceModel: "ON_REQUEST", price: "" });
+    expect(productInputSchema.safeParse(noPrice.input).success).toBe(true);
+  });
+
+  it("an owner-added product starts with a reason picked and 'Ask for price', so it saves as it is", () => {
+    const d = productDefaults("Passion Juice", draft.products, "PHYSICAL", ["Made fresh", "Local fruit"]);
+    expect(d).toEqual({ kind: "PHYSICAL", price: "", onRequest: true, reason: "Made fresh" });
+    const a = answers({ sell: { picked: ["Passion Juice"], details: { "passion juice": d } } });
+    expect(stepProblem(productStepId("Passion Juice"), a, draft.products, "RWF")).toBeNull();
+    const [item] = productInputsFrom(stored.products, a.sell, draft.products, "RWF", all);
+    expect(productInputSchema.safeParse(item.input).success).toBe(true);
+  });
+
+  it("checks a product's question on Next with the product schema", () => {
+    const a = answers({ sell: { picked: ["Passion Juice"], details: { "passion juice": { kind: "PHYSICAL", price: "abc", onRequest: false, reason: "" } } } });
+    expect(stepProblem(productStepId("Passion Juice"), a, [], "RWF")).toBe("Add at least one reason to choose it.");
+    a.sell.details["passion juice"].reason = "Fresh";
+    expect(stepProblem(productStepId("Passion Juice"), a, [], "RWF")).toMatch(/Enter a number/);
+    a.sell.details["passion juice"].price = "1,500";
+    expect(stepProblem(productStepId("Passion Juice"), a, [], "RWF")).toBeNull();
+    expect(stepProblem("love.quote", answers({ love: { quote: "Great!", customerName: "" } }), [], "RWF")).toMatch(/name/);
+    expect(stepProblem("you.tagline", a, [], "RWF")).toBeNull();
   });
 
   it("a skipped pick creates nothing", () => {
@@ -289,6 +312,17 @@ describe("💬 Love notes -> createReview", () => {
 });
 
 describe("the questions", () => {
+  it("keep their place when the products are saved (the start list is frozen)", () => {
+    const a = answers({ sell: { picked: ["Birthday cake", "Croissant"] } });
+    const before = quizSteps(["sell", "customers"], a, stored, { canGrant: true }).map((s) => s.id);
+    const after = quizSteps(["sell", "customers"], a, { ...stored, products: [...stored.products, "Birthday cake", "Croissant"] }, { canGrant: true }).map((s) => s.id);
+    // Read from what is stored now, the two product questions drop out and every later question moves up two places:
+    // the quiz, at the same number, shows a customers question. The quiz builds its steps from the frozen start list.
+    expect(after.length).toBe(before.length - 2);
+    expect(after[before.indexOf(productStepId("Croissant"))]).toBe("customers.age");
+    expect(quizSteps(["sell", "customers"], a, { ...stored, products: stored.products }, { canGrant: true }).map((s) => s.id)).toEqual(before);
+  });
+
   it("leaves out the rounds the person cannot edit, and adds a question per new product", () => {
     const a = answers({ sell: { picked: ["Birthday cake", "Sourdough loaf"] } });
     const steps = quizSteps(["sell", "love"], a, stored, { canGrant: false });

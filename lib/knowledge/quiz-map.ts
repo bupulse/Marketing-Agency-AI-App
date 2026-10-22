@@ -15,7 +15,7 @@ import type { PositioningInput } from "./competitors";
 import type { VoiceSummary } from "./interview";
 import { SUMMARY_LIMITS } from "./interview";
 import type { Policies, PaymentMethod } from "./policies";
-import type { ProductInput, ProductKindValue } from "./products";
+import { productInputSchema, type ProductInput, type ProductKindValue } from "./products";
 import type { CompanySize, ProfileFormValues, ProfileInput } from "./profile";
 import type { PersonaIdea, ProductIdea, QuizDraft, VoiceOption } from "./quiz-draft";
 import type { ReviewInput, ReviewSourceValue } from "./reviews";
@@ -47,6 +47,7 @@ export const QUIZ_ROUNDS: readonly (QuizRound & { id: QuizRoundId; section: Sect
 export const quizRound = (id: QuizRoundId) => QUIZ_ROUNDS.find((r) => r.id === id)!;
 
 export type HoursChoice = "weekdays" | "monSat" | "everyday" | "always" | "keep" | "custom";
+/** A new product's answers. No price typed means "Ask for price" (`onRequest`), never a guessed price. */
 export type ProductAnswer = { kind: ProductKindValue; price: string; onRequest: boolean; reason: string };
 
 export type QuizAnswers = {
@@ -124,12 +125,13 @@ export function productInputsFrom(
     if (!d) return [];
     const idea = ideas.find((i) => same(i.name, name));
     const reason = d.reason.trim();
+    const onRequest = d.onRequest || !d.price.trim();
     const input: ProductInput = {
       kind: d.kind,
       name,
       summary: idea?.summary || reason || name,
-      priceModel: d.onRequest ? "ON_REQUEST" : "FIXED",
-      price: d.onRequest ? "" : d.price.trim(),
+      priceModel: onRequest ? "ON_REQUEST" : "FIXED",
+      price: onRequest ? "" : d.price.trim(),
       currency,
       usps: reason ? [reason] : [],
       features: [],
@@ -414,10 +416,30 @@ export function quizSteps(rounds: readonly QuizRoundId[], a: QuizAnswers, stored
   return out;
 }
 
-/** The first answers of a new product: the AI's idea when there is one, else the business's likely kind. */
-export function productDefaults(name: string, ideas: readonly ProductIdea[], likely: ProductKindValue): ProductAnswer {
+/**
+ * The first answers of a new product, as every other question starts: the AI's idea when there is one, else the
+ * business's likely kind and the first reason idea of its industry; no price ("Ask for price") until one is typed.
+ */
+export function productDefaults(name: string, ideas: readonly ProductIdea[], likely: ProductKindValue, reasonIdeas: readonly string[] = []): ProductAnswer {
   const idea = ideas.find((i) => same(i.name, name));
-  return { kind: idea?.kind ?? likely, price: "", onRequest: false, reason: idea?.reasons[0] ?? "" };
+  return { kind: idea?.kind ?? likely, price: "", onRequest: true, reason: idea?.reasons[0] ?? reasonIdeas[0] ?? "" };
+}
+
+/**
+ * What is wrong with a question's answer, checked in the browser on Next with the action's own schema, so the problem
+ * shows on that question at once instead of after the round's save. Null when it is fine (or not checked here).
+ */
+export function stepProblem(stepId: string, a: QuizAnswers, ideas: readonly ProductIdea[], currency: string): string | null {
+  if (stepId.startsWith("sell.item.")) {
+    const name = a.sell.picked.find((n) => productStepId(n) === stepId);
+    if (!name) return null;
+    const [item] = productInputsFrom([], { picked: [name], details: a.sell.details }, ideas, currency, () => true);
+    if (!item) return null;
+    const parsed = productInputSchema.safeParse(item.input);
+    return parsed.success ? null : (parsed.error.issues[0]?.message ?? "Check this product.");
+  }
+  if (stepId === "love.quote" && a.love.quote.trim() && !a.love.customerName.trim()) return "Add the customer's name or initials.";
+  return null;
 }
 
 /** The persona a card stands for, as the questions after the cards start from. */
@@ -435,7 +457,7 @@ const asGender = (v: string | null | undefined): Gender | "" => (v === "female" 
  * Every question's first answer: what is stored, or BuPulse's guess when nothing is. `guessed` lists the questions
  * whose answer is a guess (they show "Our guess").
  */
-export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { likelyKind: ProductKindValue }): { answers: QuizAnswers; guessed: string[] } {
+export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { likelyKind: ProductKindValue; reasonIdeas?: readonly string[] }): { answers: QuizAnswers; guessed: string[] } {
   const guessed: string[] = [];
   const pick = (id: string, have: string | null | undefined, guess: string | undefined): string => {
     if (have?.trim()) return have;
@@ -488,7 +510,7 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
         values: pickList("you.values", p?.values ?? [], draft.values.slice(0, 3)),
         mission: pick("you.mission", p?.mission, draft.missions[0]),
       },
-      sell: { picked: pickedProducts, details: Object.fromEntries(pickedProducts.map((n) => [itemKey(n), productDefaults(n, draft.products, opts.likelyKind)])) },
+      sell: { picked: pickedProducts, details: Object.fromEntries(pickedProducts.map((n) => [itemKey(n), productDefaults(n, draft.products, opts.likelyKind, opts.reasonIdeas)])) },
       customers: {
         picked: firstPersona ? [firstPersona] : [],
         ageRange: asAge(focus?.ageRange ?? ""),
