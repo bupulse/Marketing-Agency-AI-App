@@ -95,6 +95,16 @@ describe("auth confirm route", () => {
       expect(ensureAccount).not.toHaveBeenCalled();
     });
 
+    it("the default Supabase reset email, back in the same browser, opens Choose a new password (not the expired screen)", async () => {
+      // /forgot-password asks for redirectTo /auth/confirm?type=recovery&next=/reset-password; Supabase's /verify appends the code.
+      const location = await confirm("?type=recovery&next=%2Freset-password&code=0b6f4c7e-1d2a-4c55-9a3e-7f1e2d3c4b5a");
+      expect(location).toBe("https://bupulse.test/reset-password");
+      expect(location).not.toContain("error=confirm");
+      expect(exchangeCodeForSession).toHaveBeenCalledWith("0b6f4c7e-1d2a-4c55-9a3e-7f1e2d3c4b5a");
+      expect(verifyOtp).not.toHaveBeenCalled();
+      expect(ensureAccount).not.toHaveBeenCalled();
+    });
+
     it("opened in another browser: the email is confirmed, so it asks to sign in (keeping next)", async () => {
       exchangeCodeForSession.mockResolvedValue({ data: { user: null, session: null, redirectType: null }, error: Object.assign(new Error("PKCE code verifier not found"), { code: "pkce_code_verifier_not_found" }) });
       expect(await confirm("?code=c1&next=%2Fdashboard")).toBe("https://bupulse.test/login?notice=confirmed");
