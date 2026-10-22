@@ -1,12 +1,14 @@
 import "server-only";
 import { addDaysYmd } from "@/lib/demo/slots";
 import { prisma } from "@/lib/db";
+import { cleanupApplicationUploads } from "../application-uploads";
 import { deleteCampaignFolder, MEDIA_KEEP_DAYS } from "../media";
 
 // Handed-in files are deleted 60 days after their campaign's last day (docs/CREATOR_CAMPAIGNS.md, "Limits": the free
 // Supabase Storage is 1 GB). Run by the creator views job. Each creator's whole campaign folder goes, so uploads that
 // were never handed in go too. Hand-ins still listing files are cleaned whenever the job runs; the folders of creators
-// with no such hand-in are swept during the week after the 60 days.
+// with no such hand-in are swept during the week after the 60 days. Files sent with applications go too: unsent ones
+// after 2 days, the rest 60 days after the campaign ends (lib/creators/application-uploads.ts).
 
 const SWEEP_DAYS = 7;
 
@@ -35,5 +37,5 @@ export async function cleanupMedia(now = new Date()): Promise<number> {
     deleted += await deleteCampaignFolder(profileId, campaignId);
     await prisma.creatorSubmission.updateMany({ where: { campaignId, campaignCreator: { profileId }, mediaPaths: { isEmpty: false } }, data: { mediaPaths: [] } });
   }
-  return deleted;
+  return deleted + (await cleanupApplicationUploads(now));
 }

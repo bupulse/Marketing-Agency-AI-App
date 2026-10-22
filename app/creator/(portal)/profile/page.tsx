@@ -21,7 +21,7 @@ export default async function ProfilePage({ searchParams }: PageProps<"/creator/
   const next = typeof query.next === "string" && /^\/c\/[a-z0-9-]{3,80}$/.test(query.next) ? query.next : null;
 
   const handles: ProfileFormValues["handles"] = {};
-  for (const h of profile.handles) handles[h.network] = { handle: h.handle, followers: String(h.followers) };
+  for (const h of profile.handles) if (isCreatorNetwork(h.network)) handles[h.network] = { handle: h.handle, followers: String(h.followers) };
   const verified: Partial<Record<CreatorNetwork, string>> = {};
   for (const c of profile.connections) if (isCreatorNetwork(c.network)) verified[c.network] ??= c.displayName ?? c.username ?? "Your account";
   const fresh = !profile.handles.length && !profile.samples.length;
