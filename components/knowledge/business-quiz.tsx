@@ -315,7 +315,13 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
       }
       case "sell": {
         const items = productInputsFrom(s.products, a.sell, draft.products, currency, given);
-        if (!items.length) return { ok: true, line: "Nothing new to add this time." };
+        if (!items.length) {
+          // Still one call: drafts made ready since (a photo added on the Products page) go live, the Photos round
+          // having no question when every product has a photo.
+          const r = await saveQuizRound({ round: "sell", products: [] });
+          const live = r.ok ? (r.activated ?? []) : [];
+          return { ok: true, line: live.length ? `Nothing new to add. ${nameList(live)} ${live.length === 1 ? "is" : "are"} live now: ready for posts.` : "Nothing new to add this time." };
+        }
         const r = await saveQuizRound({ round: "sell", products: items.map((i) => i.input) });
         if (!r.ok) {
           const name = items[r.item ?? 0]?.name ?? items[0].name;

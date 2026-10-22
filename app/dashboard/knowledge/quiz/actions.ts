@@ -154,6 +154,8 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
       if ("failure" in parsed) return parsed.failure;
       const r = await knowledgeAction({ permission: "content", feature: "content", source: "knowledge.quiz.products" }, async ({ userId, businessId }) => {
         await hits(`projectCreate:${userId}`, RATE_LIMITS.projectCreate, parsed.data.length);
+        // Nothing new to make: the call still switches ready drafts on, and counts as one edit.
+        if (!parsed.data.length) await hits(`knowledgeEdit:${userId}`, RATE_LIMITS.knowledgeEdit, 1);
         const products = await createProducts(businessId, parsed.data);
         // Drafts made ready elsewhere (photos added on the Products page) go live here too, as after Photos.
         return { products, activated: await activateReadyDrafts(businessId) };

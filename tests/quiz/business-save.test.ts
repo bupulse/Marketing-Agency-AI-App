@@ -80,6 +80,15 @@ describe("saveQuizRound", () => {
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
+  it("with nothing new to add, still switches ready drafts on (one edit hit, no product made)", async () => {
+    mocks.activateReadyDrafts.mockResolvedValue(["Classic Manicure", "Hair Braiding"]);
+    const r = await saveQuizRound({ round: "sell", products: [] });
+    expect(r).toMatchObject({ ok: true, activated: ["Classic Manicure", "Hair Braiding"] });
+    expect(mocks.activateReadyDrafts).toHaveBeenCalledWith("b1");
+    expect(mocks.rateLimit).toHaveBeenCalledTimes(1);
+    expect(mocks.rateLimit).toHaveBeenCalledWith("knowledgeEdit:u1", expect.anything());
+  });
+
   it("checks every item first: the first failing one is named and nothing is written", async () => {
     const r = await saveQuizRound({ round: "sell", products: [product("Passion Juice"), product("Mango Juice", { usps: [] })] });
     expect(r).toMatchObject({ ok: false, item: 1, fieldErrors: { usps: "Add at least one reason to choose it." } });
