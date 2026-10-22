@@ -3,11 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Plus, Trash2, Upload } from "lucide-react";
 import { Button, Input } from "@/components/ui";
-import { createClient } from "@/lib/supabase/client";
-import { extractColorsFromFile } from "@/lib/brand/image-colors";
-import { LOGO_MAX_BYTES, LOGO_TYPES, MAX_COLORS } from "@/lib/brand/schemas";
-import { createLogoUpload } from "@/app/onboarding/actions";
+import { LOGO_TYPES, MAX_COLORS } from "@/lib/brand/schemas";
 import type { BrandValues, Errors } from "./steps";
+import { useLogoUpload } from "./use-logo-upload";
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -29,7 +27,7 @@ export function LookFields({
   savedLogoUrl: string | null;
 }) {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const { upload, uploading } = useLogoUpload();
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,38 +44,17 @@ export function LookFields({
 
   async function onFile(file: File) {
     setMessage(null);
-    if (!(LOGO_TYPES as readonly string[]).includes(file.type)) {
-      setMessage({ tone: "error", text: "Use a PNG, JPG or WebP image." });
-      return;
-    }
-    if (file.size > LOGO_MAX_BYTES) {
-      setMessage({ tone: "error", text: "The logo must be 5 MB or smaller." });
-      return;
-    }
-
-    setUploading(true);
     onBusyChange(true);
     try {
-      const [target, colors] = await Promise.all([
-        createLogoUpload({ fileName: file.name, type: file.type, size: file.size }),
-        extractColorsFromFile(file),
-      ]);
-      if (!target.ok) {
-        setMessage({ tone: "error", text: target.error });
+      const result = await upload(file);
+      if (!result.ok) {
+        setMessage({ tone: "error", text: result.error });
         return;
       }
-      const { error } = await createClient().storage.from("brand").uploadToSignedUrl(target.path, target.token, file, { contentType: file.type });
-      if (error) {
-        setMessage({ tone: "error", text: "The upload did not work. Please try again." });
-        return;
-      }
-      setLocalPreview(URL.createObjectURL(file));
-      onChange({ logoPath: target.path, ...(colors.length ? { brandColors: colors } : {}) });
-      setMessage({ tone: "info", text: colors.length ? "Logo added. We picked colours from it. Change them below if you like." : "Logo added." });
-    } catch {
-      setMessage({ tone: "error", text: "The upload did not work. Please try again." });
+      setLocalPreview(result.preview);
+      onChange({ logoPath: result.path, ...(result.colors.length ? { brandColors: result.colors } : {}) });
+      setMessage({ tone: "info", text: result.colors.length ? "Logo added. We picked colours from it. Change them below if you like." : "Logo added." });
     } finally {
-      setUploading(false);
       onBusyChange(false);
       if (inputRef.current) inputRef.current.value = "";
     }
