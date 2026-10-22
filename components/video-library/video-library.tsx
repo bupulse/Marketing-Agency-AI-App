@@ -47,7 +47,7 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 const ENGINE_LABEL: Record<string, string> = { motion: "Motion", premium3d: "Premium 3D", seedance: "AI video" };
-const NETWORK_LABEL: Record<Network, string> = { instagram: "Instagram Reels", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube Shorts", linkedin: "LinkedIn" };
+const NETWORK_LABEL: Record<Network, string> = { instagram: "Instagram Reels", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube Shorts", linkedin: "LinkedIn", twitter: "X (Twitter)" };
 const ASPECT: Record<string, string> = { "9:16": "aspect-[9/16]", "4:5": "aspect-[4/5]", "1:1": "aspect-square", "16:9": "aspect-video" };
 
 const REASON_TEXT: Record<string, string> = {

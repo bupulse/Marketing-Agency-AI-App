@@ -48,7 +48,8 @@ import { apiContext } from "@/lib/admin/types";
 beforeEach(() => {
   vi.clearAllMocks();
   h.off = [];
-  h.serviceFind.mockImplementation(async () => h.off.map((service) => ({ service })));
+  // X is off until the owner switches it on (it costs per post): here it is on, so "nothing off" means nothing.
+  h.serviceFind.mockImplementation(async () => [...h.off.map((service) => ({ service })), { service: "twitter", enabled: true }]);
   clearSwitchCache();
 });
 const turnOff = (...ids: string[]) => {

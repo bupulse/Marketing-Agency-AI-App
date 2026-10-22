@@ -185,7 +185,8 @@ describe("kill switch", () => {
   it("maps switched-off services to networks", async () => {
     await setServiceEnabled(CONSOLE, { service: "meta", enabled: false, reason: "app review" });
     await setServiceEnabled(CONSOLE, { service: "tiktok", enabled: false, reason: "outage" });
-    expect((await disabledNetworks()).sort()).toEqual(["facebook", "instagram", "tiktok"]);
+    // X is off until the owner switches it on (defaultOff: it costs per post).
+    expect((await disabledNetworks()).sort()).toEqual(["facebook", "instagram", "tiktok", "twitter"]);
   });
 
   it("AI calls are refused before the provider is called and are not recorded as calls", async () => {

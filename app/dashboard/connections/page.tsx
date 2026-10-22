@@ -18,7 +18,9 @@ import { openPending } from "@/lib/social/oauth";
 import { isInstagramViaFacebookConfigured } from "@/lib/social/providers/instagram";
 import { allProviders, isNetwork } from "@/lib/social/registry";
 import { viaComposio } from "@/lib/social/composio/client";
-import { isServiceEnabled } from "@/lib/admin/switch";
+import { tiktokDirectPost } from "@/lib/social/composio/ways";
+import type { Network } from "@/lib/social/types";
+import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
 import { inboxStates } from "@/lib/social/inbox/accounts";
 
 export const metadata = { title: "Channels" };
@@ -29,7 +31,16 @@ const NOTES: Record<string, string> = {
   linkedin: "Profiles and Pages",
   tiktok: "Videos",
   youtube: "Videos and Shorts",
+  twitter: "Posts, photos and videos",
 };
+
+/** The extra line in the Connect window for networks that work a little differently through BuPulse-Socials. */
+function detailFor(network: Network, composio: boolean): string | undefined {
+  if (!composio) return undefined;
+  if (network === "tiktok") return tiktokDirectPost() ? "BuPulse posts your videos at the time you choose. Photo posts come to you as reminders." : "At the time you choose, BuPulse sends your video to your TikTok inbox. Open TikTok, tap the notification, add the caption and post. Photo posts come to you as reminders.";
+  if (network === "twitter") return "BuPulse posts text with up to 4 photos, or one MP4 video. Views and likes come in your reports about once a week.";
+  return undefined;
+}
 
 export default async function ConnectionsPage({ searchParams }: PageProps<"/dashboard/connections">) {
   const blocked = (await pageGate("channels")) ?? (await featureGate("calendar"));
@@ -41,17 +52,21 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
   const apps = business ? (await getCatalog({ userId: actorId, businessId: business.id, features: entitlements.inPlan })).filter((a) => a.id !== "canva" || !isCanvaEnabled()) : [];
 
   // BuPulse-Socials (Composio) replaces BuPulse's own apps where it is on; switched off in Admin -> Services, those
-  // networks fall back to their own apps (or "Coming soon" when those are not set up).
-  const composioOn = await isServiceEnabled("composio");
+  // networks fall back to their own apps (or "Coming soon" when those are not set up). TikTok and X go through it once
+  // BuPulse's own TikTok and X apps are added in Composio. A network switched off in Admin -> Services (X is off until
+  // the owner switches it on: it costs per post) shows "Coming soon" too.
+  const [composioOn, offNetworks] = await Promise.all([isServiceEnabled("composio"), disabledNetworks()]);
   const channels: ChannelInfo[] = allProviders().map((p) => {
-    const composio = composioOn && viaComposio(p.network);
+    const off = offNetworks.includes(p.network);
+    const composio = !off && composioOn && viaComposio(p.network);
     return {
       network: p.network,
       label: p.rules.label,
       note: NOTES[p.network] ?? "",
-      configured: composio || p.isConfigured(),
-      viaFacebook: p.network === "instagram" && !composio ? isInstagramViaFacebookConfigured() : undefined,
+      configured: !off && (composio || p.isConfigured()),
+      viaFacebook: p.network === "instagram" && !composio && !off ? isInstagramViaFacebookConfigured() : undefined,
       viaComposio: composio || undefined,
+      detail: detailFor(p.network, composio),
     };
   });
   // Instagram and Facebook accounts carry the "Answer comments and messages" switch (lib/social/inbox/accounts.ts).

@@ -1,7 +1,7 @@
 // Client-safe names and status chips for the Content page.
 import type { PostStatusName } from "@/lib/publishing/status";
 
-const NAMES: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube" };
+const NAMES: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube", twitter: "X" };
 
 export function networkLabel(network: string): string {
   return NAMES[network] ?? network;

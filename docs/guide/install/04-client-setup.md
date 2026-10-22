@@ -142,15 +142,18 @@ Owner or Admin only. **Channels** in the sidebar (`/dashboard/connections`).
 
 Facebook, Instagram, LinkedIn and YouTube connect through **BuPulse-Socials**: BuPulse's Composio account, which uses
 Composio's approved apps while BuPulse's own apps wait for Meta, LinkedIn and Google. The client needs no Composio
-account; they sign in on a secure Composio page, then on the network. TikTok uses BuPulse's own TikTok app.
+account; they sign in on a secure Composio page, then on the network. TikTok and X (Twitter) also connect through
+BuPulse-Socials once BuPulse's own TikTok and X apps are added in Composio (until then they show **Coming soon**).
 
 | Network | How it connects | What BuPulse does today |
 |---|---|---|
 | Instagram (Business or Creator only) | Sign in through BuPulse-Socials | Posts by itself at the scheduled time: one photo, a carousel of up to 10, or one MP4 video as a Reel. Pictures are turned into JPEG automatically. A personal account is refused: switch it to professional in the Instagram app first. |
 | Facebook Pages | Sign in through BuPulse-Socials, tick the Pages | Posts by itself |
 | LinkedIn | Sign in through BuPulse-Socials | Posts text and photos to the person's profile; company Pages they administer appear too when Composio's app may list them |
-| TikTok | Sign in with TikTok | Photo posts once TikTok approves BuPulse; until TikTok's audit passes, posts are private |
+| TikTok | Sign in through BuPulse-Socials (once BuPulse's TikTok app is added) | Video posts: at the scheduled time BuPulse sends the video to the TikTok inbox; the client opens TikTok, taps the notification, adds the caption and posts. After TikTok's audit BuPulse posts the video by itself. Photo posts stay reminders. Views and likes come in once the video is public. |
+| X (Twitter) | Sign in through BuPulse-Socials (once BuPulse's X app is added and X is switched on) | Posts by itself: text (280 characters), up to 4 photos, or one MP4 video. Views and likes come in about once a week. |
 | YouTube | Sign in through BuPulse-Socials (Google) | Video scripts and reminders; BuPulse does not upload videos yet |
+| Pinterest | — | Coming soon |
 
 1. Press **Connect** on the network. A window says what happens; press its **Connect** button.
 2. Sign in on the secure Composio page and the network's page, and approve.
@@ -158,8 +161,9 @@ account; they sign in on a secure Composio page, then on the network. TikTok use
 4. The account shows **Active**. **Expires soon** or **Needs reconnect** means: press **Reconnect**.
 
 **Coming soon** instead of Connect means the network can be connected neither through BuPulse-Socials nor through
-BuPulse's own app yet. **BuPulse team:** BuPulse-Socials needs the Composio key in Admin → Services → Composio, with
-Composio switched on. Switched off, new connections fall back to BuPulse's own apps; for Facebook and Instagram those wait
+BuPulse's own app yet, or the BuPulse owner switched it off. **BuPulse team:** BuPulse-Socials needs the Composio key in Admin → Services → Composio, with
+Composio switched on. TikTok also needs `COMPOSIO_TIKTOK_AUTH_CONFIG_ID` (Admin → Services → TikTok), X needs
+`COMPOSIO_TWITTER_AUTH_CONFIG_ID` and the X switch on (Admin → Services → X); steps in `docs/PLATFORM_APPS.md` section 10. Switched off, new connections fall back to BuPulse's own apps; for Facebook and Instagram those wait
 for Meta's Business Verification and App Review (`docs/META_APP_REVIEW.md`).
 
 A personal Instagram account saved earlier for reminder posting shows **Reminder posting** and keeps getting reminders

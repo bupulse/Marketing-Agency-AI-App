@@ -51,7 +51,9 @@ Admin → Add-on prices) or in a custom plan, and it is in Pro. The admin can ch
 - Only posts BuPulse published are counted; posts made directly on the network are not.
 - Accounts connected through BuPulse-Socials (Composio) send fewer numbers: Facebook gives likes, comments and shares,
   Instagram likes and comments, and LinkedIn and YouTube none. With no reach or views, their posts add to Engagement but
-  not to Reach, the engagement rate or Best posts (which are ranked by engagement rate).
+  not to Reach, the engagement rate or Best posts (which are ranked by engagement rate). TikTok gives views, likes,
+  comments and shares once the video is public and passed TikTok's checks; X gives views, likes, replies, reposts and
+  saves, read about once a week (each read costs BuPulse money).
 - What the admin can change: plans and add-on prices (Admin → Plans, Admin → Add-on prices) and the social network
   switches (Admin → Services). BuPulse's own platform analytics (visitors of the BuPulse website, sign-ups, revenue) are
   a different thing, in the admin console, not on this page.
@@ -65,7 +67,7 @@ Admin → Add-on prices) or in a custom plan, and it is in Pro. The admin can ch
 | Page | `app/dashboard/analytics/page.tsx` (`featureGate("analytics")`, `?range=7|30|90`) |
 | Server actions | none (read-only page) |
 | Components | `components/analytics/stat-card.tsx` (`StatCard`), `components/analytics/trend-chart.tsx` (`TrendChart`), `components/analytics/format.ts`, `components/publishing/network-icon.tsx` |
-| Logic | `lib/analytics/service.ts` (`loadClientAnalytics`), `lib/analytics/compute.ts` (pure maths), `lib/publishing/metrics.ts` (collecting results), `lib/publishing/results.ts`, provider metrics in `lib/social/providers/` and, for BuPulse-Socials accounts, `metrics` in `lib/social/composio/networks.ts` (Facebook and Instagram) |
+| Logic | `lib/analytics/service.ts` (`loadClientAnalytics`), `lib/analytics/compute.ts` (pure maths), `lib/publishing/metrics.ts` (collecting results), `lib/publishing/results.ts`, provider metrics in `lib/social/providers/` and, for BuPulse-Socials accounts, `metrics` in `lib/social/composio/networks.ts` (Facebook, Instagram, TikTok and X) |
 | Database | `Post` (`status` PUBLISHED, `publishedAt`), `PostMetrics` (views, reach, likes, comments, saves, shares, `capturedAt`), `Connection` (`postingMode` NOTIFY = reminder only, `method` COMPOSIO = BuPulse-Socials), `ChatSession`, `Lead` (`pageUrl`), `Business.timezone` |
 | API routes | `POST /api/cron/metrics` (`app/api/cron/metrics/route.ts`) |
 | Cron jobs | `METRICS_CRON` hourly at :23 (`worker-crons.ts`, `wrangler.jsonc`), Netlify `netlify/functions/cron-metrics.mts`. (`/api/cron/analytics-rollup` and `/api/collect` are the platform analytics for the admin console, not this page.) |
@@ -90,7 +92,8 @@ Admin → Add-on prices) or in a custom plan, and it is in Pro. The admin can ch
 1. A post is published by the [publish cron](07-calendar-and-publishing.md) → `Post` is `PUBLISHED` with `publishedAt`.
 2. Hourly, `POST /api/cron/metrics` (bearer `CRON_SECRET`) → `recordCron("metrics", collectMetrics)` → each
    network provider's metrics call (`getProvider` follows the account's `method`: BuPulse's own app, or Composio for
-   BuPulse-Socials accounts) → a new `PostMetrics` snapshot (at most once every 20 hours per post, for 30 days). An
+   BuPulse-Socials accounts) → a new `PostMetrics` snapshot (at most once every 20 hours per post, X once a week, for
+   30 days; a TikTok post's publish id is swapped for its video id and link the first time TikTok gives them). An
    account whose way cannot read numbers (a BuPulse-Socials LinkedIn or YouTube account) gives an empty answer, which is
    skipped, not saved.
 3. The owner opens Analytics → `loadClientAnalytics(businessId, days)` reads posts with their newest snapshot,

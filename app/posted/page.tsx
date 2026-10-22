@@ -7,7 +7,7 @@ import { readMarkPostedToken } from "@/lib/publishing/token";
 
 export const metadata: Metadata = { title: "Mark as posted", robots: { index: false, follow: false } };
 
-const NETWORK: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube" };
+const NETWORK: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube", twitter: "X" };
 
 // The "I posted it" link in reminder emails. It works without signing in (the signed token proves who it is for),
 // and changes nothing until the button is pressed, so email scanners that open links do no harm.

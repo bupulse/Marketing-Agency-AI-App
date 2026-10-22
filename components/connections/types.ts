@@ -11,7 +11,16 @@ export type ChannelInfo = {
   viaFacebook?: boolean;
   /** New connections go through BuPulse-Socials (BuPulse's Composio account) instead of BuPulse's own app. */
   viaComposio?: boolean;
+  /** One more line for the Connect window: what BuPulse does there (TikTok's inbox, X's photos and video). */
+  detail?: string;
 };
+
+/**
+ * Networks BuPulse may add later (docs/guide/features/13-social-connections.md, "Other networks"): a card with
+ * "Coming soon" and no button. Only networks Composio can post to for a business page.
+ */
+export type SoonNetwork = "pinterest";
+export const SOON_CHANNELS: readonly { id: SoonNetwork; label: string; note: string }[] = [{ id: "pinterest", label: "Pinterest", note: "Pins with photos and videos" }];
 
 export type AccountInfo = {
   id: string;

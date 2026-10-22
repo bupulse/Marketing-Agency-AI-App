@@ -7,9 +7,10 @@ const BRAND: Record<Network, string> = {
   linkedin: "bg-[#0a66c2]",
   tiktok: "bg-[#111111]",
   youtube: "bg-[#ff0000]",
+  twitter: "bg-[#000000]",
 };
 
-const NAME: Record<Network, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube" };
+const NAME: Record<Network, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube", twitter: "X (Twitter)" };
 
 export const networkName = (network: string) => NAME[network as Network] ?? network;
 
@@ -46,6 +47,12 @@ function Glyph({ network }: { network: Network }) {
       return (
         <svg viewBox="0 0 24 24" className="size-[62%]" aria-hidden fill="currentColor">
           <path d="M20.6 8.1a2.2 2.2 0 0 0-1.5-1.6C17.8 6.2 12 6.2 12 6.2s-5.8 0-7.1.3a2.2 2.2 0 0 0-1.5 1.6C3.1 9.4 3.1 12 3.1 12s0 2.6.3 3.9a2.2 2.2 0 0 0 1.5 1.6c1.3.3 7.1.3 7.1.3s5.8 0 7.1-.3a2.2 2.2 0 0 0 1.5-1.6c.3-1.3.3-3.9.3-3.9s0-2.6-.3-3.9zM10.2 14.6V9.4l4.5 2.6z" />
+        </svg>
+      );
+    case "twitter":
+      return (
+        <svg viewBox="0 0 24 24" className="size-[55%]" aria-hidden fill="currentColor">
+          <path d="M17.8 3h3.1l-6.8 7.8 8 10.2h-6.3l-4.9-6.4L5.3 21H2.2l7.3-8.3L1.9 3h6.4l4.4 5.9zm-1.1 16.2h1.7L7.4 4.7H5.6z" />
         </svg>
       );
   }

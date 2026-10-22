@@ -52,6 +52,15 @@ export const NETWORK_STYLE: Record<Network, { label: string; maxChars: number; h
     emojis: false,
     guide: "YouTube Shorts: the caption is the Short's title line and one sentence of description; plus a 15 to 30 second vertical video script with a hook in the first 2 seconds.",
   },
+  twitter: {
+    label: "X (Twitter)",
+    maxChars: 250,
+    hashtags: [0, 2],
+    shape: "1:1",
+    video: "when-given",
+    emojis: true,
+    guide: "X (Twitter): one or two short, direct sentences, under 250 characters with the hashtags, one clear call to action.",
+  },
 };
 
 export const isVideoNetwork = (network: Network) => NETWORK_STYLE[network].video === "always";

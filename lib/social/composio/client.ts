@@ -3,6 +3,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { countComposioCalls } from "../inbox/budget";
 import { SocialError, type Network } from "../types";
+import { OWN_APP_CONFIG, ownAuthConfig } from "./ways";
 
 // "BuPulse-Socials": BuPulse's own Composio account (COMPOSIO_API_KEY, Admin -> Services -> Composio) connects the
 // clients' social accounts through Composio's approved developer apps, so BuPulse needs no verified Meta, LinkedIn or
@@ -12,8 +13,8 @@ import { SocialError, type Network } from "../types";
 
 export const COMPOSIO_API = "https://backend.composio.dev/api/v3.1";
 
-/** Networks whose toolkit has Composio-managed sign-in. TikTok and X need BuPulse's own developer apps. */
-export const COMPOSIO_NETWORKS: readonly Network[] = ["facebook", "instagram", "linkedin", "youtube"];
+// Which networks it can connect (Composio-managed, or with BuPulse's own TikTok and X apps): ./ways.ts.
+export { COMPOSIO_NETWORKS, composioCanSignIn, MANAGED_NETWORKS, OWN_APP_CONFIG, ownAuthConfig, viaComposio } from "./ways";
 
 /** Marks a connection made through BuPulse-Socials; its other scope entry names the Composio connected account. */
 export const COMPOSIO_SCOPE = "composio";
@@ -24,24 +25,13 @@ export const isComposioResult = (scopes: readonly string[]) => scopes.includes(C
 const AUTH_CONFIGS_SETTING = "socials.composio.authConfigs";
 const TIMEOUT_MS = 30_000;
 
-/** Networks switched back to BuPulse's own apps, e.g. "facebook,instagram" once Meta has verified BuPulse. */
-function directNetworks(): Set<string> {
-  return new Set((process.env.SOCIALS_DIRECT ?? "").split(",").map((n) => n.trim().toLowerCase()).filter(Boolean));
-}
-
-/**
- * True when new connections of this network go through BuPulse-Socials: the Composio key is set (saved keys are
- * loaded into process.env by lib/admin/service-keys.ts), the network has Composio-managed sign-in and it is not
- * listed in SOCIALS_DIRECT. Existing connections keep their own method either way.
- */
-export function viaComposio(network: Network): boolean {
-  return !!process.env.COMPOSIO_API_KEY && COMPOSIO_NETWORKS.includes(network) && !directNetworks().has(network);
-}
-
 type ApiError = { error?: { message?: string; code?: string | number } | string; message?: string };
 
-/** `reserved`: the caller already counted this call against the monthly limit (lib/social/inbox/budget.ts). */
-export type CallOptions = { reserved?: boolean };
+/**
+ * `reserved`: the caller already counted this call against the monthly limit (lib/social/inbox/budget.ts).
+ * `timeoutMs`: a longer wait for a call that moves a file (30 seconds otherwise).
+ */
+export type CallOptions = { reserved?: boolean; timeoutMs?: number };
 
 /**
  * One Composio API call. Composio itself failing (bad key, outage) is never the client's fault: "temporary".
@@ -57,7 +47,7 @@ export async function composioApi<T>(network: Network, method: "GET" | "POST" | 
       method,
       headers: { "x-api-key": key, ...(body === undefined ? {} : { "content-type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(options.timeoutMs ?? TIMEOUT_MS),
     });
   } catch {
     throw new SocialError("Could not reach BuPulse-Socials", "temporary", network);
@@ -131,10 +121,18 @@ export async function proxyRequest<T = Record<string, unknown>>(
   return (r.data ?? {}) as T;
 }
 
-const LABELS: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn", youtube: "YouTube" };
+const LABELS: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", linkedin: "LinkedIn", youtube: "YouTube", tiktok: "TikTok", twitter: "X" };
 
-/** The Composio-managed auth config for a network ("BuPulse-Socials <Network>"): stored once, found or made on first use. */
+/**
+ * The auth config a network signs in with. TikTok and X: the one made with BuPulse's own app (ownAuthConfig), never a
+ * managed one. The others: the Composio-managed config ("BuPulse-Socials <Network>"), stored once, found or made on first use.
+ */
 export async function authConfigFor(network: Network): Promise<string> {
+  if (OWN_APP_CONFIG[network]) {
+    const own = ownAuthConfig(network);
+    if (!own) throw new SocialError(`${LABELS[network] ?? network} is not set up in BuPulse-Socials yet`, "invalid", network);
+    return own;
+  }
   const row = await prisma.adminSetting.findUnique({ where: { key: AUTH_CONFIGS_SETTING } }).catch(() => null);
   const saved = (row?.value ?? {}) as Record<string, string>;
   if (saved[network]) return saved[network];

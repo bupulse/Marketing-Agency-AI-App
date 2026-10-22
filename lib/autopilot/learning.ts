@@ -121,6 +121,7 @@ export const NETWORK_DEFAULTS: Record<Network, { hours: number[]; weekdays: numb
   facebook: { hours: [13, 18], weekdays: [1, 2, 3, 5] },
   tiktok: { hours: [19, 21], weekdays: [1, 3, 4, 6] },
   youtube: { hours: [17, 18], weekdays: [4, 5, 6] },
+  twitter: { hours: [8, 13], weekdays: [0, 1, 2, 3, 4] },
 };
 
 /** Preferred weekdays for a network: learned when there is data, else the defaults. */

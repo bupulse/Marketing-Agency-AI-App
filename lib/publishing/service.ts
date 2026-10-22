@@ -154,7 +154,7 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
     const tooLong = data.mediaPaths.some((p) => isVideoPath(p) && !videoFitsNetwork(network, videoMs.get(p)));
     if (!draft && tooLong && rules.videoOnly && !mediaPaths.some(isVideoPath) && !visual.video) problems.push(`${connection.displayName ?? rules.label}: ${trimNote(network)}`);
     if (rules.videoOnly && visual.video && !mediaPaths.some(isVideoPath)) mediaPaths = [visual.video];
-    const format: PostFormatName = formatFor(rules, mediaPaths.length);
+    const format: PostFormatName = formatFor(rules, mediaPaths.length, mediaPaths.some(isVideoPath));
     const label = connection.displayName ?? rules.label;
     if (draft) {
       if (!text.trim() && data.mediaPaths.length === 0) problems.push("Write something or add a photo to save a draft.");
@@ -227,7 +227,7 @@ export async function updatePost(owner: Owner, postId: string, input: EditInput,
   if (!isNetwork(post.network)) throw new PublishingError("That account cannot be posted to.", "invalid");
 
   const rules = getProvider(post.network).rules;
-  const format = formatFor(rules, data.mediaPaths.length);
+  const format = formatFor(rules, data.mediaPaths.length, data.mediaPaths.some(isVideoPath));
   const settings = await businessSettings(owner.businessId);
   const time = await resolveTime(data.when, { ...settings, connectionIds: post.connectionId ? [post.connectionId] : [], now });
   const becomesDraft = time ? time.status === "DRAFT" : post.status === "DRAFT";

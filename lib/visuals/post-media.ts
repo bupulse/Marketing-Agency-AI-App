@@ -1,17 +1,18 @@
 // Which of a content's visuals a post on each network carries, and in which format. Pure, so the composer's server
 // code, Autopilot and the tests agree. Carousels and Instagram's JPEG conversion are handled by publishing as before.
+import { tiktokVideoPosts } from "@/lib/social/composio/ways";
 import type { Network } from "@/lib/social/types";
 
 type Format = "POST" | "CAROUSEL" | "ARTICLE" | "SCRIPT";
 
-/** Networks BuPulse publishes video to through their API (Instagram Reels, Facebook Page videos). */
-export const VIDEO_PUBLISH_NETWORKS: readonly Network[] = ["instagram", "facebook"];
+/** Networks BuPulse publishes video to through their API (Instagram Reels, Facebook Page videos, X videos). */
+export const VIDEO_PUBLISH_NETWORKS: readonly Network[] = ["instagram", "facebook", "twitter"];
 
 /**
  * The longest video each network takes as BuPulse posts it (Instagram Reels, Facebook Page videos, YouTube Shorts,
  * TikTok's reminder video): a longer Gallery video is kept out of that network, with a note to trim it.
  */
-export const NETWORK_VIDEO_MAX_MS: Record<Network, number> = { instagram: 90_000, facebook: 240_000, youtube: 180_000, tiktok: 600_000, linkedin: 600_000 };
+export const NETWORK_VIDEO_MAX_MS: Record<Network, number> = { instagram: 90_000, facebook: 240_000, youtube: 180_000, tiktok: 600_000, linkedin: 600_000, twitter: 140_000 };
 
 /** Whether a video of `durationMs` fits the network (an unknown length fits: BuPulse's own videos are 30 s at most). */
 export function videoFitsNetwork(network: Network, durationMs: number | null | undefined): boolean {
@@ -19,7 +20,7 @@ export function videoFitsNetwork(network: Network, durationMs: number | null | u
 }
 
 export function trimNote(network: Network): string {
-  const label = { instagram: "Instagram Reels", facebook: "Facebook", youtube: "YouTube Shorts", tiktok: "TikTok", linkedin: "LinkedIn" }[network];
+  const label = { instagram: "Instagram Reels", facebook: "Facebook", youtube: "YouTube Shorts", tiktok: "TikTok", linkedin: "LinkedIn", twitter: "X" }[network];
   return `The video is longer than ${label} takes (${Math.round(NETWORK_VIDEO_MAX_MS[network] / 1000)} seconds). Trim it, or the post goes without it.`;
 }
 
@@ -27,8 +28,13 @@ export function isVideoPath(path: string): boolean {
   return /\.(mp4|webm)$/i.test(path);
 }
 
-/** Whether a network takes this video file through the API (Instagram wants MP4; Facebook also takes WebM). */
+/**
+ * Whether a network takes this video file through the API (Instagram and X want MP4; Facebook also takes WebM). TikTok
+ * does (MP4 or WebM) once BuPulse's TikTok app is set up in BuPulse-Socials (its rules' videoPosts); before that its
+ * video goes with the reminder.
+ */
 export function acceptsVideo(network: Network, path: string): boolean {
+  if (network === "tiktok") return tiktokVideoPosts();
   if (!VIDEO_PUBLISH_NETWORKS.includes(network)) return false;
   return network === "facebook" || /\.mp4$/i.test(path);
 }
@@ -48,8 +54,9 @@ export interface PostMediaInput {
 
 /**
  * The media and format for one post:
- * - a video idea (SCRIPT) becomes a real video post where the network takes video, and keeps the script reminder
- *   with the video attached on TikTok and YouTube (BuPulse cannot upload there yet, the owner gets the file by email);
+ * - a video idea (SCRIPT) becomes a real video post where the network takes video (TikTok too, once BuPulse-Socials
+ *   can upload there), and keeps the script reminder with the video attached otherwise (YouTube: the owner gets the
+ *   file by email);
  * - feed posts take the carousel where the network has carousels (capped to its photo limit), else the first slide;
  * - articles carry no media.
  */

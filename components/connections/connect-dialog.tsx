@@ -72,6 +72,7 @@ export function ConnectDialog({ channel, onClose }: { channel: ChannelInfo; onCl
           <p className="max-w-sm text-[15px] text-muted">
             {channel.viaComposio ? `You will sign in to ${channel.label} and choose what BuPulse may post to. ${COMPOSIO_NOTE}` : `You will sign in on ${channel.label} and choose what BuPulse may post to. We never see your password.`}
           </p>
+          {channel.detail && <p className="max-w-sm text-sm text-muted">{channel.detail}</p>}
           <a href={connectHref(channel.network)} className={buttonClasses({ size: "lg", className: "w-full" })}>
             Connect {channel.label}
           </a>

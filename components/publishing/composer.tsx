@@ -16,6 +16,9 @@ import { MediaAttach } from "./media-attach";
 import { AccountAvatar, NetworkIcon, networkName } from "./network-icon";
 import { PostPreview } from "./post-preview";
 
+/** The video files BuPulse posts (lib/visuals/post-media.ts isVideoPath). */
+const VIDEO_FILE = /\.(mp4|webm)$/i;
+
 type Mode = "keep" | "queue" | "schedule" | "now";
 
 type Props = {
@@ -166,7 +169,7 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
     const rules = context.rules[account.network] as RuleSummary | undefined;
     if (!rules) return [];
     const values = effective(account.network);
-    const format = formatFor(rules, media.length);
+    const format = formatFor(rules, media.length, media.some((m) => VIDEO_FILE.test(m.path)));
     return [{ account, rules, format, values, ...validatePost(rules, { format, ...values, mediaCount: media.length }) }];
   });
   const problems = checks.flatMap((c) => c.errors.map((e) => ({ network: c.account.network, message: e })));
