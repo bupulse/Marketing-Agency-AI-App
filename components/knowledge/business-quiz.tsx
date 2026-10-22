@@ -2,6 +2,7 @@
 
 import { ArrowRight, Check, Lock } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { draftQuiz, quizScore, saveQuizRound } from "@/app/dashboard/knowledge/quiz/actions";
 import { Chips, GuessTag, KeepOrDrop, QuestionHead, QuizFrame, RoundDone, ScoreRing, TextAnswer, ThisOrThat, Thinking, Tiles, useQuiz, type TileOption } from "@/components/quiz";
@@ -179,6 +180,7 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
   const [busy, setBusy] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [todo, setTodo] = useState<ToDo[]>([]);
+  const router = useRouter();
   const [savedReviews, setSavedReviews] = useState<string[]>([]);
 
   // The products asked about are the ones new at the start, frozen: once saved they keep their question, so the round
@@ -400,9 +402,12 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
       .then((r) => {
         setScore(r.ok ? r.percent : 0);
         if (r.ok) setTodo(r.todo);
+        // The saves were silent (no revalidation: it re-rendered this slow page inside every save). Once, at the end,
+        // in the background: refresh the router so the shared layout and the back/forward cache show the new data.
+        router.refresh();
       })
       .catch(() => setScore(0));
-  }, [quiz.finished, score]);
+  }, [quiz.finished, score, router]);
 
   const lockedNote = locked.length > 0 && (
     <p className="flex items-start justify-center gap-1.5 text-center text-[13px] text-muted">

@@ -33,11 +33,11 @@ const SAVE_FAILED = "We could not save that. Please try again.";
 /** Every action re-checks the signed-in user and only touches their own business. */
 const requireUser = () => requireActiveUser("settings");
 
-async function update(userId: string, data: Parameters<typeof prisma.business.update>[0]["data"], step?: string): Promise<SaveResult> {
+async function update(userId: string, data: Parameters<typeof prisma.business.update>[0]["data"], step?: string, quiet = false): Promise<SaveResult> {
   try {
     await prisma.business.update({ where: { userId }, data });
     // The app shell shows the logo, colours and business details.
-    revalidatePath("/dashboard", "layout");
+    if (!quiet) revalidatePath("/dashboard", "layout");
     if (step) await trackEvent(EVENT_NAMES.onboardingStep, { userId, props: { step } });
     return { ok: true };
   } catch {
@@ -80,7 +80,8 @@ export async function saveLook(input: { logoPath: string | null; brandColors: st
   return result;
 }
 
-export async function saveKnowledge(input: KnowledgeInput): Promise<SaveResult> {
+/** `quiet` (the Business info quiz): no revalidation, so the page on screen is not rendered again inside the response. */
+export async function saveKnowledge(input: KnowledgeInput, opts: { quiet?: boolean } = {}): Promise<SaveResult> {
   const user = await requireUser();
   // Phone numbers without a country of their own are read in the business's sign-up country.
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { country: true, timezone: true, knowledge: true } });
@@ -91,7 +92,7 @@ export async function saveKnowledge(input: KnowledgeInput): Promise<SaveResult> 
   // Opening hours are in the business's zone. A business still on the default UTC gets its country's zone
   // (Rwanda -> Africa/Kigali), as sign-up does; countries with several zones keep theirs until the browser sets it.
   const zone = business && (!business.timezone || business.timezone === "UTC") ? timezoneForCountryName(business.country) : null;
-  return update(user.id, { knowledge: parsed.data, ...(zone ? { timezone: zone } : {}) }, "knowledge");
+  return update(user.id, { knowledge: parsed.data, ...(zone ? { timezone: zone } : {}) }, "knowledge", opts?.quiet === true);
 }
 
 /** Signed URL so the browser can upload the logo straight to the private brand bucket. */

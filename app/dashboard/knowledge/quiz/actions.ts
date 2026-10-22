@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { saveKnowledge } from "@/app/onboarding/actions";
 import { approveVoice } from "@/app/dashboard/knowledge/interview/actions";
@@ -63,8 +62,8 @@ export async function quizScore(): Promise<Result<{ percent: number; todo: ToDo[
 // Each server action is a round trip of its own (the browser sends them one at a time), and a round used to send one
 // per item. saveQuizRound does a whole round in one request: the same schemas as the section actions, then the same
 // lib/knowledge services through knowledgeAction with the section's permission, plan feature and rate limits (one hit
-// per item, as the section actions count), the rows written together, and one revalidation for the round. Rounds with
-// one write call their section's action. A failure names the first failing item (`item`, `part`) and its fields.
+// per item, as the section actions count), and the rows written together, without revalidation. Rounds with one write
+// call their section's action, quietly. A failure names the first failing item (`item`, `part`) and its fields.
 
 export type QuizRoundPayload =
   | { round: "you"; profile: ProfileInput }
@@ -94,24 +93,28 @@ function parseAll<S extends z.ZodType>(schema: S, list: unknown[], part?: "compe
   return { data };
 }
 
-function refresh(...paths: string[]) {
-  for (const path of ["/dashboard/knowledge", ...paths]) revalidatePath(path);
-}
+/**
+ * Quiz saves are silent: no revalidatePath, because Next renders the page on screen again inside the action's
+ * response, and the quiz page takes seconds to render. The dashboard pages are dynamic (no cache, no staleTimes), so
+ * every other page reads fresh data on the next visit; the quiz refreshes the router once at the end, for the shared
+ * layout and the back/forward cache (components/knowledge/business-quiz.tsx).
+ */
+const QUIET = { quiet: true } as const;
 
 const hits = (key: string, rule: (typeof RATE_LIMITS)[keyof typeof RATE_LIMITS], n: number) => Promise.all(Array.from({ length: n }, () => rateLimit(key, rule)));
 
 export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoundResult> {
   switch (payload?.round) {
     case "you":
-      return saveProfile(payload.profile);
+      return saveProfile(payload.profile, QUIET);
     case "find": {
-      const r = await saveKnowledge(payload.knowledge);
+      const r = await saveKnowledge(payload.knowledge, QUIET);
       return r.ok ? r : { ok: false, error: r.error ?? CHECK, fieldErrors: r.fieldErrors };
     }
     case "voice":
-      return approveVoice(payload.summary, "quiz", payload.answers);
+      return approveVoice(payload.summary, "quiz", payload.answers, QUIET);
     case "love":
-      return createReview(payload.review);
+      return createReview(payload.review, QUIET);
 
     case "sell": {
       if (!Array.isArray(payload.products) || payload.products.length > MAX_QUIZ_PRODUCTS) return TOO_MANY;
@@ -122,7 +125,6 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
         await createProducts(businessId, parsed.data);
         return {};
       });
-      if (r.ok) refresh("/dashboard/knowledge/products", "/dashboard/content");
       return r;
     }
 
@@ -138,7 +140,6 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
         const ids = await Promise.all(saves.map((s) => (s.id ? updatePersona(businessId, s.id, s.data).then(() => s.id!) : createPersona(businessId, s.data))));
         return { ids };
       });
-      if (r.ok) refresh("/dashboard/knowledge/audience");
       return r;
     }
 
@@ -153,7 +154,6 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
         await Promise.all([createCompetitors(businessId, parsed.data), positioning?.success ? savePositioningRow(businessId, positioning.data) : null]);
         return {};
       });
-      if (r.ok) refresh("/dashboard/knowledge/competitors");
       return r;
     }
 
@@ -169,7 +169,6 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
         await Promise.all([createFaqs(businessId, parsed.data), policies?.success ? savePoliciesRow(businessId, policies.data) : null]);
         return {};
       });
-      if (r.ok) refresh("/dashboard/knowledge/faqs");
       return r;
     }
   }

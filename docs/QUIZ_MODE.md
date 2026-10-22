@@ -87,7 +87,7 @@ prices, your customers and your voice"), and two buttons: "Make my first posts" 
 | `draftQuiz` (the guesses), `saveQuizRound` (a round in one request) and `quizScore` (the overall % after saving) | app/dashboard/knowledge/quiz/actions.ts |
 | The entry card on Business info ("Start the quiz" / "Continue" at the first incomplete round / "Play again") and "Do it as a quiz" in each section's header | app/dashboard/knowledge/page.tsx, components/knowledge/quiz-link.tsx |
 | Moving on safely (the move guard) | lib/knowledge/quiz-move.ts |
-| Tests | tests/quiz/business-map.test.ts, business-draft.test.ts, business-ai.test.ts, business-move.test.ts, business-save.test.ts, business-batch.test.ts, business-finish.test.ts |
+| Tests | tests/quiz/business-map.test.ts, business-draft.test.ts, business-ai.test.ts, business-move.test.ts, business-save.test.ts, business-batch.test.ts, business-finish.test.ts, quiet-actions.test.ts |
 
 **The AI.** One call when the quiz opens, on the cheap text model, through the cost ledger as feature `knowledgeQuiz`
 (so the admin switch and the company's allowance apply), with a rate limit (8 an hour) and a daily cap (20 a day) per
@@ -107,8 +107,15 @@ its own (about 3 seconds on the test site, and the browser sends them one at a t
 item with the section's schema first (the first failing item and its fields come back as `item`, `part` and
 `fieldErrors`; nothing is written), then writes through the same lib/knowledge services in `knowledgeAction` with the
 section's permission and plan feature, one rate-limit hit per item as the section actions count, the rows together
-(`createProducts`, `createCompetitors`, `createFaqs`: one transaction under the list's lock and cap), and one
-revalidation for the round. Rounds with one write (You, Find us, Your voice, Love notes) call the section's own action.
+(`createProducts`, `createCompetitors`, `createFaqs`: one transaction under the list's lock and cap). Rounds with one
+write (You, Find us, Your voice, Love notes) call the section's own action with `{ quiet: true }`.
+
+**Silent saves.** No quiz save revalidates (no revalidatePath / revalidateTag): Next renders the page on screen again
+inside the action's response, and the quiz page took about 8 seconds to render on the test site. The dashboard pages
+are dynamic (they read the session; no `"use cache"`, no `cacheComponents`, no `staleTimes`, so the client cache keeps
+a dynamic page for 0 seconds), so Business info and the section pages read fresh data on the next visit. Two things a
+client navigation does not refetch, the shared layout and a page reached with the browser's Back button, are covered by
+one `router.refresh()` in the background once the finish screen has its score. The section forms revalidate as before.
 While a round saves, the card shows `Thinking` with the round's line ("Saving your products…"). A save's problem shows under
 the question, scrolled into view and focused.
 

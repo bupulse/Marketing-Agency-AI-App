@@ -31,14 +31,15 @@ function check(input: unknown) {
   return parsed.success ? { data: parsed.data } : { failure: { ok: false as const, error: "Check the highlighted fields.", fieldErrors: fieldErrorMap(parsed.error) } };
 }
 
-export async function createReview(input: ReviewInput): Promise<Result<{ reviewId: string }>> {
+/** `quiet` (the Business info quiz): no revalidation, so the page on screen is not rendered again inside the response. */
+export async function createReview(input: ReviewInput, opts: { quiet?: boolean } = {}): Promise<Result<{ reviewId: string }>> {
   const checked = check(input);
   if (checked.failure) return checked.failure;
   const result = await knowledgeAction({ permission: "content", feature: "content", limit: "knowledgeCreate", source: "knowledge.review.create" }, async ({ businessId, role }) => ({
     // Consent decides what the AI may quote in public posts: only Owners and Admins can grant it.
     reviewId: await create(businessId, { ...checked.data, canPublish: can(role, "settings") && checked.data.canPublish }),
   }));
-  if (result.ok) refresh();
+  if (result.ok && !opts?.quiet) refresh();
   return result;
 }
 
