@@ -19,6 +19,8 @@
  *   confirmLabel   Button text in multiple mode; gets the count (default "Use N photos").
  *   initialFolder  The tab to open on: "all" (default), or an album such as "product:<id>" (a product's page and
  *                  the posts and designs made for it start in its album).
+ *   saveTo         Where uploads and imports go while a tab that is not a folder or album is open ("product:<id>"
+ *                  for a product's own picker); without it the person picks a place first.
  *
  * The "Import" menu (Google Drive, Dropbox, Canva) is built in: imported photos land in the open folder and are selected.
  */
@@ -51,13 +53,14 @@ export type MediaPickerProps = {
   initialFolder?: string;
   /** Offer the owner's Gallery videos too (the post composer); photo pickers (designs, video scenes) leave them out. */
   videos?: boolean;
+  saveTo?: string;
 };
 
 type Folder = "all" | "none" | string;
 
 export const toPicked = (m: Pick<MediaItem, "id" | "path" | "url" | "width" | "height" | "mimeType">): PickedPhoto => ({ id: m.id, path: m.path, url: m.url, width: m.width, height: m.height, mimeType: m.mimeType });
 
-export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max = 10, title, confirmLabel, initialFolder, videos = false }: MediaPickerProps) {
+export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max = 10, title, confirmLabel, initialFolder, videos = false, saveTo }: MediaPickerProps) {
   // Google's Picker cannot show above a modal <dialog>, so while it is open this dialog steps aside (its state stays).
   const [aside, setAside] = useState(false);
   const asideRef = useRef(false);
@@ -76,14 +79,14 @@ export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max 
       className="max-w-3xl"
     >
       {/* Mounted only while open, so every opening starts on "All photos" with nothing selected. */}
-      {open && <PickerBody onOpenChange={onOpenChange} onPick={onPick} multiple={multiple} max={max} confirmLabel={confirmLabel} initialFolder={initialFolder} onPickerVisible={stepAside} videos={videos} />}
+      {open && <PickerBody onOpenChange={onOpenChange} onPick={onPick} multiple={multiple} max={max} confirmLabel={confirmLabel} initialFolder={initialFolder} onPickerVisible={stepAside} videos={videos} saveTo={saveTo} />}
     </Dialog>
   );
 }
 
 type Page = { key: string; items: MediaItem[]; cursor: string | null; error: string | null };
 
-function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initialFolder, onPickerVisible, videos }: Pick<MediaPickerProps, "onOpenChange" | "onPick" | "confirmLabel" | "initialFolder"> & { multiple: boolean; max: number; onPickerVisible: (visible: boolean) => void; videos: boolean }) {
+function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initialFolder, onPickerVisible, videos, saveTo }: Pick<MediaPickerProps, "onOpenChange" | "onPick" | "confirmLabel" | "initialFolder" | "saveTo"> & { multiple: boolean; max: number; onPickerVisible: (visible: boolean) => void; videos: boolean }) {
   const [overview, setOverview] = useState<Pick<GalleryOverview, "folders" | "albums">>({ folders: [], albums: [] });
   const folders = overview.folders;
   const [folder, setFolder] = useState<Folder>(initialFolder ?? "all");
@@ -97,7 +100,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initial
   const inputRef = useRef<HTMLInputElement>(null);
 
   const viewDestination = uploadDestinationFor(parseFilter(folder));
-  const uploadDestination = viewDestination ? destinationKey(viewDestination) : null;
+  const uploadDestination = viewDestination ? destinationKey(viewDestination) : (saveTo ?? null);
   const destinations = destinationOptions(overview);
   const key = `${folder}|${query}`;
   const loading = page?.key !== key;

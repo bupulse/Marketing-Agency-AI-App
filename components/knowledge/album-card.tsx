@@ -118,8 +118,10 @@ export function AlbumCard({ kind, id, name, photos }: { kind: "product" | "campa
         onOpenChange={setPicking}
         multiple
         max={Math.max(room, 1)}
-        title={`Add photos to ${name}`}
-        confirmLabel={(n) => `Add ${n || ""} photo${n === 1 ? "" : "s"}`}
+        videos
+        saveTo={`${kind}:${id}`}
+        title={`Add photos or videos to ${name}`}
+        confirmLabel={(n) => `Add ${n || ""} item${n === 1 ? "" : "s"}`}
         onPick={(picked) => {
           act(() => addToAlbum(kind, id, picked.map((p) => p.id)), `Added to ${name}`);
         }}
