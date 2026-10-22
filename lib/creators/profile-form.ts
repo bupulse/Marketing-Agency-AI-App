@@ -5,6 +5,7 @@
 import { emailSchema, passwordSchema } from "@/lib/auth/schemas";
 import { cleanHandle, isLink, MAX_SAMPLES, readFollowers, readWhatsapp, type ApplicationErrors, type Handle } from "./application";
 import { CREATOR_NETWORKS, isCreatorNetwork, networkLabel } from "./describe";
+import { isSocialNetwork } from "./networks";
 
 export const BIO_MAX = 500;
 export const LOCATION_MAX = 80;
@@ -74,14 +75,14 @@ export function readProfileForm(form: { get(name: string): unknown }): { ok: tru
   return { ok: true, value: { name, phone: phone!, location, bio: bio || null, handles, samples, discoverable: form.get("discoverable") === "on" } };
 }
 
-/** The handles as stored (CreatorProfile.handles, CampaignCreator.handles); anything unreadable is left out. */
+/** The handles as stored (CreatorProfile.handles, CampaignCreator.handles), on any network; anything unreadable is left out. */
 export function readHandles(value: unknown): Handle[] {
   if (!Array.isArray(value)) return [];
   const out: Handle[] = [];
   for (const h of value) {
     if (!h || typeof h !== "object") continue;
     const { network, handle, followers } = h as Record<string, unknown>;
-    if (!isCreatorNetwork(network) || typeof handle !== "string" || !handle) continue;
+    if (!isSocialNetwork(network) || typeof handle !== "string" || !handle) continue;
     out.push({ network, handle, followers: typeof followers === "number" && Number.isFinite(followers) ? Math.max(0, Math.floor(followers)) : 0 });
   }
   return out;

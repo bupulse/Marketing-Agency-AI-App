@@ -9,10 +9,11 @@ import { formatCompact } from "@/components/analytics/format";
 import { Badge, Button, Dialog, GlassCard, useToast } from "@/components/ui";
 import { formatAmount, PLATFORM_LABEL, type Platform } from "@/lib/creators/company-forms";
 import type { CreatorTotalsRow } from "@/lib/creators/analytics";
+import type { AccountLine } from "@/lib/creators/applicants-view";
 import { ReportCreator } from "./report-creator";
 
-/** The creators who joined, with their totals; removing one stops their hand-ins. */
-export function CreatorsList({ campaignId, rows, currency }: { campaignId: string; rows: CreatorTotalsRow[]; currency: string }) {
+/** The creators who joined, with their totals and each account's followers (verified once connected); removing one stops their hand-ins. */
+export function CreatorsList({ campaignId, rows, accounts = {}, currency }: { campaignId: string; rows: CreatorTotalsRow[]; accounts?: Record<string, AccountLine[]>; currency: string }) {
   const router = useRouter();
   const { toast } = useToast();
   const [removing, setRemoving] = useState<CreatorTotalsRow | null>(null);
@@ -43,7 +44,18 @@ export function CreatorsList({ campaignId, rows, currency }: { campaignId: strin
                   {r.name}
                   {r.status === "REMOVED" && <Badge tone="neutral">Removed</Badge>}
                 </span>
-                <span className="text-[13px] text-muted">{r.handles.map((h) => `${PLATFORM_LABEL[h.network as Platform] ?? h.network} ${h.handle.startsWith("@") ? h.handle : `@${h.handle}`}`).join(" · ") || r.email}</span>
+                {accounts[r.id]?.length ? (
+                  <span className="flex flex-col gap-0.5 text-[13px] text-muted">
+                    {accounts[r.id].map((a) => (
+                      <span key={`${a.network}:${a.handle}`}>
+                        {a.label} {a.handle.startsWith("@") || a.handle.startsWith("http") ? a.handle : `@${a.handle}`}
+                        {a.check ? <span className={a.verified ? "text-success" : "text-danger"}> · {a.check}</span> : a.followers !== null ? ` · ${formatCompact(a.followers)} followers` : ""}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="text-[13px] text-muted">{r.handles.map((h) => `${PLATFORM_LABEL[h.network as Platform] ?? h.network} ${h.handle.startsWith("@") ? h.handle : `@${h.handle}`}`).join(" · ") || r.email}</span>
+                )}
                 <span className="text-[13px] tabular-nums">
                   {r.posts} {r.posts === 1 ? "post" : "posts"} · {formatCompact(r.views)} views · {money(r.earningNow)} this period
                   {r.due ? ` · ${money(r.due)} to pay` : ""}

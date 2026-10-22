@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, Users } from "lucide-react";
+import { CalendarDays, Target, Users } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { formatSpan, isCreatorNetwork, NETWORK_LABEL } from "@/lib/creators/describe";
 import { whenOf } from "@/lib/creators/market-filters";
@@ -42,11 +42,18 @@ export function CampaignCard({ card }: { card: MarketCard }) {
       </div>
       {card.pay.length > 0 && <p className="text-[15px] font-semibold">{card.pay[0]}</p>}
       {card.pay.length > 1 && <p className="-mt-2 line-clamp-2 text-sm text-muted">{card.pay.slice(1).join(". ")}.</p>}
+      {card.formats.length > 0 && <p className="-mt-1 text-sm">{card.formats.join(" · ")}</p>}
       <div className="mt-auto flex flex-col gap-1.5 text-sm text-muted">
         <span className="flex items-center gap-1.5">
           <CalendarDays aria-hidden className="size-4" />
           {formatSpan(card.startsOn, card.endsOn)}
         </span>
+        {card.wanted.length > 0 && (
+          <span className="flex items-center gap-1.5">
+            <Target aria-hidden className="size-4 shrink-0" />
+            <span className="line-clamp-1">{card.wanted.join(" · ")}</span>
+          </span>
+        )}
         <span className={`flex items-center gap-1.5 ${card.placesLeft === 0 ? "font-semibold text-danger" : ""}`}>
           <Users aria-hidden className="size-4" />
           {placesInWords(card.placesLeft)}

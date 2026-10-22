@@ -118,6 +118,37 @@ describe("quickApply", () => {
   });
 });
 
+describe("quickApply with the company's built form", () => {
+  const built = {
+    intro: null,
+    phone: "OPTIONAL",
+    samples: "OPTIONAL",
+    fields: [
+      { id: "location", preset: "location", type: "LOCATION", label: "Where do you live?", required: true },
+      { id: "languages", preset: "languages", type: "MULTI_CHOICE", label: "Languages?", options: ["Kinyarwanda", "English"], required: true },
+    ],
+  };
+
+  it("answers the location from the profile and asks only the rest; what the short form sends wins", async () => {
+    h.campaign = { ...h.campaign, form: built, questions: [] };
+    h.profile.mockResolvedValue({ ...PROFILE, location: "Kigali, Gasabo" });
+    expect(await quickApply(USER, "summer", form())).toEqual({ ok: false, errors: { q_languages: "Please answer this question." } });
+    const sent = new FormData();
+    sent.append("q_languages", "Kinyarwanda");
+    sent.append("firstName", "Anna");
+    sent.append("lastName", "Uwase");
+    expect(await quickApply(USER, "summer", sent)).toEqual({ ok: true });
+    expect(h.createMany.mock.calls[0][0].data[0]).toMatchObject({ name: "Anna Uwase", phone: "+250791954277", answers: { location: "Kigali, Gasabo", languages: ["Kinyarwanda"] } });
+  });
+
+  it("a WhatsApp number the form does not require does not block one tap", async () => {
+    h.campaign = { ...h.campaign, form: { ...built, fields: [] }, questions: [] };
+    h.profile.mockResolvedValue({ ...PROFILE, phone: null });
+    expect(await quickApply(USER, "summer", form())).toEqual({ ok: true });
+    expect(h.createMany.mock.calls[0][0].data[0]).toMatchObject({ phone: null });
+  });
+});
+
 describe("viewerOf", () => {
   const campaign = { id: "c1", platforms: ["instagram"] };
   it("tells a visitor, a company person and a creator apart", async () => {

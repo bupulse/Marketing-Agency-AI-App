@@ -2,13 +2,14 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { hasFeature } from "@/lib/entitlements";
 import { campaignLimits } from "./campaigns";
-import { creatorPayInWords } from "./describe";
+import { creatorPayInWords, formatsInWords, requirementsInWords } from "./describe";
 import { logoUrls } from "./logos";
 import { filterMarket, isListed, placesLeft, type MarketFilters, type MarketItem } from "./market-filters";
 import { readPayRules } from "./pay";
 import { holdsPlace } from "./portal-groups";
 import { dayIn, ymdOf } from "./periods";
 import { NEW_RECORD, paymentRecords, type PaymentRecord } from "./record";
+import { readRequirements } from "./requirements";
 
 // The public marketplace, bupulse.com/creators (docs/CREATOR_MARKETPLACE.md): the campaigns the listing rule keeps
 // (lib/creators/market-filters.ts), with what a card shows: the company and its logo, the pay in words, the places
@@ -21,6 +22,9 @@ export type MarketCard = MarketItem & {
   endsOn: string;
   currency: string;
   pay: string[];
+  /** Who it looks for, short ("Kigali · 1,000+ followers · Kinyarwanda"), and what to post (docs/CREATOR_CAMPAIGN_WIZARD.md). */
+  wanted: string[];
+  formats: string[];
   company: { id: string; name: string; logoUrl: string | null; industry: string | null };
   record: PaymentRecord;
 };
@@ -62,6 +66,8 @@ export async function listedCampaigns(now = new Date(), opts: { details?: boolea
       payRules: true,
       viewTargetPerCreator: true,
       viewTargetCampaign: true,
+      requirements: true,
+      formats: true,
       createdAt: true,
       businessId: true,
       business: { select: { name: true, logoUrl: true, timezone: true, industry: true, industryRef: { select: { slug: true, name: true } } } },
@@ -100,6 +106,9 @@ export async function listedCampaigns(now = new Date(), opts: { details?: boolea
       createdAt: r.createdAt,
       currency: r.currency,
       pay: creatorPayInWords(payRules, goals, r.currency),
+      wanted: requirementsInWords(readRequirements(r.requirements)),
+      // Campaigns made before the wizard have no formats.
+      formats: formatsInWords(r.formats ?? []),
       company: { id: r.businessId, name: r.business.name, logoUrl: r.business.logoUrl ? (logos.get(r.business.logoUrl) ?? null) : null, industry: r.business.industryRef?.name ?? r.business.industry ?? null },
       record: records.get(r.businessId) ?? NEW_RECORD,
     };

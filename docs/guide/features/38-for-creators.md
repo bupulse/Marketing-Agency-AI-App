@@ -41,14 +41,31 @@ Accounts you connect (Connections) show as **Verified** on your profile.
 
 ## 3. Apply
 
-Signed in, a campaign's page shows **Apply with my profile**: answer the company's own questions, and that's it. If
-your profile is missing your WhatsApp number or an account on one of the campaign's platforms, **Complete my profile**
-takes you there and back. One application per campaign. When a company picks you, you join at once: you get an email
-and the campaign shows under **Joined**.
+Each campaign's page is in the company's colours, with its logo and a photo or video of the campaign. It shows the
+brief, what to post (Reel, Story...), who the company is looking for ("Kigali · 1,000+ followers · Kinyarwanda"), the
+do's and don'ts, the rules and the pay. You can apply even if you don't fit everything: the company sees who fits best
+first.
 
-Without an account you can still apply with the form on the campaign's page (name, WhatsApp, email, your accounts,
-best posts, the company's questions). If picked, you get an email with a link (it works once, for 14 days) that makes
-your login, or adds the campaign to the one you have.
+Signed in, your profile fills the application: your name, WhatsApp number, accounts, best posts and where you live.
+
+- If the company asks something your profile cannot answer (your languages, why you want to work with them, a short
+  video of you...), a short form asks just that. Your name and WhatsApp number are there too: change them if you
+  want, for this application only. Then **Send my application**.
+- If not, it is one tap: **Apply with my profile**. **Change or add** opens your details and any optional questions.
+
+If your profile is missing an account on one of the campaign's platforms (or the WhatsApp number the company needs),
+**Complete my profile** takes you there and back. One application per campaign. When a company picks you, you join at
+once: you get an email and the campaign shows under **Joined**.
+
+Without an account you can still apply with the form on the campaign's page: your first and last name, email,
+WhatsApp number (if the company asks for it), **your social media accounts** (tick the ones you have, then type your
+username and followers, e.g. 12k or 1.5M; networks BuPulse cannot count views on yet say "Coming soon" but you can
+still list them), your best posts, and the company's own questions: choices to tap, dates, amounts, a place to search,
+links, or a photo or video to send (up to 50 MB; only the company sees it). If picked, you get an email with a link
+(it works once, for 14 days) that makes your login, or adds the campaign to the one you have.
+
+The followers you type are kept. When you connect the account, BuPulse reads the real number and the company sees
+"Verified", or the difference: type what your account really has.
 
 ## 4. Invitations
 
@@ -78,6 +95,11 @@ BuPulse-Socials) and never posts anything.
 Screenshots are not accepted: only posts of a connected account count.
 
 ## 7. Post and hand in
+
+**Campaign files:** a campaign you joined shows the company's do's and don'ts, its photos, videos and documents to
+download (logo, product photos, example videos, guides), its shared Google Drive folder and posts it likes. **Brief to
+print or save** opens the whole brief on one page: tap **Print or save as PDF** to keep it on your phone.
+
 
 **Tasks** lists your joined campaigns with what is due today; tap one to see its tasks (with one campaign it opens
 straight in). Each task says what to post, how many posts a day, and where:

@@ -42,9 +42,14 @@ without asking.
   - the "Let companies find me" switch (`discoverable`, off by default).
   - Connected accounts (Connections) show as **verified** next to the typed handles.
 - **Apply in one tap** from `/creators` or `/c/<slug>` when signed in as a creator. The profile fills the application
-  (`CampaignCreator` with `source = "MARKETPLACE"`, `profileId` set straight away). The creator only answers the
-  company's own questions. An incomplete profile (no WhatsApp, or no handle for any of the campaign's platforms) is
-  asked to complete it first.
+  (`CampaignCreator` with `source = "MARKETPLACE"`, `profileId` set straight away): name (split into the form's first
+  and last name), WhatsApp, the handles on the campaign's platforms, best posts and, for the "location" preset, the
+  profile's district or city (`lib/creators/quick-apply-form.ts`). Since the wizard (docs/CREATOR_CAMPAIGN_WIZARD.md)
+  the company's form decides the rest: when it has **required** fields the profile cannot answer (or requires best
+  posts the profile has none of), a short form asks just those, with the basics shown and editable for this
+  application only and the optional fields folded under "More questions". Otherwise it stays **one tap**, with "Change
+  or add" folded. An incomplete profile (no handle for any of the campaign's platforms, or no WhatsApp when the form
+  requires it) is asked to complete it first.
 - When a company **selects** someone who applied with an account, there's no invite link: they become JOINED
   straight away and are told (email, plus a notice in the portal). People who applied without an account still get
   the invite link, as before.
@@ -192,6 +197,6 @@ Not owner decisions; change them freely.
 | Part | Where |
 | --- | --- |
 | Tables | migration `20261029100000_creator_marketplace` (CreatorCampaign.listed/hiddenAt, CreatorProfile fields, CampaignCreator.source/offeredBy/offeredAt and OFFERED, CreatorReport) |
-| Marketplace, creator sign-up, profile, one-tap apply, portal changes, creator reports | `lib/creators/market-filters.ts` (rules), `lib/creators/marketplace.ts`, `lib/creators/logos.ts`, `lib/creators/profile-form.ts` (forms), `lib/creators/profile.ts`, `lib/creators/quick-apply.ts`, `lib/creators/offer-answers.ts`, `lib/creators/portal-groups.ts`, `lib/account.ts` (creator branch of `ensureAccount`), `app/creators/**`, `app/c/[slug]/**`, `app/creator/(portal)/**`, `components/creators/marketplace/**` |
+| Marketplace, creator sign-up, profile, one-tap apply, portal changes, creator reports | `lib/creators/market-filters.ts` (rules), `lib/creators/marketplace.ts`, `lib/creators/logos.ts`, `lib/creators/profile-form.ts` (forms), `lib/creators/profile.ts`, `lib/creators/quick-apply.ts`, `lib/creators/quick-apply-form.ts`, `lib/creators/offer-answers.ts`, `lib/creators/portal-groups.ts`, `lib/account.ts` (creator branch of `ensureAccount`), `app/creators/**`, `app/c/[slug]/**`, `app/creator/(portal)/**`, `components/creators/marketplace/**` |
 | Company finder, offers, company reports, listing switch, payment record, admin hide, block and reports | `lib/creators/finder.ts`, `lib/creators/offers.ts`, `lib/creators/record.ts`, `lib/creators/reports.ts`, `app/dashboard/creators/find/**`, admin console pages |
 | Client guide | `docs/guide/features/37-creator-campaigns.md` (company: listing, finding creators), `38-for-creators.md` (creators: marketplace, profile, offers) |

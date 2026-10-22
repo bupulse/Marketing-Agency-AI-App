@@ -4,6 +4,8 @@
 
 import { formatAmount, payRulesInWords, PLATFORM_LABEL, PLATFORMS, type Platform } from "./company-forms";
 import type { PayRules, PeriodGoals } from "./pay";
+import type { CreatorRequirements } from "./requirements";
+import { POST_FORMATS } from "./wizard";
 
 export const CREATOR_NETWORKS = PLATFORMS;
 export type CreatorNetwork = Platform;
@@ -62,4 +64,19 @@ export function formatDay(ymd: string, withYear = true): string {
 export function formatSpan(from: string, to: string): string {
   if (from === to) return formatDay(from);
   return from.slice(0, 4) === to.slice(0, 4) ? `${formatDay(from, false)} – ${formatDay(to)}` : `${formatDay(from)} – ${formatDay(to)}`;
+}
+
+/** Who a campaign looks for, short, for cards and its page: "Kigali · 1,000+ followers · Kinyarwanda · Food and drinks". */
+export function requirementsInWords(req: CreatorRequirements): string[] {
+  const out: string[] = [];
+  if (req.locations.length) out.push(listWords(req.locations, "or"));
+  if (req.minFollowers) out.push(`${count(req.minFollowers)}+ followers`);
+  if (req.languages.length) out.push(listWords(req.languages, "or"));
+  if (req.niches.length) out.push(req.niches.length > 2 ? `${req.niches.slice(0, 2).join(", ")} and more` : listWords(req.niches));
+  return out;
+}
+
+/** "Reel / short video, Story" for a campaign's formats (unknown ones left out). */
+export function formatsInWords(formats: string[]): string[] {
+  return formats.flatMap((f) => POST_FORMATS.find((p) => p.value === f)?.label ?? []);
 }

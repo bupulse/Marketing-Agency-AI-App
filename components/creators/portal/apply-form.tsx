@@ -2,18 +2,59 @@
 
 import { CircleCheck } from "lucide-react";
 import { useActionState } from "react";
-import { Button, Field, GlassCard, Input, Textarea } from "@/components/ui";
+import { Button, Field, GlassCard, Input } from "@/components/ui";
 import type { ApplyState } from "@/app/c/[slug]/actions";
-import { NETWORK_LABEL, isCreatorNetwork } from "@/lib/creators/describe";
-import type { CampaignQuestion } from "@/lib/creators/company-forms";
+import { BRAND_BUTTON, FieldInput, holdWhileUploading, type StartUpload, type Values } from "@/components/creators/apply/field-input";
+import { SocialsPicker } from "@/components/creators/apply/socials-picker";
+import type { ApplicationForm } from "@/lib/creators/form-fields";
 
 const initial: ApplyState = { status: "idle" };
 
-/** The application form of /c/<slug> (`apply`: applyAction bound to the slug). `preview`: the company looking at a campaign that is not live (nothing is sent). */
-export function ApplyForm({ apply, platforms, questions, companyName, preview }: { apply: (prev: ApplyState, form: FormData) => Promise<ApplyState>; platforms: string[]; questions: CampaignQuestion[]; companyName: string; preview?: boolean }) {
+const one = (v: Values[string]) => (Array.isArray(v) ? v[0] : v);
+
+/** The links to their best posts, as the form shows them (required, optional or not asked). */
+export function SamplesInput({ show, values, errors }: { show: ApplicationForm["samples"]; values: Values; errors: Partial<Record<string, string>> }) {
+  if (show === "HIDDEN") return null;
+  return (
+    <fieldset className="flex flex-col gap-3">
+      <legend className="mb-1 text-[15px] font-semibold">
+        Your best posts
+        {show === "REQUIRED" && (
+          <span aria-hidden className="ml-0.5 text-[color:var(--brand)]">
+            *
+          </span>
+        )}
+      </legend>
+      <p className="-mt-1 text-[13px] text-muted">{show === "REQUIRED" ? "One to three links to posts you are proud of." : "Up to three links to posts you are proud of (optional)."}</p>
+      {[1, 2, 3].map((i) => (
+        <Field key={i} label={`Link ${i}`} required={show === "REQUIRED" && i === 1} error={errors[`sample_${i}`]}>
+          <Input name={`sample_${i}`} type="url" inputMode="url" autoCapitalize="none" placeholder="https://www.instagram.com/p/…" defaultValue={one(values[`sample_${i}`])} />
+        </Field>
+      ))}
+    </fieldset>
+  );
+}
+
+/** The red line under a form that came back with errors, so a phone user knows to scroll up. */
+export function FormProblems({ state }: { state: { error?: string; errors?: Partial<Record<string, string>> } }) {
+  const text = state.error ?? (Object.keys(state.errors ?? {}).length ? "Some answers need a look: see the notes in red above." : null);
+  if (!text) return null;
+  return (
+    <p role="alert" className="rounded-field bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+      {text}
+    </p>
+  );
+}
+
+/**
+ * The application form of /c/<slug>, built from the company's form (lib/creators/form-fields.ts): first and last name,
+ * email, WhatsApp number and best posts as the company set them, the social accounts, then the company's own fields.
+ * `apply`: applyAction bound to the slug. `preview`: the company looking at a campaign that is not live (nothing is sent).
+ */
+export function ApplyForm({ apply, startUpload, form, platforms, currency, companyName, preview }: { apply: (prev: ApplyState, form: FormData) => Promise<ApplyState>; startUpload: StartUpload; form: ApplicationForm; platforms: string[]; currency: string; companyName: string; preview?: boolean }) {
   const [state, action, pending] = useActionState(apply, initial);
   const errors = state.errors ?? {};
-  const values = state.values ?? {};
+  const values: Values = state.values ?? {};
 
   if (state.status === "sent") {
     return (
@@ -27,84 +68,58 @@ export function ApplyForm({ apply, platforms, questions, companyName, preview }:
     );
   }
 
-  const networks = platforms.filter(isCreatorNetwork);
   return (
     <GlassCard strong padding="lg" className="p-5 sm:p-8">
       {/* Keyed by what came back, so the fields keep what was typed after an error (React resets a form after its action). */}
-      <form key={JSON.stringify(values)} action={action} noValidate className="flex flex-col gap-5">
+      <form key={JSON.stringify(values)} action={action} onSubmit={holdWhileUploading} noValidate className="flex flex-col gap-6">
         <div aria-hidden className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
           <label>
             Website
             <input type="text" name="website" tabIndex={-1} autoComplete="off" />
           </label>
         </div>
-        <h2 className="text-xl font-semibold tracking-tight">Apply</h2>
-
-        <Field label="Your name" required error={errors.name}>
-          <Input name="name" autoComplete="name" defaultValue={values.name} />
-        </Field>
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="WhatsApp number" required hint="The company may message you here." error={errors.phone}>
-            <Input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+250 791 954 277" defaultValue={values.phone} />
-          </Field>
-          <Field label="Email" required hint="It becomes your login if you are picked." error={errors.email}>
-            <Input name="email" type="email" autoComplete="email" defaultValue={values.email} />
-          </Field>
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">Apply</h2>
+          {form.intro && <p className="mt-1 whitespace-pre-wrap text-[15px] text-muted">{form.intro}</p>}
         </div>
 
-        <fieldset className="flex flex-col gap-4">
-          <legend className="mb-1 text-[15px] font-semibold">Your accounts</legend>
-          <p className="-mt-2 text-[13px] text-muted">At least one. The name you use there, and how many followers you have.</p>
-          {networks.map((n) => (
-            <div key={n} className="grid gap-3 sm:grid-cols-[1fr_10rem]">
-              <Field label={`${NETWORK_LABEL[n]} name`} error={errors[`handle_${n}`]}>
-                <Input name={`handle_${n}`} placeholder="@yourname" autoCapitalize="none" autoCorrect="off" defaultValue={values[`handle_${n}`]} />
-              </Field>
-              <Field label="Followers" error={errors[`followers_${n}`]}>
-                <Input name={`followers_${n}`} inputMode="numeric" placeholder="12k" defaultValue={values[`followers_${n}`]} />
-              </Field>
-            </div>
-          ))}
-          {errors.handles && (
-            <p role="alert" className="text-[13px] font-medium text-danger">
-              {errors.handles}
-            </p>
-          )}
-        </fieldset>
-
-        <fieldset className="flex flex-col gap-3">
-          <legend className="mb-1 text-[15px] font-semibold">Your best posts</legend>
-          <p className="-mt-1 text-[13px] text-muted">One to three links to posts you are proud of.</p>
-          {[1, 2, 3].map((i) => (
-            <Field key={i} label={`Link ${i}`} required={i === 1} error={errors[`sample_${i}`]}>
-              <Input name={`sample_${i}`} type="url" inputMode="url" placeholder="https://" defaultValue={values[`sample_${i}`]} />
-            </Field>
-          ))}
-        </fieldset>
-
-        {questions.map((q) => (
-          <Field key={q.id} label={q.label} required={q.required} error={errors[`q_${q.id}`]}>
-            <Textarea name={`q_${q.id}`} rows={3} defaultValue={values[`q_${q.id}`]} />
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label="First name" required error={errors.firstName}>
+            <Input name="firstName" autoComplete="given-name" placeholder="Ana" defaultValue={one(values.firstName)} />
           </Field>
+          <Field label="Last name" required error={errors.lastName}>
+            <Input name="lastName" autoComplete="family-name" placeholder="Uwase" defaultValue={one(values.lastName)} />
+          </Field>
+        </div>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label="Email" required hint="It becomes your login if you are picked." error={errors.email}>
+            <Input name="email" type="email" autoComplete="email" placeholder="ana@example.com" defaultValue={one(values.email)} />
+          </Field>
+          {form.phone !== "HIDDEN" && (
+            <Field label="WhatsApp number" required={form.phone === "REQUIRED"} hint="The company may message you here." error={errors.phone}>
+              <Input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+250 791 954 277" defaultValue={one(values.phone)} />
+            </Field>
+          )}
+        </div>
+
+        <SocialsPicker values={values} errors={errors} campaignNetworks={platforms} />
+        <SamplesInput show={form.samples} values={values} errors={errors} />
+
+        {form.fields.map((f) => (
+          <FieldInput key={f.id} field={f} values={values} error={errors[`q_${f.id}`]} currency={currency} startUpload={startUpload} preview={preview} />
         ))}
 
-        {state.error && (
-          <p role="alert" className="rounded-field bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
-            {state.error}
-          </p>
-        )}
+        <FormProblems state={state} />
         {preview ? (
           <p role="status" className="rounded-field bg-soft px-4 py-3 text-sm font-medium">
             This is a preview: the campaign is not taking applications yet, so the form cannot be sent.
           </p>
         ) : (
-          <Button type="submit" disabled={pending} className="w-full sm:w-auto sm:self-start">
+          <Button type="submit" disabled={pending} className={`w-full sm:w-auto sm:self-start ${BRAND_BUTTON}`}>
             {pending ? "Sending…" : "Send my application"}
           </Button>
         )}
-        <p className="text-xs text-muted">
-          {companyName} sees what you write here. BuPulse keeps it for the campaign only.
-        </p>
+        <p className="text-xs text-muted">{companyName} sees what you write and send here. BuPulse keeps it for the campaign only.</p>
       </form>
     </GlassCard>
   );

@@ -1,9 +1,9 @@
 import "server-only";
 import { addDaysYmd } from "@/lib/demo/slots";
-import { SocialError, type AccountChoice } from "@/lib/social/types";
+import { SocialError } from "@/lib/social/types";
 import type { CreatorNetwork } from "../describe";
 import { facebookIds, shortcodeOf, type ParsedLink } from "./links";
-import type { Caller, CreatorAdapter, NetworkPost, ReadResult } from "./types";
+import type { Caller, CreatorAccount, CreatorAdapter, NetworkPost, ReadResult } from "./types";
 
 // The creators' side of each network through BuPulse-Socials (Composio): which accounts a sign-in gives, finding a
 // handed-in link on the creator's own account, and reading many posts' numbers in few calls. Creator-only: the
@@ -24,6 +24,11 @@ export class CreatorAccountError extends Error {
 const asObject = (v: unknown): Json => (v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {});
 const text = (v: unknown) => (typeof v === "string" && v ? v : typeof v === "number" ? String(v) : undefined);
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
+/** A follower count, or undefined (left out of the account) when the network did not give one. */
+const count = (v: unknown) => {
+  const n = num(v);
+  return n !== null && n >= 0 ? Math.floor(n) : undefined;
+};
 
 /** The first array of objects in `data` (itself, or a level or two down: data.data, data.videos, response_data...). */
 export function listIn(data: unknown): Json[] {
@@ -154,14 +159,20 @@ async function withInsights(call: Caller, item: Json): Promise<NetworkPost | nul
 
 const instagram: CreatorAdapter = {
   async accounts(call) {
-    const d = await call.tool("INSTAGRAM_GET_USER_INFO", { ig_user_id: "me", fields: "id,user_id,username,name,account_type,profile_picture_url" });
+    const d = await call.tool("INSTAGRAM_GET_USER_INFO", { ig_user_id: "me", fields: "id,user_id,username,name,account_type,profile_picture_url,followers_count" });
     const id = text(field(d, "user_id", "id"));
     if (!id) throw new CreatorAccountError("no_accounts");
     const type = String(field(d, "account_type") ?? "").toUpperCase();
     // Owner decision: professional accounts only (personal ones cannot share their views).
     if (type && !IG_TYPES[type]) throw new CreatorAccountError("personal");
     const username = text(field(d, "username"));
-    return [{ externalAccountId: id, displayName: username ? `@${username}` : (text(field(d, "name")) ?? id), avatarUrl: text(field(d, "profile_picture_url")), accountType: IG_TYPES[type] ?? "business" }];
+    const account: CreatorAccount = { externalAccountId: id, displayName: username ? `@${username}` : (text(field(d, "name")) ?? id), avatarUrl: text(field(d, "profile_picture_url")), accountType: IG_TYPES[type] ?? "business" };
+    const followers = count(field(d, "followers_count"));
+    return [followers === undefined ? account : { ...account, followers }];
+  },
+
+  async followers(call) {
+    return count(field(await call.tool("INSTAGRAM_GET_USER_INFO", { ig_user_id: "me", fields: "id,followers_count" }), "followers_count")) ?? null;
   },
 
   async find(call, _account, link, day) {
@@ -275,12 +286,28 @@ function fbMatches(p: Json, link: ParsedLink): boolean {
   return link.ids.some((id) => own.has(id));
 }
 
+/**
+ * A Page's followers: `followers_count`, or `fan_count` (its likes; "For New Page Experience Pages, this field will
+ * return followers_count", developers.facebook.com/docs/graph-api/reference/page) when it gives none.
+ */
+const FB_COUNT_FIELDS = "followers_count,fan_count";
+const pageFollowers = (p: Json) => count(p.followers_count) ?? count(p.fan_count);
+
 const facebook: CreatorAdapter = {
   async accounts(call) {
-    const d = await call.tool("FACEBOOK_LIST_MANAGED_PAGES", { fields: "id,name,category,picture{url}", limit: 100 });
+    const d = await call.tool("FACEBOOK_LIST_MANAGED_PAGES", { fields: `id,name,category,picture{url},${FB_COUNT_FIELDS}`, limit: 100 });
     const pages = listIn(d).filter((p) => text(p.id));
     if (!pages.length) throw new CreatorAccountError("no_pages");
-    return pages.map((p): AccountChoice => ({ externalAccountId: text(p.id)!, displayName: text(p.name) ?? "Facebook Page", avatarUrl: text(asObject(asObject(p.picture).data).url), accountType: "page" }));
+    return pages.map((p): CreatorAccount => {
+      const page: CreatorAccount = { externalAccountId: text(p.id)!, displayName: text(p.name) ?? "Facebook Page", avatarUrl: text(asObject(asObject(p.picture).data).url), accountType: "page" };
+      const followers = pageFollowers(p);
+      return followers === undefined ? page : { ...page, followers };
+    });
+  },
+
+  async followers(call, account) {
+    const d = await call.tool("FACEBOOK_GET_PAGE_DETAILS", { page_id: account.externalAccountId, fields: `id,${FB_COUNT_FIELDS}` });
+    return count(field(d, "followers_count")) ?? count(field(d, "fan_count")) ?? null;
   },
 
   async find(call, account, link, day) {
@@ -374,22 +401,44 @@ async function ttQuery(call: Caller, ids: string[]): Promise<NetworkPost[]> {
   return listIn(d).map(ttPost).filter((p): p is NetworkPost => !!p);
 }
 
+/** GET /v2/user/info/ with these fields; a field whose scope the sign-in lacks fails the call (then fewer are asked). */
+async function ttUser(call: Caller, fields: string[]): Promise<unknown> {
+  const d = await call.proxy({ endpoint: `${TIKTOK_API}/user/info/?fields=${fields.join(",")}`, method: "GET" });
+  ttCheck(d);
+  return d;
+}
+
+const TT_BASIC = ["open_id", "union_id", "avatar_url", "display_name"];
+
 const tiktok: CreatorAdapter = {
   async accounts(call) {
     let d: unknown;
-    try {
-      d = await call.proxy({ endpoint: `${TIKTOK_API}/user/info/?fields=open_id,union_id,avatar_url,display_name,username`, method: "GET" });
-      ttCheck(d);
-    } catch (error) {
-      // username needs the user.info.profile scope; the basic fields are enough.
-      if (!(error instanceof SocialError) || error.kind === "rate_limit") throw error;
-      d = await call.proxy({ endpoint: `${TIKTOK_API}/user/info/?fields=open_id,union_id,avatar_url,display_name`, method: "GET" });
-      ttCheck(d);
+    // follower_count needs the user.info.stats scope and username user.info.profile; the basic fields are enough.
+    const tries = [[...TT_BASIC, "username", "follower_count"], [...TT_BASIC, "username"], TT_BASIC];
+    for (const [i, fields] of tries.entries()) {
+      try {
+        d = await ttUser(call, fields);
+        break;
+      } catch (error) {
+        if (!(error instanceof SocialError) || error.kind === "rate_limit" || i === tries.length - 1) throw error;
+      }
     }
     const id = text(field(d, "open_id"));
     if (!id) throw new CreatorAccountError("no_accounts");
     const username = text(field(d, "username"));
-    return [{ externalAccountId: id, displayName: username ? `@${username}` : (text(field(d, "display_name")) ?? "TikTok account"), avatarUrl: text(field(d, "avatar_url")), accountType: "creator" }];
+    const account: CreatorAccount = { externalAccountId: id, displayName: username ? `@${username}` : (text(field(d, "display_name")) ?? "TikTok account"), avatarUrl: text(field(d, "avatar_url")), accountType: "creator" };
+    const followers = count(field(d, "follower_count"));
+    return [followers === undefined ? account : { ...account, followers }];
+  },
+
+  async followers(call) {
+    try {
+      return count(field(await ttUser(call, ["open_id", "follower_count"]), "follower_count")) ?? null;
+    } catch (error) {
+      // Without the user.info.stats scope there is no count (scope_not_authorized): not a failure of the account.
+      if (error instanceof SocialError && /scope/i.test(error.message)) return null;
+      throw error;
+    }
   },
 
   async find(call, _account, link) {
