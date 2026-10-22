@@ -6,31 +6,37 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
 import { ForbiddenError } from "@/lib/team/roles";
 import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
-import type { CampaignInput, GoalsInput, TaskInput, TaskRepeat } from "@/lib/creators/company-forms";
+import type { GoalsInput, TaskInput, TaskRepeat } from "@/lib/creators/company-forms";
 import {
-  createCampaign,
+  createDraft,
   createTasks,
   CreatorCampaignError,
   declineApplicant,
   deleteCampaign,
   deleteTask,
+  finishSetup,
+  getCampaign,
   markPayoutPaid,
   rejectPost,
   rejectSubmission,
   removeCreator,
   resendInvite,
+  saveStep,
   selectApplicant,
   setAcceptingApplications,
   setCampaignStatus,
   setListed,
-  updateCampaign,
   updatePeriodGoals,
   updateTask,
   type CampaignActor,
 } from "@/lib/creators/campaigns";
+import { tiktokAuthConfig } from "@/lib/creators/connect-flow";
 import { reportCreator } from "@/lib/creators/finder";
 import { offerCreator, withdrawOffer } from "@/lib/creators/offers";
 import { ReportError } from "@/lib/creators/reports";
+import type { WizardStepId } from "@/lib/creators/wizard";
+import { answersSoFarSchema, suggestCampaign } from "@/lib/creators/wizard-ai";
+import { checkStep, isStepId, type StepInput } from "@/lib/creators/wizard-steps";
 
 export type CreatorActionResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -63,25 +69,6 @@ async function guarded<T extends object>(run: () => Promise<T>): Promise<Creator
 
 /** Every creators page shows the campaign's state, so a change refreshes them all. */
 const refresh = () => revalidatePath("/dashboard/creators", "layout");
-
-export async function createCampaignAction(input: CampaignInput) {
-  return guarded(async () => {
-    const actor = await manager();
-    await rateLimit(`creators:campaign:${actor.actorId}`, { limit: 20, windowSeconds: 3600 });
-    const row = await createCampaign(actor, input);
-    refresh();
-    return { id: row.id };
-  });
-}
-
-export async function updateCampaignAction(campaignId: string, input: CampaignInput) {
-  return guarded(async () => {
-    const actor = await manager();
-    await updateCampaign(actor, id.parse(campaignId), input);
-    refresh();
-    return {};
-  });
-}
 
 export async function setCampaignStatusAction(campaignId: string, status: "LIVE" | "PAUSED" | "ENDED") {
   return guarded(async () => {
@@ -252,6 +239,68 @@ export async function reportCreatorAction(profileId: string, reason: string, det
   return guarded(async () => {
     const actor = await manager({ gated: false });
     await reportCreator(actor, { profileId: id.parse(profileId), reason: z.string().max(40).parse(reason), details: z.string().max(2000).parse(details) });
+    return {};
+  });
+}
+
+// ---- the wizard (docs/CREATOR_CAMPAIGN_WIZARD.md) ----
+
+const answersOf = (input: unknown) => {
+  const parsed = answersSoFarSchema.safeParse(input);
+  return parsed.success ? parsed.data : {};
+};
+
+/**
+ * Step 1's "Next": the AI (or the template of the kind, when the AI cannot answer) suggests the whole campaign, and
+ * the draft is made with every later step filled from it. `ai` says which one answered.
+ */
+export async function createDraftAction(input: StepInput<"idea">) {
+  return guarded(async () => {
+    const actor = await manager();
+    await rateLimit(`creators:campaign:${actor.actorId}`, { limit: 20, windowSeconds: 3600 });
+    const checked = checkStep("idea", input);
+    if (!checked.ok) throw new CreatorCampaignError("invalid", checked.error);
+    const tiktokReady = Boolean(tiktokAuthConfig());
+    const suggestion = await suggestCampaign(actor, { step: "all", answers: answersOf(checked.data), tiktokReady });
+    const row = await createDraft(actor, checked.data, suggestion, { tiktokReady });
+    refresh();
+    return { id: row.id, ai: suggestion.source === "ai" };
+  });
+}
+
+/** Saves one step. Step 1 of a draft also fills the later steps still empty (the AI is asked only then). */
+export async function saveStepAction(campaignId: string, step: WizardStepId, input: unknown) {
+  return guarded(async () => {
+    const actor = await manager();
+    if (!isStepId(step)) throw new CreatorCampaignError("invalid", "That step does not exist.");
+    const tiktokReady = Boolean(tiktokAuthConfig());
+    const suggest = step === "idea" ? () => suggestCampaign(actor, { step: "all", answers: answersOf(input), tiktokReady }) : undefined;
+    await saveStep(actor, id.parse(campaignId), step, input, { tiktokReady, suggest });
+    refresh();
+    return {};
+  });
+}
+
+/**
+ * "Suggest again" on a step (or the whole campaign): the suggestion only, nothing is saved; the wizard puts the step's
+ * part on screen. `answers` are the owner's answers so far, the step on screen included.
+ */
+export async function suggestCampaignAction(campaignId: string | null, step: WizardStepId | "all", answers: unknown) {
+  return guarded(async () => {
+    const actor = await manager();
+    if (step !== "all" && !isStepId(step)) throw new CreatorCampaignError("invalid", "That step does not exist.");
+    if (campaignId) await getCampaign(actor, id.parse(campaignId));
+    const suggestion = await suggestCampaign(actor, { step, answers: answersOf(answers), tiktokReady: Boolean(tiktokAuthConfig()) });
+    return { suggestion };
+  });
+}
+
+/** Review's "Save as draft": set up, not live yet. */
+export async function finishSetupAction(campaignId: string) {
+  return guarded(async () => {
+    const actor = await manager();
+    await finishSetup(actor, id.parse(campaignId));
+    refresh();
     return {};
   });
 }

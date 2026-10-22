@@ -39,7 +39,7 @@ export function PublicLink({ slug, live }: { slug: string; live: boolean }) {
 }
 
 /** Go live, pause, resume and end, each asked once more when it matters. */
-export function CampaignControls({ campaignId, status, canGoLive }: { campaignId: string; status: string; /** It has at least one task. */ canGoLive: boolean }) {
+export function CampaignControls({ campaignId, status, problems }: { campaignId: string; status: string; /** What a draft still needs before it can go live (empty: ready). */ problems: string[] }) {
   const router = useRouter();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
@@ -59,7 +59,7 @@ export function CampaignControls({ campaignId, status, canGoLive }: { campaignId
   return (
     <div className="flex flex-wrap gap-2">
       {status === "DRAFT" && (
-        <Button size="sm" disabled={busy || !canGoLive} title={canGoLive ? undefined : "Add a task first"} leading={<Rocket aria-hidden className="size-4" />} onClick={() => run("LIVE", "Live. Creators can apply now.")}>
+        <Button size="sm" disabled={busy || problems.length > 0} title={problems[0]} leading={<Rocket aria-hidden className="size-4" />} onClick={() => run("LIVE", "Live. Creators can apply now.")}>
           Go live
         </Button>
       )}

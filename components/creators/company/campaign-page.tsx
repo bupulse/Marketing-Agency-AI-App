@@ -3,9 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAppContext } from "@/components/app/context";
 import { featureGate, pageGate } from "@/components/app/no-access";
-import { Badge, type BadgeTone } from "@/components/ui";
+import { Badge, Button, type BadgeTone } from "@/components/ui";
 import { CAMPAIGN_STATUS_LABEL, type CampaignStatus } from "@/lib/creators/company-forms";
 import { CreatorCampaignError, getCampaign, type CampaignActor, type CampaignView } from "@/lib/creators/campaigns";
+import { STEP_COUNT } from "@/lib/creators/wizard";
 import { CampaignControls, PublicLink } from "./campaign-controls";
 import { CampaignTabs, type CampaignTab } from "./campaign-tabs";
 
@@ -40,7 +41,7 @@ export function CampaignHeader({ campaign, tab }: { campaign: CampaignView; tab:
   return (
     <div className="flex flex-col gap-4">
       <Link href="/dashboard/creators" className="inline-flex min-h-11 items-center gap-1.5 self-start px-1 text-[15px] font-medium text-muted no-underline hover:text-text">
-        <ArrowLeft aria-hidden className="size-4" /> All campaigns
+        <ArrowLeft aria-hidden className="size-4" /> All creator campaigns
       </Link>
       <header className="flex flex-wrap items-start justify-between gap-3 px-1">
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -52,8 +53,18 @@ export function CampaignHeader({ campaign, tab }: { campaign: CampaignView; tab:
           </div>
           <PublicLink slug={campaign.slug} live={campaign.status === "LIVE"} />
         </div>
-        <CampaignControls campaignId={campaign.id} status={campaign.status} canGoLive={campaign.tasks > 0} />
+        <CampaignControls campaignId={campaign.id} status={campaign.status} problems={campaign.problems} />
       </header>
+      {campaign.status === "DRAFT" && campaign.setupStep !== null && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-ok-bg px-4 py-3">
+          <p className="text-[15px] font-medium text-ok">
+            Draft · step {campaign.setupStep} of {STEP_COUNT}. Finish setting it up to go live.
+          </p>
+          <Button href={`/dashboard/creators/${campaign.id}/setup?step=${campaign.setupStep}`} size="sm">
+            Continue
+          </Button>
+        </div>
+      )}
       <CampaignTabs campaignId={campaign.id} current={tab} applied={campaign.applied} />
     </div>
   );
