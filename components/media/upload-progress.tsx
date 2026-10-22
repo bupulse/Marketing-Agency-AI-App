@@ -22,8 +22,8 @@ export function UploadProgress({ state, onDismiss, verb = "Uploading" }: { state
           {state.active
             ? `${verb} ${Math.min(finished + 1, state.total)} of ${state.total}${state.current ? `: ${state.current}` : ""}…`
             : state.done > 0
-              ? `${state.done} photo${state.done === 1 ? "" : "s"} added${state.failed > 0 ? `, ${state.failed} could not be added` : ""}`
-              : "No photos were added"}
+              ? `${state.done} file${state.done === 1 ? "" : "s"} added${state.failed > 0 ? `, ${state.failed} could not be added` : ""}`
+              : "Nothing was added"}
         </p>
         {!state.active && (
           <button type="button" aria-label="Dismiss" onClick={onDismiss} className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-soft hover:text-text">

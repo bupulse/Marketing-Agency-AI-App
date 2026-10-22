@@ -115,7 +115,11 @@ export function AlbumCard({ kind, id, name, photos }: { kind: "product" | "campa
       )}
       <MediaPicker
         open={picking}
-        onOpenChange={setPicking}
+        onOpenChange={(open) => {
+          setPicking(open);
+          // Uploads and imports inside the picker land in this album, even when the person closes it without "Add".
+          if (!open) router.refresh();
+        }}
         multiple
         max={Math.max(room, 1)}
         videos
