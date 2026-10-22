@@ -23,7 +23,7 @@ import { MAX_QUIZ_PHOTO_STEPS, MAX_QUIZ_PRODUCTS, MAX_QUIZ_REVIEWS } from "@/lib
 import { createCompetitors, createFaqs, createPersona, savePolicies as savePoliciesRow, savePositioning as savePositioningRow, updatePersona } from "@/lib/knowledge/records";
 import type { ReviewInput } from "@/lib/knowledge/reviews";
 import { overallPercent, toReachFull, type KnowledgeSection, type ToDo } from "@/lib/knowledge/sections";
-import { activateDraftsWithPhotos, createProducts, KnowledgeError } from "@/lib/knowledge/service";
+import { activateReadyDrafts, createProducts, KnowledgeError } from "@/lib/knowledge/service";
 import { linkPhotos } from "@/lib/media/albums";
 import { logoFromGalleryPhoto } from "@/lib/brand/logo-from-gallery";
 import { createSignedDownloadUrl } from "@/lib/storage";
@@ -77,14 +77,14 @@ export type QuizRoundPayload =
   | { round: "find"; knowledge: KnowledgeInput }
   | { round: "voice"; summary: VoiceSummaryInput; answers: { topic: string; answer: string }[] }
   | { round: "love"; reviews: ReviewInput[] }
-  | { round: "photos"; links: { productId: string; assetIds: string[] }[]; activate: string[] }
+  | { round: "photos"; links: { productId: string; assetIds: string[] }[] }
   | { round: "look"; logoPath: string | null; brandColors: string[] };
 
 /**
  * `ids`: the personas saved, in the order sent (a new one's id, so the quiz updates it if played again). `products`:
- * the products made, with their ids (their photo questions need them).
+ * the products made, with their ids (their photo questions need them). `activated`: the drafts that went live (Photos).
  */
-export type QuizRoundResult = { ok: true; ids?: string[]; products?: { id: string; name: string }[] } | (Failure & { item?: number; part?: "competitors" | "positioning" | "policies" | "faqs" });
+export type QuizRoundResult = { ok: true; ids?: string[]; products?: { id: string; name: string }[]; activated?: string[] } | (Failure & { item?: number; part?: "competitors" | "positioning" | "policies" | "faqs" });
 
 const CHECK = "Check the highlighted fields.";
 const TOO_MANY: QuizRoundResult = { ok: false, error: "Too many at once. Please try again." };
@@ -136,16 +136,15 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
     }
 
     case "photos": {
-      if (!Array.isArray(payload.links) || !Array.isArray(payload.activate) || payload.links.length > MAX_QUIZ_PHOTO_STEPS || payload.activate.length > MAX_QUIZ_PHOTO_STEPS) return TOO_MANY;
+      if (!Array.isArray(payload.links) || payload.links.length > MAX_QUIZ_PHOTO_STEPS) return TOO_MANY;
       const links = z.array(z.object({ productId: personaId, assetIds: z.array(personaId).min(1).max(MAX_ALBUM_PHOTOS) })).safeParse(payload.links);
-      const activate = z.array(personaId).safeParse(payload.activate);
-      if (!links.success || !activate.success) return { ok: false, error: "We could not save those photos." };
+      if (!links.success) return { ok: false, error: "We could not save those photos." };
       // Adding photos to a product's album is part of products: the `content` permission and plan feature.
       return knowledgeAction({ permission: "content", feature: "content", source: "knowledge.quiz.photos" }, async ({ userId, businessId }) => {
-        await hits(`knowledgeEdit:${userId}`, RATE_LIMITS.knowledgeEdit, links.data.length + activate.data.length);
+        await hits(`knowledgeEdit:${userId}`, RATE_LIMITS.knowledgeEdit, links.data.length + 1);
         await Promise.all(links.data.map((l) => linkPhotos(businessId, "product", l.productId, l.assetIds)));
-        await activateDraftsWithPhotos(businessId, activate.data);
-        return {};
+        // Every draft that is now ready goes live, the quiz's from earlier visits too.
+        return { activated: await activateReadyDrafts(businessId) };
       });
     }
 
@@ -155,7 +154,9 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
       if ("failure" in parsed) return parsed.failure;
       const r = await knowledgeAction({ permission: "content", feature: "content", source: "knowledge.quiz.products" }, async ({ userId, businessId }) => {
         await hits(`projectCreate:${userId}`, RATE_LIMITS.projectCreate, parsed.data.length);
-        return { products: await createProducts(businessId, parsed.data) };
+        const products = await createProducts(businessId, parsed.data);
+        // Drafts made ready elsewhere (photos added on the Products page) go live here too, as after Photos.
+        return { products, activated: await activateReadyDrafts(businessId) };
       });
       return r;
     }

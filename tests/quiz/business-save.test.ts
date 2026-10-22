@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   savePositioning: vi.fn(),
   createFaqs: vi.fn(),
   savePolicies: vi.fn(),
-  activateDraftsWithPhotos: vi.fn(),
+  activateReadyDrafts: vi.fn(),
   linkPhotos: vi.fn(),
 }));
 
@@ -23,7 +23,7 @@ vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: mocks.requireActiveUser }));
 vi.mock("@/lib/entitlements", () => ({ featureBlocked: mocks.featureBlocked }));
 vi.mock("@/lib/rate-limit", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/rate-limit")>()), rateLimit: mocks.rateLimit }));
-vi.mock("@/lib/knowledge/service", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/knowledge/service")>()), createProducts: mocks.createProducts, activateDraftsWithPhotos: mocks.activateDraftsWithPhotos }));
+vi.mock("@/lib/knowledge/service", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/knowledge/service")>()), createProducts: mocks.createProducts, activateReadyDrafts: mocks.activateReadyDrafts }));
 vi.mock("@/lib/media/albums", () => ({ linkPhotos: mocks.linkPhotos }));
 vi.mock("@/lib/brand/logo-from-gallery", () => ({ logoFromGalleryPhoto: vi.fn() }));
 vi.mock("@/lib/storage", () => ({ createSignedDownloadUrl: vi.fn() }));
@@ -61,13 +61,15 @@ beforeEach(() => {
   mocks.createProducts.mockResolvedValue([{ id: "p1", name: "Passion Juice" }, { id: "p2", name: "Mango Juice" }]);
   mocks.createCompetitors.mockResolvedValue(["c1"]);
   mocks.createFaqs.mockResolvedValue(["f1", "f2"]);
+  mocks.activateReadyDrafts.mockResolvedValue([]);
 });
 
 describe("saveQuizRound", () => {
   it("saves a round's products in one write, counts one rate-limit hit each, and revalidates nothing", async () => {
     const r = await saveQuizRound({ round: "sell", products: [product("Passion Juice"), product("Mango Juice", { priceModel: "FIXED", price: "1,500" })] });
     // The ids come back: each new product's photo question needs its album.
-    expect(r).toEqual({ ok: true, products: [{ id: "p1", name: "Passion Juice" }, { id: "p2", name: "Mango Juice" }] });
+    expect(r).toEqual({ ok: true, products: [{ id: "p1", name: "Passion Juice" }, { id: "p2", name: "Mango Juice" }], activated: [] });
+    expect(mocks.activateReadyDrafts).toHaveBeenCalledWith("b1");
     expect(mocks.requireActiveUser).toHaveBeenCalledWith("content", "throw");
     expect(mocks.featureBlocked).toHaveBeenCalledWith("b1", "content");
     expect(mocks.createProducts).toHaveBeenCalledTimes(1);
@@ -124,15 +126,18 @@ describe("saveQuizRound", () => {
     expect(single.createReview).toHaveBeenCalledWith(expect.objectContaining({ quote: "Great" }), { quiet: true });
   });
 
-  it("Photos: links the gallery picks and activates the quiz's drafts that have a photo, in one request", async () => {
-    const r = await saveQuizRound({ round: "photos", links: [{ productId: "p1", assetIds: ["m1", "m2"] }], activate: ["p9"] });
-    expect(r).toEqual({ ok: true });
+  it("Photos: links the gallery picks and makes the ready drafts active, in one request, naming them", async () => {
+    mocks.activateReadyDrafts.mockResolvedValue(["Classic Manicure"]);
+    const r = await saveQuizRound({ round: "photos", links: [{ productId: "p1", assetIds: ["m1", "m2"] }] });
+    expect(r).toEqual({ ok: true, activated: ["Classic Manicure"] });
     expect(mocks.requireActiveUser).toHaveBeenCalledWith("content", "throw");
     expect(mocks.featureBlocked).toHaveBeenCalledWith("b1", "content");
     expect(mocks.linkPhotos).toHaveBeenCalledWith("b1", "product", "p1", ["m1", "m2"]);
-    expect(mocks.activateDraftsWithPhotos).toHaveBeenCalledWith("b1", ["p9"]);
+    expect(mocks.activateReadyDrafts).toHaveBeenCalledWith("b1");
+    // With no picks too: drafts made ready in an earlier visit or elsewhere still go live.
+    expect(await saveQuizRound({ round: "photos", links: [] })).toEqual({ ok: true, activated: ["Classic Manicure"] });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
-    expect(await saveQuizRound({ round: "photos", links: [{ productId: "p1", assetIds: [] }], activate: [] })).toMatchObject({ ok: false });
+    expect(await saveQuizRound({ round: "photos", links: [{ productId: "p1", assetIds: [] }] })).toMatchObject({ ok: false });
   });
 
   it("Your look and Love notes go through their section actions, quietly; the failing review is named", async () => {

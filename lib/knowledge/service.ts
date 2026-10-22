@@ -165,13 +165,21 @@ export async function createProducts(businessId: string, list: ProductData[]): P
 }
 
 /**
- * The Business info quiz made these products as drafts (a product without a photo is not ready for posts); the ones
- * that have a photo now become active. Other products, and drafts the owner made themselves, are not touched.
+ * The Business info quiz saves new products as drafts until they have a photo. After its Photos round, every draft
+ * that is now ready for posts (productReadiness: a summary, a reason to buy, a price or "on request", and a photo,
+ * however it was added and in whichever visit) becomes active. A half-finished draft is not ready, so it stays a
+ * draft. Returns the names made active, for the round's "done" line.
  */
-export async function activateDraftsWithPhotos(businessId: string, ids: string[]): Promise<number> {
-  if (!ids.length) return 0;
-  const { count } = await prisma.product.updateMany({ where: { id: { in: ids }, businessId, status: "DRAFT", photos: { some: {} } }, data: { status: "ACTIVE" } });
-  return count;
+export async function activateReadyDrafts(businessId: string): Promise<string[]> {
+  const drafts = await prisma.product.findMany({
+    where: { businessId, status: "DRAFT", photos: { some: {} } },
+    select: { id: true, name: true, summary: true, usps: true, priceModel: true, priceAmount: true, priceNote: true, _count: { select: { photos: true } } },
+    take: MAX_PRODUCTS_PER_BUSINESS,
+  });
+  const ready = drafts.filter((p) => productReadiness({ ...p, photoCount: p._count.photos }).ready);
+  if (!ready.length) return [];
+  await prisma.product.updateMany({ where: { id: { in: ready.map((p) => p.id) }, businessId, status: "DRAFT" }, data: { status: "ACTIVE" } });
+  return ready.map((p) => p.name);
 }
 
 export async function updateProduct(businessId: string, id: string, data: ProductData): Promise<void> {

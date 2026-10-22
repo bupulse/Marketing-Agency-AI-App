@@ -192,20 +192,17 @@ export function photoTargets(stored: Pick<QuizStored, "photoless" | "productIds"
 }
 
 /**
- * The Photos round's save: the gallery photos picked for each product (uploads and imports are in the album already),
- * and the products the quiz made as drafts that now have a photo, made active (a product needs a photo to be ready).
+ * The Photos round's save: the gallery photos picked for each product (uploads and imports are in the album already).
+ * The server then makes active every draft that is now ready for posts (activateReadyDrafts).
  */
-export function photosSaveFrom(targets: readonly PhotoTarget[], a: QuizAnswers["photos"], given: Given): { links: { productId: string; assetIds: string[] }[]; activate: string[] } {
+export function photosSaveFrom(targets: readonly PhotoTarget[], a: QuizAnswers["photos"], given: Given): { links: { productId: string; assetIds: string[] }[] } {
   const links: { productId: string; assetIds: string[] }[] = [];
-  const activate: string[] = [];
   for (const t of targets) {
     if (!t.productId) continue;
     const picked = given(photoStepId(t.key)) ? (a.picked[t.key] ?? []).map((p) => p.id) : [];
     if (picked.length) links.push({ productId: t.productId, assetIds: [...new Set(picked)] });
-    // Every draft the quiz made: the server makes active the ones that have a photo, wherever it was added.
-    if (t.isNew) activate.push(t.productId);
   }
-  return { links, activate };
+  return { links };
 }
 
 // ---- 🎨 Your look -> saveLook --------------------------------------------------------------------------------------
