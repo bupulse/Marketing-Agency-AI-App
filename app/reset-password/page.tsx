@@ -31,11 +31,11 @@ export default async function ResetPasswordPage() {
           <div className="flex flex-col gap-1.5">
             <h1 className="text-2xl font-semibold tracking-[-0.03em]">This link has expired</h1>
             <p className="text-[15px] text-muted">
-              Reset links work once and expire after a short time. Request a new one to continue.
+              Reset links and codes work once and expire after a while. Ask for a new one to continue.
             </p>
           </div>
           <Button href="/forgot-password" className="w-full">
-            Request a new link
+            Get a new code and link
           </Button>
         </>
       )}

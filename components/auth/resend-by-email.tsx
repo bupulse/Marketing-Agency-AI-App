@@ -10,7 +10,7 @@ export function ResendByEmail() {
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-danger-bg px-4 py-4 text-sm">
       <p role="alert" className="font-medium text-danger">
-        This link has expired or was already used. If you have already confirmed, sign in below. Otherwise we can send a new link.
+        This link has expired or was already used. If you have already confirmed, sign in below. Otherwise we can send a new code and link.
       </p>
       <Field label="Email">
         <Input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourbusiness.com" />

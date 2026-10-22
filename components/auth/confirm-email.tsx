@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { MailCheck } from "lucide-react";
+import { confirmEmailCode } from "@/app/signup/actions";
+import { EmailCodeForm } from "./email-code-form";
 import { ResendButton } from "./resend-button";
 
-/** Shown after sign-up: tells people to confirm their address. */
+/** Shown after sign-up: confirm the address by typing the emailed code, or by opening the link in the same email. */
 export function ConfirmEmail({ email, onChangeEmail, next }: { email: string; onChangeEmail?: () => void; next?: string }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => headingRef.current?.focus(), []);
@@ -19,9 +21,10 @@ export function ConfirmEmail({ email, onChangeEmail, next }: { email: string; on
         Confirm your email
       </h1>
       <p className="text-[15px] text-muted">
-        We sent a confirmation link to <strong className="break-all text-text">{email}</strong>. It comes from{" "}
-        <strong className="text-text">register@bupulse.com</strong>. Open it to activate your account, choose a plan and book your free demo.
+        We sent a code and a link to <strong className="break-all text-text">{email}</strong> from{" "}
+        <strong className="text-text">register@bupulse.com</strong>. Type the code here, or open the link. Then choose a plan and book your free demo.
       </p>
+      <EmailCodeForm action={confirmEmailCode} email={email} next={next} />
       <p className="text-[13px] text-muted">Can&apos;t find it? Check your spam or promotions folder.</p>
       <ResendButton email={email} startCooldown next={next} />
       <div className="flex flex-col items-center gap-1 text-sm">

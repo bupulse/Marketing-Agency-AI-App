@@ -19,6 +19,10 @@ export const PUBLIC_LIMITS = {
   adminCode: { ip: { limit: 20, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR }, emailPerIp: true },
   adminVerify: { ip: { limit: 30, windowSeconds: 15 * 60 }, email: { limit: 10, windowSeconds: 15 * 60 }, emailPerIp: true },
   forgotPassword: { ip: { limit: 10, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
+  // The emailed codes typed on "Confirm your email" and after "Forgot password": counted per address across every IP,
+  // so a 6-digit code cannot be guessed from many places. When this limit is hit the link in the same email still works.
+  confirmCode: { ip: { limit: 30, windowSeconds: 15 * 60 }, email: { limit: 10, windowSeconds: 15 * 60 } },
+  resetCode: { ip: { limit: 30, windowSeconds: 15 * 60 }, email: { limit: 10, windowSeconds: 15 * 60 } },
   contact: { ip: { limit: 10, windowSeconds: HOUR } },
   demoBook: { ip: { limit: 10, windowSeconds: HOUR } },
   // The partner application on /partners (stored for the admin; nothing is emailed).

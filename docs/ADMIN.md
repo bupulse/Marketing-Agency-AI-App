@@ -58,10 +58,9 @@ Why the AI estimate can differ from Google's bill, and what is done about it: `d
 ## One-time setup (owner, in this order)
 
 1. **Supabase, Authentication, Multi-Factor:** TOTP enroll and verify must be on. (They are on for the current project.)
-2. **Supabase, Authentication, Email Templates, "Magic Link":** add the code to the email, for example
-   `<p>Your BuPulse admin code: <strong>{{ .Token }}</strong></p>`. Setup emails this code to the admin; without it the email only holds a link and setup cannot continue. The code is 8 digits (Authentication, Providers, Email, "Email OTP Length").
+2. **Supabase, Authentication, Email Templates, "Magic Link":** the email must contain the code `{{ .Token }}`; without it the email only holds a link and sign-in cannot continue. Install `supabase/templates/magic-link.html` (subject "Your BuPulse admin code": the code, no link) with `scripts/supabase-auth-emails.mjs` (`docs/EMAIL_SETUP.md`). The code is 8 digits (Authentication, Providers, Email, "Email OTP Length").
 3. **Supabase, Authentication, Hooks, "MFA Verification Attempt":** turn it on, choose type "Postgres function", pick `public.hook_mfa_verification_attempt`, and save. The migration `20261009070000_admin_mfa_hook` creates the function. After 5 wrong codes in 10 minutes it refuses every further code for that user (even a correct one) until the oldest failure is 10 minutes old.
-4. Set `ADMIN_EMAILS` in `.env` and in the Worker environment, create `admin@bupulse.com` normally (email and password, confirm the email), sign in at `/login`, then open `/admin`.
+4. Set `ADMIN_EMAILS` in `.env` and in the Worker environment, then open `/admin/login` with the owner address: its sign-in is created there if it has none (no password; see "The owner can always get a code" below).
 5. On `/admin/setup-2fa`: press "Email me a code", enter it, scan the QR in Microsoft Authenticator (or Google Authenticator or 1Password) and enter the 6-digit code.
 
 ## Updates
@@ -69,6 +68,8 @@ Why the AI estimate can differ from Google's bill, and what is done about it: `d
 Settings, Updates shows the running version, the newest GitHub release and the last deploys; **Install update** and **Roll back** start the deploy workflow on GitHub Actions after a second confirmation and are audited. Setup (`GITHUB_REPO`, `GITHUB_TOKEN`, the `production` environment) and the migrations caveat: `docs/UPDATES.md`.
 
 ## Why the extra layers
+
+- **The owner can always get a code.** When an `ADMIN_EMAILS` address has no Supabase sign-in yet, `/admin/login` creates one (confirmed, no password, `user_metadata.admin_owner`), the way an invited staff member's is made, then sends the code. Only addresses from the environment get this, never a typed staff or stranger address; an existing sign-in is never changed (an unconfirmed one may be someone else's sign-up). It gives nobody a way in: the code goes to the owner's own mailbox and the authenticator code is still required. A send that fails for any other reason is logged (Admin → Errors, source `admin.login.code`) and the page gives the same answer as for any address, so it does not reveal who has access.
 
 - `/admin/verify` limits attempts to 8 per 10 minutes per admin, but anyone holding the password can also call Supabase Auth directly. The MFA hook in step 3 is what stops that. Supabase also applies its own per-IP auth rate limits (Authentication, Rate Limits); leave them on.
 - Enrolling an authenticator needs an emailed-code sign-in in the last 10 minutes, so the password alone cannot add one. Once a verified authenticator exists, enrolling a second one is refused.

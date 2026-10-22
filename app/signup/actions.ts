@@ -1,14 +1,16 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { findAccountByEmail } from "@/lib/account";
+import { ensureAccount, findAccountByEmail } from "@/lib/account";
 import { refFromCookie } from "@/lib/sales/referral";
 import { logError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import { emailSchema, fieldErrors, signUpSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { headers } from "next/headers";
 import { originFor } from "@/lib/auth/site-url";
-import { cleanReturn } from "@/lib/auth/return-path";
+import { cleanReturn, hasReturn } from "@/lib/auth/return-path";
+import { cleanEmailCode, confirmedNext, isCodeRefused } from "@/lib/auth/confirm-next";
+import { rememberReturn } from "@/lib/auth/return-server";
 import { resolveIndustryChoice } from "@/lib/industries/server";
 import { padTo, publicLimited, requestIp } from "@/lib/request-limits";
 import { turnstileEnabled, verifyTurnstile } from "@/lib/widget/turnstile";
@@ -125,6 +127,8 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
         visit_session: String(formData.get("visitSession") ?? "").slice(0, 40),
         // A sales agent's referral code from the cookie, so a confirmation opened on another device still counts.
         ref_code: (await refFromCookie()) ?? "",
+        // Where to go once confirmed: the branded email link carries no `next` (lib/auth/confirm-next.ts).
+        return_to: hasReturn(next) ? next : "",
       },
     },
   });
@@ -162,4 +166,42 @@ export async function resendConfirmation(email: string, next?: string): Promise<
     return { error: "We could not send the email. Please try again." };
   }
   return {};
+}
+
+export type CodeState = { error?: string };
+
+/** Every wrong-code answer takes at least this long, whatever went wrong. */
+const CODE_MIN_MS = 800;
+
+const WRONG_CODE = "That code did not work. Use the code from the latest email, or open the link in it. Already confirmed? Sign in.";
+
+/**
+ * "Confirm your email" with the code from the email instead of its link, for an email read on a phone while the site
+ * is open on a computer. Business and creator sign-ups both use it; the same `next` as the link (confirmedNext).
+ * Limited per address across every IP, and a wrong code always takes the same time.
+ */
+export async function confirmEmailCode(_prev: CodeState, formData: FormData): Promise<CodeState> {
+  const started = Date.now();
+  const email = emailSchema.safeParse(formData.get("email") ?? "");
+  const token = cleanEmailCode(formData.get("code"));
+  if (!email.success) return { error: "Enter a valid email address." };
+  if (!token) return { error: "Type the code from the email (6 to 10 digits)." };
+  const limited = await publicLimited("confirmCode", email.data);
+  if (limited) return { error: limited };
+
+  const supabase = await createClient();
+  // "email" is Supabase's type for a sign-up code today; older projects answer only to "signup".
+  let result = await supabase.auth.verifyOtp({ email: email.data, token, type: "email" });
+  if (result.error && isCodeRefused(result.error)) result = await supabase.auth.verifyOtp({ email: email.data, token, type: "signup" });
+  const { data, error } = result;
+  if (error || !data.user) {
+    if (error && !isCodeRefused(error)) await logError(error, { source: "signup.code", code: error.code, status: error.status });
+    await padTo(started, CODE_MIN_MS);
+    if (error?.status === 429) return { error: "Too many attempts. Please wait a few minutes and try again." };
+    return { error: WRONG_CODE };
+  }
+  await ensureAccount(data.user);
+  const next = confirmedNext(data.user, String(formData.get("next") ?? "") || null);
+  await rememberReturn(next);
+  redirect(next);
 }

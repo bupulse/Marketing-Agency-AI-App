@@ -25,7 +25,7 @@ export function AdminLoginForm() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[15px] text-muted">
-        If <strong className="text-text">{email}</strong> is an admin address, we emailed it a sign-in code. Enter it below.
+        If <strong className="text-text">{email}</strong> is an admin address, we emailed it a sign-in code. Enter it below. Nothing after two minutes? Check spam, then send a new code.
       </p>
       <form action={verifyAction} className="flex flex-col gap-4">
         <input type="hidden" name="email" value={email} />

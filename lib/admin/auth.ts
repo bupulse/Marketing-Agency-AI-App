@@ -4,6 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, type RateLimitRule } from "@/lib/rate-limit";
 import { prisma } from "@/lib/db";
+import { logError } from "@/lib/errors";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { ALL_PERMISSIONS, OWNER_ROLE, builtInRole, isSalesRole, permissionsOf, type Permission } from "@/lib/staff/permissions";
 
 /** Six-digit code attempts: 8 per 10 minutes per admin. */
@@ -69,6 +71,31 @@ export async function canReceiveAdminCode(email: string): Promise<boolean> {
     const staff = await prisma.staffMember.findUnique({ where: { email: e }, select: { status: true } });
     return !!staff && staff.status !== "disabled";
   } catch {
+    return false;
+  }
+}
+
+/**
+ * The owner's sign-in (an ADMIN_EMAILS address) when it does not exist yet: created confirmed and without a password,
+ * the way a staff member's is (lib/staff/service.ts), so the owner can always get an admin code. Only addresses from the
+ * environment, never anyone else; the code still goes to the owner's mailbox and the authenticator is still required.
+ * An existing sign-in is never changed (an unconfirmed one may be a stranger's sign-up with the owner's address).
+ * True when one was created.
+ */
+export async function createOwnerSignIn(email: string): Promise<boolean> {
+  const e = email.trim().toLowerCase();
+  if (!isAdminEmail(e)) return false;
+  try {
+    const [hit] = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM auth.users WHERE lower(email) = ${e} LIMIT 1`;
+    if (hit) return false;
+    const created = await createAdminClient().auth.admin.createUser({ email: e, email_confirm: true, user_metadata: { admin_owner: true } });
+    if (created.error || !created.data.user) {
+      await logError(created.error ?? new Error("createUser returned no user"), { source: "admin.login.owner", code: created.error?.code, status: created.error?.status });
+      return false;
+    }
+    return true;
+  } catch (error) {
+    await logError(error, { source: "admin.login.owner" });
     return false;
   }
 }

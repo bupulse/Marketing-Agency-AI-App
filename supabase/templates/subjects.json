@@ -1,0 +1,6 @@
+{
+  "confirmation": { "file": "confirm-signup.html", "subject": "Confirm your email for BuPulse" },
+  "recovery": { "file": "reset-password.html", "subject": "Reset your BuPulse password" },
+  "email_change": { "file": "email-change.html", "subject": "Confirm your new email for BuPulse" },
+  "magic_link": { "file": "magic-link.html", "subject": "Your BuPulse admin code" }
+}

@@ -6,9 +6,11 @@ import { useActionState, useState } from "react";
 import { Button, Field, Input } from "@/components/ui";
 import { PasswordChecks } from "@/components/auth/password-checks";
 import { PasswordInput } from "@/components/auth/password-input";
+import { EmailCodeForm } from "@/components/auth/email-code-form";
 import { ResendButton } from "@/components/auth/resend-button";
 import { TurnstileField } from "@/components/auth/turnstile-field";
 import { creatorSignUpAction, type CreatorSignUpState } from "@/app/creators/signup/actions";
+import { confirmEmailCode } from "@/app/signup/actions";
 import { CREATOR_START } from "@/lib/creators/profile-form";
 
 const initial: CreatorSignUpState = { status: "idle" };
@@ -23,14 +25,15 @@ export function CreatorSignUpForm({ turnstileSiteKey }: { turnstileSiteKey: stri
 
   if (state.status === "sent") {
     return (
-      <div role="status" className="flex flex-col items-center gap-4 text-center">
+      <div className="flex flex-col items-center gap-4 text-center">
         <span className="inline-flex size-14 items-center justify-center rounded-full bg-success-bg">
           <MailCheck aria-hidden className="size-7 text-success" />
         </span>
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">Confirm your email</h1>
-        <p className="text-[15px] text-muted">
-          We sent a link to <strong className="break-all text-text">{state.email}</strong> from <strong className="text-text">register@bupulse.com</strong>. Open it, then fill in your profile and apply to campaigns in one tap.
+        <p role="status" className="text-[15px] text-muted">
+          We sent a code and a link to <strong className="break-all text-text">{state.email}</strong> from <strong className="text-text">register@bupulse.com</strong>. Type the code here, or open the link. Then fill in your profile and apply to campaigns in one tap.
         </p>
+        {state.email && <EmailCodeForm action={confirmEmailCode} email={state.email} next={CREATOR_START} />}
         <p className="text-[13px] text-muted">Can&apos;t find it? Check your spam or promotions folder.</p>
         {state.email && <ResendButton email={state.email} startCooldown next={CREATOR_START} />}
       </div>

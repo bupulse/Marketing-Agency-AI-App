@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { signInWithOtp, verifyOtp, padTo, publicLimited } = vi.hoisted(() => ({ signInWithOtp: vi.fn(), verifyOtp: vi.fn(), padTo: vi.fn(async (...args: [number, number]) => void args), publicLimited: vi.fn(async () => null) }));
+const { queryRaw, createUser, logError } = vi.hoisted(() => ({ queryRaw: vi.fn(async (): Promise<{ id: string }[]> => []), createUser: vi.fn(), logError: vi.fn(async () => {}) }));
 
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
@@ -9,7 +10,9 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ auth: { signInWithOtp, verifyOtp } }) }));
 vi.mock("@/lib/request-limits", () => ({ publicLimited, padTo }));
-vi.mock("@/lib/db", () => ({ prisma: { staffMember: { findUnique: vi.fn(async () => null) } } }));
+vi.mock("@/lib/db", () => ({ prisma: { staffMember: { findUnique: vi.fn(async () => null) }, $queryRaw: queryRaw } }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ auth: { admin: { createUser } } }) }));
+vi.mock("@/lib/errors", () => ({ logError }));
 
 import { sendAdminCode, verifyAdminCode } from "@/app/admin/(auth)/login/actions";
 
@@ -23,6 +26,45 @@ beforeEach(() => {
   vi.stubEnv("ADMIN_EMAILS", "admin@bupulse.com");
   signInWithOtp.mockReset().mockResolvedValue({ error: null });
   verifyOtp.mockReset();
+  queryRaw.mockReset().mockResolvedValue([]);
+  createUser.mockReset().mockResolvedValue({ data: { user: { id: "owner" } }, error: null });
+  logError.mockClear();
+});
+
+const noSignIn = { code: "otp_disabled", status: 422, message: "Signups not allowed for otp" };
+
+describe("admin code that cannot be sent", () => {
+  it("creates the owner's missing sign-in (confirmed, no password) and sends the code", async () => {
+    signInWithOtp.mockResolvedValueOnce({ error: noSignIn }).mockResolvedValueOnce({ error: null });
+    expect(await sendAdminCode({}, form({ email: "admin@bupulse.com" }))).toEqual({ sentTo: "admin@bupulse.com" });
+    expect(createUser).toHaveBeenCalledWith({ email: "admin@bupulse.com", email_confirm: true, user_metadata: { admin_owner: true } });
+    expect(createUser.mock.calls[0][0]).not.toHaveProperty("password");
+    expect(signInWithOtp).toHaveBeenCalledTimes(2);
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it("never touches an existing sign-in; logs the failure and answers like everyone else", async () => {
+    queryRaw.mockResolvedValue([{ id: "someone" }]);
+    signInWithOtp.mockResolvedValue({ error: noSignIn });
+    expect(await sendAdminCode({}, form({ email: "admin@bupulse.com" }))).toEqual({ sentTo: "admin@bupulse.com" });
+    expect(createUser).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(noSignIn, expect.objectContaining({ source: "admin.login.code", code: "otp_disabled", status: 422 }));
+  });
+
+  it("creates nothing for a staff address (their sign-in is made when they are invited)", async () => {
+    const { prisma } = await import("@/lib/db");
+    vi.mocked(prisma.staffMember.findUnique).mockResolvedValueOnce({ status: "active" } as never);
+    signInWithOtp.mockResolvedValue({ error: noSignIn });
+    expect(await sendAdminCode({}, form({ email: "staff@bupulse.com" }))).toEqual({ sentTo: "staff@bupulse.com" });
+    expect(createUser).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledTimes(1);
+  });
+
+  it("still says to wait when Supabase limits the sends", async () => {
+    signInWithOtp.mockResolvedValue({ error: { status: 429, code: "over_email_send_rate_limit" } });
+    expect((await sendAdminCode({}, form({ email: "admin@bupulse.com" }))).error).toMatch(/Wait a minute/);
+    expect(createUser).not.toHaveBeenCalled();
+  });
 });
 
 describe("admin sign-in by emailed code", () => {

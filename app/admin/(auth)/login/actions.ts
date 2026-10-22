@@ -1,8 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { canReceiveAdminCode } from "@/lib/admin/auth";
+import { canReceiveAdminCode, createOwnerSignIn } from "@/lib/admin/auth";
 import { emailSchema } from "@/lib/auth/schemas";
+import { logError } from "@/lib/errors";
 import { padTo, publicLimited } from "@/lib/request-limits";
 import { createClient } from "@/lib/supabase/server";
 
@@ -11,7 +12,8 @@ export type AdminLoginState = { error?: string; sentTo?: string };
 /**
  * Admin sign-in, step 1: the email. An emailed code is sent only to the owner (ADMIN_EMAILS) or an enabled staff member
  * (Admin -> Organisation), but every address gets the same answer, so the page does not reveal who has access. No
- * password, no Google.
+ * password, no Google. A failed send is logged (Admin -> Errors) and still gets that same answer; the owner's address
+ * with no sign-in yet gets one first (createOwnerSignIn), so the owner can always get in.
  */
 /** Every answer of the code steps takes at least this long, so the timing does not tell who has access. */
 const ANSWER_MS = 1200;
@@ -31,11 +33,12 @@ async function sendAdminCodeNow(formData: FormData): Promise<AdminLoginState> {
   if (limited) return { error: limited };
   if (await canReceiveAdminCode(email)) {
     const supabase = await createClient();
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
-    if (error?.status === 429 || error?.code === "over_email_send_rate_limit") {
-      return { error: "A code was sent very recently. Wait a minute, then try again." };
-    }
-    if (error) return { error: "Could not send the code. Please try again in a minute." };
+    const send = () => supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+    const tooSoon = (e: { status?: number; code?: string } | null) => e?.status === 429 || e?.code === "over_email_send_rate_limit";
+    let { error } = await send();
+    if (error && !tooSoon(error) && (await createOwnerSignIn(email))) ({ error } = await send());
+    if (tooSoon(error)) return { error: "A code was sent very recently. Wait a minute, then try again." };
+    if (error) await logError(error, { source: "admin.login.code", code: error.code, status: error.status });
   }
   return { sentTo: email };
 }

@@ -173,7 +173,7 @@ describe("sign-up, resend, login and password reset", () => {
   it("password reset is limited, with the same answer whether or not the address has an account", async () => {
     const f = new FormData();
     f.set("email", "aline@example.com");
-    expect(await requestPasswordReset({}, f)).toEqual({ sent: true });
+    expect(await requestPasswordReset({}, f)).toEqual({ sent: true, email: "aline@example.com" });
     limitNext();
     const limited = await requestPasswordReset({}, f);
     h.existing = { method: "PASSWORD" };
