@@ -29,11 +29,11 @@ describe("menu groups", () => {
   it("has the groups and names the owner chose", () => {
     expect(labels([...NAV_GROUPS])).toEqual([
       [null, ["Home"]],
+      ["My business", ["Business info", "Brand"]],
       ["Create", ["Posts", "Videos", "Designs", "Photos", "Autopilot"]],
       ["Publish", ["Calendar", "Channels", "Creator campaigns", "Link in bio"]],
       ["Customers", ["Inbox", "Leads", "Contacts", "Automations", "Website chat"]],
       ["Results", ["Analytics"]],
-      ["My business", ["Business info", "Brand"]],
       ["Account & settings", ["Billing", "Team", "Usage", "Settings", "Connectors"]],
     ]);
   });
@@ -83,9 +83,9 @@ describe("menu groups", () => {
     // On no plan at all: the pages every plan has.
     expect(labels(navFor("MEMBER", []))).toEqual([
       [null, ["Home"]],
+      ["My business", ["Business info"]],
       ["Create", ["Videos"]],
       ["Customers", ["Inbox", "Contacts", "Automations"]],
-      ["My business", ["Business info"]],
       ["Account & settings", ["Usage", "Settings"]],
     ]);
   });

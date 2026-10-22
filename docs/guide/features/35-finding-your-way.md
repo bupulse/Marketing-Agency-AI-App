@@ -14,11 +14,11 @@ On a computer the menu is on the left. On a phone it opens with **Menu** in the 
 | Group | Pages |
 |---|---|
 | (top) | **+ Create**, then **Home** |
+| My business | Business info, Brand |
 | Create | Posts, Videos, Designs, Photos, Autopilot (and **Video Studio** when it is switched on) |
 | Publish | Calendar, Channels, Link in bio |
 | Customers | Inbox (a red number shows conversations with unread messages), Leads, Contacts, Automations, Website chat |
 | Results | Analytics |
-| My business | Business info, Brand |
 | Account & settings | Billing, Team, Usage, Settings, Connectors |
 
 - **Account & settings** is folded. Tap its heading to open it; BuPulse remembers your choice on this device. It opens

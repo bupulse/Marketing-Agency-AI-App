@@ -67,6 +67,14 @@ export type NavGroup = { id: NavGroupId; title: string | null; items: NavItem[] 
 export const NAV_GROUPS: readonly NavGroup[] = [
   { id: "home", title: null, items: [item("/dashboard", "Home", House, "start dashboard overview today")] },
   {
+    id: "business",
+    title: "My business",
+    items: [
+      item("/dashboard/knowledge", "Business info", BookOpen, "knowledge base products services company profile faqs hours location address prices campaigns"),
+      item("/dashboard/brand", "Brand", Palette, "logo colours colors fonts style", "settings"),
+    ],
+  },
+  {
     id: "create",
     title: "Create",
     items: [
@@ -99,14 +107,6 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     ],
   },
   { id: "results", title: "Results", items: [item("/dashboard/analytics", "Analytics", ChartLine, "results stats statistics reports performance insights reach views likes followers")] },
-  {
-    id: "business",
-    title: "My business",
-    items: [
-      item("/dashboard/knowledge", "Business info", BookOpen, "knowledge base products services company profile faqs hours location address prices campaigns"),
-      item("/dashboard/brand", "Brand", Palette, "logo colours colors fonts style", "settings"),
-    ],
-  },
   {
     id: "account",
     title: "Account & settings",

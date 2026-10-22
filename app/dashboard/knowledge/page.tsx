@@ -2,33 +2,23 @@ import Link from "next/link";
 import { ArrowRight, Lock } from "lucide-react";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
-import { SECTION_ICONS } from "@/components/knowledge/section-icons";
-import { Badge, Button, GlassCard } from "@/components/ui";
 import { Progress } from "@/components/knowledge/progress";
+import { QuizCard } from "@/components/knowledge/quiz-card";
+import { SECTION_ICONS } from "@/components/knowledge/section-icons";
+import { Badge, GlassCard } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { localParts, safeZone } from "@/lib/autopilot/timezone";
-import { knowledgeProgress } from "@/lib/knowledge/overview";
-import { QUIZ_ROUNDS } from "@/lib/knowledge/quiz-map";
-import { KNOWLEDGE_SECTIONS, overallPercent, sectionByKey } from "@/lib/knowledge/sections";
+import { quizEntry } from "@/lib/knowledge/quiz-entry";
+import { KNOWLEDGE_SECTIONS } from "@/lib/knowledge/sections";
 import { can } from "@/lib/team/roles";
 
 export const metadata = { title: "Business info" };
 
 export default async function KnowledgePage() {
   const { business, role, entitlements } = await getAppContext();
-  const p = localParts(new Date(), safeZone(business.timezone));
-  const today = `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
-  const progress = await knowledgeProgress(business, today);
-  const overall = overallPercent(progress);
+  const entry = await quizEntry(business, role, entitlements.usable);
+  const { progress } = entry;
   // Members get no purchase prompts (lib/team/roles.ts upgrade).
   const canUpgrade = can(role, "upgrade");
-  // The quiz's rounds this person can play; "Continue" opens the first one whose section is not complete.
-  const quizRounds = QUIZ_ROUNDS.filter((r) => {
-    const s = sectionByKey(r.section);
-    return (!s.permission || can(role, s.permission)) && (!s.feature || entitlements.usable.has(s.feature));
-  });
-  const nextRound = overall > 0 && overall < 100 ? quizRounds.find((r) => (progress[r.section]?.percent ?? 0) < 100) : undefined;
-  const quizHref = `/dashboard/knowledge/quiz${nextRound ? `?round=${nextRound.id}` : ""}`;
 
   return (
     <>
@@ -36,25 +26,12 @@ export default async function KnowledgePage() {
         title="Business info"
         description="Everything BuPulse knows about your business. The more you add, the more your posts, designs and chat replies sound like you and get the facts right."
       />
-      <GlassCard strong className="relative flex flex-col gap-4 overflow-hidden p-5 sm:flex-row sm:items-center sm:gap-6 sm:p-7">
-        <span aria-hidden className="inline-flex size-14 shrink-0 items-center justify-center rounded-2xl bg-brand-gradient text-3xl shadow-glow">
-          🎯
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <h2 className="text-[20px] font-semibold tracking-[-0.02em]">Fill it in with a 5-minute quiz</h2>
-          <p className="text-[14px] text-muted">One question at a time, mostly taps. BuPulse guesses first, you confirm. Everything lands in the sections below.</p>
-          <div className="flex items-center gap-3">
-            <Progress percent={overall} label="Business info complete" className="flex-1" />
-            <span className="shrink-0 text-[14px] font-semibold tabular-nums">{overall}%</span>
-          </div>
-          <span className="text-[13px] text-muted">Your business info is {overall}% complete. Required fields are marked with *</span>
-        </div>
-        {quizRounds.length > 0 && (
-          <Button href={quizHref} size="lg" className="shrink-0" trailing={<ArrowRight aria-hidden className="size-4" />}>
-            {overall === 0 ? "Start the quiz" : overall >= 100 ? "Play again" : "Continue"}
-          </Button>
-        )}
-      </GlassCard>
+      <QuizCard
+        entry={entry}
+        title="Fill it in with a 5-minute quiz"
+        text="One question at a time, mostly taps. BuPulse guesses first, you confirm. Everything lands in the sections below."
+        note={`Your business info is ${entry.overall}% complete. Required fields are marked with *`}
+      />
 
       <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {KNOWLEDGE_SECTIONS.map((s) => {

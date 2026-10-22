@@ -2,11 +2,13 @@ import { ArrowRight, CircleCheck, Circle, Image as ImageIcon, Package, Palette, 
 import Link from "next/link";
 import { getAppContext } from "@/components/app/context";
 import { EssentialsBanner } from "@/components/business-info/essentials-banner";
+import { QuizCard } from "@/components/knowledge/quiz-card";
 import { Badge, GlassCard, Meter } from "@/components/ui";
 import { prisma } from "@/lib/db";
 import { cn } from "@/lib/cn";
 import { isHexColor } from "@/lib/color-contrast";
 import { formatPrice, KIND_LABEL } from "@/lib/knowledge/products";
+import { quizEntry } from "@/lib/knowledge/quiz-entry";
 import { homeChecklist } from "@/lib/home-checklist";
 import { can } from "@/lib/team/roles";
 import { widgetInstalled } from "@/lib/widget/seen";
@@ -41,6 +43,10 @@ export default async function DashboardPage() {
         chatInPlan ? prisma.cloudflareInstall.count({ where: { businessId } }) : 0,
       ])
     : [0, 0, 0, 0, 0, [], [], null, 0];
+
+  // Business info not finished: the quiz is the shortcut to finish it (docs/QUIZ_MODE.md).
+  const quiz = business ? await quizEntry(business, role, entitlements.usable) : null;
+  const showQuiz = !!quiz && quiz.playable && quiz.overall < 100;
 
   const { used, limits } = usage;
   // A paid plan that ended (lib/entitlements.ts "inactive", refused by lib/usage.ts too): its old limits are not usable.
@@ -87,6 +93,15 @@ export default async function DashboardPage() {
           style={{ background: "linear-gradient(90deg, var(--brand-1), var(--brand-2))" }}
         />
       </header>
+
+      {showQuiz && quiz && (
+        <QuizCard
+          entry={quiz}
+          title={quiz.overall === 0 ? "Tell BuPulse about your business: a 5-minute quiz" : "Finish your Business info: a 5-minute quiz"}
+          text="Your posts, designs and chat replies get better the more BuPulse knows. One question at a time, mostly taps: BuPulse guesses, you confirm."
+          note={`BuPulse knows your business ${quiz.overall}%.`}
+        />
+      )}
 
       {business?.onboardedAt && canEditBrand && <EssentialsBanner knowledge={business.knowledge} />}
 
