@@ -15,6 +15,7 @@ export const SERVICE_IDS = [
   "twitter",
   "google-drive",
   "dropbox",
+  "link-import",
   "shopify",
   "woocommerce",
   "cloudflare",
@@ -224,6 +225,15 @@ export const SERVICES: ServiceInfo[] = [
     features: ["Import from Dropbox"],
     killable: true,
     whenOff: "Dropbox import shows as temporarily unavailable.",
+  },
+  {
+    id: "link-import",
+    name: "Import from a link",
+    purpose: "Lets clients paste a link (Google Drive, Dropbox or any website) and copies the photo or video into their gallery. BuPulse's server downloads the file; no keys needed.",
+    env: [],
+    features: ["Import from a link"],
+    killable: true,
+    whenOff: "\"From a link\" shows as coming soon and link imports are refused.",
   },
   {
     id: "shopify",

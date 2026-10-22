@@ -605,9 +605,8 @@ async function readRange(path: string, start: number, length: number): Promise<U
 
 /**
  * Checks an uploaded gallery video: its own first bytes (MP4, MOV or WebM) and its real length read from the file
- * (60 s at most): an MP4/MOV's movie and track headers (the longest counts; headers that disagree by more than 10% are
- * refused), a WebM's Info duration within its first 8 MB. Its poster is kept when it is a JPEG of at most 400 KB and
- * 1280 px, else dropped (the gallery then shows a plain video tile). Throws a MediaError to reject.
+ * (videoLengthMs). Its poster is kept when it is a JPEG of at most 400 KB and 1280 px, else dropped (the gallery then
+ * shows a plain video tile). Throws a MediaError to reject.
  */
 async function checkVideo(path: string, size: number, contentType: string | undefined): Promise<{ mimeType: "video/mp4" | "video/webm"; durationMs: number; posterPath: string | null; posterBytes: number }> {
   if (contentType && !isVideoType(contentType)) throw new MediaError("Use an MP4, MOV or WebM video.");
@@ -616,27 +615,39 @@ async function checkVideo(path: string, size: number, contentType: string | unde
   if (!sniffed) throw new MediaError("That file is not an MP4, MOV or WebM video.");
   const mimeType = storedVideoType(sniffed);
   if (!path.endsWith(mimeType === "video/webm" ? ".webm" : ".mp4")) throw new MediaError("That video could not be used.");
-  const durationMs = await videoLength(path, size, mimeType);
-  if (durationMs === null || !(durationMs > 0)) throw new MediaError("We could not read the video's length. Try saving it again as an MP4.");
-  if (durationMs > VIDEO_MAX_MS + 500) throw new MediaError("Videos can be at most 60 seconds long. Trim it on your phone and upload it again.");
-  const poster = posterPathFor(path);
+  const durationMs = await videoLengthMs((start, length) => readRange(path, start, length), size, mimeType);
+  const poster = await keptPoster(posterPathFor(path));
+  return { mimeType, durationMs, posterPath: poster.bytes > 0 ? poster.path : null, posterBytes: poster.bytes };
+}
+
+/** A poster next to a video, kept when it is a JPEG of at most 400 KB and 1280 px; otherwise deleted. `bytes` 0: none kept. */
+async function keptPoster(poster: string): Promise<{ path: string; bytes: number }> {
   const info = await (await storage(poster)).info(poster).catch(() => null);
   const posterSize = info?.data?.size ?? 0;
   const posterBytes = posterSize > 0 && posterSize <= POSTER_MAX_BYTES ? await readRange(poster, 0, posterSize) : null;
   const posterDims = posterBytes && sniffMediaType(posterBytes) === "image/jpeg" ? imageSize(posterBytes) : null;
-  if (posterDims && posterDims.width <= POSTER_SERVER_MAX_SIDE && posterDims.height <= POSTER_SERVER_MAX_SIDE) return { mimeType, durationMs: Math.round(durationMs), posterPath: poster, posterBytes: posterSize };
+  if (posterDims && posterDims.width <= POSTER_SERVER_MAX_SIDE && posterDims.height <= POSTER_SERVER_MAX_SIDE) return { path: poster, bytes: posterSize };
   if (posterSize > 0) await dropObject(poster);
-  return { mimeType, durationMs: Math.round(durationMs), posterPath: null, posterBytes: 0 };
+  return { path: poster, bytes: 0 };
 }
 
-/** A stored video's length in milliseconds, from the file; null when it cannot be read or does not add up. */
-async function videoLength(path: string, size: number, mimeType: "video/mp4" | "video/webm"): Promise<number | null> {
-  if (mimeType === "video/mp4") return trustedLengthMs(await probeMp4Durations((start, length) => readRange(path, start, length), size));
-  // A WebM is read at most 8 MB in: its Info duration is at the start. A file past that without one (as MediaRecorder
-  // writes) cannot be measured cheaply and is refused.
-  const bytes = await readRange(path, 0, Math.min(size, WEBM_READ_MAX_BYTES));
-  if (!bytes) return null;
-  return size <= WEBM_READ_MAX_BYTES ? webmDurationMs(bytes) : webmInfoDurationMs(bytes);
+type ReadRange = (start: number, length: number) => Promise<Uint8Array | null>;
+
+/**
+ * A video's length in whole milliseconds, read from the file (60 s at most): an MP4/MOV's movie and track headers (the
+ * longest counts; headers that disagree by more than 10% are refused), a WebM's Info duration within its first 8 MB (a
+ * longer file without one, as MediaRecorder writes, cannot be measured cheaply). Throws a MediaError to refuse it.
+ */
+async function videoLengthMs(read: ReadRange, size: number, mimeType: "video/mp4" | "video/webm"): Promise<number> {
+  let durationMs: number | null;
+  if (mimeType === "video/mp4") durationMs = trustedLengthMs(await probeMp4Durations(read, size));
+  else {
+    const bytes = await read(0, Math.min(size, WEBM_READ_MAX_BYTES));
+    durationMs = !bytes ? null : size <= WEBM_READ_MAX_BYTES ? webmDurationMs(bytes) : webmInfoDurationMs(bytes);
+  }
+  if (durationMs === null || !(durationMs > 0)) throw new MediaError("We could not read the video's length. Try saving it again as an MP4.");
+  if (durationMs > VIDEO_MAX_MS + 500) throw new MediaError("Videos can be at most 60 seconds long. Trim it on your phone and upload it again.");
+  return Math.round(durationMs);
 }
 
 /** Removes an upload that never became a photo or video (a failed finalize). Only the caller's own, unrecorded files. */
@@ -750,7 +761,7 @@ export async function deleteAssets(businessId: string, ids: string[]): Promise<n
 // Imports
 
 /**
- * Puts a photo downloaded by the server (Google Drive, Dropbox, Canva) into the gallery, with the same
+ * Puts a photo downloaded by the server (Google Drive, Dropbox, Canva, a pasted link) into the gallery, with the same
  * checks as an upload: first bytes, 10 MB, JPEG/PNG/WebP, folder and quota. Not downscaled; larger files
  * are refused with a message that says so.
  */
@@ -795,6 +806,80 @@ export async function importAsset(
     await dropObject(path);
     throw failure;
   }
+}
+
+/** Where the browser uploads an imported video's poster (its first frame), with a signed upload token for that path only. */
+export type PosterTarget = { path: string; token: string };
+
+/**
+ * Puts a video downloaded by the server (a pasted link) into the gallery, with the same checks as an upload: first
+ * bytes (MP4, MOV or WebM), 50 MB, its real length (60 s), the destination, the company quota, the company's video cap
+ * and the shared storage. It has no poster yet: the server cannot draw a frame, so the browser loads the video, draws
+ * its first frame and uploads it to `poster` (then attachPoster). Until then, or if that fails, the gallery shows a
+ * plain video tile.
+ */
+export async function importVideo(
+  { userId, businessId }: { userId: string; businessId: string },
+  input: { bytes: Uint8Array; name: string; destination: string | null; source: ImportSource },
+): Promise<{ item: MediaItem; poster: PosterTarget | null }> {
+  const label = cleanPhotoName(input.name, "That video");
+  const { bytes } = input;
+  const size = bytes.length;
+  if (size === 0) throw new MediaError(`${label} is empty.`);
+  if (size > VIDEO_MAX_BYTES) throw new MediaError(`${label} is over 50 MB. Please use a shorter or smaller video.`);
+  const sniffed = sniffVideoType(bytes);
+  if (!sniffed) throw new MediaError(`${label}: ${UNSUPPORTED_MESSAGE}`);
+  const mimeType = storedVideoType(sniffed);
+  const destination = await resolveDestination(businessId, input.destination);
+  const problem = quotaProblem(await mediaUsage(businessId), { count: 1, bytes: size }) ?? videoQuotaProblem(await galleryVideoBytes(businessId), size);
+  if (problem) throw new MediaError(problem);
+  await assertPlatformRoom(size);
+  const durationMs = await videoLengthMs(async (start, length) => bytes.subarray(start, start + length), size, mimeType);
+
+  // Written with the service key into the private gallery-videos bucket, like the poster later (no Storage policy
+  // lets a browser write there). The path is built here in the company folder; a MOV is stored and served as MP4.
+  const path = galleryPath(userId, globalThis.crypto.randomUUID(), sniffed);
+  const { error } = await createAdminClient().storage.from(GALLERY_VIDEO_BUCKET).upload(path, bytes, { contentType: mimeType, upsert: false });
+  if (error) throw error;
+  let row: Row;
+  try {
+    row = await createWithinQuota(
+      { id: assetIdFromPath(path), businessId, path, name: cleanPhotoName(nameFromFile(input.name), "Video"), kind: "video", mimeType, bytes: size, durationMs, posterPath: null, source: input.source },
+      destination,
+    );
+  } catch (failure) {
+    await dropObject(path);
+    throw failure;
+  }
+  const poster = await createSignedUploadUrl(GALLERY_VIDEO_BUCKET, posterPathFor(path)).then(
+    (t) => ({ path: t.path, token: t.token }),
+    () => null,
+  );
+  return { item: (await withUrls([row]))[0], poster };
+}
+
+/**
+ * After an imported video's poster was uploaded (importVideo): keeps it when it is a JPEG of at most 400 KB and 1280 px
+ * (its bytes then count with the video's) and records the size the browser read, where none is known yet. Only the
+ * company's own videos without a poster.
+ */
+export async function attachPoster(
+  { userId, businessId }: { userId: string; businessId: string },
+  input: { id: string; width?: number | null; height?: number | null },
+): Promise<MediaItem> {
+  await rateLimit(`media-finalize:${userId}`, MEDIA_RATE.finalize);
+  const row = await prisma.mediaAsset.findFirst({ where: { id: input.id, businessId, kind: "video" }, select: SELECT });
+  if (!row || !isOwnGalleryVideoPath(userId, row.path)) throw new MediaError("We could not find that video.");
+  if (row.posterPath) return (await withUrls([row]))[0];
+  const poster = await keptPoster(posterPathFor(row.path));
+  const width = row.width ?? clampSize(input.width);
+  const height = row.height ?? clampSize(input.height);
+  await prisma.mediaAsset.updateMany({
+    where: { id: row.id, businessId, posterPath: null },
+    data: { width, height, ...(poster.bytes > 0 ? { posterPath: poster.path, bytes: { increment: poster.bytes } } : {}) },
+  });
+  const fresh = await prisma.mediaAsset.findFirst({ where: { id: row.id, businessId }, select: SELECT });
+  return (await withUrls([fresh ?? row]))[0];
 }
 
 /** Counts one import against the per-user limit. Importers call it before downloading anything. */

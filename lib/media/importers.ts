@@ -6,9 +6,11 @@ import { isCanvaEnabled } from "@/lib/canva/config";
 import { prisma } from "@/lib/db";
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { rateLimit } from "@/lib/rate-limit";
-import { HEIC_MESSAGE, IMPORT_MAX_FILES, isMediaType, MEDIA_MAX_BYTES, UNSUPPORTED_MESSAGE } from "./rules";
-import { isDropboxHost, isGoogleApiHost, SafeFetchError, safeFetchBytes } from "./safe-fetch";
-import { hasImported, importAsset, limitImport, MediaError, type MediaItem } from "./service";
+import { HEIC_MESSAGE, heifPhotoType, IMPORT_MAX_FILES, isMediaType, MEDIA_MAX_BYTES, sniffMediaType, sniffVideoType, UNSUPPORTED_MESSAGE, VIDEO_MAX_BYTES } from "./rules";
+import { DRIVE_SHARE_MESSAGE, DROPBOX_OPEN_MESSAGE, linkFileName, looksLikeHtml, parseMediaLink, WEB_PAGE_MESSAGE, type MediaLink } from "./links";
+import { publicFetchOptions } from "./public-dns";
+import { isDropboxHost, isGoogleApiHost, readCapped, SafeFetchError, safeFetchBytes, safeFetchResponse } from "./safe-fetch";
+import { hasImported, importAsset, importVideo, limitImport, MediaError, type MediaItem, type PosterTarget } from "./service";
 
 type Ctx = { userId: string; businessId: string };
 
@@ -25,6 +27,8 @@ export type ImportOptions = {
   google: { apiKey: string; clientId: string; appId: string } | null;
   dropboxAppKey: string | null;
   canva: "unavailable" | "connected" | "not_connected";
+  /** "From a link" needs no keys: false only when the admin switched it off. */
+  link: boolean;
 };
 
 export function googlePickerConfig(): ImportOptions["google"] {
@@ -43,8 +47,8 @@ export async function canvaImportState(userId: string): Promise<ImportOptions["c
 
 export async function importOptions(userId: string): Promise<ImportOptions> {
   // A source switched off in the admin console is hidden like one that is not configured.
-  const [drive, dropbox] = await Promise.all([isServiceEnabled("google-drive"), isServiceEnabled("dropbox")]);
-  return { google: drive ? googlePickerConfig() : null, dropboxAppKey: dropbox ? dropboxAppKey() : null, canva: await canvaImportState(userId) };
+  const [drive, dropbox, link] = await Promise.all([isServiceEnabled("google-drive"), isServiceEnabled("dropbox"), isServiceEnabled("link-import")]);
+  return { google: drive ? googlePickerConfig() : null, dropboxAppKey: dropbox ? dropboxAppKey() : null, canva: await canvaImportState(userId), link };
 }
 
 function download(error: unknown, name: string): never {
@@ -86,6 +90,76 @@ export async function importDropboxFile(ctx: Ctx, input: { link: string; name: s
   await limitImport(ctx.userId);
   const bytes = await safeFetchBytes(input.link, { allowHost: isDropboxHost, maxBytes: MEDIA_MAX_BYTES, timeoutMs: 45_000 }, `${input.name} is over 10 MB. Resize it and try again.`).catch((e) => download(e, input.name));
   return importAsset(ctx, { bytes, name: input.name, destination: input.destination, source: "dropbox" });
+}
+
+/** A link download's whole budget: Netlify answers every request within 60 s, and the upload and checks come after. */
+const LINK_TIMEOUT_MS = 40_000;
+
+/** What a failed link download tells the person, by where the link points. */
+function linkFailure(error: unknown, link: MediaLink, maxBytes: number): never {
+  if (!(error instanceof SafeFetchError)) throw error;
+  if (error.code === "too_big") throw new MediaError(maxBytes > MEDIA_MAX_BYTES ? "That file is over 50 MB. Photos can be up to 10 MB and videos up to 50 MB." : "That photo is over 10 MB. Resize it and try again.");
+  if (error.code === "timeout") throw new MediaError("That file took too long to download. Please try again, or use a smaller file.");
+  if (error.code === "blocked" && error.message.includes("private")) throw new MediaError(error.message);
+  // Drive answers a file that is not shared publicly with a sign-in page, a 401/403 or a 404.
+  if (link.kind === "drive" && (error.code === "http" || error.code === "blocked")) throw new MediaError(DRIVE_SHARE_MESSAGE);
+  if (link.kind === "dropbox" && error.code === "http") throw new MediaError(DROPBOX_OPEN_MESSAGE);
+  if (error.code === "http" && (error.status === 401 || error.status === 403)) throw new MediaError("That website does not let BuPulse download the file. Download it to your phone or computer and upload it instead.");
+  if (error.code === "http" && error.status === 404) throw new MediaError("Nothing was found at that link. Check the link and try again.");
+  if (error.code === "network" && error.message.startsWith("BuPulse")) throw new MediaError(error.message);
+  throw new MediaError("That link could not be downloaded. Check the link and try again.");
+}
+
+/** The message for a link that gave a web page instead of a file. */
+const pageMessage = (link: MediaLink) => (link.kind === "drive" ? DRIVE_SHARE_MESSAGE : link.kind === "dropbox" ? DROPBOX_OPEN_MESSAGE : WEB_PAGE_MESSAGE);
+
+/**
+ * One photo or video from a pasted link: a Google Drive file shared "Anyone with the link", a Dropbox share link, or any
+ * https link straight to a file (lib/media/links.ts). Any public website can be named, so the download refuses
+ * private and local addresses on every hop, by name and by where the name points (lib/media/public-dns.ts). The type
+ * comes from the file's own first bytes, never from the website: a photo (JPG, PNG, WebP, 10 MB) goes through
+ * importAsset, a video (MP4, MOV, WebM, 50 MB, 60 s) through importVideo. `videos: false` (a photo-only picker)
+ * refuses videos.
+ */
+export async function importLinkedFile(
+  ctx: Ctx,
+  input: { link: string; destination: string | null; videos?: boolean },
+): Promise<{ item: MediaItem; poster: PosterTarget | null }> {
+  if (!(await isServiceEnabled("link-import"))) throw new MediaError(UNAVAILABLE_MESSAGE);
+  const checked = parseMediaLink(input.link);
+  if (!checked.ok) throw new MediaError(checked.error);
+  const { link } = checked;
+  const videos = input.videos !== false;
+  await limitImport(ctx.userId);
+  const maxBytes = videos ? VIDEO_MAX_BYTES : MEDIA_MAX_BYTES;
+  let bytes: Uint8Array;
+  let name: string | null;
+  try {
+    const response = await safeFetchResponse(link.url, { ...publicFetchOptions(), maxBytes, timeoutMs: LINK_TIMEOUT_MS, maxRedirects: 5 });
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      throw new SafeFetchError("The file could not be downloaded.", "http", response.status);
+    }
+    // A web page instead of the file (a Drive sign-in or share page, a site's page): no need to read it all.
+    if (/^text\/html|^application\/xhtml/i.test(response.headers.get("content-type") ?? "")) {
+      await response.body?.cancel().catch(() => {});
+      throw new MediaError(pageMessage(link));
+    }
+    name = linkFileName(response.headers.get("content-disposition"), input.link);
+    bytes = await readCapped(response, maxBytes, "too big");
+  } catch (error) {
+    if (error instanceof MediaError) throw error;
+    return linkFailure(error, link, maxBytes);
+  }
+  const heif = heifPhotoType(bytes);
+  if (heif === "heic") throw new MediaError(HEIC_MESSAGE);
+  if (heif) throw new MediaError(UNSUPPORTED_MESSAGE);
+  if (sniffMediaType(bytes)) return { item: await importAsset(ctx, { bytes, name: name ?? "Photo from a link", destination: input.destination, source: "link" }), poster: null };
+  if (sniffVideoType(bytes)) {
+    if (!videos) throw new MediaError("Only photos can be added here. Add videos in the Gallery.");
+    return importVideo(ctx, { bytes, name: name ?? "Video from a link", destination: input.destination, source: "link" });
+  }
+  throw new MediaError(looksLikeHtml(bytes) ? pageMessage(link) : UNSUPPORTED_MESSAGE);
 }
 
 export class CanvaImportError extends MediaError {

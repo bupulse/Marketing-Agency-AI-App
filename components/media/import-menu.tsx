@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The "Import" menu: From Google Drive, From Dropbox, From Canva. It owns the pickers; the host passes the
+ * The "Import" menu: From Google Drive, From Dropbox, From Canva, From a link. It owns the pickers; the host passes the
  * `importer` (useImporter) and shows its progress with <UploadProgress verb="Importing">.
  *
  * Props:
@@ -10,10 +10,11 @@
  *   defaultDestination  Where files go unless the person picks another place; null: they must pick one first.
  *   onPickerVisible  Called with true while Google's Picker is open. It cannot sit above a modal <dialog>,
  *                    so a host that is inside one hides it until this is called with false.
+ *   videos           false in a photo-only picker: a link to a video is refused there. Default true.
  */
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Box, ChevronDown, Download, HardDrive, Palette } from "lucide-react";
+import { Box, ChevronDown, Download, HardDrive, Link, Palette } from "lucide-react";
 import { useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getImportOptions, importFromDrive, importFromDropbox } from "@/app/dashboard/gallery/import-actions";
@@ -21,6 +22,7 @@ import type { ImportOptions } from "@/lib/media/importers";
 import { IMPORT_MAX_FILES } from "@/lib/media/rules";
 import type { DestinationOption } from "@/lib/media/destinations";
 import { CanvaImportDialog } from "./canva-import-dialog";
+import { LinkImportDialog } from "./link-import-dialog";
 import { dropboxReady, googleReady, pickFromDrive, pickFromDropbox, preloadDropbox, preloadGoogle } from "./import-sdk";
 import type { useImporter } from "./use-importer";
 
@@ -29,15 +31,17 @@ type Props = {
   destinations: DestinationOption[];
   defaultDestination: string | null;
   onPickerVisible?: (visible: boolean) => void;
+  videos?: boolean;
   className?: string;
 };
 
-export function ImportMenu({ importer, destinations, defaultDestination, onPickerVisible, className }: Props) {
+export function ImportMenu({ importer, destinations, defaultDestination, onPickerVisible, videos = true, className }: Props) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<ImportOptions | null>(null);
   const [override, setOverride] = useState<string | undefined>(undefined);
   const [canva, setCanva] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [shift, setShift] = useState(0);
@@ -138,6 +142,17 @@ export function ImportMenu({ importer, destinations, defaultDestination, onPicke
         setCanva(true);
       },
     },
+    {
+      key: "link",
+      label: "From a link",
+      icon: Link,
+      // No keys needed: ready before the options load, unless the admin switched it off.
+      ready: options ? options.link : true,
+      run: () => {
+        setOpen(false);
+        setLinkOpen(true);
+      },
+    },
   ];
 
   return (
@@ -156,7 +171,7 @@ export function ImportMenu({ importer, destinations, defaultDestination, onPicke
         <ChevronDown aria-hidden className={cn("size-4 transition-transform duration-300 motion-reduce:transition-none", open && "rotate-180")} />
       </button>
       {open && (
-        <div ref={menu} style={shift ? { right: -shift } : undefined} id={menuId} role="menu" aria-label="Import photos" className="animate-pop absolute right-0 z-30 border border-line bg-surface mt-2 w-[min(18rem,calc(100vw-3rem))] rounded-2xl p-2 shadow-glass">
+        <div ref={menu} style={shift ? { right: -shift } : undefined} id={menuId} role="menu" aria-label={videos ? "Import photos and videos" : "Import photos"} className="animate-pop absolute right-0 z-30 border border-line bg-surface mt-2 w-[min(18rem,calc(100vw-3rem))] rounded-2xl p-2 shadow-glass">
           <label className="flex flex-col gap-1 px-3 pt-2 pb-3 text-xs font-semibold text-muted">
             Save to
             <select
@@ -197,6 +212,7 @@ export function ImportMenu({ importer, destinations, defaultDestination, onPicke
         </div>
       )}
       <CanvaImportDialog open={canva && !!destination} onOpenChange={setCanva} destination={destination ?? ""} onImport={(tasks) => void importer.run(tasks)} />
+      <LinkImportDialog open={linkOpen && !!destination} onOpenChange={setLinkOpen} destination={destination ?? ""} videos={videos} onImport={importer.run} />
     </div>
   );
 }

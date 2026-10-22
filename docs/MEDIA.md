@@ -53,6 +53,9 @@ The owner's own clips go in the Gallery like photos, so AI content uses them fir
   poster too). Pickers for designs and video scenes show photos only; the post composer's picker shows videos too.
 - **Never drawn**: videos are not photos: `isOwnGalleryPath` / `isOwnPhotoPath` refuse them, and the album paths the
   designs and Autopilot use are photos only (`writingSubject`, `loadPlanInput` keeps `videoPaths` apart).
+- **Import from a link**: a video (or photo) pasted as a Google Drive, Dropbox or website link is downloaded by the
+  server and checked like an upload (`importVideo`), with its poster drawn afterwards in the browser
+  (`docs/CONNECTORS.md`, "From a link").
 
 ## For the content pipeline
 

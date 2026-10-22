@@ -5,8 +5,9 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
 import type { FeatureKey } from "@/lib/features";
 import { logError } from "@/lib/errors";
-import { CanvaImportError, importCanvaDesign, importDriveFile, importDropboxFile, importOptions, listCanvaDesigns, type ImportOptions } from "@/lib/media/importers";
-import { businessIdFor, MediaError, type MediaItem } from "@/lib/media/service";
+import { CanvaImportError, importCanvaDesign, importDriveFile, importDropboxFile, importLinkedFile, importOptions, listCanvaDesigns, type ImportOptions } from "@/lib/media/importers";
+import { LINK_MAX_LENGTH } from "@/lib/media/links";
+import { attachPoster, businessIdFor, MediaError, type MediaItem, type PosterTarget } from "@/lib/media/service";
 import { RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import type { CanvaDesignSummary } from "@/lib/canva/client";
 
@@ -18,8 +19,11 @@ const destination = z.string().max(80).nullish().transform((v) => v || null);
 
 type Ctx = { userId: string; businessId: string };
 
-/** Every import needs the gallery; Drive and Dropbox need driveImport, Canva needs canva (each a plan feature). */
-async function guard<T extends object>(fn: (ctx: Ctx) => Promise<T>, feature: FeatureKey = "gallery"): Promise<ImportResult<T>> {
+/**
+ * Every import needs the gallery; Drive and Dropbox need driveImport, Canva needs canva (each a plan feature). A pasted
+ * link needs only the gallery: it is an upload the server does for the person.
+ */
+async function guard<T extends object>(fn: (ctx: Ctx) => Promise<T>, feature: FeatureKey = "gallery", source = "gallery.import"): Promise<ImportResult<T>> {
   const user = await requireActiveUser();
   try {
     const businessId = await businessIdFor(user.id);
@@ -31,7 +35,7 @@ async function guard<T extends object>(fn: (ctx: Ctx) => Promise<T>, feature: Fe
     if (error instanceof CanvaImportError) return { ok: false, error: error.message, needsConnect: error.needsConnect || undefined };
     if (error instanceof MediaError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
-    void logError(error, { source: "gallery.import", userId: user.id });
+    void logError(error, { source, userId: user.id });
     return { ok: false, error: FAILED };
   }
 }
@@ -57,6 +61,27 @@ export async function importFromDropbox(input: z.input<typeof dropboxSchema>): P
   const parsed = dropboxSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That file could not be imported." };
   return guard(async (ctx) => ({ item: await importDropboxFile(ctx, parsed.data) }), "driveImport");
+}
+
+const linkSchema = z.object({ link: z.string().min(1).max(LINK_MAX_LENGTH + 100), destination, videos: z.boolean().optional() });
+
+/**
+ * Imports one photo or video from a pasted link (Google Drive, Dropbox or a website). A video comes back with `poster`,
+ * where the browser uploads its first frame before calling finishLinkedVideo.
+ */
+export async function importFromLink(input: z.input<typeof linkSchema>): Promise<ImportResult<{ item: MediaItem; poster: PosterTarget | null }>> {
+  const parsed = linkSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Paste a link of up to 2,000 characters." };
+  return guard((ctx) => importLinkedFile(ctx, parsed.data), "gallery", "media.link");
+}
+
+const posterSchema = z.object({ id: z.string().min(8).max(64), width: z.number().int().nullish(), height: z.number().int().nullish() });
+
+/** Keeps the poster the browser drew for a video imported from a link, and its width and height. */
+export async function finishLinkedVideo(input: z.input<typeof posterSchema>): Promise<ImportResult<{ item: MediaItem }>> {
+  const parsed = posterSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: FAILED };
+  return guard(async (ctx) => ({ item: await attachPoster(ctx, parsed.data) }), "gallery", "media.link");
 }
 
 const listSchema = z.object({ query: z.string().max(100).optional(), cursor: z.string().max(500).nullish() });

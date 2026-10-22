@@ -219,7 +219,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initial
             <Upload aria-hidden className="size-4" />
             Upload new
           </button>
-          <ImportMenu importer={importer} destinations={destinations} defaultDestination={uploadDestination} onPickerVisible={onPickerVisible} />
+          <ImportMenu importer={importer} destinations={destinations} defaultDestination={uploadDestination} onPickerVisible={onPickerVisible} videos={videos} />
         </div>
         <DestinationDialog
           open={asking}

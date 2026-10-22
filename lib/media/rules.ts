@@ -231,11 +231,23 @@ export function formatDuration(ms: number | null | undefined): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** Per-user limit for server-side imports (Google Drive, Dropbox, Canva): one hit per file. */
+/** Per-user limit for server-side imports (Google Drive, Dropbox, Canva, a pasted link): one hit per file. */
 export const IMPORT_RATE = { limit: 200, windowSeconds: 60 * 60 } as const;
 /** Files taken in one Import: the browser sends them to the server one at a time. */
 export const IMPORT_MAX_FILES = 20;
-export type ImportSource = "google_drive" | "dropbox" | "canva";
+/** `MediaAsset.source` of an import (a free-text column). "link": a photo or video pasted as a link (lib/media/links.ts). */
+export type ImportSource = "google_drive" | "dropbox" | "canva" | "link";
+
+/**
+ * An HEIC/HEIF or AVIF photo: an ISO media file like an MP4 ("ftyp" box), told apart by its brand. Returns "heic",
+ * "avif" or null, so a photo is not mistaken for a video by sniffVideoType.
+ */
+export function heifPhotoType(bytes: Uint8Array): "heic" | "avif" | null {
+  if (bytes.length < 12 || String.fromCharCode(...bytes.subarray(4, 8)) !== "ftyp") return null;
+  const brand = String.fromCharCode(...bytes.subarray(8, 12));
+  if (["heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1"].includes(brand)) return "heic";
+  return brand === "avif" || brand === "avis" ? "avif" : null;
+}
 
 /** Width and height read from a JPEG, PNG or WebP header, or null when they cannot be found. */
 export function imageSize(bytes: Uint8Array): { width: number; height: number } | null {

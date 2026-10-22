@@ -1,6 +1,7 @@
-// Server-side downloads from addresses a third party gave us (Dropbox direct links, Drive media).
+// Server-side downloads from addresses a third party gave us (Dropbox direct links, Drive media, a pasted link).
 // Only https on allow-listed hosts, every redirect re-checked, bounded in size and time. Uses fetch and
-// web streams only, so it runs on Cloudflare Workers.
+// web streams only, so it runs on Cloudflare Workers; a link to any website adds a DNS check and a connection pinned
+// to the checked addresses on Node (lib/media/public-dns.ts) through `checkHost` and `fetcher`.
 
 export class SafeFetchError extends Error {
   constructor(
@@ -40,15 +41,26 @@ export function allowedUrl(value: string, allowHost: HostRule): URL | null {
   return allowHost(host) ? url : null;
 }
 
+/** Makes one request; redirects come back as they are (safeFetchResponse follows them by hand). */
+export type Fetcher = (url: URL, init: { headers?: Record<string, string>; signal: AbortSignal }) => Promise<Response>;
+
 type Options = {
   allowHost: HostRule;
   maxBytes: number;
   timeoutMs?: number;
   maxRedirects?: number;
+  /** Sent to the first host only (a token). */
   headers?: Record<string, string>;
+  /** Sent on every hop (a User-Agent). */
+  hopHeaders?: Record<string, string>;
+  /** Runs on every hop's host name before it is requested (a DNS check); false refuses the address. */
+  checkHost?: (hostname: string) => Promise<boolean>;
+  /** Instead of the global fetch. */
+  fetcher?: Fetcher;
 };
 
-async function readCapped(response: Response, maxBytes: number, tooBig: string): Promise<Uint8Array> {
+/** Reads the body, refusing it past `maxBytes` (by its Content-Length first, then as it streams). */
+export async function readCapped(response: Response, maxBytes: number, tooBig: string): Promise<Uint8Array> {
   const declared = Number(response.headers.get("content-length"));
   if (declared > maxBytes) throw new SafeFetchError(tooBig, "too_big");
   const reader = response.body?.getReader();
@@ -56,7 +68,14 @@ async function readCapped(response: Response, maxBytes: number, tooBig: string):
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
-    const { done, value } = await reader.read();
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await reader.read();
+    } catch (error) {
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) throw new SafeFetchError("The download took too long.", "timeout");
+      throw new SafeFetchError("The file could not be downloaded.", "network");
+    }
+    const { done, value } = chunk;
     if (done) break;
     total += value.length;
     if (total > maxBytes) {
@@ -76,7 +95,7 @@ async function readCapped(response: Response, maxBytes: number, tooBig: string):
 
 /** Follows redirects by hand, re-checking each hop. Request headers (a token) go to the first host only. */
 export async function safeFetchResponse(value: string, options: Options): Promise<Response> {
-  const { allowHost, timeoutMs = 30_000, maxRedirects = 3, headers } = options;
+  const { allowHost, timeoutMs = 30_000, maxRedirects = 3, headers, hopHeaders, checkHost, fetcher } = options;
   const deadline = Date.now() + timeoutMs;
   let url = allowedUrl(value, allowHost);
   let hop = 0;
@@ -85,8 +104,12 @@ export async function safeFetchResponse(value: string, options: Options): Promis
     if (left <= 0) throw new SafeFetchError("The download took too long.", "timeout");
     let response: Response;
     try {
-      response = await fetch(url, { redirect: "manual", headers: hop === 0 ? headers : undefined, signal: AbortSignal.timeout(left) });
+      if (checkHost && !(await checkHost(url.hostname))) break;
+      const sent = hop === 0 && headers ? { ...hopHeaders, ...headers } : hopHeaders;
+      const signal = AbortSignal.timeout(left);
+      response = fetcher ? await fetcher(url, { headers: sent, signal }) : await fetch(url, { redirect: "manual", headers: sent, signal });
     } catch (error) {
+      if (error instanceof SafeFetchError) throw error;
       if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) throw new SafeFetchError("The download took too long.", "timeout");
       throw new SafeFetchError("The file could not be downloaded.", "network");
     }

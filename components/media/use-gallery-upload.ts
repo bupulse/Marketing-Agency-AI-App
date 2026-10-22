@@ -13,25 +13,28 @@ const PARALLEL = 3;
 
 type Prepared = { file: File; width: number | null; height: number | null; poster?: Blob | null } | "broken" | { tooLong: true };
 
+export type VideoFrame = { durationMs: number | null; width: number | null; height: number | null; poster: Blob | null };
+
 /**
- * A video's length, size and first frame (the poster, a small JPEG), read in the browser before upload. A format this
- * browser cannot play (some iPhone HEVC MOVs in Chrome) still uploads: the server reads its length from the file.
+ * A video's length, size and first frame (the poster, a small JPEG), read by loading `src` in a hidden <video>; null
+ * when this browser cannot play it. `crossOrigin`: a signed Storage URL (an imported video), loaded with CORS so the
+ * frame can be drawn; when that is refused the size is still read, without a poster.
  */
-async function prepareVideo(file: File): Promise<Prepared> {
-  const url = URL.createObjectURL(file);
+export async function videoFrame(src: string, options: { crossOrigin?: boolean } = {}): Promise<VideoFrame | null> {
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
+  if (options.crossOrigin) video.crossOrigin = "anonymous";
   try {
     const loaded = await new Promise<boolean>((resolve) => {
       video.onloadeddata = () => resolve(true);
       video.onerror = () => resolve(false);
       setTimeout(() => resolve(false), 15_000);
-      video.src = url;
+      video.src = src;
     });
-    if (!loaded) return { file, width: null, height: null, poster: null };
-    if (Number.isFinite(video.duration) && video.duration * 1000 > VIDEO_MAX_MS + 500) return { tooLong: true };
+    if (!loaded) return options.crossOrigin ? videoFrame(src) : null;
+    const durationMs = Number.isFinite(video.duration) ? video.duration * 1000 : null;
     const width = video.videoWidth || null;
     const height = video.videoHeight || null;
     let poster: Blob | null = null;
@@ -45,17 +48,37 @@ async function prepareVideo(file: File): Promise<Prepared> {
       const canvas = document.createElement("canvas");
       canvas.width = target.width;
       canvas.height = target.height;
-      canvas.getContext("2d")?.drawImage(video, 0, 0, target.width, target.height);
-      poster = await toBlob(canvas, "image/jpeg", 0.75);
-      if (poster && poster.size > POSTER_MAX_BYTES) poster = await toBlob(canvas, "image/jpeg", 0.5);
-      if (poster && poster.size > POSTER_MAX_BYTES) poster = null;
+      try {
+        canvas.getContext("2d")?.drawImage(video, 0, 0, target.width, target.height);
+        poster = await toBlob(canvas, "image/jpeg", 0.75);
+        if (poster && poster.size > POSTER_MAX_BYTES) poster = await toBlob(canvas, "image/jpeg", 0.5);
+        if (poster && poster.size > POSTER_MAX_BYTES) poster = null;
+      } catch {
+        // A frame from another site without CORS cannot be read back.
+        poster = null;
+      }
     }
-    return { file, width, height, poster };
+    return { durationMs, width, height, poster };
   } catch {
-    return { file, width: null, height: null, poster: null };
+    return null;
   } finally {
     video.removeAttribute("src");
     video.load();
+  }
+}
+
+/**
+ * A video picked for upload: its length, size and poster (videoFrame). A format this browser cannot play (some iPhone
+ * HEVC MOVs in Chrome) still uploads: the server reads its length from the file.
+ */
+async function prepareVideo(file: File): Promise<Prepared> {
+  const url = URL.createObjectURL(file);
+  try {
+    const frame = await videoFrame(url);
+    if (!frame) return { file, width: null, height: null, poster: null };
+    if (frame.durationMs !== null && frame.durationMs > VIDEO_MAX_MS + 500) return { tooLong: true };
+    return { file, width: frame.width, height: frame.height, poster: frame.poster };
+  } finally {
     URL.revokeObjectURL(url);
   }
 }

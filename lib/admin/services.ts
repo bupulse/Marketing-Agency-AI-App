@@ -145,6 +145,7 @@ const ERROR_SOURCES: Partial<Record<ServiceId, string[]>> = {
   canva: ["canva"],
   "google-drive": ["media.import", "drive"],
   dropbox: ["dropbox"],
+  "link-import": ["media.link"],
   shopify: ["shopify", "stores.", "store-sync"],
   woocommerce: ["woo", "stores."],
   cloudflare: ["cloudflare", "domains"],
@@ -199,6 +200,8 @@ function usageOf(info: ServiceInfo, d: Loaded): UsageLine[] {
       return [{ label: "Files imported (30 days)", value: d.imports.get("google_drive") ?? 0 }];
     case "dropbox":
       return [{ label: "Files imported (30 days)", value: d.imports.get("dropbox") ?? 0 }];
+    case "link-import":
+      return [{ label: "Files imported (30 days)", value: d.imports.get("link") ?? 0 }];
     case "canva":
       return [{ label: "Connected accounts", value: d.connections.get("canva") ?? 0 }, { label: "Designs imported (30 days)", value: d.imports.get("canva") ?? 0 }];
     case "shopify":
