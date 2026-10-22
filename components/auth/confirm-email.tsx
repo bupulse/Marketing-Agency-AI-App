@@ -22,7 +22,7 @@ export function ConfirmEmail({ email, onChangeEmail, next }: { email: string; on
       </h1>
       <p className="text-[15px] text-muted">
         We sent a code and a link to <strong className="break-all text-text">{email}</strong> from{" "}
-        <strong className="text-text">register@bupulse.com</strong>. Type the code here, or open the link. Then choose a plan and book your free demo.
+        <strong className="text-text">register@bupulse.com</strong>. Type the code here, or open the link. Then choose a plan and start your free trial.
       </p>
       <EmailCodeForm action={confirmEmailCode} email={email} next={next} />
       <p className="text-[13px] text-muted">Can&apos;t find it? In Gmail, look in the Updates or Promotions tab, then in Spam.</p>

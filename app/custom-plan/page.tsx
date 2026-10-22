@@ -18,10 +18,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// "Need something different? Request a custom plan" from the pricing page, Billing, "Add to your plan" and the demo
-// screen (docs/OFFERS.md). Signed-in companies only (a visitor signs up first; proxy.ts sends them to sign in), in any
-// state, including while waiting for the demo, so the request can be talked through in the demo call. An existing client
-// may then pick a time for a short call about it (/custom-plan/call, lib/demo/plan-calls.ts).
+// "Need something different? Request a custom plan" from the pricing page, Billing and "Add to your plan"
+// (docs/OFFERS.md). Signed-in companies only (a visitor signs up first; proxy.ts sends them to sign in), in any state,
+// including before the free trial has started. A client whose account has started may then pick a time for a short
+// call about it (/custom-plan/call, lib/demo/plan-calls.ts).
 export default async function CustomPlanPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const check = await checkActiveUser();
   if (check.status === "signed_out") redirect(`/signup?next=${encodeURIComponent("/custom-plan")}`);
@@ -44,8 +44,8 @@ export default async function CustomPlanPage({ searchParams }: { searchParams: P
   const pendingDemo = business.user?.subscription?.status === "PENDING_DEMO";
   // What the plan already includes is ticked and locked on the form, so only missing features can be asked for.
   const owned = user.businessId ? [...(await companyEntitlements(user.businessId)).inPlan] : [];
-  const back = pendingDemo ? { href: "/dashboard", label: "Back to your demo" } : { href: "/dashboard/billing", label: "Back to Billing" };
-  // The call step after sending: not while waiting for the demo (the demo is that call).
+  const back = pendingDemo ? { href: "/start-trial", label: "Back to your free trial" } : { href: "/dashboard/billing", label: "Back to Billing" };
+  // The call step after sending: not before the account has started (the call page sends those to the dashboard).
   let call: CallStep | null = null;
   if (!pendingDemo && user.businessId && can(user.role, "billing")) {
     const [live, settings] = await Promise.all([currentPlanCall(user.businessId), getSettings()]);
@@ -59,7 +59,6 @@ export default async function CustomPlanPage({ searchParams }: { searchParams: P
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">Request a custom plan</h1>
         <p className="text-[15px] text-muted">
           Tell us what your business does and tick what you would like to add. We put together a plan with only what you need and send you an offer to accept in Billing.
-          {pendingDemo ? " We will also talk it through in your demo." : ""}
         </p>
       </div>
       {can(user.role, "billing") ? (

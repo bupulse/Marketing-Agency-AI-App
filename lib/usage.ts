@@ -41,7 +41,7 @@ export async function consumeUsage(userId: string, metric: UsageMetric, amount =
 
   // A suspended account (admin console) can use nothing, even with a valid session (shown to the user as "inactive").
   if (sub.user?.suspendedAt) throw new UsageLimitError("inactive", metric);
-  // Waiting for the demo: nothing is generated until an admin starts the trial (docs/REGIONS.md).
+  // Trial not started yet: nothing is generated until the client (or an admin) starts it (docs/REGIONS.md).
   if (sub.status === "PENDING_DEMO") throw new UsageLimitError("pending_demo", metric);
   // The paid time (lib/billing/period.ts): the trial's end, or the period's end plus its grace.
   const period = periodState(sub, now);

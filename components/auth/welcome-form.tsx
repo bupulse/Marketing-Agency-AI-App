@@ -48,7 +48,7 @@ export function WelcomeForm({ email, defaults, industries }: { email: string; de
       <div className="flex flex-col gap-1.5">
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">About your organisation</h1>
         <p className="text-[15px] text-muted">
-          One last step before you choose a plan and book your free demo. This helps us write in your brand voice from day one.
+          One more step before you choose a plan and start your free trial. This helps us write in your brand voice from day one.
         </p>
       </div>
 

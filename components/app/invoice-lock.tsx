@@ -20,9 +20,10 @@ import { getPlan } from "@/lib/plan-catalog";
 import { can, type Role } from "@/lib/team/roles";
 
 /**
- * What a company waiting for its demo sees once the admin chose "No trial, send invoice" (docs/INVOICES.md): the open
- * invoice and how to pay it, instead of the demo screen. Still read-only everywhere else (PENDING_DEMO, lib/entitlements.ts);
- * paying it makes the company ACTIVE on the invoice's plan and the dashboard opens. Only the Owner can pay.
+ * What a company that has not started its trial sees once the admin chose "No trial, send invoice" (docs/INVOICES.md):
+ * the open invoice and how to pay it, instead of the free trial start (/start-trial). Still read-only everywhere else
+ * (PENDING_DEMO, lib/entitlements.ts); paying it makes the company ACTIVE on the invoice's plan and the dashboard opens.
+ * Only the Owner can pay.
  */
 export async function InvoiceLock({ invoice, businessId, role, firstName, email, businessName }: { invoice: Prisma.InvoiceGetPayload<object>; businessId: string; role: Role; firstName: string; email: string; businessName: string }) {
   const canPay = can(role, "billing");
@@ -63,7 +64,7 @@ export async function InvoiceLock({ invoice, businessId, role, firstName, email,
           </Badge>
           <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.03em] sm:text-[30px]">Your invoice is ready</h1>
           <p className="text-[15px] text-muted">
-            Thanks for the demo, {firstName}. {canPay ? "Pay the invoice below and your dashboard opens as soon as the payment is confirmed, usually within minutes." : "Your company's owner pays it from their account; the dashboard opens as soon as the payment is confirmed."}
+            Welcome, {firstName}. {canPay ? "Pay the invoice below and your dashboard opens as soon as the payment is confirmed, usually within minutes." : "Your company's owner pays it from their account; the dashboard opens as soon as the payment is confirmed."}
           </p>
         </GlassCard>
 

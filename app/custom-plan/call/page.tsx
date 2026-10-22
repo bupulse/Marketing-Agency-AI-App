@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 
 // The optional short call after a custom plan request (lib/demo/plan-calls.ts): pick a time (step=time, or when there is
 // no call yet), then the booked call with its meeting link, calendar buttons, reschedule and cancel. Existing clients
-// only: a company still waiting for its demo talks the request through in the demo (the dashboard).
+// only: a company whose trial has not started goes to the dashboard (which sends it to /start-trial).
 export default async function PlanCallPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const check = await checkActiveUser();
   if (check.status === "signed_out") redirect(`/login?next=${encodeURIComponent("/custom-plan/call")}`);
@@ -112,7 +112,7 @@ export default async function PlanCallPage({ searchParams }: { searchParams: Pro
               <Link href="/custom-plan/call?step=time" className={buttonClasses({ variant: "ghost", size: "sm" })}>
                 Reschedule
               </Link>
-              <DemoCancelButton when={formatSlot(call.startsAt)} kind="call" />
+              <DemoCancelButton when={formatSlot(call.startsAt)} />
               <span className="text-xs text-muted">You can reschedule or cancel up to {MIN_LEAD_MINUTES / 60} hours before the call.</span>
             </>
           ) : (

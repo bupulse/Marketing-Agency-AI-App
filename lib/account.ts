@@ -81,9 +81,9 @@ function signUpMethodOf(authUser: AuthUser): SignUpMethod {
 
 // Called after email confirmation and after Google sign-in. Creates the app's
 // User row, the Business (from the sign-up details when there are any, with its
-// pricing region from the country) and a subscription that waits for a demo
-// (PENDING_DEMO: no trial starts at sign-up, an admin starts it after the demo,
-// docs/REGIONS.md) the first time; does nothing for returning users. A creator's
+// pricing region from the country) and a subscription whose trial has not started
+// (PENDING_DEMO: the client starts it on /start-trial by picking the plan to try,
+// docs/REGIONS.md "Trial first") the first time; does nothing for returning users. A creator's
 // sign-up (user_metadata.account_kind "creator") gets the User row and a creator
 // profile instead. Returns false without creating anything when the email has not
 // been confirmed yet.
@@ -161,7 +161,7 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
     // The anonymous visit session (tracker) rides along in the sign-up metadata, or the Google redirect.
     const sessionId = opts.visitSession ?? text(authUser.user_metadata?.visit_session, 40);
     const track = { userId: authUser.id, businessId: created.business?.id, sessionId };
-    // trial_started is recorded when an admin starts the trial after the demo (lib/admin/demos.ts).
+    // trial_started is recorded when the trial starts on /start-trial (lib/trial/start.ts).
     await trackEvent(EVENT_NAMES.signup, { ...track, props: { method: signUpMethodOf(authUser), industry: sector.industry, region: pricingRegion } });
     // Soft region check: the sign-up's IP country in a dearer region than the declared country is flagged for the
     // admin (docs/REGIONS.md). Google sign-ups pick their country on /welcome, which checks then.

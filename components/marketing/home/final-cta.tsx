@@ -14,7 +14,7 @@ export function FinalCta() {
             <p className="relative m-0 text-lg">Simple plans priced for where you are, or let our team run it for you.</p>
             <div className="relative flex flex-wrap justify-center gap-3">
               <Button href="/signup" variant="white" size="lg">
-                Book a free demo
+                Start your free trial
               </Button>
               <Button
                 href="/done-for-you"

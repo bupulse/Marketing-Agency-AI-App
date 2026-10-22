@@ -190,7 +190,7 @@ export async function createActivationInvoice(ctx: AdminContext, input: { busine
   }
   const interval: BillingInterval = input.interval === "YEAR" ? "YEAR" : input.interval === "MONTH" ? "MONTH" : sub.interval === "YEAR" ? "YEAR" : "MONTH";
   const planKey = input.planKey?.trim() || sub.chosenPlan;
-  if (!planKey) throw new AdminError("conflict", "The client has not chosen a plan yet. Ask them to choose one (Book a demo, step 1), or pick one here.");
+  if (!planKey) throw new AdminError("conflict", "The client has not chosen a plan yet. Choosing one in the app starts their trial; or pick one here.");
   const { region, plans } = await companyPlans(business.id);
   const plan = plans.find((p) => p.key === planKey);
   if (!plan) throw new AdminError("conflict", `That plan is not offered in ${region.name} (${region.key}), the company's region. Pick one of: ${plans.map((p) => p.name).join(", ") || "none (add a price for this region first)"}.`);

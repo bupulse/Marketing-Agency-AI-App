@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The demo actions are public POST endpoints: a few tries an hour per company, then a friendly message; the ICS route
-// serves only live, recent bookings to a few dozen requests an hour per address.
+// The start-trial and custom plan call actions are public POST endpoints: a few tries an hour per company, then a
+// friendly message; the ICS route serves only live, recent bookings to a few dozen requests an hour per address.
 
 const h = vi.hoisted(() => ({
   requireActiveUser: vi.fn(),
   rateLimit: vi.fn(async () => undefined),
-  choosePlan: vi.fn(),
+  startOwnTrial: vi.fn(async () => ({ status: "TRIALING" })),
   bookDemo: vi.fn(),
   cancelDemo: vi.fn(),
   bookPlanCall: vi.fn(),
@@ -29,7 +29,15 @@ vi.mock("@/lib/demo/bookings", () => {
       super(message);
     }
   }
-  return { DemoError, choosePlan: h.choosePlan, bookDemo: h.bookDemo, cancelDemo: h.cancelDemo, bookingIcs: h.bookingIcs };
+  return { DemoError, bookDemo: h.bookDemo, cancelDemo: h.cancelDemo, bookingIcs: h.bookingIcs };
+});
+vi.mock("@/lib/trial/start", () => {
+  class TrialError extends Error {
+    constructor(public code: string, message: string) {
+      super(message);
+    }
+  }
+  return { TrialError, startOwnTrial: h.startOwnTrial };
 });
 vi.mock("@/lib/demo/plan-calls", () => ({ bookPlanCall: h.bookPlanCall, cancelPlanCall: h.cancelPlanCall }));
 vi.mock("@/lib/db", () => ({ prisma: { demoBooking: { findUnique: h.findUnique } } }));
@@ -46,50 +54,44 @@ beforeEach(() => {
   h.rateLimit.mockResolvedValue(undefined);
 });
 
-describe("demo actions", () => {
-  it("count one hit per company and kind, and answer in words when the limit is reached (nothing runs)", async () => {
-    const a = { ...(await import("@/app/book-demo/actions")), ...(await import("@/lib/demo/limits")) };
+describe("start trial and custom plan call actions", () => {
+  it("start trial: owner or admin (settings), one hit per company, then the service; the dashboard opens next", async () => {
+    const a = { ...(await import("@/app/start-trial/actions")), ...(await import("@/lib/demo/limits")) };
     const f = new FormData();
     f.set("plan", "STARTER");
-    await expect(a.choosePlanAction({}, f)).rejects.toThrow("NEXT_REDIRECT /book-demo?step=time");
-    expect(h.rateLimit).toHaveBeenCalledWith("demo:choose:b1", a.DEMO_LIMITS.choose);
-    expect(h.choosePlan).toHaveBeenCalledWith({ businessId: "b1", planKey: "STARTER" });
+    await expect(a.startTrialAction({}, f)).rejects.toThrow("NEXT_REDIRECT /dashboard");
+    expect(h.requireActiveUser).toHaveBeenCalledWith("settings");
+    expect(h.rateLimit).toHaveBeenCalledWith("demo:trial:b1", a.DEMO_LIMITS.trial);
+    expect(h.startOwnTrial).toHaveBeenCalledWith({ businessId: "b1", actorId: "u1", planKey: "STARTER", ip: "203.0.113.9" });
     h.rateLimit.mockRejectedValueOnce(new RateLimitError(600));
-    expect(await a.choosePlanAction({}, f)).toEqual({ error: "You're doing that a lot. Please try again in 10 minutes." });
-    expect(h.choosePlan).toHaveBeenCalledTimes(1);
-
-    const b = new FormData();
-    b.set("startsAt", "2026-10-13T08:00:00.000Z");
-    await expect(a.bookDemoAction({}, b)).rejects.toThrow("NEXT_REDIRECT /dashboard?demo=booked");
-    expect(h.rateLimit).toHaveBeenCalledWith("demo:book:b1", a.DEMO_LIMITS.book);
-    h.rateLimit.mockRejectedValueOnce(new RateLimitError(60));
-    expect(await a.bookDemoAction({}, b)).toMatchObject({ error: expect.stringMatching(/doing that a lot/) });
-    expect(h.bookDemo).toHaveBeenCalledTimes(1);
-
-    const c = await import("@/app/dashboard/demo/actions");
-    expect(await c.cancelDemoAction()).toEqual({ ok: true });
-    expect(h.rateLimit).toHaveBeenCalledWith("demo:cancel:b1", a.DEMO_LIMITS.cancel);
-    h.rateLimit.mockRejectedValueOnce(new RateLimitError(60));
-    expect(await c.cancelDemoAction()).toMatchObject({ ok: false, error: expect.stringMatching(/doing that a lot/) });
-    expect(h.cancelDemo).toHaveBeenCalledTimes(1);
+    expect(await a.startTrialAction({}, f)).toEqual({ error: "You're doing that a lot. Please try again in 10 minutes." });
+    expect(h.startOwnTrial).toHaveBeenCalledTimes(1);
   });
 
-  it("booking is also limited per client address, and needs a confirmed email", async () => {
-    const a = await import("@/app/book-demo/actions");
-    const { PUBLIC_LIMITS } = await import("@/lib/request-limits");
-    const b = new FormData();
-    b.set("startsAt", "2026-10-13T08:00:00.000Z");
-    await expect(a.bookDemoAction({}, b)).rejects.toThrow("NEXT_REDIRECT /dashboard?demo=booked");
-    expect(h.rateLimit).toHaveBeenCalledWith(expect.stringMatching(/^public:demoBook:ip:[0-9a-f]{32}$/), PUBLIC_LIMITS.demoBook.ip);
-    // The raw address is never part of the key.
-    expect(h.rateLimit.mock.calls.some((c: unknown[]) => String(c[0]).includes("203.0.113.9"))).toBe(false);
-    h.rateLimit.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new RateLimitError(60));
-    expect(await a.bookDemoAction({}, b)).toMatchObject({ error: expect.stringMatching(/doing that a lot/) });
-    expect(h.bookDemo).toHaveBeenCalledTimes(1);
+  it("start trial: a teammate without the settings permission never reaches the service", async () => {
+    const { startTrialAction } = await import("@/app/start-trial/actions");
+    h.requireActiveUser.mockRejectedValueOnce(new Error("NEXT_REDIRECT /dashboard/no-access?need=settings"));
+    const f = new FormData();
+    f.set("plan", "STARTER");
+    await expect(startTrialAction({}, f)).rejects.toThrow("no-access");
+    expect(h.rateLimit).not.toHaveBeenCalled();
+    expect(h.startOwnTrial).not.toHaveBeenCalled();
+  });
 
-    h.requireActiveUser.mockResolvedValue({ ...OWNER, email_confirmed_at: undefined });
-    expect(await a.bookDemoAction({}, b)).toEqual({ error: expect.stringMatching(/Confirm your email/) });
-    expect(h.bookDemo).toHaveBeenCalledTimes(1);
+  it("start trial: the service's refusal in words; an already started trial goes to the dashboard; anything else is generic", async () => {
+    const { startTrialAction } = await import("@/app/start-trial/actions");
+    const { TrialError } = await import("@/lib/trial/start");
+    const f = new FormData();
+    f.set("plan", "PRO");
+    h.startOwnTrial.mockRejectedValueOnce(new TrialError("not_in_region", "Choose one of the plans shown."));
+    expect(await startTrialAction({}, f)).toEqual({ error: "Choose one of the plans shown." });
+    // A second tap, or another tab: the first one started it, so this one opens the dashboard too.
+    h.startOwnTrial.mockRejectedValueOnce(new TrialError("not_pending", "Your free trial has already started."));
+    await expect(startTrialAction({}, f)).rejects.toThrow("NEXT_REDIRECT /dashboard");
+    h.startOwnTrial.mockRejectedValueOnce(new TrialError("changed", "Your account changed while starting the trial. Reload the page."));
+    await expect(startTrialAction({}, f)).rejects.toThrow("NEXT_REDIRECT /dashboard");
+    h.startOwnTrial.mockRejectedValueOnce(new Error("database down"));
+    expect(await startTrialAction({}, f)).toEqual({ error: "Something went wrong. Nothing was changed. Please try again." });
   });
 
   it("the custom plan call: the owner (billing) with a confirmed email, the demo's limits, linked to the request", async () => {

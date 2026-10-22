@@ -42,10 +42,10 @@ export default async function TermsPage() {
         />
       </LegalSection>
 
-      <LegalSection title="3. Demo, free trial, plans and billing">
+      <LegalSection title="3. Free trial, plans and billing">
         <LegalList
           items={[
-            `New accounts start with a free demo call. After it we start a free trial of ${trialDays} days with a limited number of generations. No card is needed for the trial, and nothing is charged when it ends: if you do nothing, the account becomes read-only and your work stays saved.`,
+            `New accounts start with a free trial of ${trialDays} days with a limited number of generations, from the moment you choose the plan you want to try. No card is needed for the trial, and nothing is charged when it ends: if you do nothing, the account becomes read-only and your work stays saved.`,
             `Plans (${sellable.map((p) => p.name).join(", ")}) and their prices depend on the country your business is in: see our pricing page (bupulse.com/pricing) for the plans, prices, currency and payment methods for your location. Each plan has monthly usage limits shown there; on yearly plans they reset every month.`,
             "Paid plans renew at the end of each month or year until cancelled. Payments are processed by our reseller and merchant of record, Paddle.com, which appears on your card statement.",
             "You can cancel at any time. Your plan stays active until the end of the period you have paid for. Refunds follow our Refund Policy (bupulse.com/refund-policy).",

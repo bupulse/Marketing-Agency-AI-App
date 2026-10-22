@@ -39,7 +39,7 @@ const STEP_FIELDS: Record<Step, string[]> = {
 };
 
 const TITLES: Record<Step, { title: string; sub: string }> = {
-  1: { title: "Create your account", sub: "Then choose a plan and book a free demo. No credit card needed." },
+  1: { title: "Create your account", sub: "Then choose a plan and start your free trial. No credit card needed." },
   2: { title: "About your organisation", sub: "This helps us write in your brand voice from day one." },
   3: { title: "Secure your account", sub: "Choose a password to finish." },
 };

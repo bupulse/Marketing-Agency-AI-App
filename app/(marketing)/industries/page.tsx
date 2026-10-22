@@ -46,7 +46,7 @@ export default function IndustriesPage() {
           <h2 className="text-2xl font-bold tracking-tight">Do not see your business?</h2>
           <p className="max-w-xl text-muted">BuPulse is not limited to this list. If you can describe what you offer, it can help you promote it.</p>
           <Button href="/signup" size="lg" trailing={<ArrowRight aria-hidden className="size-4" />}>
-            Book a free demo
+            Start your free trial
           </Button>
         </GlassCard>
       </Container>

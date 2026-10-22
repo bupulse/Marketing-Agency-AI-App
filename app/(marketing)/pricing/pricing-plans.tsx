@@ -17,7 +17,7 @@ export function PricingPlans({ plans }: { plans: RegionalPlan[] }) {
   const [interval, setInterval] = useState<BillingInterval>("MONTH");
 
   if (plans.length === 0) {
-    return <p className="mx-auto max-w-xl rounded-2xl bg-soft px-4 py-8 text-center text-[15px] text-muted">No plans are on sale in this region yet. Book a free demo and we will tell you what is coming.</p>;
+    return <p className="mx-auto max-w-xl rounded-2xl bg-soft px-4 py-8 text-center text-[15px] text-muted">No plans are on sale in this region yet. Get in touch and we will tell you what is coming.</p>;
   }
 
   return (
@@ -75,7 +75,7 @@ export function PricingPlans({ plans }: { plans: RegionalPlan[] }) {
               <ComingSoonFeatures features={plan.features} className="gap-3" />
             </ul>
             <Button href="/signup" size="lg" variant={plan.highlight ? "primary" : "ghost"}>
-              Book a free demo
+              Start your free trial
             </Button>
           </GlassCard>
         ))}

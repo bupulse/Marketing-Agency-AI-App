@@ -84,7 +84,7 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
       </div>
       <div className="mt-14 flex flex-col items-start gap-4 border-t border-line pt-8">
         <p className="text-lg font-semibold">Want help putting this into practice?</p>
-        <Button href="/signup">Book a free demo</Button>
+        <Button href="/signup">Start your free trial</Button>
       </div>
     </Container>
   );

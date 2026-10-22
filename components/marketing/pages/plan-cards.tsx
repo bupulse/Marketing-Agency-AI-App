@@ -37,7 +37,7 @@ export function PlanCards({ plans }: { plans: PublicPlan[] }) {
             ))}
           </ul>
           <Button href="/signup" size="lg" variant={plan.highlight ? "primary" : "ghost"}>
-            Book a free demo
+            Start your free trial
           </Button>
         </GlassCard>
       ))}

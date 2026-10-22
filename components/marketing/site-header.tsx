@@ -6,7 +6,7 @@ import { HeaderActions } from "./header-actions";
 
 /**
  * Sticky glass navigation. From lg (1024 px) the links and both buttons fit on one line; below that the links and
- * Log in move into the menu, while the theme toggle and the demo button stay (the button from sm, 640 px; on phones it
+ * Log in move into the menu, while the theme toggle and the free trial button stay (the button from sm, 640 px; on phones it
  * is in the menu, so the menu button always fits). Labels never wrap. Signed in, Log in becomes the Account menu (HeaderActions).
  */
 export function SiteHeader() {

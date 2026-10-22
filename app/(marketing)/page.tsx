@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 const title = "BuPulse: the marketing team for every small business";
 const description =
-  "Tell BuPulse about your business once. It writes your posts, designs your graphics and chats with your website visitors. Book a free demo to see it on your own business.";
+  "Tell BuPulse about your business once. It writes your posts, designs your graphics and chats with your website visitors. Start your free trial and see it work on your own business. No card needed.";
 
 export async function generateMetadata(): Promise<Metadata> {
   return {

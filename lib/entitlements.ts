@@ -24,7 +24,7 @@ export type FeatureBlockReason = "not_in_plan" | "service_off" | "plan_unknown";
 export const PLAN_UNKNOWN_MESSAGE = "We could not check your plan right now. Please try again in a moment.";
 
 /**
- * Why an account is read-only, whatever its plan says: waiting for its demo, trial over, a failed payment, or a plan
+ * Why an account is read-only, whatever its plan says: its trial not started yet, trial over, a failed payment, or a plan
  * that ended (EXPIRED, CANCELED, or still ACTIVE after its paid period and grace: lib/billing/period.ts). Mirrors
  * lib/usage.ts, which refuses generation for the same reasons. "Keep your data" stays: pages still render (viewing),
  * export and delete stay open; everything that does something new is refused, crons skip the company, and the
@@ -35,7 +35,7 @@ export type AccountBlock = "pending_demo" | "trial_expired" | "past_due" | "inac
 export function blockMessage(block: AccountBlock): string {
   switch (block) {
     case "pending_demo":
-      return "Your demo comes first: everything opens after your demo and the free trial that follows it.";
+      return "Start your free trial first: everything opens as soon as you choose the plan you want to try.";
     case "trial_expired":
       return "Your free trial has ended. Choose a plan on the Billing page to keep going; everything you made is saved.";
     case "past_due":
@@ -84,7 +84,7 @@ const subscriptionOf = cache(async (businessId: string): Promise<SubscriptionBit
 
 /**
  * Which plan's features a company has (pure, so tests can check the rule):
- * - waiting for its demo (PENDING_DEMO): none, whatever the plan says;
+ * - trial not started yet (PENDING_DEMO): none, whatever the plan says;
  * - on the trial (TRIALING) with a plan chosen at sign-up: the chosen plan's features (the limits stay the TRIAL plan's);
  * - otherwise its plan's.
  */

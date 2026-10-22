@@ -77,7 +77,7 @@ export function recommendPlan<P extends QuizPlan>(answers: QuizAnswers, plans: r
   const posts = POSTS_A_MONTH[answers.volume];
   const users = USERS[answers.team];
   if (answers.goal === "done_for_you") {
-    return { kind: "managed", reasons: ["The BuPulse team makes and publishes your posts with BuPulse, and you approve them.", "We agree what you need in a free demo."] };
+    return { kind: "managed", reasons: ["The BuPulse team makes and publishes your posts with BuPulse, and you approve them.", "We agree what you need on a short call."] };
   }
   const needs = GOAL_FEATURES[answers.goal];
   const fits = plans
@@ -93,7 +93,7 @@ export function recommendPlan<P extends QuizPlan>(answers: QuizAnswers, plans: r
   return { kind: "plan", plan, reasons };
 }
 
-/** The quiz's pick, kept for /book-demo so the plan step starts on it (a functional cookie: a plan key, nothing else). */
+/** The quiz's pick, kept for /start-trial so the plan choice starts on it (a functional cookie: a plan key, nothing else). */
 export const PLAN_PICK_COOKIE = "bp-plan-pick";
 export const PLAN_PICK_MAX_AGE = 30 * 24 * 60 * 60;
 const PLAN_KEY = /^[A-Z][A-Z0-9_-]{1,39}$/;

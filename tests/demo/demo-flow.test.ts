@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeDb, type FakeDb } from "../admin/fake-db";
 
-// The demo-first trial end to end: sign-up waits for a demo, nothing works until then, the client chooses a plan and
-// books a slot (emails and invites), an admin starts the trial (AAL2, audited, trial length from Settings), the trial
-// gives the chosen plan's features with the trial limits, reminders go out, and the trial expires to read-only.
+// The demo booking machinery and the admin's Start trial, kept for companies still pending from the demo-first days
+// (new companies start their own trial: tests/trial/start-trial.test.ts). Sign-up waits (PENDING_DEMO), nothing works
+// until the trial starts, a demo booking sends emails and invites, an admin starts the trial (AAL2, audited, trial
+// length from Settings), the trial gives the chosen plan's features with the trial limits, reminders go out, and the
+// trial expires to read-only.
 
 const h = vi.hoisted(() => ({
   db: null as unknown as FakeDb,

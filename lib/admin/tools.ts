@@ -115,7 +115,7 @@ tool({
   schema: z.object({
     q: z.string().max(100).optional().describe("Search text."),
     plan: PLAN.optional(),
-    status: z.enum(["PENDING_DEMO", "TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"]).optional().describe("Subscription status. PENDING_DEMO = signed up, waiting for the demo and the admin's Start trial."),
+    status: z.enum(["PENDING_DEMO", "TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"]).optional().describe("Subscription status. PENDING_DEMO = signed up, trial not started yet (the client starts it by choosing a plan; an admin may Start trial)."),
     suspended: z.boolean().optional(),
     cursor,
     limit,

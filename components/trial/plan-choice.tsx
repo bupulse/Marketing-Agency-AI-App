@@ -8,13 +8,16 @@ import { formatPrice } from "@/components/billing/helpers";
 import type { RegionalPlan } from "@/lib/region-prices";
 import { paymentMethodLabel } from "@/lib/region-format";
 import { cn } from "@/lib/cn";
-import { choosePlanAction, type BookDemoState } from "@/app/book-demo/actions";
+import { startTrialAction, type StartTrialState } from "@/app/start-trial/actions";
 import { ComingSoonFeatures } from "@/components/billing/coming-soon-features";
 
-/** Step 1 of /book-demo: the region's plans as radio cards. `suggested`: the /pricing quiz's pick (lib/plan-quiz.ts). */
+/**
+ * /start-trial: the region's plans as radio cards; the button starts the free trial on the selected one. `current`: the
+ * plan chosen earlier (a company from the demo-first days), `suggested`: the /pricing quiz's pick (lib/plan-quiz.ts).
+ */
 export function PlanChoice({ plans, current, suggested = null }: { plans: RegionalPlan[]; current: string | null; suggested?: string | null }) {
   const [selected, setSelected] = useState<string | null>(current ?? suggested ?? plans.find((p) => p.highlight)?.key ?? plans[0]?.key ?? null);
-  const [state, formAction, pending] = useActionState<BookDemoState, FormData>(choosePlanAction, {});
+  const [state, formAction, pending] = useActionState<StartTrialState, FormData>(startTrialAction, {});
 
   if (plans.length === 0) {
     return <p className="rounded-2xl bg-soft px-4 py-6 text-center text-[15px] text-muted">No plans are offered in your region yet. Reply to your welcome email and we will sort it out.</p>;
@@ -79,7 +82,7 @@ export function PlanChoice({ plans, current, suggested = null }: { plans: Region
         })}
       </div>
       <Button type="submit" size="lg" disabled={pending || !selected} trailing={<ArrowRight aria-hidden className="size-4" />}>
-        {pending ? "Saving…" : "Continue to pick a time"}
+        {pending ? "Starting your trial…" : "Start my free trial"}
       </Button>
     </form>
   );
