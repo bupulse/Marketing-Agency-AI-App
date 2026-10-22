@@ -15,11 +15,21 @@ export function typingInField(e: KeyboardEvent): boolean {
 }
 
 /**
+ * True while a window opened over the quiz has the keys (the gallery picker, "Import from a link", a menu): Enter or a
+ * number typed there belongs to that window, not to the question under it.
+ */
+export function keysElsewhere(e: KeyboardEvent): boolean {
+  const el = e.target as HTMLElement | null;
+  return !!el?.closest?.("dialog, [role=dialog], [role=menu]") || !!document.querySelector("dialog[open]");
+}
+
+/**
  * Enter goes to the next question, also from a one-line text field (the year, a price, a name). Not from a text area
  * or a select, and not when the field used the Enter itself (Chips' "Add your own" adds the chip and stops it).
  */
 export function enterMeansNext(e: KeyboardEvent): boolean {
   if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented || e.isComposing) return false;
+  if (keysElsewhere(e)) return false;
   if (!typingInField(e)) return true;
   const el = e.target as HTMLElement;
   return el.tagName === "INPUT" && ["text", "number", "tel", "email", "url", "search", "date"].includes((el as HTMLInputElement).type);
