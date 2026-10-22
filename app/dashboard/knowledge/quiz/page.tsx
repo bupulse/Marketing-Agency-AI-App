@@ -99,6 +99,7 @@ export default async function QuizPage({ searchParams }: { searchParams: Promise
         reasonIdeas={reasonIdeas(ctx)}
         currency={currency}
         country={business.country ?? ""}
+        places={{ city: knowledge.area && knowledge.area.length <= 40 ? knowledge.area : "", country: business.country ?? "" }}
         canGrant={settings}
         startRound={start}
         cacheKey={`bp-quiz-draft:${business.id}`}

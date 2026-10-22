@@ -18,6 +18,8 @@ import {
   newProductNames,
   personaSavesFrom,
   policiesFrom,
+  policyAnswerOf,
+  policyOptions,
   positioningFrom,
   productDefaults,
   productInputsFrom,
@@ -52,6 +54,7 @@ const ctx: QuizContext = {
   faqs: [],
 };
 const draft = templateDraft(ctx);
+const places = { city: "Kigali", country: "Rwanda" };
 
 const all: Given = () => true;
 const none: Given = () => false;
@@ -106,7 +109,7 @@ const stored: QuizStored = {
 };
 
 const answers = (patch: Partial<{ [K in keyof QuizAnswers]: Partial<QuizAnswers[K]> }> = {}): QuizAnswers => {
-  const base = initialAnswers(stored, draft, { likelyKind: "PHYSICAL" }).answers;
+  const base = initialAnswers(stored, draft, { likelyKind: "PHYSICAL", places }).answers;
   const out = { ...base } as Record<string, unknown>;
   for (const [k, v] of Object.entries(patch)) out[k] = { ...(base as Record<string, object>)[k], ...v };
   return out as QuizAnswers;
@@ -224,11 +227,36 @@ describe("⭐ Why you -> createCompetitor, savePositioning", () => {
 });
 
 describe("📋 Rules -> savePolicies, createFaq", () => {
-  it("keeps the policy fields the quiz does not ask", () => {
-    const next = policiesFrom(stored.policies, { ...answers().rules, payment: ["mtn_momo", "cash"], delivery: "We deliver in Kigali", returns: "", booking: "" }, all);
-    expect(next).toMatchObject({ warranty: "Fresh or we replace it", paymentNotes: "Pay on pickup", paymentMethods: ["mtn_momo", "cash"], delivery: "We deliver in Kigali" });
+  it("keeps the policy fields the quiz does not ask; a tile is its policy sentence", () => {
+    const next = policiesFrom(stored.policies, { ...answers().rules, payment: ["mtn_momo", "cash"], delivery: { choice: "city", text: "" }, returns: { choice: "other", text: "Talk to us within a day." }, booking: { choice: "", text: "" } }, all, places);
+    expect(next).toMatchObject({
+      warranty: "Fresh or we replace it",
+      paymentNotes: "Pay on pickup",
+      paymentMethods: ["mtn_momo", "cash"],
+      delivery: "We deliver in Kigali. Message us with your address.",
+      returns: "Talk to us within a day.",
+      booking: null,
+    });
     expect(policiesSchema.safeParse(next).success).toBe(true);
-    expect(policiesFrom(stored.policies, answers().rules, none)).toBeNull();
+    expect(policiesFrom(stored.policies, answers().rules, none, places)).toBeNull();
+  });
+
+  it("offers clear common answers as tiles, plus Something else", () => {
+    expect(policyOptions("delivery", places).map((o) => o.label)).toEqual(["No delivery, pick-up only", "We deliver in Kigali", "We deliver across Rwanda", "Through a delivery app", "Something else"]);
+    expect(policyOptions("returns", places).map((o) => o.label)).toEqual(["No returns on food and drinks", "Exchange within 7 days with the receipt", "Refund within 7 days", "Something else"]);
+    expect(policyOptions("booking", places).map((o) => o.label)).toEqual(["No booking, just walk in", "Book by WhatsApp or a call", "Book online", "Something else"]);
+    expect(policyOptions("delivery", { city: "", country: "" })[1].label).toBe("We deliver in town");
+  });
+
+  it("shows a stored policy as its tile, or as Something else with its words", () => {
+    expect(policyAnswerOf("booking", "no booking needed - just walk in", places)).toEqual({ choice: "walkIn", text: "" });
+    expect(policyAnswerOf("returns", "We swap sizes for free.", places)).toEqual({ choice: "other", text: "We swap sizes for free." });
+    expect(policyAnswerOf("delivery", null, places)).toEqual({ choice: "", text: "" });
+    const { answers: a, guessed } = initialAnswers({ ...stored, policies: { ...stored.policies, booking: "Book online." } }, draft, { likelyKind: "PHYSICAL", places });
+    expect(a.rules.booking).toEqual({ choice: "online", text: "" });
+    expect(a.rules.returns.choice).toBe("noFood"); // the bakery's likeliest, as a guess
+    expect(guessed).toContain("rules.returns");
+    expect(guessed).not.toContain("rules.booking");
   });
 
   it("creates the kept questions that are not stored yet", () => {
@@ -336,7 +364,7 @@ describe("the questions", () => {
   });
 
   it("starts from what is stored, else BuPulse's guess (tagged)", () => {
-    const { answers: a, guessed } = initialAnswers(stored, draft, { likelyKind: "PHYSICAL" });
+    const { answers: a, guessed } = initialAnswers(stored, draft, { likelyKind: "PHYSICAL", places });
     expect(a.you.tagline).toBe("Fresh every morning");
     expect(guessed).not.toContain("you.tagline");
     expect(a.you.mission).toBe(draft.missions[0]);

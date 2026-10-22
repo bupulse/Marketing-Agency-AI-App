@@ -22,7 +22,12 @@ const NOT_FOUND: Record<ListKind | "review", string> = {
 };
 
 /** The next position at the end of a list, checking the cap under the company's advisory lock (no race past it). */
-async function nextPosition(tx: Prisma.TransactionClient, kind: ListKind, businessId: string, cap: number, full: string): Promise<number> {
+function nextPosition(tx: Prisma.TransactionClient, kind: ListKind, businessId: string, cap: number, full: string): Promise<number> {
+  return nextPositions(tx, kind, businessId, cap, 1, full);
+}
+
+/** The first of `n` positions at the end of a list; refused when the `n` new items would pass the cap. */
+async function nextPositions(tx: Prisma.TransactionClient, kind: ListKind, businessId: string, cap: number, n: number, full: string): Promise<number> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`knowledge:${kind}:${businessId}`}))`;
   const where = { businessId };
   const [count, last] =
@@ -31,7 +36,7 @@ async function nextPosition(tx: Prisma.TransactionClient, kind: ListKind, busine
       : kind === "competitor"
         ? await Promise.all([tx.competitor.count({ where }), tx.competitor.findFirst({ where, orderBy: { position: "desc" }, select: { position: true } })])
         : await Promise.all([tx.knowledgeFaq.count({ where }), tx.knowledgeFaq.findFirst({ where, orderBy: { position: "desc" }, select: { position: true } })]);
-  if (count >= cap) throw new KnowledgeError(full);
+  if (count + n > cap) throw new KnowledgeError(full);
   return (last?.position ?? -1) + 1;
 }
 
@@ -70,6 +75,16 @@ export async function createCompetitor(businessId: string, data: CompetitorData)
   });
 }
 
+/** Several competitors at the end of the list in one transaction (the Business info quiz), in order. */
+export async function createCompetitors(businessId: string, list: CompetitorData[]): Promise<string[]> {
+  if (!list.length) return [];
+  return prisma.$transaction(async (tx) => {
+    const start = await nextPositions(tx, "competitor", businessId, MAX_COMPETITORS, list.length, `You can add up to ${MAX_COMPETITORS} competitors.`);
+    const rows = await tx.competitor.createManyAndReturn({ data: list.map((data, i) => ({ businessId, position: start + i, ...data })), select: { id: true, position: true } });
+    return rows.sort((a, b) => a.position - b.position).map((r) => r.id);
+  });
+}
+
 export async function updateCompetitor(businessId: string, id: string, data: CompetitorData): Promise<void> {
   const { count } = await prisma.competitor.updateMany({ where: { id, businessId }, data });
   if (!count) throw new KnowledgeError(NOT_FOUND.competitor);
@@ -89,6 +104,16 @@ export async function createFaq(businessId: string, data: { question: string; an
   return prisma.$transaction(async (tx) => {
     const position = await nextPosition(tx, "faq", businessId, MAX_FAQS, `You can add up to ${MAX_FAQS} questions.`);
     return (await tx.knowledgeFaq.create({ data: { businessId, position, ...data }, select: { id: true } })).id;
+  });
+}
+
+/** Several questions at the end of the list in one transaction (the Business info quiz), in order. */
+export async function createFaqs(businessId: string, list: { question: string; answer: string }[]): Promise<string[]> {
+  if (!list.length) return [];
+  return prisma.$transaction(async (tx) => {
+    const start = await nextPositions(tx, "faq", businessId, MAX_FAQS, list.length, `You can add up to ${MAX_FAQS} questions.`);
+    const rows = await tx.knowledgeFaq.createManyAndReturn({ data: list.map((data, i) => ({ businessId, position: start + i, ...data })), select: { id: true, position: true } });
+    return rows.sort((a, b) => a.position - b.position).map((r) => r.id);
   });
 }
 

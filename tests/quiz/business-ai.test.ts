@@ -50,7 +50,7 @@ const aiAnswer = {
   differentiators: [],
   positioning: [],
   faqs: [],
-  policies: { delivery: [], returns: [], booking: [], payment: [] },
+  policies: { delivery: "unsure", returns: "unsure", booking: "unsure", payment: [] },
   voices: [],
 };
 

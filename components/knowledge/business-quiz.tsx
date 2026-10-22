@@ -2,11 +2,7 @@
 
 import { ArrowRight, Check, Lock } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { saveKnowledge } from "@/app/onboarding/actions";
-import { approveVoice } from "@/app/dashboard/knowledge/interview/actions";
-import { saveProfile } from "@/app/dashboard/knowledge/profile/actions";
-import { draftQuiz, quizScore, saveQuizPersonas, saveQuizProducts, saveQuizRules, saveQuizWhy } from "@/app/dashboard/knowledge/quiz/actions";
-import { createReview } from "@/app/dashboard/knowledge/reviews/actions";
+import { draftQuiz, quizScore, saveQuizRound } from "@/app/dashboard/knowledge/quiz/actions";
 import { Chips, GuessTag, KeepOrDrop, QuestionHead, QuizFrame, RoundDone, ScoreRing, TextAnswer, ThisOrThat, Thinking, Tiles, useQuiz, type TileOption } from "@/components/quiz";
 import { Button, GlassCard, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -15,7 +11,7 @@ import { AGE_LABEL, AGE_RANGES, GENDER_LABEL, ONLINE_PLACES, personaLine, type A
 import { PAYMENT_LABEL, PAYMENT_METHODS, type PaymentMethod } from "@/lib/knowledge/policies";
 import { KIND_LABEL, type ProductKindValue } from "@/lib/knowledge/products";
 import { COMMON_LANGUAGES, SIZE_LABEL, type CompanySize } from "@/lib/knowledge/profile";
-import type { QuizDraft } from "@/lib/knowledge/quiz-draft";
+import type { PolicyKind, QuizDraft } from "@/lib/knowledge/quiz-draft";
 import {
   hoursChoiceOf,
   ideaPersonaKey,
@@ -29,6 +25,7 @@ import {
   personaOfKey,
   personaSavesFrom,
   policiesFrom,
+  policyOptions,
   positioningFrom,
   productDefaults,
   productInputsFrom,
@@ -44,6 +41,7 @@ import {
   voiceSaveFrom,
   type Given,
   type HoursChoice,
+  type Places,
   type QuizAnswers,
   type QuizRoundId,
   type QuizStored,
@@ -64,6 +62,8 @@ type Props = {
   reasonIdeas: string[];
   currency: string;
   country: string;
+  /** "We deliver in Kigali / across Rwanda". */
+  places: Places;
   canGrant: boolean;
   startRound: QuizRoundId | null;
   cacheKey: string;
@@ -166,9 +166,9 @@ export function BusinessQuiz(props: Props) {
 
 type Saved = { ok: true; line: string } | { ok: false; stepId: string; error: string };
 
-function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, reasonIdeas, currency, country, canGrant, startRound, postsHref }: Props & { draft: QuizDraft }) {
+function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, reasonIdeas, currency, country, places, canGrant, startRound, postsHref }: Props & { draft: QuizDraft }) {
   // Read once: the page's props refresh after every save (the actions revalidate), the quiz's state must not.
-  const [first] = useState(() => initialAnswers(storedAtStart, draft, { likelyKind, reasonIdeas }));
+  const [first] = useState(() => initialAnswers(storedAtStart, draft, { likelyKind, reasonIdeas, places }));
   const [answers, setAnswers] = useState<QuizAnswers>(first.answers);
   const [stored, setStored] = useState<QuizStored>(storedAtStart);
   const [guessed, setGuessed] = useState<Set<string>>(() => new Set(first.guessed));
@@ -225,12 +225,13 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
   async function saveRound(round: QuizRoundId, given: Given): Promise<Saved> {
     const a = latest.current.answers;
     const s = latest.current.stored;
+    // Each round is one request (saveQuizRound): the same schemas and services as the section forms.
     switch (round) {
       case "you": {
         if (!s.profile) return { ok: true, line: "" };
         const input = profileInputFrom(s.profile, a.you, given);
         if (JSON.stringify(input) === JSON.stringify(s.profile)) return { ok: true, line: "Nothing changed: your profile is as it was." };
-        const r = await saveProfile(input);
+        const r = await saveQuizRound({ round: "you", profile: input });
         if (!r.ok) return fieldError("you", "you.tagline", r);
         setStored((x) => ({ ...x, profile: { ...x.profile!, ...input, yearFounded: String(input.yearFounded ?? ""), size: input.size ?? "" } as QuizStored["profile"] }));
         return { ok: true, line: "Your tagline, story, mission and values are saved." };
@@ -238,80 +239,70 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
       case "sell": {
         const items = productInputsFrom(s.products, a.sell, draft.products, currency, given);
         if (!items.length) return { ok: true, line: "Nothing new to add this time." };
-        const results = await saveQuizProducts(items.map((i) => i.input));
-        const added = items.filter((_, i) => results[i]?.ok).map((i) => i.name);
-        if (added.length) setStored((x) => ({ ...x, products: [...x.products, ...added] }));
-        const failed = results.findIndex((r) => !r.ok);
-        if (failed >= 0) {
-          const r = results[failed] as { error: string; fieldErrors?: Record<string, string> };
-          const name = items[failed]?.name ?? items[0].name;
+        const r = await saveQuizRound({ round: "sell", products: items.map((i) => i.input) });
+        if (!r.ok) {
+          const name = items[r.item ?? 0]?.name ?? items[0].name;
           return { ok: false, stepId: productStepId(name), error: Object.values(r.fieldErrors ?? {})[0] ?? r.error };
         }
+        const added = items.map((i) => i.name);
+        setStored((x) => ({ ...x, products: [...x.products, ...added] }));
         return { ok: true, line: `${added.length === 1 ? `${added[0]} is` : `${added.length} products are`} saved as a draft. Add a photo on the Products page to make ${added.length === 1 ? "it" : "them"} ready for posts.` };
       }
       case "customers": {
         const saves = personaSavesFrom(s.personas, draft.personas, a.customers, given);
         if (!saves.length) return { ok: true, line: "Nothing new to save." };
-        const results = await saveQuizPersonas(saves.map((x) => (x.id ? { id: x.id, input: x.input } : { input: x.input })));
-        let problem: Saved | null = null;
+        const r = await saveQuizRound({ round: "customers", personas: saves.map((x) => (x.id ? { id: x.id, input: x.input } : { input: x.input })) });
+        if (!r.ok) return fieldError("customers", "customers.pick", r);
         saves.forEach((save, i) => {
-          const r = results[i];
-          if (!r?.ok) {
-            problem ??= fieldError("customers", "customers.pick", r ?? { error: "We could not save that. Please try again." });
-            return;
-          }
+          const id = r.ids?.[i];
           if (save.id) {
-            const id = save.id;
-            setStored((x) => ({ ...x, personas: x.personas.map((p) => (p.id === id ? { ...p, ...(save.input as typeof p) } : p)) }));
-          } else if ("personaId" in r) {
-            const personaId = r.personaId as string;
-            const persona = { ...(save.input as QuizStored["personas"][number]), id: personaId };
+            setStored((x) => ({ ...x, personas: x.personas.map((p) => (p.id === save.id ? { ...p, ...(save.input as typeof p) } : p)) }));
+          } else if (id) {
+            const persona = { ...(save.input as QuizStored["personas"][number]), id };
             const key = a.customers.picked.find((k) => k.startsWith("idea:") && draft.personas[Number(k.slice(5))]?.name === save.input.name);
             setStored((x) => ({ ...x, personas: [...x.personas, persona] }));
             // Played again, the card is the stored persona now: it is updated, not created twice.
-            if (key) setAnswers((x) => ({ ...x, customers: { ...x.customers, picked: x.customers.picked.map((k) => (k === key ? storedPersonaKey(personaId) : k)) } }));
+            if (key) setAnswers((x) => ({ ...x, customers: { ...x.customers, picked: x.customers.picked.map((k) => (k === key ? storedPersonaKey(id) : k)) } }));
           }
         });
-        if (problem) return problem;
         return { ok: true, line: `Saved: ${saves.map((x) => x.input.name).join(" and ")}.` };
       }
       case "why": {
         const names = newCompetitorNames(s.competitors, a.why, given);
         const positioning = positioningFrom(s.positioning, a.why, given);
         if (!names.length && !positioning) return { ok: true, line: "Nothing changed this time." };
-        const r = await saveQuizWhy({ competitors: names, positioning });
-        const added = names.filter((_, i) => r.competitors[i]?.ok);
-        setStored((x) => ({ ...x, competitors: [...x.competitors, ...added] }));
-        if (positioning && r.positioning?.ok) setStored((x) => ({ ...x, positioning: { differentiators: positioning.differentiators ?? [], statement: positioning.statement || null } }));
-        const failed = r.competitors.find((c) => !c.ok);
-        if (failed && !failed.ok) return fieldError("why", "why.competitors", failed);
-        if (r.positioning && !r.positioning.ok) return fieldError("why", "why.differentiators", r.positioning);
-        return { ok: true, line: [added.length && `${added.length} competitor${added.length === 1 ? "" : "s"}`, positioning && "what makes you different"].filter(Boolean).join(" and ").replace(/^./, (c) => c.toUpperCase()) + " saved." };
+        const r = await saveQuizRound({ round: "why", competitors: names, positioning });
+        if (!r.ok) return fieldError("why", r.part === "positioning" ? "why.differentiators" : "why.competitors", r);
+        setStored((x) => ({
+          ...x,
+          competitors: [...x.competitors, ...names],
+          ...(positioning ? { positioning: { differentiators: positioning.differentiators ?? [], statement: positioning.statement || null } } : {}),
+        }));
+        return { ok: true, line: [names.length && `${names.length} competitor${names.length === 1 ? "" : "s"}`, positioning && "what makes you different"].filter(Boolean).join(" and ").replace(/^./, (c) => c.toUpperCase()) + " saved." };
       }
       case "rules": {
-        const policies = policiesFrom(s.policies, a.rules, given);
+        const policies = policiesFrom(s.policies, a.rules, given, places);
         const faqs = newFaqsFrom(s.faqs, a.rules, given);
         if (!policies && !faqs.length) return { ok: true, line: "Nothing changed this time." };
-        const r = await saveQuizRules({ policies, faqs });
-        if (policies && r.policies?.ok) setStored((x) => ({ ...x, policies }));
-        const added = faqs.filter((_, i) => r.faqs[i]?.ok).map((f) => f.question);
-        setStored((x) => ({ ...x, faqs: [...x.faqs, ...added] }));
-        if (r.policies && !r.policies.ok) return fieldError("rules", "rules.payment", r.policies);
-        const failed = r.faqs.findIndex((f) => !f.ok);
-        if (failed >= 0) {
-          const f = r.faqs[failed] as { error: string; fieldErrors?: Record<string, string> };
-          return { ok: false, stepId: "rules.faqs", error: `${faqs[failed] ? `“${faqs[failed].question}”: ` : ""}${Object.values(f.fieldErrors ?? {})[0] ?? f.error}` };
+        const r = await saveQuizRound({ round: "rules", policies, faqs });
+        if (!r.ok) {
+          if (r.part === "faqs") {
+            const faq = faqs[r.item ?? 0];
+            return { ok: false, stepId: "rules.faqs", error: `${faq ? `“${faq.question}”: ` : ""}${Object.values(r.fieldErrors ?? {})[0] ?? r.error}` };
+          }
+          return fieldError("rules", "rules.payment", r);
         }
-        return { ok: true, line: [policies && "Your payment and delivery rules", added.length && `${added.length} common question${added.length === 1 ? "" : "s"}`].filter(Boolean).join(" and ") + " saved. Your chat assistant uses them." };
+        setStored((x) => ({ ...x, ...(policies ? { policies } : {}), faqs: [...x.faqs, ...faqs.map((f) => f.question)] }));
+        return { ok: true, line: [policies && "Your payment and delivery rules", faqs.length && `${faqs.length} common question${faqs.length === 1 ? "" : "s"}`].filter(Boolean).join(" and ") + " saved. Your chat assistant uses them." };
       }
       case "find": {
         if (!s.brand) return { ok: true, line: "" };
         const input = knowledgeInputFrom(s.brand, a.find, given, country);
         if (!input) return { ok: true, line: "Nothing changed this time." };
-        const r = await saveKnowledge(input);
+        const r = await saveQuizRound({ round: "find", knowledge: input });
         if (!r.ok) {
           const [field, message] = Object.entries(r.fieldErrors ?? {})[0] ?? [];
-          return { ok: false, stepId: field ? stepForField("find", field, "find.hours") : "find.hours", error: message ?? r.error ?? "We could not save that. Please try again." };
+          return { ok: false, stepId: field ? stepForField("find", field, "find.hours") : "find.hours", error: message ?? r.error };
         }
         setStored((x) => ({ ...x, brand: { ...x.brand!, openingHours: input.openingHours ?? [], locations: input.locations as NonNullable<QuizStored["brand"]>["locations"], contacts: input.contacts as NonNullable<QuizStored["brand"]>["contacts"] } }));
         return { ok: true, line: "Your opening hours, phone and address are saved. Your chat assistant and your posts use them." };
@@ -319,7 +310,7 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
       case "voice": {
         const save = voiceSaveFrom(s.voice, draft.voices, a.voice, given);
         if (!save) return { ok: true, line: "Nothing changed this time." };
-        const r = await approveVoice(save.summary, "quiz", save.answers);
+        const r = await saveQuizRound({ round: "voice", summary: save.summary, answers: save.answers });
         if (!r.ok) return { ok: false, stepId: "voice.pick", error: Object.values(r.fieldErrors ?? {})[0] ?? r.error };
         setStored((x) => ({ ...x, voice: save.summary, voiceAnswers: save.answers }));
         const label = draft.voices.find((v) => v.id === a.voice.pick)?.label;
@@ -328,7 +319,7 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
       case "love": {
         const input = reviewInputFrom(a.love, given);
         if (!input || savedReviews.includes(input.quote)) return { ok: true, line: input ? "That review is already saved." : "No review this time. You can add one any time." };
-        const r = await createReview(input);
+        const r = await saveQuizRound({ round: "love", review: input });
         if (!r.ok) return fieldError("love", "love.quote", r);
         setSavedReviews((x) => [...x, input.quote]);
         return { ok: true, line: `${input.customerName}'s words are saved.${input.canPublish ? " BuPulse may quote them in posts." : ""}` };
@@ -486,6 +477,7 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
       answers={answers}
       set={set}
       stored={stored}
+      places={places}
       startProducts={startProducts}
       draft={draft}
       likelyKind={likelyKind}
@@ -519,6 +511,7 @@ type QuestionProps = {
   answers: QuizAnswers;
   set: <K extends keyof QuizAnswers>(round: K, patch: Partial<QuizAnswers[K]>, stepId?: string) => void;
   stored: QuizStored;
+  places: Places;
   /** The products stored when the quiz began (each new one has its question). */
   startProducts: string[];
   draft: QuizDraft;
@@ -540,7 +533,7 @@ const HOURS_LABEL: Record<Exclude<HoursChoice, "keep" | "custom">, { label: stri
   always: { label: "Open 24/7", hint: "Day and night", emoji: "🌙" },
 };
 
-function Question({ id, head, answers: a, set, stored, startProducts, draft, likelyKind, reasonIdeas, currency, onTap }: QuestionProps) {
+function Question({ id, head, answers: a, set, stored, places, startProducts, draft, likelyKind, reasonIdeas, currency, onTap }: QuestionProps) {
   if (id.startsWith("sell.item.")) {
     const name = newProductNames(startProducts, a.sell.picked).find((n) => productStepId(n) === id) ?? "";
     return <ProductQuestion name={name} head={head} a={a} set={set} draft={draft} likelyKind={likelyKind} reasonIdeas={reasonIdeas} currency={currency} />;
@@ -734,26 +727,11 @@ function Question({ id, head, answers: a, set, stored, startProducts, draft, lik
       );
     }
     case "rules.delivery":
-      return (
-        <>
-          {head("Do you deliver?", "Tap the closest answer, then add your details (areas, cost, how long).")}
-          <TextAnswer label="Delivery" value={a.rules.delivery} onChange={(delivery) => set("rules", { delivery })} suggestions={draft.policies.delivery} maxLength={1000} multiline />
-        </>
-      );
+      return <PolicyQuestion kind="delivery" title="Do you deliver?" head={head} a={a} set={set} places={places} onTap={onTap} />;
     case "rules.returns":
-      return (
-        <>
-          {head("What about returns and refunds?")}
-          <TextAnswer label="Returns and refunds" value={a.rules.returns} onChange={(returns) => set("rules", { returns })} suggestions={draft.policies.returns} maxLength={1000} multiline />
-        </>
-      );
+      return <PolicyQuestion kind="returns" title="What about returns and refunds?" head={head} a={a} set={set} places={places} onTap={onTap} />;
     case "rules.booking":
-      return (
-        <>
-          {head("How do people book?")}
-          <TextAnswer label="Booking" value={a.rules.booking} onChange={(booking) => set("rules", { booking })} suggestions={draft.policies.booking} maxLength={1000} multiline />
-        </>
-      );
+      return <PolicyQuestion kind="booking" title="How do people book?" head={head} a={a} set={set} places={places} onTap={onTap} />;
     case "rules.faqs":
       return (
         <>
@@ -989,6 +967,30 @@ function PersonaCards({ head, a, set, stored, draft }: { head: QuestionProps["he
           );
         })}
       </div>
+    </>
+  );
+}
+
+/** A policy as tiles of common answers (each a policy sentence), and "Something else" for the owner's own words. */
+function PolicyQuestion({ kind, title, head, a, set, places, onTap }: { kind: PolicyKind; title: string; head: QuestionProps["head"]; a: QuizAnswers; set: QuestionProps["set"]; places: Places; onTap: () => void }) {
+  const answer = a.rules[kind];
+  const options = policyOptions(kind, places);
+  return (
+    <>
+      {head(title, "Tap the closest answer. You can change the words on the FAQs & policies page.")}
+      <Tiles
+        label={title}
+        options={options.map((o) => ({ value: o.value, label: o.label, emoji: o.emoji }))}
+        value={answer.choice || null}
+        onPick={(choice) => {
+          set("rules", { [kind]: { ...answer, choice } });
+          if (choice !== "other") onTap();
+        }}
+        columns={2}
+      />
+      {answer.choice === "other" && (
+        <TextAnswer label={`${title} In your own words`} value={answer.text} onChange={(text) => set("rules", { [kind]: { choice: "other", text } })} placeholder="In your own words" maxLength={1000} multiline />
+      )}
     </>
   );
 }

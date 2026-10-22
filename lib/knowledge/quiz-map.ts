@@ -17,7 +17,7 @@ import { SUMMARY_LIMITS } from "./interview";
 import type { Policies, PaymentMethod } from "./policies";
 import { productInputSchema, type ProductInput, type ProductKindValue } from "./products";
 import type { CompanySize, ProfileFormValues, ProfileInput } from "./profile";
-import type { PersonaIdea, ProductIdea, QuizDraft, VoiceOption } from "./quiz-draft";
+import { POLICY_CHOICES, sameKey, type PersonaIdea, type PolicyKind, type ProductIdea, type QuizDraft, type VoiceOption } from "./quiz-draft";
 import type { ReviewInput, ReviewSourceValue } from "./reviews";
 import type { SectionKey } from "./sections";
 import type { QuizRound, QuizStep } from "@/lib/quiz/flow";
@@ -55,7 +55,7 @@ export type QuizAnswers = {
   sell: { picked: string[]; details: Record<string, ProductAnswer> };
   customers: { picked: string[]; ageRange: AgeRange | ""; gender: Gender | ""; channels: string[]; needs: string[]; pains: string[]; triggers: string[] };
   why: { competitors: string[]; differentiators: string[]; statement: string };
-  rules: { payment: PaymentMethod[]; delivery: string; returns: string; booking: string; faqs: { id: string; question: string; answer: string }[]; faqKept: string[] };
+  rules: { payment: PaymentMethod[]; delivery: PolicyAnswer; returns: PolicyAnswer; booking: PolicyAnswer; faqs: { id: string; question: string; answer: string }[]; faqKept: string[] };
   find: { hours: HoursChoice | ""; custom: Schedule; phone: string; address: string };
   voice: { tone: "friendly" | "formal" | ""; emojis: "yes" | "no" | ""; length: "short" | "detailed" | ""; pick: string };
   love: { quote: string; customerName: string; source: ReviewSourceValue | ""; canPublish: boolean };
@@ -210,13 +210,56 @@ export function positioningFrom(stored: { differentiators: string[]; statement: 
 
 // ---- 📋 Rules -> savePolicies, createFaq --------------------------------------------------------------------------
 
-export function policiesFrom(stored: Policies, a: QuizAnswers["rules"], given: Given): Policies | null {
+/** A policy question's answer: a common answer's tile (`choice`), "other" with the owner's words, or "" (none yet). */
+export type PolicyAnswer = { choice: string; text: string };
+/** Where the business is, for "We deliver in Kigali" (the area served, else nothing) and "across Rwanda". */
+export type Places = { city: string; country: string };
+
+const CHOICE_TEXT: Record<PolicyKind, Record<string, (p: Places) => { label: string; sentence: string; emoji: string }>> = {
+  delivery: {
+    pickup: () => ({ label: "No delivery, pick-up only", sentence: "We do not deliver: pick-up only, at our place.", emoji: "🏪" }),
+    city: (p) => ({ label: `We deliver in ${p.city || "town"}`, sentence: `We deliver in ${p.city || "town"}. Message us with your address.`, emoji: "🛵" }),
+    country: (p) => ({ label: `We deliver across ${p.country || "the country"}`, sentence: `We deliver across ${p.country || "the country"}. Message us with your address.`, emoji: "🚚" }),
+    app: () => ({ label: "Through a delivery app", sentence: "We deliver through delivery apps.", emoji: "📱" }),
+  },
+  returns: {
+    noFood: () => ({ label: "No returns on food and drinks", sentence: "We do not take returns on food and drinks.", emoji: "🍽️" }),
+    exchange: () => ({ label: "Exchange within 7 days with the receipt", sentence: "Items can be exchanged within 7 days with the receipt.", emoji: "🔁" }),
+    refund: () => ({ label: "Refund within 7 days", sentence: "Items can be refunded within 7 days with the receipt.", emoji: "💸" }),
+  },
+  booking: {
+    walkIn: () => ({ label: "No booking, just walk in", sentence: "No booking needed: just walk in.", emoji: "🚶" }),
+    whatsapp: () => ({ label: "Book by WhatsApp or a call", sentence: "Book by WhatsApp or a call.", emoji: "💬" }),
+    online: () => ({ label: "Book online", sentence: "Book online.", emoji: "🌐" }),
+  },
+};
+
+/** The tiles of a policy question, in order, then "Something else". */
+export function policyOptions(kind: PolicyKind, places: Places): { value: string; label: string; emoji: string; sentence: string }[] {
+  return [...POLICY_CHOICES[kind].map((c) => ({ value: c as string, ...CHOICE_TEXT[kind][c](places) })), { value: "other", label: "Something else", emoji: "✏️", sentence: "" }];
+}
+
+/** The policy text a tile stands for ("" for none; the owner's words for "Something else"). */
+export function policyText(kind: PolicyKind, a: PolicyAnswer, places: Places): string {
+  if (a.choice === "other") return a.text.trim();
+  return CHOICE_TEXT[kind][a.choice]?.(places).sentence ?? "";
+}
+
+/** A stored policy as the question shows it: its tile when it is one of the sentences, else "Something else" with it. */
+export function policyAnswerOf(kind: PolicyKind, stored: string | null | undefined, places: Places): PolicyAnswer {
+  const text = stored?.trim() ?? "";
+  if (!text) return { choice: "", text: "" };
+  const tile = policyOptions(kind, places).find((o) => o.sentence && sameKey(o.sentence) === sameKey(text));
+  return tile ? { choice: tile.value, text: "" } : { choice: "other", text };
+}
+
+export function policiesFrom(stored: Policies, a: QuizAnswers["rules"], given: Given, places: Places): Policies | null {
   const next: Policies = {
     ...stored,
     paymentMethods: keptList(given("rules.payment"), a.payment, stored.paymentMethods),
-    delivery: kept(given("rules.delivery"), a.delivery, stored.delivery ?? "") || null,
-    returns: kept(given("rules.returns"), a.returns, stored.returns ?? "") || null,
-    booking: kept(given("rules.booking"), a.booking, stored.booking ?? "") || null,
+    delivery: kept(given("rules.delivery"), policyText("delivery", a.delivery, places), stored.delivery ?? "") || null,
+    returns: kept(given("rules.returns"), policyText("returns", a.returns, places), stored.returns ?? "") || null,
+    booking: kept(given("rules.booking"), policyText("booking", a.booking, places), stored.booking ?? "") || null,
   };
   const changed = next.paymentMethods.join() !== stored.paymentMethods.join() || next.delivery !== stored.delivery || next.returns !== stored.returns || next.booking !== stored.booking;
   return changed ? next : null;
@@ -457,7 +500,7 @@ const asGender = (v: string | null | undefined): Gender | "" => (v === "female" 
  * Every question's first answer: what is stored, or BuPulse's guess when nothing is. `guessed` lists the questions
  * whose answer is a guess (they show "Our guess").
  */
-export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { likelyKind: ProductKindValue; reasonIdeas?: readonly string[] }): { answers: QuizAnswers; guessed: string[] } {
+export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { likelyKind: ProductKindValue; reasonIdeas?: readonly string[]; places: Places }): { answers: QuizAnswers; guessed: string[] } {
   const guessed: string[] = [];
   const pick = (id: string, have: string | null | undefined, guess: string | undefined): string => {
     if (have?.trim()) return have;
@@ -495,6 +538,14 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
 
   if (!stored.competitors.length && draft.competitors.length) guessed.push("why.competitors");
 
+  const policy = (kind: PolicyKind, id: string): PolicyAnswer => {
+    const have = policyAnswerOf(kind, stored.policies[kind], opts.places);
+    if (have.choice) return have;
+    const guess = draft.policies[kind];
+    if (guess) guessed.push(id);
+    return { choice: guess, text: "" };
+  };
+
   const faqs = draft.faqs.filter((f) => !stored.faqs.some((q) => same(q, f.question))).map((f, i) => ({ id: `idea-${i}`, question: f.question, answer: f.answer }));
   if (faqs.length) guessed.push("rules.faqs");
 
@@ -527,9 +578,9 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
       },
       rules: {
         payment: pickList("rules.payment", stored.policies.paymentMethods, draft.policies.payment),
-        delivery: pick("rules.delivery", stored.policies.delivery, draft.policies.delivery[0]),
-        returns: pick("rules.returns", stored.policies.returns, draft.policies.returns[0]),
-        booking: pick("rules.booking", stored.policies.booking, draft.policies.booking[0]),
+        delivery: policy("delivery", "rules.delivery"),
+        returns: policy("returns", "rules.returns"),
+        booking: policy("booking", "rules.booking"),
         faqs,
         faqKept: faqs.slice(0, 3).map((f) => f.id),
       },

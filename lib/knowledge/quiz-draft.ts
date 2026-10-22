@@ -60,10 +60,28 @@ export type QuizDraft = {
   differentiators: string[];
   positioning: string[];
   faqs: { question: string; answer: string }[];
-  policies: { delivery: string[]; returns: string[]; booking: string[]; payment: PaymentMethod[] };
+  /** The likeliest common answer of each policy (a tile; "" when no guess), and the payment methods. */
+  policies: { delivery: PolicyChoice<"delivery"> | ""; returns: PolicyChoice<"returns"> | ""; booking: PolicyChoice<"booking"> | ""; payment: PaymentMethod[] };
   voices: VoiceOption[];
   source: "ai" | "template";
 };
+
+/**
+ * The common answers of each policy, shown as tiles (each one a policy sentence, lib/knowledge/quiz-map.ts
+ * policySentence), plus "Something else" for the owner's own words. The AI only says which tile is likeliest.
+ */
+export const POLICY_CHOICES = {
+  delivery: ["pickup", "city", "country", "app"],
+  returns: ["noFood", "exchange", "refund"],
+  booking: ["walkIn", "whatsapp", "online"],
+} as const;
+export type PolicyKind = keyof typeof POLICY_CHOICES;
+export type PolicyChoice<K extends PolicyKind> = (typeof POLICY_CHOICES)[K][number];
+
+/** The key two lines are compared on: case, punctuation and spacing do not count ("Just walk in." = "just walk in"). */
+export function sameKey(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
 
 export const DRAFT_COUNTS = {
   taglines: 3,
@@ -78,7 +96,6 @@ export const DRAFT_COUNTS = {
   differentiators: 6,
   positioning: 3,
   faqs: 5,
-  policyIdeas: 3,
   voices: 3,
 } as const;
 
@@ -122,9 +139,9 @@ export const aiDraftSchema = z.object({
   positioning: lines("3 one-sentence positioning statements: for whom, what, why different"),
   faqs: z.array(z.object({ question: z.string(), answer: z.string().describe("An answer using only the data; when the data does not say, invite the customer to ask") })).describe("5 questions customers often ask"),
   policies: z.object({
-    delivery: lines("Up to 3 short common delivery answers, without prices, times or promises"),
-    returns: lines("Up to 3 short common return answers, without numbers"),
-    booking: lines("Up to 3 short common booking answers, without numbers"),
+    delivery: z.enum([...POLICY_CHOICES.delivery, "unsure"]).describe("The likeliest: pickup (no delivery), city (deliver in their city), country (across the country), app (through a delivery app), or unsure"),
+    returns: z.enum([...POLICY_CHOICES.returns, "unsure"]).describe("The likeliest: noFood (no returns on food and drinks), exchange (exchange with the receipt), refund (refund with the receipt), or unsure"),
+    booking: z.enum([...POLICY_CHOICES.booking, "unsure"]).describe("The likeliest: walkIn (no booking), whatsapp (book by WhatsApp or a call), online (book online), or unsure"),
     payment: z.array(z.enum(PAYMENT_METHODS)).describe("Payment methods they most likely take"),
   }),
   voices: z
@@ -179,12 +196,12 @@ function text(value: unknown, max: number, facts: Facts): string {
 /** Clean lines: clipped, fact-checked, without duplicates (ignoring case) or any in `skip`, at most `max`. */
 function list(value: unknown, max: number, each: number, facts: Facts, skip: readonly string[] = []): string[] {
   if (!Array.isArray(value)) return [];
-  const seen = new Set(skip.map((s) => s.toLowerCase()));
+  const seen = new Set(skip.map(sameKey));
   const out: string[] = [];
   for (const item of value) {
     const t = text(item, each, facts);
-    if (!t || seen.has(t.toLowerCase())) continue;
-    seen.add(t.toLowerCase());
+    if (!t || seen.has(sameKey(t))) continue;
+    seen.add(sameKey(t));
     out.push(t);
     if (out.length >= max) break;
   }
@@ -196,7 +213,7 @@ function topUp(ai: string[], template: readonly string[], n: number): string[] {
   const out = [...ai];
   for (const t of template) {
     if (out.length >= n) break;
-    if (!out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t);
+    if (!out.some((o) => sameKey(o) === sameKey(t))) out.push(t);
   }
   return out.slice(0, n);
 }
@@ -233,7 +250,7 @@ export function sanitizeDraft(raw: unknown, ctx: QuizContext, template: QuizDraf
   const products: ProductIdea[] = [];
   for (const p of a.products) {
     const name = text(p.name, 80, facts);
-    if (!name || [...known, ...products.map((x) => x.name)].some((n) => n.toLowerCase() === name.toLowerCase())) continue;
+    if (!name || [...known, ...products.map((x) => x.name)].some((n) => sameKey(n) === sameKey(name))) continue;
     const summary = text(p.summary, PRODUCT_LIMITS.summary, facts);
     products.push({ name, kind: p.kind, summary, reasons: topUp(list(p.reasons, DRAFT_COUNTS.reasons, PRODUCT_LIMITS.item, facts), template.products[0]?.reasons ?? [], DRAFT_COUNTS.reasons) });
     if (products.length >= DRAFT_COUNTS.products) break;
@@ -242,7 +259,7 @@ export function sanitizeDraft(raw: unknown, ctx: QuizContext, template: QuizDraf
   const personas: PersonaIdea[] = [];
   for (const p of a.personas) {
     const name = text(p.name, PERSONA_LIMITS.name, facts);
-    if (!name || personas.some((x) => x.name.toLowerCase() === name.toLowerCase())) continue;
+    if (!name || personas.some((x) => sameKey(x.name) === sameKey(name))) continue;
     const t = template.personas[personas.length % template.personas.length];
     const places = new Set<string>(ONLINE_PLACES);
     personas.push({
@@ -267,13 +284,13 @@ export function sanitizeDraft(raw: unknown, ctx: QuizContext, template: QuizDraf
   for (const f of a.faqs) {
     const question = text(f.question, FAQ_LIMITS.question, facts);
     const answer = text(f.answer, FAQ_LIMITS.answer, facts);
-    if (!question || !answer || [...ctx.faqs, ...faqs.map((x) => x.question)].some((q) => q.toLowerCase() === question.toLowerCase())) continue;
+    if (!question || !answer || [...ctx.faqs, ...faqs.map((x) => x.question)].some((q) => sameKey(q) === sameKey(question))) continue;
     faqs.push({ question, answer });
     if (faqs.length >= DRAFT_COUNTS.faqs) break;
   }
   for (const f of template.faqs) {
     if (faqs.length >= DRAFT_COUNTS.faqs) break;
-    if (!faqs.some((x) => x.question.toLowerCase() === f.question.toLowerCase())) faqs.push(f);
+    if (!faqs.some((x) => sameKey(x.question) === sameKey(f.question))) faqs.push(f);
   }
 
   const voices: VoiceOption[] = [];
@@ -287,7 +304,6 @@ export function sanitizeDraft(raw: unknown, ctx: QuizContext, template: QuizDraf
     voices.push({ ...t, id: `v${voices.length + 1}` });
   }
 
-  const policy = (ai: string[], tpl: string[]) => topUp(list(ai, DRAFT_COUNTS.policyIdeas, 200, facts), tpl, DRAFT_COUNTS.policyIdeas);
   const languages = list(a.languages, DRAFT_COUNTS.languages, PROFILE_LIMITS.language, facts);
 
   return {
@@ -297,15 +313,15 @@ export function sanitizeDraft(raw: unknown, ctx: QuizContext, template: QuizDraf
     values: topUp(list(a.values, DRAFT_COUNTS.values, PROFILE_LIMITS.value, facts), template.values, DRAFT_COUNTS.values),
     languages: languages.length ? languages : template.languages,
     products: products.length ? products : template.products,
-    personas: [...personas, ...template.personas.filter((t) => !personas.some((p) => p.name.toLowerCase() === t.name.toLowerCase()))].slice(0, DRAFT_COUNTS.personas),
+    personas: [...personas, ...template.personas.filter((t) => !personas.some((p) => sameKey(p.name) === sameKey(t.name)))].slice(0, DRAFT_COUNTS.personas),
     competitors: topUp(list(a.competitors, DRAFT_COUNTS.competitors, COMPETITOR_LIMITS.name, facts, ctx.competitors), template.competitors, DRAFT_COUNTS.competitors),
     differentiators: topUp(list(a.differentiators, DRAFT_COUNTS.differentiators, COMPETITOR_LIMITS.differentiator, facts), template.differentiators, DRAFT_COUNTS.differentiators),
     positioning: topUp(list(a.positioning, DRAFT_COUNTS.positioning, COMPETITOR_LIMITS.statement, facts), template.positioning, DRAFT_COUNTS.positioning),
     faqs,
     policies: {
-      delivery: policy(a.policies.delivery, template.policies.delivery),
-      returns: policy(a.policies.returns, template.policies.returns),
-      booking: policy(a.policies.booking, template.policies.booking),
+      delivery: a.policies.delivery === "unsure" ? template.policies.delivery : a.policies.delivery,
+      returns: a.policies.returns === "unsure" ? template.policies.returns : a.policies.returns,
+      booking: a.policies.booking === "unsure" ? template.policies.booking : a.policies.booking,
       payment: a.policies.payment.length ? PAYMENT_METHODS.filter((m) => a.policies.payment.includes(m)) : template.policies.payment,
     },
     voices,
@@ -332,9 +348,9 @@ type Kit = {
   competitors: string[];
   differentiators: string[];
   faqs: { question: string; answer: string }[];
-  delivery: string[];
-  returns: string[];
-  booking: string[];
+  delivery: PolicyChoice<"delivery"> | "";
+  returns: PolicyChoice<"returns"> | "";
+  booking: PolicyChoice<"booking"> | "";
 };
 
 const ASK = "Message us and we will tell you.";
@@ -357,9 +373,9 @@ const GENERIC: Kit = {
     { question: "Do you deliver?", answer: "Message us with your location and we will tell you." },
     { question: "When are you open?", answer: "See our opening hours, or message us any time." },
   ],
-  delivery: ["We deliver: message us with your location", "Pick up only, at our place", "We do not deliver"],
-  returns: ["Unused items can be returned with the receipt", "Talk to us if something is wrong and we will fix it", "No returns"],
-  booking: ["Book by WhatsApp or a call", "No booking needed, just come in", "Booking is needed for some services"],
+  delivery: "city",
+  returns: "exchange",
+  booking: "whatsapp",
 };
 
 const KITS: { match: RegExp; kit: Partial<Kit> }[] = [
@@ -370,6 +386,8 @@ const KITS: { match: RegExp; kit: Partial<Kit> }[] = [
       values: ["Fresh every day", "Clean kitchen", "Local ingredients", "Friendly service", "Fair prices", "Family"],
       reasons: ["Made fresh", "Tastes like home", "Ready when you need it"],
       competitors: ["Other restaurants nearby", "Supermarket food", "Home cooking", "Food delivery apps"],
+      returns: "noFood",
+      booking: "walkIn",
       differentiators: ["Fresh, made the same day", "Local ingredients", "Friendly, quick service", "A clean, welcoming place"],
       faqs: [
         { question: "Do you deliver?", answer: "Message us with your location and we will tell you." },
@@ -387,6 +405,9 @@ const KITS: { match: RegExp; kit: Partial<Kit> }[] = [
       values: ["Care", "Hygiene", "Style", "Respect for your time", "Confidence", "Quality products"],
       reasons: ["Skilled, careful hands", "Clean and relaxing place", "Looks that last"],
       competitors: ["Other salons nearby", "Home stylists", "Beauty shops"],
+      delivery: "pickup",
+      returns: "",
+      booking: "whatsapp",
       differentiators: ["Skilled team", "Clean tools every time", "We listen to what you want", "On time"],
       faqs: [
         { question: "Do I need to book?", answer: "Booking is best: message us with the day and time you want." },
@@ -404,6 +425,7 @@ const KITS: { match: RegExp; kit: Partial<Kit> }[] = [
       values: ["Style", "Quality fabric", "Made with care", "Fair prices", "Proudly local", "Personal service"],
       reasons: ["Unique style", "Good fabric", "Made to fit you"],
       competitors: ["Other boutiques", "Second-hand markets", "Online sellers"],
+      booking: "walkIn",
       differentiators: ["Pieces you will not see everywhere", "Good fabric", "Made to measure", "Friendly advice on what suits you"],
       faqs: [
         { question: "Do you make to measure?", answer: ASK },
@@ -421,6 +443,9 @@ const KITS: { match: RegExp; kit: Partial<Kit> }[] = [
       values: ["Reliability", "Simplicity", "Support that answers", "Innovation", "Security", "Honesty"],
       reasons: ["Easy to use", "Saves you time", "Help when you need it"],
       competitors: ["Bigger international brands", "Local IT shops", "Doing it by hand"],
+      delivery: "country",
+      returns: "refund",
+      booking: "online",
       differentiators: ["Local support that answers", "Simple to use", "Built for how business works here", "Honest advice"],
       faqs: [
         { question: "How do I get started?", answer: "Message us and we will set you up." },
@@ -475,14 +500,14 @@ export function templateDraft(ctx: QuizContext): QuizDraft {
     languages: guessLanguages(ctx),
     products: [],
     personas: kit.personas.map((p) => ({ ...p, location: clean(place, PERSONA_LIMITS.location) })),
-    competitors: kit.competitors.filter((c) => !ctx.competitors.some((x) => x.toLowerCase() === c.toLowerCase())).slice(0, DRAFT_COUNTS.competitors),
+    competitors: kit.competitors.filter((c) => !ctx.competitors.some((x) => sameKey(x) === sameKey(c))).slice(0, DRAFT_COUNTS.competitors),
     differentiators: kit.differentiators.slice(0, DRAFT_COUNTS.differentiators),
     positioning: [
       `For people in ${place} who want ${what} they can trust, ${name} offers friendly service and quality we stand behind.`,
       `${name} makes ${what} simple: easy to reach, quick to answer and always honest.`,
       `Unlike the rest, ${name} knows its customers and treats each one personally.`,
     ].map((p) => clean(p, COMPETITOR_LIMITS.statement)),
-    faqs: kit.faqs.filter((f) => !ctx.faqs.some((q) => q.toLowerCase() === f.question.toLowerCase())).slice(0, DRAFT_COUNTS.faqs),
+    faqs: kit.faqs.filter((f) => !ctx.faqs.some((q) => sameKey(q) === sameKey(f.question))).slice(0, DRAFT_COUNTS.faqs),
     policies: { delivery: kit.delivery, returns: kit.returns, booking: kit.booking, payment: ["mtn_momo", "cash"] },
     voices: templateVoices(name, what),
     source: "template",

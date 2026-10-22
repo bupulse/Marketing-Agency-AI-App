@@ -39,7 +39,7 @@ const good: AiDraft = {
     { question: "Can I order a cake?", answer: "Yes, free delivery over 20,000 RWF." },
     { question: "Do you open at 6 am?", answer: "Yes, from 6 am." },
   ],
-  policies: { delivery: ["We deliver in Kigali", "Delivery takes 30 minutes"], returns: ["50% refund"], booking: [], payment: ["cash", "mtn_momo"] },
+  policies: { delivery: "city", returns: "unsure", booking: "walkIn", payment: ["cash", "mtn_momo"] },
   voices: [voice("Warm"), { ...voice("Broken"), voice: "" }, voice("Professional")],
 };
 
@@ -67,9 +67,8 @@ describe("sanitizeDraft", () => {
     expect(new Set(d.taglines.map((t) => t.toLowerCase())).size).toBe(3);
     expect(d.differentiators).toContain("Baked every morning");
     expect(d.differentiators.some((x) => /guarantee/i.test(x))).toBe(false);
-    expect(d.policies.delivery).not.toContain("Delivery takes 30 minutes");
-    expect(d.policies.returns.some((r) => r.includes("%"))).toBe(false);
-    expect(d.policies.booking).toEqual(template.policies.booking);
+    expect(d.policies).toMatchObject({ delivery: "city", booking: "walkIn", payment: ["mtn_momo", "cash"] });
+    expect(d.policies.returns).toBe(template.policies.returns); // "unsure": the industry's likeliest
     expect(d.missions).toHaveLength(3);
   });
 
@@ -105,6 +104,14 @@ describe("sanitizeDraft", () => {
   it("anything off-shape is the template", () => {
     expect(sanitizeDraft({ taglines: "nope" }, ctx, template)).toBe(template);
     expect(sanitizeDraft(null, ctx, template)).toBe(template);
+  });
+});
+
+describe("duplicates", () => {
+  it("are found ignoring case, punctuation and spacing", () => {
+    const d = sanitizeDraft({ ...good, values: ["Fresh bread!", "fresh  bread", "Family."], taglines: ["Bread, with love.", "bread with love"] }, ctx, template);
+    expect(d.values.slice(0, 2)).toEqual(["Fresh bread!", "Family."]);
+    expect(d.taglines.filter((t) => t.toLowerCase().includes("bread with love") || t.toLowerCase().includes("bread, with love"))).toHaveLength(1);
   });
 });
 

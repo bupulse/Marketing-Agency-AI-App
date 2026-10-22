@@ -152,6 +152,18 @@ export async function createProduct(businessId: string, data: ProductData): Prom
   });
 }
 
+/** Several products in one write (the Business info quiz), under the same lock and limit as createProduct. */
+export async function createProducts(businessId: string, list: ProductData[]): Promise<number> {
+  if (!list.length) return 0;
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`products:${businessId}`}))`;
+    if ((await tx.product.count({ where: { businessId } })) + list.length > MAX_PRODUCTS_PER_BUSINESS) {
+      throw new KnowledgeError(`You have reached the limit of ${MAX_PRODUCTS_PER_BUSINESS} products. Archive or delete some to add more.`);
+    }
+    return (await tx.product.createMany({ data: list.map((data) => ({ businessId, ...productRow(data) })) })).count;
+  });
+}
+
 export async function updateProduct(businessId: string, id: string, data: ProductData): Promise<void> {
   const { count } = await prisma.product.updateMany({ where: { id, businessId }, data: productRow(data) });
   if (count === 0) throw new KnowledgeError("We could not find that product.");

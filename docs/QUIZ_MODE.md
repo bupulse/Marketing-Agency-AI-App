@@ -84,10 +84,10 @@ prices, your customers and your voice"), and two buttons: "Make my first posts" 
 | The rounds, the questions, the first answers (stored, else the guess, tagged "Our guess"), and each round's answers mapped to its action's input | lib/knowledge/quiz-map.ts |
 | The guesses: the AI's schema, the sanitiser, the template per industry (food, beauty, fashion, tech, or general) | lib/knowledge/quiz-draft.ts |
 | The one AI call, `draftBusinessQuiz` | lib/knowledge/quiz-ai.ts |
-| `draftQuiz` (the guesses) and `quizScore` (the overall % after saving) | app/dashboard/knowledge/quiz/actions.ts |
+| `draftQuiz` (the guesses), `saveQuizRound` (a round in one request) and `quizScore` (the overall % after saving) | app/dashboard/knowledge/quiz/actions.ts |
 | The entry card on Business info ("Start the quiz" / "Continue" at the first incomplete round / "Play again") and "Do it as a quiz" in each section's header | app/dashboard/knowledge/page.tsx, components/knowledge/quiz-link.tsx |
 | Moving on safely (the move guard) | lib/knowledge/quiz-move.ts |
-| Tests | tests/quiz/business-map.test.ts, business-draft.test.ts, business-ai.test.ts, business-move.test.ts |
+| Tests | tests/quiz/business-map.test.ts, business-draft.test.ts, business-ai.test.ts, business-move.test.ts, business-save.test.ts, business-batch.test.ts |
 
 **The AI.** One call when the quiz opens, on the cheap text model, through the cost ledger as feature `knowledgeQuiz`
 (so the admin switch and the company's allowance apply), with a rate limit (8 an hour) and a daily cap (20 a day) per
@@ -95,23 +95,28 @@ company. Plans without AI writing (the `content` feature) get the template with 
 the prompt as data, never instructions. What comes back must pass a strict schema (otherwise the template is used).
 Then every line is cleaned and clipped to the limits the actions check, and **dropped when it carries a number or a
 promise ("free", "discount", "guarantee", "%") that is not in the business data**. Every list is topped up from the
-template. The call gives up after 22 seconds. The page starts with the template after 25 seconds, or at once with
+template, and ideas are compared ignoring case, punctuation and spacing (`sameKey`). The call gives up after 22 seconds. The page starts with the template after 25 seconds, or at once with
 "Don't wait, start now" (shown after 6 seconds). A draft from the AI is kept in sessionStorage for the tab, so a reload
 does not pay again.
 
 **Saving.** Each round saves when its last question is passed (Next or Skip), through the section's own actions. A
 skipped question, an empty text or an empty list keeps the stored value. Products, competitors and FAQs that already
-exist (matched by name or question) are never created twice. Nothing is deleted. The browser sends server actions one
-at a time, so the rounds with several items (products, personas, competitors and positioning, policies and FAQs) send
-one request (`saveQuizProducts`, `saveQuizPersonas`, `saveQuizWhy`, `saveQuizRules`) that runs the same section actions
-side by side on the server. While a round saves, the card shows "Saving your products…". A save's problem shows under
+exist (matched by name or question) are never created twice. Nothing is deleted. Each server action is a round trip of
+its own (about 3 seconds on the test site, and the browser sends them one at a time), so **each round is one request**:
+`saveQuizRound(payload)` in app/dashboard/knowledge/quiz/actions.ts. For a round with several items it checks every
+item with the section's schema first (the first failing item and its fields come back as `item`, `part` and
+`fieldErrors`; nothing is written), then writes through the same lib/knowledge services in `knowledgeAction` with the
+section's permission and plan feature, one rate-limit hit per item as the section actions count, the rows together
+(`createProducts`, `createCompetitors`, `createFaqs`: one transaction under the list's lock and cap), and one
+revalidation for the round. Rounds with one write (You, Find us, Your voice, Love notes) call the section's own action.
+While a round saves, the card shows `Thinking` with the round's line ("Saving your products…"). A save's problem shows under
 the question, scrolled into view and focused.
 
 **Moving on safely.** Every move names the question it was made for (lib/knowledge/quiz-move.ts): a tile's delayed
 move, Next, Enter and Skip. A move for a question no longer on screen, a second move while one is saving, or Enter
-together with the button's own click does nothing. The new products asked about are fixed when the quiz starts: the
-page's props refresh after every save, and reading them live once made the saved products' questions drop out, so the
-quiz (which keeps its place by number) landed two questions on, in Customers.
+together with the button's own click does nothing. The kit keeps the owner on the same question by its id when
+questions are added or dropped (`anchored`, lib/quiz/flow.ts), and the new products asked about are fixed when the quiz
+starts (the page's props refresh after every save).
 
 | Round | Saved with | Notes |
 | --- | --- | --- |
@@ -119,7 +124,7 @@ quiz (which keeps its place by number) landed two questions on, in Customers.
 | 🛍️ What you sell | `createProduct` | One question per new product (up to 6), starting with the first reason idea picked. Saved as drafts (no photos yet). No number typed means "Ask for price" (on request): a price is never guessed. Next checks the question with `productInputSchema` in the browser, so a problem shows at once. |
 | 👥 Your customers | `updatePersona` / `createPersona` | The questions after the cards describe the first card picked. A second new card is saved as guessed. |
 | ⭐ Why you | `createCompetitor`, `savePositioning` | |
-| 📋 Rules | `savePolicies`, `createFaq` | Warranty and payment notes are kept. |
+| 📋 Rules | `savePolicies`, `createFaq` | Delivery, returns and booking are tiles of common answers, each a policy sentence ("No booking, just walk in" → "No booking needed: just walk in."), plus "Something else" for the owner's words. The AI only picks the likeliest tile. A stored policy shows as its tile, or as Something else with its words. Warranty and payment notes are kept. |
 | 📍 Find us | `saveKnowledge` (the Locations page's save) | The whole stored card is sent, with the hours preset, the first phone row and the head office address on top. Skipped or unchanged: no save. |
 | 🎙️ Your voice | `approveVoice(summary, "quiz", answers)` | A new `quiz` mode (lib/knowledge/interview-service.ts `saveQuizVoice`) approves the picked voice without an interview. The this-or-that answers become rules and are kept as the profile's answers. |
 | 💬 Love notes | `createReview` | Only Owners and Admins are asked about consent (the action enforces it too). |
