@@ -3,9 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Button, GlassCard } from "@/components/ui";
+import { CampaignFiles } from "@/components/creators/portal/campaign-files";
 import { PayoutStatus, PostStatus } from "@/components/creators/portal/post-status";
 import { ReportCampaign } from "@/components/creators/portal/report-campaign";
 import { requireCreator } from "@/lib/creators/auth";
+import { campaignKitFor } from "@/lib/creators/campaign-files";
 import { amount, count, formatDay, formatSpan, networkLabel, creatorPayInWords, taskRuleInWords } from "@/lib/creators/describe";
 import { dayIn, ymdOf } from "@/lib/creators/periods";
 import { campaignForCreator } from "@/lib/creators/portal";
@@ -24,6 +26,8 @@ export default async function CreatorCampaignPage({ params }: PageProps<"/creato
   const data = await campaignForCreator(profile.id, id);
   if (!data) notFound();
   const { campaign, tasks, posts, periods, membership } = data;
+  // The files, the do's and don'ts and the brief to print: for creators still in the campaign only (checked again inside).
+  const kit = membership.status === "JOINED" ? await campaignKitFor(profile.id, id) : null;
   const tz = campaign.business.timezone || "UTC";
   const today = dayIn(new Date(), tz);
   const open = periods.find((p) => p.status === "OPEN");
@@ -84,6 +88,8 @@ export default async function CreatorCampaignPage({ params }: PageProps<"/creato
           );
         })}
       </section>
+
+      {kit && <CampaignFiles campaignId={campaign.id} dos={kit.campaign.dos} donts={kit.campaign.donts} folders={kit.folders} />}
 
       <section aria-labelledby="posts" className="flex flex-col gap-3">
         <h2 id="posts" className="text-lg font-semibold tracking-tight">Your posts</h2>
