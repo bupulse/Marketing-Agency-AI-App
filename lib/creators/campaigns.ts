@@ -14,17 +14,43 @@ import {
   firstProblem,
   goalsSchema,
   OFFER_DAYS,
+  PLATFORMS,
   readQuestions,
   taskSchema,
   taskSpans,
   type CampaignInput,
   type GoalsInput,
+  type Platform,
   type TaskInput,
   type TaskRepeat,
 } from "./company-forms";
-import { readPayRules, withoutPost, type PayoutBreakdown } from "./pay";
-import { dayIn, periodsFor, ymdOf } from "./periods";
+import { defaultForm, readApplicationForm } from "./form-fields";
+import { paysAnything, readPayRules, withoutPost, type PayoutBreakdown } from "./pay";
+import { dayIn, daysInclusive, MAX_CAMPAIGN_DAYS, periodsFor, ymdOf } from "./periods";
+import { readRequirements } from "./requirements";
 import { uniqueSlug } from "./slug";
+import { addDaysYmd } from "@/lib/demo/slots";
+import { MEDIA_MAX_FOLDERS } from "@/lib/media/rules";
+import { readFiles, readLook, stepNumber, type CampaignFiles, type ReadinessFacts, type WizardStepId } from "./wizard";
+import { suggestedPay, suggestedRequirements, withFields, type CampaignSuggestion } from "./wizard-suggest";
+import {
+  BRIEF_EVERY_VALUES,
+  campaignFolderName,
+  checkStep,
+  FORMAT_VALUES,
+  GOAL_VALUES,
+  KIND_VALUES,
+  mediaFromFormats,
+  nameFromIdea,
+  nextMonday,
+  planTasks,
+  reachedAfter,
+  readinessProblems,
+  taskTexts,
+  tasksMatchSpans,
+  type StepInput,
+  type WizardAnswers,
+} from "./wizard-steps";
 
 // The company side of creator campaigns (docs/CREATOR_CAMPAIGNS.md): campaigns and their pay periods, tasks, picking
 // applicants (single-use invite links, or straight in for creators with an account), removing creators, rejecting posts, marking payouts paid and changing an open
@@ -103,7 +129,7 @@ export async function listCampaigns(actor: CampaignActor) {
   const rows = await prisma.creatorCampaign.findMany({
     where: { businessId: actor.businessId },
     orderBy: [{ createdAt: "desc" }],
-    select: { id: true, name: true, slug: true, status: true, startsOn: true, endsOn: true, platforms: true, acceptingApplications: true, listed: true, hiddenAt: true, _count: { select: { tasks: true } } },
+    select: { id: true, name: true, slug: true, status: true, setupStep: true, startsOn: true, endsOn: true, platforms: true, acceptingApplications: true, listed: true, hiddenAt: true, _count: { select: { tasks: true } } },
   });
   const groups = rows.length
     ? await prisma.campaignCreator.groupBy({ by: ["campaignId", "status"], where: { campaignId: { in: rows.map((r) => r.id) } }, _count: { _all: true } })
@@ -114,6 +140,8 @@ export async function listCampaigns(actor: CampaignActor) {
     name: r.name,
     slug: r.slug,
     status: r.status,
+    /** A draft left in the wizard at this step ("Continue"); null once set up. */
+    setupStep: r.setupStep,
     startsOn: ymdOf(r.startsOn),
     endsOn: ymdOf(r.endsOn),
     platforms: r.platforms,
@@ -132,6 +160,7 @@ export async function getCampaign(actor: CampaignActor, id: string) {
   assertManager(actor);
   const c = await campaignOf(actor, id);
   const [b, applied, tasks] = await Promise.all([company(actor.businessId), prisma.campaignCreator.count({ where: { campaignId: id, status: "APPLIED" } }), prisma.creatorTask.count({ where: { campaignId: id } })]);
+  const wizard = madeWithWizard(c);
   return {
     id: c.id,
     name: c.name,
@@ -158,6 +187,12 @@ export async function getCampaign(actor: CampaignActor, id: string) {
     companyName: b.name,
     applied,
     tasks,
+    /** A draft left in the wizard at this step ("Continue"); null once set up. */
+    setupStep: c.setupStep,
+    /** Made with the wizard: going live needs everything goLiveProblems asks for. */
+    wizard,
+    /** What a draft still needs before it can go live (empty: ready). */
+    problems: c.status !== "DRAFT" ? [] : wizard ? await campaignReadiness(c) : tasks === 0 ? ["Add at least one task first, so creators know what to post."] : [],
   };
 }
 export type CampaignView = Awaited<ReturnType<typeof getCampaign>>;
@@ -336,7 +371,9 @@ export async function defaultBudget(campaignId: string, now = new Date()): Promi
 }
 
 /**
- * DRAFT → LIVE (needs a task, a last day still ahead and a free place under the plan's `liveCampaigns`), LIVE ⇄ PAUSED,
+ * DRAFT → LIVE (needs a last day still ahead, a free place under the plan's `liveCampaigns`, and a task; a campaign
+ * made with the wizard needs everything readinessProblems asks for instead: the brief, tasks, do's and don'ts, photos,
+ * an example and the full campaign check), LIVE ⇄ PAUSED,
  * and any → ENDED. Ending stops applications and hand-ins; the period running now still closes on its day and pays as
  * usual, and periods that had not started are deleted.
  */
@@ -349,7 +386,10 @@ export async function setCampaignStatus(actor: CampaignActor, id: string, next: 
   if (next === "LIVE") {
     const b = await company(actor.businessId);
     if (ymdOf(c.endsOn) < dayIn(now, b.timezone)) throw new CreatorCampaignError("invalid", "The campaign's last day has passed. Change its dates first.");
-    if (c.status === "DRAFT" && (await prisma.creatorTask.count({ where: { campaignId: id } })) === 0) throw new CreatorCampaignError("invalid", "Add at least one task first, so creators know what to post.");
+    if (c.status === "DRAFT" && madeWithWizard(c)) {
+      const problems = await campaignReadiness(c);
+      if (problems.length) throw new CreatorCampaignError("invalid", problems.join(" "));
+    } else if (c.status === "DRAFT" && (await prisma.creatorTask.count({ where: { campaignId: id } })) === 0) throw new CreatorCampaignError("invalid", "Add at least one task first, so creators know what to post.");
   }
   const limits = next === "LIVE" && c.status === "DRAFT" ? await campaignLimits(actor.businessId) : null;
   await prisma.$transaction(async (tx) => {
@@ -360,7 +400,7 @@ export async function setCampaignStatus(actor: CampaignActor, id: string, next: 
         throw new CreatorCampaignError("limit", `Your plan allows ${limits.liveCampaigns} live ${limits.liveCampaigns === 1 ? "campaign" : "campaigns"} at a time (paused ones count). End one first, or ask for a bigger plan.`);
       }
     }
-    const done = await tx.creatorCampaign.updateMany({ where: { id, status: c.status }, data: { status: next, ...(next === "ENDED" ? { acceptingApplications: false } : {}) } });
+    const done = await tx.creatorCampaign.updateMany({ where: { id, status: c.status }, data: { status: next, ...(next === "ENDED" ? { acceptingApplications: false } : {}), ...(next === "LIVE" && c.status === "DRAFT" ? { setupStep: null } : {}) } });
     if (done.count === 0) throw new CreatorCampaignError("conflict", "Someone changed this campaign just now. Open it again.");
     if (next === "ENDED") await tx.creatorPeriod.deleteMany({ where: { campaignId: id, status: "OPEN", startsAt: { gt: now }, payouts: { none: {} } } });
   });
@@ -625,4 +665,440 @@ export async function updatePeriodGoals(actor: CampaignActor, periodId: string, 
   if (!period) throw new CreatorCampaignError("not_found", "That pay period no longer exists.");
   const done = await prisma.creatorPeriod.updateMany({ where: { id: period.id, status: "OPEN" }, data: { viewTargetPerCreator: g.viewTargetPerCreator ?? null, viewTargetCampaign: g.viewTargetCampaign ?? null, budget: g.budget ?? null } });
   if (done.count === 0) throw new CreatorCampaignError("conflict", "This period is closed: its payouts are written.");
+}
+
+// ---- the wizard (docs/CREATOR_CAMPAIGN_WIZARD.md) --------------------------------------------------------------------
+
+type CampaignRecord = Awaited<ReturnType<typeof campaignOf>>;
+
+/** Made with the wizard (a draft in it, or a campaign that saved its application form): it goes live on readinessProblems. */
+export const madeWithWizard = (c: { setupStep?: number | null; applicationForm?: unknown }) => c.setupStep != null || c.applicationForm != null;
+
+/** The campaign as the full campaign check (campaignSchema) reads it. */
+function campaignInputOf(c: CampaignRecord): CampaignInput {
+  return { name: c.name, brief: c.brief, rules: c.rules, platforms: c.platforms as Platform[], startsOn: ymdOf(c.startsOn), endsOn: ymdOf(c.endsOn), mentions: c.mentions, currency: c.currency, payRules: readPayRules(c.payRules), viewTargetPerCreator: c.viewTargetPerCreator, viewTargetCampaign: c.viewTargetCampaign, budget: null, questions: readQuestions(c.questions) };
+}
+
+/** Files in each of the campaign's Photos folders (0 for a folder not made yet). */
+async function folderCounts(businessId: string, files: CampaignFiles) {
+  const n = (folderId: string | null | undefined) => (folderId ? prisma.mediaAsset.count({ where: { businessId, folderId } }) : Promise.resolve(0));
+  const [images, videos, documents] = await Promise.all([n(files.imagesFolderId), n(files.videosFolderId), n(files.documentsFolderId)]);
+  return { images, videos, documents };
+}
+
+/** What the campaign still needs before it can go live (empty: ready). */
+export async function campaignReadiness(c: CampaignRecord): Promise<string[]> {
+  const files = readFiles(c.files);
+  const [tasks, counts] = await Promise.all([prisma.creatorTask.count({ where: { campaignId: c.id } }), folderCounts(c.businessId, files)]);
+  const facts: ReadinessFacts = { brief: c.brief, dos: c.dos, donts: c.donts, tasks, images: counts.images, videos: counts.videos, exampleLinks: files.exampleLinks.length };
+  return readinessProblems(campaignInputOf(c), facts);
+}
+
+const oneOf = <T extends string>(list: readonly T[], v: string | null | undefined): T | null => (v && (list as readonly string[]).includes(v) ? (v as T) : null);
+
+/** Every answer of the wizard, from the campaign as stored. */
+function answersOf(c: CampaignRecord, tasks: TaskRow[], budget: number | null): WizardAnswers {
+  const formats = c.formats.filter((f): f is (typeof FORMAT_VALUES)[number] => (FORMAT_VALUES as readonly string[]).includes(f));
+  return {
+    idea: c.idea ?? "",
+    name: c.name,
+    kind: oneOf(KIND_VALUES, c.kind),
+    knowledgeCampaignId: c.knowledgeCampaignId,
+    productIds: c.productIds,
+    goal: oneOf(GOAL_VALUES, c.goal),
+    requirements: readRequirements(c.requirements),
+    platforms: c.platforms.filter((p): p is Platform => (PLATFORMS as readonly string[]).includes(p)),
+    platformMode: c.platformMode === "ALL" ? "ALL" : "ANY",
+    formats,
+    mentions: c.mentions,
+    startsOn: ymdOf(c.startsOn),
+    endsOn: ymdOf(c.endsOn),
+    briefEvery: oneOf(BRIEF_EVERY_VALUES, c.briefEvery),
+    postsPerDay: tasks[0]?.postsPerDay ?? 1,
+    mediaKind: tasks[0]?.mediaKind ?? mediaFromFormats(formats),
+    brief: c.brief,
+    tasks: tasks.map((t) => ({ id: t.id, title: t.title, instructions: t.instructions, startsOn: t.startsOn, endsOn: t.endsOn, postsPerDay: t.postsPerDay, platforms: t.platforms as Platform[], platformMode: t.platformMode, mediaKind: t.mediaKind, submissions: t.submissions })),
+    dos: c.dos,
+    donts: c.donts,
+    rules: c.rules,
+    currency: c.currency,
+    payRules: readPayRules(c.payRules),
+    viewTargetPerCreator: c.viewTargetPerCreator,
+    viewTargetCampaign: c.viewTargetCampaign,
+    budget,
+    applicationForm: readApplicationForm(c.applicationForm, readQuestions(c.questions)),
+    files: readFiles(c.files),
+    look: readLook(c.look),
+    listed: c.listed,
+    acceptingApplications: c.acceptingApplications,
+  };
+}
+
+/** A campaign with every answer of the wizard, for /dashboard/creators/[id]/setup and Settings. */
+export async function getWizardCampaign(actor: CampaignActor, id: string) {
+  assertManager(actor);
+  const c = await campaignOf(actor, id);
+  const [b, tasks, budget, problems] = await Promise.all([company(actor.businessId), listTasks(actor, id), defaultBudget(id), c.status === "DRAFT" ? campaignReadiness(c) : Promise.resolve([] as string[])]);
+  const answers = answersOf(c, tasks, budget);
+  return {
+    id: c.id,
+    slug: c.slug,
+    status: c.status,
+    setupStep: c.setupStep,
+    timezone: b.timezone,
+    companyName: b.name,
+    answers,
+    counts: await folderCounts(actor.businessId, answers.files),
+    problems,
+  };
+}
+export type WizardCampaign = Awaited<ReturnType<typeof getWizardCampaign>>;
+
+async function ownKnowledgeCampaign(businessId: string, id: string | null) {
+  return id ? prisma.campaign.findFirst({ where: { id, businessId }, select: { id: true, startsAt: true, endsAt: true } }) : null;
+}
+
+/** The ids that are the company's products, in the order given. */
+async function ownProductIds(businessId: string, ids: string[]): Promise<string[]> {
+  if (!ids.length) return [];
+  const own = new Set((await prisma.product.findMany({ where: { businessId, id: { in: ids } }, select: { id: true } })).map((p) => p.id));
+  return [...new Set(ids)].filter((id) => own.has(id));
+}
+
+const taskData = (t: TaskInput) => ({ title: t.title, instructions: t.instructions, startsOn: day(t.startsOn), endsOn: day(t.endsOn), postsPerDay: t.postsPerDay, platforms: t.platforms, platformMode: t.platformMode, mediaKind: t.mediaKind });
+const taskRow = (campaignId: string, t: TaskInput) => ({ campaignId, ...taskData(t) });
+
+/** The answers a suggestion can fill (columns shared by create and update). */
+type Prefill = { goal?: string; requirements?: Prisma.InputJsonValue; platforms?: string[]; formats?: string[]; mentions?: string[]; briefEvery?: string; brief?: string; dos?: string[]; donts?: string[]; payRules?: Prisma.InputJsonValue; applicationForm?: Prisma.InputJsonValue };
+type PrefillRow = Pick<CampaignRecord, "goal" | "requirements" | "platforms" | "formats" | "mentions" | "briefEvery" | "brief" | "dos" | "donts" | "payRules" | "applicationForm" | "platformMode" | "startsOn" | "endsOn" | "currency">;
+
+/** The steps after `reached` the owner has not seen yet whose answers are still empty: the ones a suggestion fills. */
+export function emptyOpenSteps(c: PrefillRow, tasks: number, reached: number | null): WizardStepId[] {
+  const open = (step: WizardStepId) => stepNumber(step) > (reached ?? stepNumber("review"));
+  const empty: [WizardStepId, boolean][] = [
+    ["goal", !c.goal],
+    ["creators", c.requirements == null],
+    ["where", c.platforms.length === 0],
+    ["when", !c.briefEvery],
+    ["content", !c.brief.trim() || tasks === 0],
+    ["rules", c.dos.length === 0 && c.donts.length === 0],
+    ["pay", !paysAnything(readPayRules(c.payRules))],
+    ["form", c.applicationForm == null],
+  ];
+  return empty.filter(([step, isEmpty]) => isEmpty && open(step)).map(([step]) => step);
+}
+
+/** Fills `steps` from the suggestion: the answers to write, and the tasks to make when there are none. */
+function prefill(c: PrefillRow, tasks: number, s: CampaignSuggestion, steps: WizardStepId[], o: { creatorsPerCampaign: number; tiktokReady: boolean }): { data: Prefill; tasks: TaskInput[] } {
+  const data: Prefill = {};
+  const fill = new Set(steps);
+  if (fill.has("goal")) data.goal = s.goal;
+  if (fill.has("creators")) data.requirements = json(suggestedRequirements(s, null, o.creatorsPerCampaign));
+  let platforms = c.platforms.filter((p): p is Platform => (PLATFORMS as readonly string[]).includes(p));
+  if (fill.has("where")) {
+    platforms = s.platforms.filter((p) => p !== "tiktok" || o.tiktokReady);
+    if (!platforms.length) platforms = ["instagram"];
+    data.platforms = platforms;
+    if (!c.formats.length) data.formats = s.formats;
+    if (!c.mentions.length) data.mentions = s.mentions;
+  }
+  if (fill.has("when")) data.briefEvery = s.briefEvery;
+  let made: TaskInput[] = [];
+  if (fill.has("content")) {
+    if (!c.brief.trim()) data.brief = s.brief;
+    if (tasks === 0 && platforms.length) {
+      const briefEvery = oneOf(BRIEF_EVERY_VALUES, c.briefEvery) ?? s.briefEvery;
+      made = planTasks({ startsOn: ymdOf(c.startsOn), endsOn: ymdOf(c.endsOn), briefEvery, postsPerDay: s.postsPerDay, mediaKind: s.mediaKind, platforms, platformMode: c.platformMode === "ALL" ? "ALL" : "ANY", texts: s.tasks });
+    }
+  }
+  if (fill.has("rules")) {
+    data.dos = s.dos;
+    data.donts = s.donts;
+  }
+  if (fill.has("pay")) data.payRules = json(suggestedPay(s, c.currency));
+  if (fill.has("form")) data.applicationForm = json(withFields(defaultForm(), s.fields));
+  return { data, tasks: made };
+}
+
+/** The first and last day of a new draft: a Business info campaign's still ahead (a short one starts earlier), else from next Monday. */
+export function draftDates(today: string, days: number, linked: { startsAt: Date | null; endsAt: Date | null } | null): { startsOn: string; endsOn: string } {
+  const tomorrow = addDaysYmd(today, 1);
+  if (linked?.startsAt && linked.endsAt) {
+    const start = ymdOf(linked.startsAt);
+    const end = ymdOf(linked.endsAt);
+    if (end >= tomorrow && end >= start) {
+      const early = addDaysYmd(end, -13);
+      const startsOn = [start < early ? start : early, tomorrow].sort().at(-1)!;
+      if (daysInclusive(startsOn, end) <= MAX_CAMPAIGN_DAYS) return { startsOn, endsOn: end };
+    }
+  }
+  const startsOn = nextMonday(today);
+  return { startsOn, endsOn: addDaysYmd(startsOn, Math.max(1, Math.min(MAX_CAMPAIGN_DAYS, days)) - 1) };
+}
+
+function parseStep<S extends WizardStepId>(step: S, input: unknown) {
+  const r = checkStep(step, input);
+  if (!r.ok) throw new CreatorCampaignError("invalid", r.error);
+  return r.data;
+}
+
+/**
+ * Step 1's "Next": makes the DRAFT campaign from the owner's line and fills every later step from the suggestion
+ * (the AI's, or the template of its kind): goal, creators, networks, dates, brief and tasks, do's and don'ts, pay and
+ * the application form. The name is the owner's, else the suggestion's. Its 30-day periods and its tasks come with it.
+ */
+export async function createDraft(actor: CampaignActor, input: StepInput<"idea">, suggestion: CampaignSuggestion, opts: { tiktokReady?: boolean; now?: Date } = {}) {
+  assertManager(actor);
+  const v = parseStep("idea", input);
+  const now = opts.now ?? new Date();
+  const b = await company(actor.businessId);
+  const [linked, productIds, currency, limits] = await Promise.all([ownKnowledgeCampaign(actor.businessId, v.knowledgeCampaignId), ownProductIds(actor.businessId, v.productIds), defaultCurrency(actor.businessId), campaignLimits(actor.businessId)]);
+  const name = (v.name || suggestion.name || nameFromIdea(v.idea) || "My creator campaign").slice(0, 80);
+  const { startsOn, endsOn } = draftDates(dayIn(now, b.timezone), suggestion.days, linked);
+  const blank: PrefillRow = { goal: null, requirements: null, platforms: [], formats: [], mentions: [], briefEvery: null, brief: "", dos: [], donts: [], payRules: {}, applicationForm: null, platformMode: "ANY", startsOn: day(startsOn), endsOn: day(endsOn), currency };
+  const fill = prefill(blank, 0, suggestion, emptyOpenSteps(blank, 0, 1), { creatorsPerCampaign: limits.creatorsPerCampaign, tiktokReady: opts.tiktokReady === true });
+  const slug = await uniqueSlug(name, async (s) => (await prisma.creatorCampaign.count({ where: { slug: s } })) > 0);
+  return prisma.creatorCampaign.create({
+    data: {
+      businessId: actor.businessId,
+      slug,
+      name,
+      idea: v.idea || null,
+      kind: v.kind ?? suggestion.kind,
+      knowledgeCampaignId: linked?.id ?? null,
+      productIds,
+      brief: "",
+      platforms: [],
+      mentions: [],
+      currency,
+      payRules: json({}),
+      questions: json([]),
+      startsOn: day(startsOn),
+      endsOn: day(endsOn),
+      createdBy: actor.actorId,
+      setupStep: stepNumber("goal"),
+      ...fill.data,
+      periods: { create: periodsFor(startsOn, endsOn, b.timezone).map((p) => ({ index: p.index, startsAt: p.startsAt, endsAt: p.endsAt })) },
+      tasks: { create: fill.tasks.map(taskData) },
+    },
+    select: { id: true, slug: true },
+  });
+}
+
+export type SaveStepOptions = {
+  /** TikTok's app is set up (lib/creators/connect-flow.ts tiktokAuthConfig): campaigns may run on it. */
+  tiktokReady?: boolean;
+  /** Step 1 of a draft: the suggestion for the steps not reached yet that are still empty (asked only when needed). */
+  suggest?: () => Promise<CampaignSuggestion>;
+  now?: Date;
+};
+
+/**
+ * Saves one step of the wizard: only that step's answers, checked (STEP_SCHEMAS), and the furthest step reached. The
+ * rules of the old form stay: dates and currency change only while it is a draft, a platform a live task needs cannot
+ * be taken off, a task creators handed in is never deleted, the pay floor holds and the plan's creators per campaign.
+ * While it is a draft, Content replaces the tasks with the ones sent and When plans them again over new days.
+ */
+export async function saveStep(actor: CampaignActor, id: string, step: WizardStepId, input: unknown, opts: SaveStepOptions = {}) {
+  assertManager(actor);
+  const c = await campaignOf(actor, id);
+  if (c.status === "ENDED") throw new CreatorCampaignError("conflict", "This campaign has ended and can no longer be changed.");
+  const now = opts.now ?? new Date();
+  const draft = c.status === "DRAFT";
+  const setupStep = reachedAfter(c.setupStep, stepNumber(step));
+  const update = (data: Prisma.CreatorCampaignUncheckedUpdateInput, tx: Pick<typeof prisma, "creatorCampaign"> = prisma) => tx.creatorCampaign.update({ where: { id }, data: { ...data, setupStep } });
+
+  switch (step) {
+    case "idea": {
+      const v = parseStep("idea", input);
+      const [linked, productIds] = await Promise.all([ownKnowledgeCampaign(actor.businessId, v.knowledgeCampaignId), ownProductIds(actor.businessId, v.productIds)]);
+      const data: Prisma.CreatorCampaignUncheckedUpdateInput = { idea: v.idea || null, name: v.name || nameFromIdea(v.idea) || c.name, kind: v.kind, knowledgeCampaignId: linked?.id ?? null, productIds };
+      let tasks: TaskInput[] = [];
+      const tasksNow = await prisma.creatorTask.count({ where: { campaignId: id } });
+      const steps = draft && opts.suggest ? emptyOpenSteps(c, tasksNow, setupStep) : [];
+      if (steps.length && opts.suggest) {
+        const limits = await campaignLimits(actor.businessId);
+        const fill = prefill(c, tasksNow, await opts.suggest(), steps, { creatorsPerCampaign: limits.creatorsPerCampaign, tiktokReady: opts.tiktokReady === true });
+        Object.assign(data, fill.data);
+        tasks = fill.tasks;
+      }
+      await prisma.$transaction(async (tx) => {
+        await update(data, tx);
+        if (tasks.length) await tx.creatorTask.createMany({ data: tasks.map((t) => taskRow(id, t)) });
+      });
+      return;
+    }
+    case "goal": {
+      const v = parseStep("goal", input);
+      await update({ goal: v.goal });
+      return;
+    }
+    case "creators": {
+      const v = parseStep("creators", input);
+      const { creatorsPerCampaign } = await campaignLimits(actor.businessId);
+      if ((v.requirements.creatorsWanted ?? 0) > creatorsPerCampaign) throw new CreatorCampaignError("limit", `Your plan allows ${creatorsPerCampaign} creators in one campaign.`);
+      await update({ requirements: json(v.requirements) });
+      return;
+    }
+    case "where": {
+      const v = parseStep("where", input);
+      if (v.platforms.includes("tiktok") && !opts.tiktokReady && !c.platforms.includes("tiktok")) throw new CreatorCampaignError("invalid", "TikTok is coming soon: BuPulse cannot count its views yet.");
+      const tasks = await prisma.creatorTask.findMany({ where: { campaignId: id }, select: { id: true, title: true, platforms: true, platformMode: true } });
+      const keep = new Set<string>(v.platforms);
+      if (!draft) {
+        const orphan = tasks.find((t) => !t.platforms.some((p) => keep.has(p)));
+        if (orphan) throw new CreatorCampaignError("invalid", `The task "${orphan.title}" uses only platforms you took off. Change or delete it first.`);
+      }
+      await prisma.$transaction(async (tx) => {
+        await update({ platforms: v.platforms, platformMode: v.platformMode, formats: v.formats, mentions: v.mentions }, tx);
+        for (const t of tasks) {
+          let platforms = t.platforms.filter((p) => keep.has(p));
+          // A draft's tasks follow the networks picked here (they were made from them).
+          if (draft && platforms.length === 0) platforms = v.platforms;
+          const platformMode = draft ? v.platformMode : t.platformMode;
+          if (platforms.length !== t.platforms.length || platforms.some((p, i) => p !== t.platforms[i]) || platformMode !== t.platformMode) await tx.creatorTask.update({ where: { id: t.id }, data: { platforms, platformMode } });
+        }
+      });
+      return;
+    }
+    case "when": {
+      const v = parseStep("when", input);
+      const datesChanged = v.startsOn !== ymdOf(c.startsOn) || v.endsOn !== ymdOf(c.endsOn);
+      if (!draft) {
+        if (datesChanged) throw new CreatorCampaignError("conflict", "The dates and the currency can be changed only while the campaign is a draft.");
+        await update({ briefEvery: v.briefEvery });
+        return;
+      }
+      const b = await company(actor.businessId);
+      if (datesChanged && v.startsOn < dayIn(now, b.timezone)) throw new CreatorCampaignError("invalid", "The first day cannot be in the past.");
+      const rows = (await prisma.creatorTask.findMany({ where: { campaignId: id }, orderBy: [{ startsOn: "asc" }, { createdAt: "asc" }], select: { title: true, instructions: true, startsOn: true, endsOn: true } })).map((t) => ({ ...t, startsOn: ymdOf(t.startsOn), endsOn: ymdOf(t.endsOn) }));
+      const platforms = c.platforms.filter((p): p is Platform => (PLATFORMS as readonly string[]).includes(p));
+      const replan = rows.length > 0 && platforms.length > 0 && !tasksMatchSpans(rows, v.startsOn, v.endsOn, v.briefEvery);
+      const budget = datesChanged ? await defaultBudget(id, now) : null;
+      await prisma.$transaction(async (tx) => {
+        await update({ startsOn: day(v.startsOn), endsOn: day(v.endsOn), briefEvery: v.briefEvery }, tx);
+        if (datesChanged) {
+          await tx.creatorPeriod.deleteMany({ where: { campaignId: id } });
+          await tx.creatorPeriod.createMany({ data: periodsFor(v.startsOn, v.endsOn, b.timezone).map((p) => ({ campaignId: id, index: p.index, startsAt: p.startsAt, endsAt: p.endsAt, viewTargetPerCreator: c.viewTargetPerCreator, viewTargetCampaign: c.viewTargetCampaign, budget })) });
+        }
+        if (replan) {
+          await tx.creatorTask.deleteMany({ where: { campaignId: id } });
+          const planned = planTasks({ startsOn: v.startsOn, endsOn: v.endsOn, briefEvery: v.briefEvery, postsPerDay: v.postsPerDay, mediaKind: v.mediaKind, platforms, platformMode: c.platformMode === "ALL" ? "ALL" : "ANY", texts: taskTexts(rows) });
+          await tx.creatorTask.createMany({ data: planned.map((t) => taskRow(id, t)) });
+        } else if (rows.length) {
+          await tx.creatorTask.updateMany({ where: { campaignId: id }, data: { postsPerDay: v.postsPerDay, mediaKind: v.mediaKind } });
+        }
+      });
+      return;
+    }
+    case "content": {
+      const v = parseStep("content", input);
+      if (!draft && v.brief.length < 10) throw new CreatorCampaignError("invalid", "Write a short brief: what the posts should show.");
+      for (const t of v.tasks) checkTask(c, t);
+      if (draft) {
+        await prisma.$transaction(async (tx) => {
+          await update({ brief: v.brief }, tx);
+          await tx.creatorTask.deleteMany({ where: { campaignId: id } });
+          if (v.tasks.length) await tx.creatorTask.createMany({ data: v.tasks.map((t) => taskRow(id, t)) });
+        });
+        return;
+      }
+      // Live, paused: the task rules of the Tasks tab. A task creators handed in is changed, never deleted.
+      const existing = await prisma.creatorTask.findMany({ where: { campaignId: id }, select: { id: true, title: true, _count: { select: { submissions: true } } } });
+      const known = new Set(existing.map((t) => t.id));
+      if (v.tasks.some((t) => t.id && !known.has(t.id))) throw new CreatorCampaignError("not_found", "A task was deleted meanwhile. Open the page again.");
+      const sent = new Set(v.tasks.flatMap((t) => (t.id ? [t.id] : [])));
+      const gone = existing.filter((t) => !sent.has(t.id));
+      const handedIn = gone.find((t) => t._count.submissions > 0);
+      if (handedIn) throw new CreatorCampaignError("conflict", `Creators already handed in "${handedIn.title}", so it cannot be deleted. Change its days or words instead.`);
+      await prisma.$transaction(async (tx) => {
+        await update({ brief: v.brief }, tx);
+        if (gone.length) await tx.creatorTask.deleteMany({ where: { id: { in: gone.map((t) => t.id) }, campaignId: id } });
+        for (const t of v.tasks) {
+          const { id: taskId, ...fields } = t;
+          if (taskId) await tx.creatorTask.update({ where: { id: taskId }, data: taskData(fields) });
+        }
+        const fresh = v.tasks.filter((t) => !t.id);
+        if (fresh.length) await tx.creatorTask.createMany({ data: fresh.map((t) => taskRow(id, t)) });
+      });
+      return;
+    }
+    case "rules": {
+      const v = parseStep("rules", input);
+      await update({ dos: v.dos, donts: v.donts, rules: v.rules || null });
+      return;
+    }
+    case "pay": {
+      const v = parseStep("pay", input);
+      if (!draft && v.currency !== c.currency) throw new CreatorCampaignError("conflict", "The dates and the currency can be changed only while the campaign is a draft.");
+      const goals = { viewTargetPerCreator: v.viewTargetPerCreator ?? null, viewTargetCampaign: v.viewTargetCampaign ?? null, budget: v.budget ?? null };
+      await prisma.$transaction(async (tx) => {
+        await update({ currency: v.currency, payRules: json(v.payRules), viewTargetPerCreator: goals.viewTargetPerCreator, viewTargetCampaign: goals.viewTargetCampaign }, tx);
+        await tx.creatorPeriod.updateMany({ where: { campaignId: id, status: "OPEN", ...(draft ? {} : { startsAt: { gt: now } }) }, data: goals });
+      });
+      return;
+    }
+    case "form": {
+      const v = parseStep("form", input);
+      await update({ applicationForm: json(v.applicationForm) });
+      return;
+    }
+    case "files": {
+      const v = parseStep("files", input);
+      await update({ files: json({ ...readFiles(c.files), driveUrl: v.driveUrl || null, exampleLinks: v.exampleLinks }) });
+      return;
+    }
+    case "look": {
+      const v = parseStep("look", input);
+      if (v.coverAssetId && !(await prisma.mediaAsset.findFirst({ where: { id: v.coverAssetId, businessId: actor.businessId }, select: { id: true } }))) {
+        throw new CreatorCampaignError("invalid", "That cover is no longer in your Photos. Pick another one.");
+      }
+      await update({ look: json({ coverAssetId: v.coverAssetId ?? null }), listed: v.listed, acceptingApplications: v.acceptingApplications });
+      return;
+    }
+    case "review":
+      await update({});
+      return;
+  }
+}
+
+/** Review's "Save as draft": the campaign is set up (the list stops saying "Continue"); it goes live when the owner says. */
+export async function finishSetup(actor: CampaignActor, id: string) {
+  assertManager(actor);
+  await campaignOf(actor, id);
+  await prisma.creatorCampaign.update({ where: { id }, data: { setupStep: null } });
+}
+
+const FOLDERS = [
+  ["imagesFolderId", "Images"],
+  ["videosFolderId", "Videos"],
+  ["documentsFolderId", "Documents"],
+] as const;
+
+/**
+ * The campaign's three Photos folders, made once when the owner reaches Files: "<name> – Images", "– Videos" and
+ * "– Documents" (" (2)" and on when a folder of that name exists). One made again if the owner deleted it in Photos.
+ */
+export async function ensureCampaignFolders(actor: CampaignActor, id: string): Promise<CampaignFiles> {
+  assertManager(actor);
+  const c = await campaignOf(actor, id);
+  return prisma.$transaction(async (tx) => {
+    await lock(tx, `folders:${id}`);
+    const fresh = await tx.creatorCampaign.findUnique({ where: { id }, select: { files: true } });
+    const files = readFiles(fresh?.files);
+    const ids = FOLDERS.map(([key]) => files[key]).filter((v): v is string => Boolean(v));
+    const have = new Set((await tx.mediaFolder.findMany({ where: { businessId: actor.businessId, id: { in: ids } }, select: { id: true } })).map((f) => f.id));
+    const missing = FOLDERS.filter(([key]) => !files[key] || !have.has(files[key]!));
+    if (!missing.length) return files;
+    const taken = (await tx.mediaFolder.findMany({ where: { businessId: actor.businessId }, select: { name: true } })).map((f) => f.name);
+    if (taken.length + missing.length > MEDIA_MAX_FOLDERS) throw new CreatorCampaignError("limit", `Photos holds up to ${MEDIA_MAX_FOLDERS} folders. Delete ${missing.length === 1 ? "one" : missing.length} in Photos to make room for this campaign's files.`);
+    const next: CampaignFiles = { ...files };
+    for (const [key, label] of missing) {
+      const name = campaignFolderName(c.name, label, taken);
+      taken.push(name);
+      next[key] = (await tx.mediaFolder.create({ data: { businessId: actor.businessId, name }, select: { id: true } })).id;
+    }
+    await tx.creatorCampaign.update({ where: { id }, data: { files: json(next) } });
+    return next;
+  });
 }

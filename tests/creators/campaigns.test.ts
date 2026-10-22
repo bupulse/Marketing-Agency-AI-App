@@ -122,7 +122,7 @@ describe("campaigns", () => {
     expect(h.prisma.creatorCampaign.count).toHaveBeenCalledWith({ where: { businessId: "b1", status: { in: ["LIVE", "PAUSED"] }, id: { not: "c1" } } });
     h.prisma.creatorCampaign.count.mockResolvedValue(1);
     expect(await setCampaignStatus(OWNER, "c1", "LIVE", NOW)).toEqual({ status: "LIVE" });
-    expect(h.prisma.creatorCampaign.updateMany).toHaveBeenLastCalledWith({ where: { id: "c1", status: "DRAFT" }, data: { status: "LIVE" } });
+    expect(h.prisma.creatorCampaign.updateMany).toHaveBeenLastCalledWith({ where: { id: "c1", status: "DRAFT" }, data: { status: "LIVE", setupStep: null } });
   });
 
   it("end: applications stop and periods that had not started go", async () => {
