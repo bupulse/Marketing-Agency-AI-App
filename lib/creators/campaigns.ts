@@ -243,8 +243,8 @@ export async function listCampaignCreators(actor: CampaignActor, campaignId: str
       phone: hideContact ? null : r.phone,
       handles: readHandles(r.handles),
       samples: r.samples,
-      // Text, lists, numbers or ranges, by the form's field types (lib/creators/form-fields.ts).
-      answers: (r.answers && typeof r.answers === "object" ? r.answers : {}) as Record<string, Answer>,
+      /** By field id (lib/creators/form-fields.ts): text, picks, numbers, ranges; old applications hold strings. */
+      answers: (r.answers && typeof r.answers === "object" && !Array.isArray(r.answers) ? r.answers : {}) as Record<string, Answer>,
       inviteExpiresAt: r.inviteExpiresAt?.toISOString() ?? null,
       offeredAt: r.offeredAt?.toISOString() ?? null,
       appliedAt: r.createdAt.toISOString(),
