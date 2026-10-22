@@ -175,3 +175,34 @@ describe("insight answers", () => {
     expect(Object.fromEntries(m)).toEqual({ views: 5, reach: 4 });
   });
 });
+
+describe("follower counts (docs/CREATOR_CAMPAIGN_WIZARD.md, \"Followers\")", () => {
+  it("Instagram: followers_count with the account, and on its own", async () => {
+    const fetch = mockFetch(ok({ id: "1", user_id: "17841400000000001", username: "ana.rw", account_type: "BUSINESS", followers_count: 12_300 }), ok({ id: "1", followers_count: 12_400 }));
+    expect(await creatorAdapter("instagram").accounts(caller("instagram"))).toEqual([{ externalAccountId: "17841400000000001", displayName: "@ana.rw", avatarUrl: undefined, accountType: "business", followers: 12_300 }]);
+    expect(body(fetch, 0).arguments.fields).toContain("followers_count");
+    expect(await creatorAdapter("instagram").followers!(caller("instagram"), ig)).toBe(12_400);
+  });
+
+  it("Facebook: a Page's followers_count, or fan_count when it gives none", async () => {
+    const fetch = mockFetch(ok({ data: [{ id: "111222333", name: "Ana Styles", followers_count: 900, fan_count: 850 }, { id: "444", name: "Ana Food", fan_count: 40 }] }), ok({ id: "111222333", followers_count: 901 }));
+    expect((await creatorAdapter("facebook").accounts(caller("facebook"))).map((a) => a.followers)).toEqual([900, 40]);
+    expect(body(fetch, 0).arguments.fields).toContain("followers_count,fan_count");
+    expect(await creatorAdapter("facebook").followers!(caller("facebook"), fb)).toBe(901);
+    expect(slugOf(fetch, 1)).toBe("FACEBOOK_GET_PAGE_DETAILS");
+    expect(body(fetch, 1).arguments).toMatchObject({ page_id: "111222333", fields: "id,followers_count,fan_count" });
+  });
+
+  it("TikTok: follower_count needs user.info.stats; without it the account still connects, with no count", async () => {
+    const scope = jsonResponse({ data: { data: {}, error: { code: "scope_not_authorized", message: "The user did not authorize the scope required for completing this request." } }, status: 200 });
+    const user = (extra: Record<string, unknown>) => jsonResponse({ data: { data: { user: { open_id: "open-1", display_name: "Ana", ...extra } }, error: { code: "ok" } }, status: 200 });
+    let fetch = mockFetch(user({ username: "ana", follower_count: 5_000 }));
+    expect(await creatorAdapter("tiktok").accounts(caller("tiktok"))).toEqual([{ externalAccountId: "open-1", displayName: "@ana", avatarUrl: undefined, accountType: "creator", followers: 5_000 }]);
+    expect(body(fetch, 0).endpoint).toContain("follower_count");
+    fetch = mockFetch(scope, user({ username: "ana" }));
+    expect(await creatorAdapter("tiktok").accounts(caller("tiktok"))).toEqual([{ externalAccountId: "open-1", displayName: "@ana", avatarUrl: undefined, accountType: "creator" }]);
+    expect(body(fetch, 1).endpoint).not.toContain("follower_count");
+    mockFetch(scope);
+    expect(await creatorAdapter("tiktok").followers!(caller("tiktok"), tt)).toBeNull();
+  });
+});

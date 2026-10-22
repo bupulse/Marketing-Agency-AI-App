@@ -35,9 +35,14 @@ export type ReadResult = {
   gone: string[];
 };
 
+/** An account a sign-in gives, with its follower count when the network gave it (docs/CREATOR_CAMPAIGN_WIZARD.md, "Followers"). */
+export type CreatorAccount = AccountChoice & { followers?: number };
+
 export type CreatorAdapter = {
   /** The accounts this sign-in gives (the Instagram professional account, the Facebook Pages, the TikTok account). */
-  accounts(call: Caller): Promise<AccountChoice[]>;
+  accounts(call: Caller): Promise<CreatorAccount[]>;
+  /** The account's follower count now; null when the network does not give it (TikTok without user.info.stats). */
+  followers?(call: Caller, account: AccountRef): Promise<number | null>;
   /** The post a link names, looked for on this account only (check 1); null when it is not there. `day` bounds the search. */
   find(call: Caller, account: AccountRef, link: ParsedLink, day: string): Promise<NetworkPost | null>;
   /** The numbers of these posts of the account, in as few calls as the network allows. */

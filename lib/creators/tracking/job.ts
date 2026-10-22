@@ -73,7 +73,10 @@ export type JobResult = {
 };
 
 type PostRow = { id: string; externalId: string | null; postedAt: Date | null; checks: Prisma.JsonValue; views: number; impressions: number; likes: number; comments: number; shares: number };
-type ConnectionRow = { id: string; network: string; status: string; composioConnectedAccountId: string; externalAccountId: string; profileId: string };
+type ConnectionRow = { id: string; network: string; status: string; composioConnectedAccountId: string; externalAccountId: string; profileId: string; followersAt?: Date | null };
+
+/** An account's follower count is read again this often (one more call, at a reading of its posts). */
+export const FOLLOWERS_EVERY_MS = 7 * 24 * HOUR;
 
 const POST_SELECT = { id: true, externalId: true, postedAt: true, checks: true, views: true, impressions: true, likes: true, comments: true, shares: true } as const;
 
@@ -106,7 +109,7 @@ async function readAccount(ctx: Ctx, connection: ConnectionRow, posts: PostRow[]
     }
     return false;
   }
-  await prisma.creatorConnection.update({ where: { id: connection.id }, data: { lastCheckedAt: now, lastError: null } });
+  await prisma.creatorConnection.update({ where: { id: connection.id }, data: { lastCheckedAt: now, lastError: null, ...(await followersNow(ctx, connection)) } });
 
   const gone = new Set(result.gone);
   for (const post of posts) {
@@ -150,6 +153,22 @@ async function readAccount(ctx: Ctx, connection: ConnectionRow, posts: PostRow[]
 }
 
 /**
+ * The account's follower count when it is due again (FOLLOWERS_EVERY_MS): { followers, followersAt }, or only
+ * followersAt when the network gives none (so it is not asked again before the week is out), or nothing.
+ */
+async function followersNow(ctx: Ctx, connection: ConnectionRow): Promise<{ followers?: number; followersAt?: Date }> {
+  const adapter = ctx.deps.adapter(connection.network as CreatorNetwork);
+  if (!adapter.followers || (connection.followersAt && ctx.now.getTime() - connection.followersAt.getTime() < FOLLOWERS_EVERY_MS)) return {};
+  try {
+    const followers = await adapter.followers(ctx.deps.caller(connection, ctx.limit), { network: connection.network as CreatorNetwork, externalAccountId: connection.externalAccountId });
+    return followers === null ? { followersAt: ctx.now } : { followers, followersAt: ctx.now };
+  } catch (error) {
+    if (error instanceof BudgetError) throw error;
+    return {};
+  }
+}
+
+/**
  * Reads posts grouped by their connected account, until `deadline`. Returns the ids of the posts it did not read; those
  * whose account could not be read (signed out, the network failing) are looked at again in an hour, not at once.
  */
@@ -158,7 +177,7 @@ async function readPosts(ctx: Ctx, posts: (PostRow & { connectionId: string | nu
   const failed: string[] = posts.filter((p) => !p.connectionId).map((p) => p.id);
   const skipped: string[] = [];
   for (const p of posts) if (p.connectionId) byConnection.set(p.connectionId, [...(byConnection.get(p.connectionId) ?? []), p]);
-  const connections = await prisma.creatorConnection.findMany({ where: { id: { in: [...byConnection.keys()] } }, select: { id: true, network: true, status: true, composioConnectedAccountId: true, externalAccountId: true, profileId: true } });
+  const connections = await prisma.creatorConnection.findMany({ where: { id: { in: [...byConnection.keys()] } }, select: { id: true, network: true, status: true, composioConnectedAccountId: true, externalAccountId: true, profileId: true, followersAt: true } });
   for (const connection of connections) {
     const ids = byConnection.get(connection.id)!.map((p) => p.id);
     if (Date.now() > deadline) skipped.push(...ids);
