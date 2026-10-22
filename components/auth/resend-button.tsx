@@ -27,7 +27,7 @@ export function ResendButton({ email, startCooldown = false, next }: { email: st
         if (result.retrySeconds) setSeconds(result.retrySeconds);
         return;
       }
-      setMessage({ text: "Email sent. Check your inbox and spam folder.", error: false });
+      setMessage({ text: "Email sent. Check your inbox, the Updates or Promotions tab in Gmail, and Spam.", error: false });
       setSeconds(RESEND_COOLDOWN_SECONDS);
     });
   }

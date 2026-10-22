@@ -25,7 +25,7 @@ export function ConfirmEmail({ email, onChangeEmail, next }: { email: string; on
         <strong className="text-text">register@bupulse.com</strong>. Type the code here, or open the link. Then choose a plan and book your free demo.
       </p>
       <EmailCodeForm action={confirmEmailCode} email={email} next={next} />
-      <p className="text-[13px] text-muted">Can&apos;t find it? Check your spam or promotions folder.</p>
+      <p className="text-[13px] text-muted">Can&apos;t find it? In Gmail, look in the Updates or Promotions tab, then in Spam.</p>
       <ResendButton email={email} startCooldown next={next} />
       <div className="flex flex-col items-center gap-1 text-sm">
         {onChangeEmail && (

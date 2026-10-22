@@ -34,7 +34,7 @@ export function CreatorSignUpForm({ turnstileSiteKey }: { turnstileSiteKey: stri
           We sent a code and a link to <strong className="break-all text-text">{state.email}</strong> from <strong className="text-text">register@bupulse.com</strong>. Type the code here, or open the link. Then fill in your profile and apply to campaigns in one tap.
         </p>
         {state.email && <EmailCodeForm action={confirmEmailCode} email={state.email} next={CREATOR_START} />}
-        <p className="text-[13px] text-muted">Can&apos;t find it? Check your spam or promotions folder.</p>
+        <p className="text-[13px] text-muted">Can&apos;t find it? In Gmail, look in the Updates or Promotions tab, then in Spam.</p>
         {state.email && <ResendButton email={state.email} startCooldown next={CREATOR_START} />}
       </div>
     );
