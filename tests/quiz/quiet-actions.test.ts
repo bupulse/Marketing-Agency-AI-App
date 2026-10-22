@@ -23,7 +23,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/auth/return-server", () => ({ takeReturn: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 
-import { saveKnowledge } from "@/app/onboarding/actions";
+import { saveKnowledge, saveLook } from "@/app/onboarding/actions";
 import { approveVoice } from "@/app/dashboard/knowledge/interview/actions";
 import { saveProfile } from "@/app/dashboard/knowledge/profile/actions";
 import { createReview } from "@/app/dashboard/knowledge/reviews/actions";
@@ -51,7 +51,8 @@ describe("quiet saves (the Business info quiz)", () => {
     expect(await saveKnowledge(knowledge, { quiet: true })).toEqual({ ok: true });
     expect(await approveVoice({ voice: "Warm." }, "quiz", [], { quiet: true })).toEqual({ ok: true });
     expect(await createReview(review, { quiet: true })).toEqual({ ok: true, reviewId: "r1" });
-    expect(mocks.update).toHaveBeenCalledTimes(2);
+    expect(await saveLook({ logoPath: "u1/logo/new.png", brandColors: ["#D63384"] }, { quiet: true })).toEqual({ ok: true });
+    expect(mocks.update).toHaveBeenCalledTimes(3);
     expect(mocks.saveQuizVoice).toHaveBeenCalledTimes(1);
     expect(mocks.createReview).toHaveBeenCalledTimes(1);
     expect(mocks.revalidatePath).not.toHaveBeenCalled();

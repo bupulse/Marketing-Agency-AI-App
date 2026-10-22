@@ -42,6 +42,7 @@ const aiAnswer = {
   taglines: ["Bread with love"],
   about: "Inzozi Bakery bakes bread every morning.",
   missions: [],
+  visions: [],
   values: [],
   languages: [],
   products: [],
@@ -50,7 +51,7 @@ const aiAnswer = {
   differentiators: [],
   positioning: [],
   faqs: [],
-  policies: { delivery: "unsure", returns: "unsure", booking: "unsure", payment: [] },
+  policies: { delivery: "unsure", returns: "unsure", warranty: "unsure", booking: "unsure", payment: [] },
   voices: [],
 };
 

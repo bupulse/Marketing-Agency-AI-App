@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { saveKnowledge } from "@/app/onboarding/actions";
+import { saveKnowledge, saveLook } from "@/app/onboarding/actions";
 import { approveVoice } from "@/app/dashboard/knowledge/interview/actions";
 import { saveProfile } from "@/app/dashboard/knowledge/profile/actions";
 import { createReview } from "@/app/dashboard/knowledge/reviews/actions";
@@ -15,15 +15,18 @@ import { knowledgeAction, type Failure, type Result } from "@/lib/knowledge/guar
 import type { VoiceSummaryInput } from "@/lib/knowledge/interview";
 import { knowledgeProgress } from "@/lib/knowledge/overview";
 import { faqInputSchema, policiesSchema, type FaqInput, type PoliciesInput } from "@/lib/knowledge/policies";
-import { fieldErrorMap, productInputSchema, type ProductInput } from "@/lib/knowledge/products";
+import { fieldErrorMap, MAX_ALBUM_PHOTOS, productInputSchema, type ProductInput } from "@/lib/knowledge/products";
 import type { ProfileInput } from "@/lib/knowledge/profile";
 import { draftBusinessQuiz } from "@/lib/knowledge/quiz-ai";
 import type { QuizDraft } from "@/lib/knowledge/quiz-draft";
-import { MAX_QUIZ_PRODUCTS } from "@/lib/knowledge/quiz-map";
+import { MAX_QUIZ_PHOTO_STEPS, MAX_QUIZ_PRODUCTS, MAX_QUIZ_REVIEWS } from "@/lib/knowledge/quiz-map";
 import { createCompetitors, createFaqs, createPersona, savePolicies as savePoliciesRow, savePositioning as savePositioningRow, updatePersona } from "@/lib/knowledge/records";
 import type { ReviewInput } from "@/lib/knowledge/reviews";
 import { overallPercent, toReachFull, type KnowledgeSection, type ToDo } from "@/lib/knowledge/sections";
-import { createProducts } from "@/lib/knowledge/service";
+import { activateDraftsWithPhotos, createProducts, KnowledgeError } from "@/lib/knowledge/service";
+import { linkPhotos } from "@/lib/media/albums";
+import { logoFromGalleryPhoto } from "@/lib/brand/logo-from-gallery";
+import { createSignedDownloadUrl } from "@/lib/storage";
 import { RATE_LIMITS, rateLimit } from "@/lib/rate-limit";
 import { can } from "@/lib/team/roles";
 
@@ -73,10 +76,15 @@ export type QuizRoundPayload =
   | { round: "rules"; policies: PoliciesInput | null; faqs: FaqInput[] }
   | { round: "find"; knowledge: KnowledgeInput }
   | { round: "voice"; summary: VoiceSummaryInput; answers: { topic: string; answer: string }[] }
-  | { round: "love"; review: ReviewInput };
+  | { round: "love"; reviews: ReviewInput[] }
+  | { round: "photos"; links: { productId: string; assetIds: string[] }[]; activate: string[] }
+  | { round: "look"; logoPath: string | null; brandColors: string[] };
 
-/** `ids`: the personas saved, in the order sent (a new one's id, so the quiz updates it if played again). */
-export type QuizRoundResult = { ok: true; ids?: string[] } | (Failure & { item?: number; part?: "competitors" | "positioning" | "policies" | "faqs" });
+/**
+ * `ids`: the personas saved, in the order sent (a new one's id, so the quiz updates it if played again). `products`:
+ * the products made, with their ids (their photo questions need them).
+ */
+export type QuizRoundResult = { ok: true; ids?: string[]; products?: { id: string; name: string }[] } | (Failure & { item?: number; part?: "competitors" | "positioning" | "policies" | "faqs" });
 
 const CHECK = "Check the highlighted fields.";
 const TOO_MANY: QuizRoundResult = { ok: false, error: "Too many at once. Please try again." };
@@ -113,8 +121,33 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
     }
     case "voice":
       return approveVoice(payload.summary, "quiz", payload.answers, QUIET);
-    case "love":
-      return createReview(payload.review, QUIET);
+    case "love": {
+      if (!Array.isArray(payload.reviews) || payload.reviews.length > MAX_QUIZ_REVIEWS) return TOO_MANY;
+      // Each through the section's own action (consent only for Owners and Admins), side by side in this one request.
+      const results = await Promise.all(payload.reviews.map((review) => createReview(review, QUIET)));
+      const item = results.findIndex((r) => !r.ok);
+      const failed = results[item];
+      return failed && !failed.ok ? { ...failed, item } : { ok: true };
+    }
+
+    case "look": {
+      const r = await saveLook({ logoPath: payload.logoPath, brandColors: payload.brandColors }, QUIET);
+      return r.ok ? r : { ok: false, error: r.error ?? CHECK, fieldErrors: r.fieldErrors };
+    }
+
+    case "photos": {
+      if (!Array.isArray(payload.links) || !Array.isArray(payload.activate) || payload.links.length > MAX_QUIZ_PHOTO_STEPS || payload.activate.length > MAX_QUIZ_PHOTO_STEPS) return TOO_MANY;
+      const links = z.array(z.object({ productId: personaId, assetIds: z.array(personaId).min(1).max(MAX_ALBUM_PHOTOS) })).safeParse(payload.links);
+      const activate = z.array(personaId).safeParse(payload.activate);
+      if (!links.success || !activate.success) return { ok: false, error: "We could not save those photos." };
+      // Adding photos to a product's album is part of products: the `content` permission and plan feature.
+      return knowledgeAction({ permission: "content", feature: "content", source: "knowledge.quiz.photos" }, async ({ userId, businessId }) => {
+        await hits(`knowledgeEdit:${userId}`, RATE_LIMITS.knowledgeEdit, links.data.length + activate.data.length);
+        await Promise.all(links.data.map((l) => linkPhotos(businessId, "product", l.productId, l.assetIds)));
+        await activateDraftsWithPhotos(businessId, activate.data);
+        return {};
+      });
+    }
 
     case "sell": {
       if (!Array.isArray(payload.products) || payload.products.length > MAX_QUIZ_PRODUCTS) return TOO_MANY;
@@ -122,8 +155,7 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
       if ("failure" in parsed) return parsed.failure;
       const r = await knowledgeAction({ permission: "content", feature: "content", source: "knowledge.quiz.products" }, async ({ userId, businessId }) => {
         await hits(`projectCreate:${userId}`, RATE_LIMITS.projectCreate, parsed.data.length);
-        await createProducts(businessId, parsed.data);
-        return {};
+        return { products: await createProducts(businessId, parsed.data) };
       });
       return r;
     }
@@ -173,4 +205,17 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
     }
   }
   return { ok: false, error: "We could not save that. Please try again." };
+}
+
+/**
+ * A gallery photo as the logo (🎨 Your look, "From your photos"): copied into the brand bucket, returned with a link to
+ * show it. The round's save (saveLook) sets it. Brand is a company setting: the `settings` permission.
+ */
+export async function quizLogoFromGallery(assetId: string): Promise<Result<{ path: string; url: string }>> {
+  if (!personaId.safeParse(assetId).success) return { ok: false, error: "We could not find that photo." };
+  return knowledgeAction({ permission: "settings", limit: "profileSave", source: "knowledge.quiz.logo" }, async (ctx) => {
+    const copy = await logoFromGalleryPhoto(ctx, assetId);
+    if (!copy.ok) throw new KnowledgeError(copy.error);
+    return { path: copy.path, url: await createSignedDownloadUrl("brand", copy.path) };
+  });
 }

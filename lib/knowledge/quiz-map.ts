@@ -17,7 +17,7 @@ import { SUMMARY_LIMITS } from "./interview";
 import { PAYMENT_LABEL, type Policies, type PaymentMethod } from "./policies";
 import { productInputSchema, type ProductInput, type ProductKindValue } from "./products";
 import type { CompanySize, ProfileFormValues, ProfileInput } from "./profile";
-import { POLICY_CHOICES, sameKey, type PersonaIdea, type PolicyKind, type ProductIdea, type QuizDraft, type VoiceOption } from "./quiz-draft";
+import { POLICY_TILES, sameKey, type BusinessType, type PersonaIdea, type PolicyKind, type ProductIdea, type QuizDraft, type VoiceOption } from "./quiz-draft";
 import type { ReviewInput, ReviewSourceValue } from "./reviews";
 import type { SectionKey } from "./sections";
 import type { QuizRound, QuizStep } from "@/lib/quiz/flow";
@@ -25,7 +25,7 @@ import type { QuizRound, QuizStep } from "@/lib/quiz/flow";
 /** True when the owner answered the question (it was not skipped). */
 export type Given = (stepId: string) => boolean;
 
-export const QUIZ_ROUND_IDS = ["you", "sell", "customers", "why", "rules", "find", "voice", "love"] as const;
+export const QUIZ_ROUND_IDS = ["you", "sell", "photos", "customers", "why", "rules", "find", "look", "voice", "love", "golive"] as const;
 export type QuizRoundId = (typeof QUIZ_ROUND_IDS)[number];
 
 export function isQuizRound(value: unknown): value is QuizRoundId {
@@ -36,29 +36,53 @@ export function isQuizRound(value: unknown): value is QuizRoundId {
 export const QUIZ_ROUNDS: readonly (QuizRound & { id: QuizRoundId; section: SectionKey; href: string })[] = [
   { id: "you", title: "You", emoji: "🏠", blurb: "Who you are", section: "profile", href: "/dashboard/knowledge/profile" },
   { id: "sell", title: "What you sell", emoji: "🛍️", blurb: "Your products and services", section: "products", href: "/dashboard/knowledge/products" },
+  { id: "photos", title: "Photos", emoji: "📸", blurb: "A photo or video of each product", section: "products", href: "/dashboard/knowledge/products" },
   { id: "customers", title: "Your customers", emoji: "👥", blurb: "Who buys from you", section: "audience", href: "/dashboard/knowledge/audience" },
   { id: "why", title: "Why you", emoji: "⭐", blurb: "Why people choose you", section: "competitors", href: "/dashboard/knowledge/competitors" },
   { id: "rules", title: "Rules", emoji: "📋", blurb: "Payment, delivery and questions", section: "faqs", href: "/dashboard/knowledge/faqs" },
   { id: "find", title: "Find us", emoji: "📍", blurb: "Hours, phone and address", section: "locations", href: "/dashboard/knowledge/locations" },
+  { id: "look", title: "Your look", emoji: "🎨", blurb: "Your logo and colours", section: "brand", href: "/dashboard/brand#brand-look" },
   { id: "voice", title: "Your voice", emoji: "🎙️", blurb: "How your posts sound", section: "interview", href: "/dashboard/knowledge/interview" },
   { id: "love", title: "Love notes", emoji: "💬", blurb: "What customers say", section: "reviews", href: "/dashboard/knowledge/reviews" },
+  { id: "golive", title: "Go live", emoji: "🚀", blurb: "Connect your social accounts", section: "channels", href: "/dashboard/connections" },
 ];
 
 export const quizRound = (id: QuizRoundId) => QUIZ_ROUNDS.find((r) => r.id === id)!;
+
+/**
+ * The quiz round that raises a section, among the rounds the person can play: Products has two (What you sell, and
+ * Photos once there are products: its to-do then says "Add photos…"). Null when no round fills it.
+ */
+export function roundForSection(key: SectionKey, progress: { next?: string; summary?: string } | undefined, available: readonly QuizRoundId[]): QuizRoundId | null {
+  const rounds = QUIZ_ROUNDS.filter((r) => r.section === key && available.includes(r.id)).map((r) => r.id);
+  if (key === "products" && rounds.length > 1) return /^Add photos/.test(progress?.next ?? progress?.summary ?? "") ? "photos" : "sell";
+  return rounds[0] ?? null;
+}
 
 export type HoursChoice = "weekdays" | "monSat" | "everyday" | "always" | "keep" | "custom";
 /** A new product's answers. No price typed means "Ask for price" (`onRequest`), never a guessed price. */
 export type ProductAnswer = { kind: ProductKindValue; price: string; onRequest: boolean; reason: string };
 
+/** A photo or video added in the quiz, shown on its question (uploads and imports are in the album at once). */
+export type QuizPhoto = { id: string; url: string; kind: string; posterUrl?: string | null };
+/** One customer review (Love notes takes up to MAX_QUIZ_REVIEWS). */
+export type LoveNote = { quote: string; customerName: string; source: ReviewSourceValue | ""; canPublish: boolean };
+/** Reviews asked for in one quiz: three the AI may quote make the section complete. */
+export const MAX_QUIZ_REVIEWS = 3;
+
 export type QuizAnswers = {
-  you: { tagline: string; about: string; size: CompanySize | ""; yearFounded: string; languages: string[]; values: string[]; mission: string };
+  you: { tagline: string; about: string; size: CompanySize | ""; yearFounded: string; languages: string[]; values: string[]; mission: string; vision: string; website: string };
   sell: { picked: string[]; details: Record<string, ProductAnswer> };
   customers: { picked: string[]; ageRange: AgeRange | ""; gender: Gender | ""; channels: string[]; needs: string[]; pains: string[]; triggers: string[] };
   why: { competitors: string[]; differentiators: string[]; statement: string };
-  rules: { payment: PaymentMethod[]; delivery: PolicyAnswer; returns: PolicyAnswer; booking: PolicyAnswer; faqs: { id: string; question: string; answer: string }[]; faqKept: string[]; faqEdited?: string[] };
+  rules: { payment: PaymentMethod[]; delivery: PolicyAnswer; returns: PolicyAnswer; warranty: PolicyAnswer; booking: PolicyAnswer; faqs: { id: string; question: string; answer: string }[]; faqKept: string[]; faqEdited?: string[] };
   find: { hours: HoursChoice | ""; custom: Schedule; phone: string; address: string };
   voice: { tone: "friendly" | "formal" | ""; emojis: "yes" | "no" | ""; length: "short" | "detailed" | ""; pick: string };
-  love: { quote: string; customerName: string; source: ReviewSourceValue | ""; canPublish: boolean };
+  love: LoveNote[];
+  /** Per photo question (its target's key): what was uploaded or imported (already in the album) and gallery picks (linked when the round saves). */
+  photos: { added: Record<string, QuizPhoto[]>; picked: Record<string, QuizPhoto[]> };
+  /** The logo (a path in the brand bucket, and a link to show it), the colours picked, and the colours found in a logo uploaded now. */
+  look: { logoPath: string | null; logoUrl: string | null; colors: string[]; palette: string; logoColors: string[] };
 };
 
 const kept = (given: boolean, answer: string, stored: string) => (given && answer.trim() ? answer.trim() : stored);
@@ -87,6 +111,8 @@ export function profileInputFrom(stored: ProfileFormValues, a: QuizAnswers["you"
     languages: keptList(given("you.languages"), a.languages, stored.languages),
     values: keptList(given("you.values"), a.values, stored.values),
     mission: kept(given("you.mission"), a.mission, stored.mission),
+    vision: kept(given("you.vision"), a.vision, stored.vision),
+    website: kept(given("you.website"), a.website, stored.website),
   };
 }
 
@@ -139,6 +165,64 @@ export function productInputsFrom(
     };
     return [{ name, input }];
   });
+}
+
+// ---- 📸 Photos -> the products' albums -----------------------------------------------------------------------------
+
+/**
+ * A product that gets a photo question: a stored one without a photo (`productId` known), or one picked in What you
+ * sell, whose id is known once that round saved (`QuizStored.productIds`). Keyed so the question exists before the
+ * product does: the round keeps its length when the products are saved.
+ */
+export type PhotoTarget = { key: string; name: string; productId: string | null; isNew: boolean };
+export const photoStepId = (key: string) => `photos.${key}`;
+/** Photo questions in one quiz. */
+export const MAX_QUIZ_PHOTO_STEPS = 8;
+
+export function photoTargets(stored: Pick<QuizStored, "photoless" | "productIds" | "products">, a: Pick<QuizAnswers, "sell">): PhotoTarget[] {
+  const out: PhotoTarget[] = stored.photoless.map((p) => ({ key: `p-${p.id}`, name: p.name, productId: p.id, isNew: false }));
+  for (const name of newProductNames(stored.products, a.sell.picked).slice(0, MAX_QUIZ_PRODUCTS)) {
+    const key = itemKey(name);
+    out.push({ key: `n-${key.replace(/[^\p{L}\p{N}]+/gu, "-")}`, name, productId: stored.productIds[key] ?? null, isNew: true });
+  }
+  return out.slice(0, MAX_QUIZ_PHOTO_STEPS);
+}
+
+/**
+ * The Photos round's save: the gallery photos picked for each product (uploads and imports are in the album already),
+ * and the products the quiz made as drafts that now have a photo, made active (a product needs a photo to be ready).
+ */
+export function photosSaveFrom(targets: readonly PhotoTarget[], a: QuizAnswers["photos"], given: Given): { links: { productId: string; assetIds: string[] }[]; activate: string[] } {
+  const links: { productId: string; assetIds: string[] }[] = [];
+  const activate: string[] = [];
+  for (const t of targets) {
+    if (!t.productId) continue;
+    const picked = given(photoStepId(t.key)) ? (a.picked[t.key] ?? []).map((p) => p.id) : [];
+    if (picked.length) links.push({ productId: t.productId, assetIds: [...new Set(picked)] });
+    if (t.isNew && (picked.length || (a.added[t.key] ?? []).length)) activate.push(t.productId);
+  }
+  return { links, activate };
+}
+
+// ---- 🎨 Your look -> saveLook --------------------------------------------------------------------------------------
+
+export type StoredLook = { logoPath: string | null; logoUrl: string | null; colors: string[] };
+
+/** The logo and colours to save, the stored ones where a question was skipped. Null when nothing changed. */
+export function lookSaveFrom(stored: StoredLook, a: QuizAnswers["look"], given: Given): { logoPath: string | null; brandColors: string[] } | null {
+  const logoPath = given("look.logo") && a.logoPath ? a.logoPath : stored.logoPath;
+  const brandColors = given("look.colors") && a.colors.length ? a.colors.map((c) => c.toUpperCase()) : stored.colors;
+  if (logoPath === stored.logoPath && brandColors.join() === stored.colors.join()) return null;
+  return { logoPath, brandColors };
+}
+
+/** The colour sets offered: from the logo just uploaded, the stored ones, then the industry's. Each `id` is a tile. */
+export function paletteOptions(look: Pick<QuizAnswers["look"], "logoColors">, stored: StoredLook, industry: readonly string[][]): { id: string; label: string; colors: string[] }[] {
+  return [
+    ...(look.logoColors.length ? [{ id: "logo", label: "From your logo", colors: look.logoColors }] : []),
+    ...(stored.colors.length ? [{ id: "keep", label: "Keep my colours", colors: stored.colors }] : []),
+    ...industry.map((colors, i) => ({ id: `p${i}`, label: `Idea ${i + 1}`, colors })),
+  ];
 }
 
 // ---- 👥 Your customers -> createPersona / updatePersona ----------------------------------------------------------
@@ -216,7 +300,7 @@ export type PolicyAnswer = { choice: string; text: string };
  * Where the business is, for "We deliver in Kigali" (the area served, else nothing) and "across Rwanda", and the head
  * office address for "You can pick up at …" (empty when not stored).
  */
-export type Places = { city: string; country: string; address?: string };
+export type Places = { city: string; country: string; address?: string; /** Which policy tiles fit (POLICY_TILES); a shop when not given. */ type?: BusinessType };
 
 const CHOICE_TEXT: Record<PolicyKind, Record<string, (p: Places) => { label: string; sentence: string; emoji: string }>> = {
   delivery: {
@@ -224,11 +308,28 @@ const CHOICE_TEXT: Record<PolicyKind, Record<string, (p: Places) => { label: str
     city: (p) => ({ label: `We deliver in ${p.city || "town"}`, sentence: `We deliver in ${p.city || "town"}. Message us with your address.`, emoji: "🛵" }),
     country: (p) => ({ label: `We deliver across ${p.country || "the country"}`, sentence: `We deliver across ${p.country || "the country"}. Message us with your address.`, emoji: "🚚" }),
     app: () => ({ label: "Through a delivery app", sentence: "We deliver through delivery apps.", emoji: "📱" }),
+    atPlace: () => ({ label: "Customers come to us", sentence: "Customers come to our place; we do not do home visits.", emoji: "🏠" }),
+    homeVisit: (p) => ({ label: "We come to you", sentence: `We come to you${p.city ? ` in ${p.city}` : ""}. Message us to book a visit.`, emoji: "🚗" }),
+    both: () => ({ label: "Both: our place or yours", sentence: "Come to our place, or we come to you. Message us to arrange it.", emoji: "🔄" }),
+    online: () => ({ label: "Online", sentence: "We serve our customers online.", emoji: "💻" }),
   },
   returns: {
     noFood: () => ({ label: "No returns on food and drinks", sentence: "We do not take returns on food and drinks.", emoji: "🍽️" }),
     exchange: () => ({ label: "Exchange within 7 days with the receipt", sentence: "Items can be exchanged within 7 days with the receipt.", emoji: "🔁" }),
     refund: () => ({ label: "Refund within 7 days", sentence: "Items can be refunded within 7 days with the receipt.", emoji: "💸" }),
+    noReturns: () => ({ label: "No returns once sold", sentence: "Items cannot be returned once sold.", emoji: "🚫" }),
+    replaceOrder: () => ({ label: "We replace a wrong order", sentence: "If your order is wrong, we replace it.", emoji: "🔁" }),
+    redo: () => ({ label: "Free redo within 7 days if you're not happy", sentence: "Not happy? We redo it for free within 7 days.", emoji: "💅" }),
+    noRefund: () => ({ label: "No refunds after the service", sentence: "We do not refund a service once it is done.", emoji: "🚫" }),
+  },
+  warranty: {
+    w12: () => ({ label: "12-month warranty on new items", sentence: "New items come with a 12-month warranty.", emoji: "🛡️" }),
+    w3: () => ({ label: "3-month warranty", sentence: "Items come with a 3-month warranty.", emoji: "🛡️" }),
+    checked: () => ({ label: "Checked before you buy", sentence: "Every item is checked before it is sold.", emoji: "✅" }),
+    fresh: () => ({ label: "Fresh, or we replace it", sentence: "Everything is fresh; if it is not, we replace it.", emoji: "🥗" }),
+    work30: () => ({ label: "Our work is guaranteed for 30 days", sentence: "Our work is guaranteed for 30 days.", emoji: "🛡️" }),
+    satisfaction: () => ({ label: "Happy, or we fix it", sentence: "If you are not happy with our work, we fix it.", emoji: "😊" }),
+    none: () => ({ label: "No guarantee", sentence: "We do not offer a guarantee.", emoji: "➖" }),
   },
   booking: {
     walkIn: () => ({ label: "No booking, just walk in", sentence: "No booking needed: just walk in.", emoji: "🚶" }),
@@ -237,9 +338,21 @@ const CHOICE_TEXT: Record<PolicyKind, Record<string, (p: Places) => { label: str
   },
 };
 
-/** The tiles of a policy question, in order, then "Something else". */
+/** The tiles of a policy question that fit the business (POLICY_TILES), in order, then "Something else". */
 export function policyOptions(kind: PolicyKind, places: Places): { value: string; label: string; emoji: string; sentence: string }[] {
-  return [...POLICY_CHOICES[kind].map((c) => ({ value: c as string, ...CHOICE_TEXT[kind][c](places) })), { value: "other", label: "Something else", emoji: "✏️", sentence: "" }];
+  const tiles = POLICY_TILES[places.type ?? "goods"][kind] as readonly string[];
+  return [...tiles.map((c) => ({ value: c, ...CHOICE_TEXT[kind][c](places) })), { value: "other", label: "Something else", emoji: "✏️", sentence: "" }];
+}
+
+/** The question each policy asks, worded for the business ("Do you deliver?" or, for a salon, "Where do you serve customers?"). */
+export function policyTitle(kind: PolicyKind, type: BusinessType = "goods"): string {
+  const titles: Record<PolicyKind, Record<BusinessType, string>> = {
+    delivery: { goods: "Do you deliver?", food: "Do you deliver?", service: "Where do you serve customers?" },
+    returns: { goods: "Can people return things?", food: "What if an order is wrong?", service: "What if a customer isn't happy?" },
+    warranty: { goods: "Do you give a warranty?", food: "Do you guarantee freshness?", service: "Do you guarantee your work?" },
+    booking: { goods: "How do people book?", food: "How do people book?", service: "How do people book?" },
+  };
+  return titles[kind][type];
 }
 
 /** The policy text a tile stands for ("" for none; the owner's words for "Something else"). */
@@ -262,9 +375,10 @@ export function policiesFrom(stored: Policies, a: QuizAnswers["rules"], given: G
     paymentMethods: keptList(given("rules.payment"), a.payment, stored.paymentMethods),
     delivery: kept(given("rules.delivery"), policyText("delivery", a.delivery, places), stored.delivery ?? "") || null,
     returns: kept(given("rules.returns"), policyText("returns", a.returns, places), stored.returns ?? "") || null,
+    warranty: kept(given("rules.warranty"), policyText("warranty", a.warranty, places), stored.warranty ?? "") || null,
     booking: kept(given("rules.booking"), policyText("booking", a.booking, places), stored.booking ?? "") || null,
   };
-  const changed = next.paymentMethods.join() !== stored.paymentMethods.join() || next.delivery !== stored.delivery || next.returns !== stored.returns || next.booking !== stored.booking;
+  const changed = next.paymentMethods.join() !== stored.paymentMethods.join() || next.delivery !== stored.delivery || next.returns !== stored.returns || next.warranty !== stored.warranty || next.booking !== stored.booking;
   return changed ? next : null;
 }
 
@@ -272,6 +386,7 @@ export function policiesFrom(stored: Policies, a: QuizAnswers["rules"], given: G
 export function faqTopic(question: string): PolicyKind | "payment" | null {
   if (/\bdeliver/i.test(question)) return "delivery";
   if (/\b(return|refund|exchange)/i.test(question)) return "returns";
+  if (/\b(warrant|guarantee)/i.test(question)) return "warranty";
   if (/\b(book|booking|appointment|reserv)/i.test(question)) return "booking";
   if (/\b(pay|payment|mobile money|momo)\b/i.test(question)) return "payment";
   return null;
@@ -285,9 +400,10 @@ export function tileAnswer(topic: PolicyKind | "payment", a: QuizAnswers["rules"
   }
   const answer = a[topic];
   if (topic === "delivery" && answer.choice === "pickup") return `No, we don't deliver. You can pick up at ${places.address?.trim() || "our place"}.`;
+  if (topic === "delivery" && answer.choice === "atPlace") return `No, customers come to us${places.address?.trim() ? `, at ${places.address.trim()}` : ""}.`;
   const text = policyText(topic, answer, places);
   if (!text) return null;
-  return topic === "delivery" && answer.choice !== "other" ? `Yes. ${text}` : text;
+  return topic === "delivery" && ["city", "country", "app", "homeVisit"].includes(answer.choice) ? `Yes. ${text}` : text;
 }
 
 /**
@@ -426,30 +542,44 @@ export function voiceSaveFrom(stored: VoiceSummary | null, options: readonly Voi
 
 // ---- 💬 Love notes -> createReview --------------------------------------------------------------------------------
 
-export function reviewInputFrom(a: QuizAnswers["love"], given: Given): ReviewInput | null {
-  if (!given("love.quote") || !a.quote.trim()) return null;
+export const loveStepId = (part: "quote" | "source" | "consent", i: number) => `love.${part}.${i}`;
+
+/** One review from its slot `i` (its quote, where it came from, consent); null without a quote. */
+export function reviewInputFrom(a: LoveNote, given: Given, i = 0): ReviewInput | null {
+  if (!given(loveStepId("quote", i)) || !a.quote.trim()) return null;
   return {
     quote: a.quote.trim(),
     customerName: a.customerName.trim(),
-    source: given("love.source") && a.source ? a.source : "OTHER",
+    source: given(loveStepId("source", i)) && a.source ? a.source : "OTHER",
     rating: null,
     receivedOn: "",
     productId: "",
-    canPublish: given("love.consent") && a.canPublish,
+    canPublish: given(loveStepId("consent", i)) && a.canPublish,
   };
+}
+
+/** The reviews of every slot that has one, with the slot each came from (for an error on its question). */
+export function reviewInputsFrom(love: readonly LoveNote[], given: Given): { slot: number; input: ReviewInput }[] {
+  return love.flatMap((note, slot) => {
+    const input = reviewInputFrom(note, given, slot);
+    return input ? [{ slot, input }] : [];
+  });
 }
 
 // ---- Errors on the question ---------------------------------------------------------------------------------------
 
 const FIELD_STEPS: Record<QuizRoundId, [RegExp, string][]> = {
-  you: [[/^tagline/, "you.tagline"], [/^about/, "you.about"], [/^size/, "you.size"], [/^yearFounded/, "you.year"], [/^languages/, "you.languages"], [/^values/, "you.values"], [/^mission/, "you.mission"]],
+  you: [[/^tagline/, "you.tagline"], [/^about/, "you.about"], [/^size/, "you.size"], [/^yearFounded/, "you.year"], [/^languages/, "you.languages"], [/^values/, "you.values"], [/^mission/, "you.mission"], [/^vision/, "you.vision"], [/^website/, "you.website"]],
   sell: [],
+  photos: [],
+  look: [[/^logo/, "look.logo"], [/^brandColors/, "look.colors"]],
+  golive: [],
   customers: [[/^ageRange/, "customers.age"], [/^gender/, "customers.gender"], [/^channels/, "customers.online"], [/^needs/, "customers.needs"], [/^pains/, "customers.pains"], [/^triggers/, "customers.triggers"]],
   why: [[/^(name|link)/, "why.competitors"], [/^differentiators/, "why.differentiators"], [/^statement/, "why.statement"]],
-  rules: [[/^paymentMethods/, "rules.payment"], [/^delivery/, "rules.delivery"], [/^returns/, "rules.returns"], [/^booking/, "rules.booking"], [/^(question|answer)/, "rules.faqs"]],
+  rules: [[/^paymentMethods/, "rules.payment"], [/^delivery/, "rules.delivery"], [/^returns/, "rules.returns"], [/^warranty/, "rules.warranty"], [/^booking/, "rules.booking"], [/^(question|answer)/, "rules.faqs"]],
   find: [[/^openingHours/, "find.hours"], [/^contacts/, "find.phone"], [/^locations/, "find.address"]],
   voice: [],
-  love: [[/^(quote|customerName|receivedOn)/, "love.quote"], [/^source/, "love.source"], [/^canPublish/, "love.consent"]],
+  love: [[/^(quote|customerName|receivedOn)/, "love.quote.0"], [/^source/, "love.source.0"], [/^canPublish/, "love.consent.0"]],
 };
 
 /**
@@ -475,6 +605,14 @@ export type QuizStored = {
   brand: BrandValues | null;
   voice: VoiceSummary | null;
   voiceAnswers: { topic: string; answer: string }[];
+  /** Stored products with no photo yet (each gets a photo question), at the start. */
+  photoless: { id: string; name: string }[];
+  /** The ids of the products the quiz saved, by itemKey(name). */
+  productIds: Record<string, string>;
+  /** Null when the owner's role cannot edit the brand. */
+  look: StoredLook | null;
+  /** A social account is connected (Go live). */
+  connected: boolean;
 };
 
 /** New products asked about in one quiz (more can be added on the Products page). */
@@ -487,14 +625,21 @@ export function quizSteps(rounds: readonly QuizRoundId[], a: QuizAnswers, stored
   const add = (round: QuizRoundId, ...ids: string[]) => {
     if (on.has(round)) for (const id of ids) out.push({ id, round });
   };
-  add("you", "you.tagline", "you.about", "you.size", "you.year", "you.languages", "you.values", "you.mission");
+  add("you", "you.tagline", "you.about", "you.size", "you.year", "you.languages", "you.values", "you.mission", "you.vision", "you.website");
   add("sell", "sell.pick", ...newProductNames(stored.products, a.sell.picked).slice(0, MAX_QUIZ_PRODUCTS).map(productStepId));
+  add("photos", ...photoTargets(stored, a).map((t) => photoStepId(t.key)));
   add("customers", "customers.pick", "customers.age", "customers.gender", "customers.online", "customers.needs", "customers.pains", "customers.triggers");
   add("why", "why.competitors", "why.differentiators", "why.statement");
-  add("rules", "rules.payment", "rules.delivery", "rules.returns", "rules.booking", "rules.faqs");
+  add("rules", "rules.payment", "rules.delivery", "rules.returns", "rules.warranty", "rules.booking", "rules.faqs");
   add("find", "find.hours", "find.phone", "find.address");
+  add("look", "look.logo", "look.colors");
   add("voice", "voice.tone", "voice.emojis", "voice.length", "voice.pick");
-  add("love", "love.quote", ...(a.love.quote.trim() ? ["love.source", ...(opts.canGrant ? ["love.consent"] : [])] : []));
+  // A review slot opens once the one before it has a quote; each review asks where it came from and (Owners and Admins) consent.
+  for (let i = 0; i < MAX_QUIZ_REVIEWS; i++) {
+    if (i > 0 && !a.love[i - 1]?.quote.trim()) break;
+    add("love", loveStepId("quote", i), ...(a.love[i]?.quote.trim() ? [loveStepId("source", i), ...(opts.canGrant ? [loveStepId("consent", i)] : [])] : []));
+  }
+  add("golive", "golive.connect");
   return out;
 }
 
@@ -520,7 +665,9 @@ export function stepProblem(stepId: string, a: QuizAnswers, ideas: readonly Prod
     const parsed = productInputSchema.safeParse(item.input);
     return parsed.success ? null : (parsed.error.issues[0]?.message ?? "Check this product.");
   }
-  if (stepId === "love.quote" && a.love.quote.trim() && !a.love.customerName.trim()) return "Add the customer's name or initials.";
+  const slot = /^love\.quote\.(\d)$/.exec(stepId);
+  const note = slot ? a.love[Number(slot[1])] : undefined;
+  if (note?.quote.trim() && !note.customerName.trim()) return "Add the customer's name or initials.";
   return null;
 }
 
@@ -539,6 +686,9 @@ const asGender = (v: string | null | undefined): Gender | "" => (v === "female" 
  * Every question's first answer: what is stored, or BuPulse's guess when nothing is. `guessed` lists the questions
  * whose answer is a guess (they show "Our guess").
  */
+/** An empty review slot. */
+export const EMPTY_NOTE: LoveNote = { quote: "", customerName: "", source: "WHATSAPP", canPublish: false };
+
 export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { likelyKind: ProductKindValue; reasonIdeas?: readonly string[]; places: Places }): { answers: QuizAnswers; guessed: string[] } {
   const guessed: string[] = [];
   const pick = (id: string, have: string | null | undefined, guess: string | undefined): string => {
@@ -587,6 +737,7 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
 
   const faqs = draft.faqs.filter((f) => !stored.faqs.some((q) => same(q, f.question))).map((f, i) => ({ id: `idea-${i}`, question: f.question, answer: f.answer }));
   if (faqs.length) guessed.push("rules.faqs");
+  if (!stored.look?.colors.length && draft.palettes.length) guessed.push("look.colors");
 
   return {
     guessed,
@@ -599,6 +750,8 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
         languages: pickList("you.languages", p?.languages ?? [], draft.languages),
         values: pickList("you.values", p?.values ?? [], draft.values.slice(0, 3)),
         mission: pick("you.mission", p?.mission, draft.missions[0]),
+        vision: pick("you.vision", p?.vision, draft.visions[0]),
+        website: p?.website ?? "",
       },
       sell: { picked: pickedProducts, details: Object.fromEntries(pickedProducts.map((n) => [itemKey(n), productDefaults(n, draft.products, opts.likelyKind, opts.reasonIdeas)])) },
       customers: {
@@ -619,6 +772,7 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
         payment: pickList("rules.payment", stored.policies.paymentMethods, draft.policies.payment),
         delivery: policy("delivery", "rules.delivery"),
         returns: policy("returns", "rules.returns"),
+        warranty: policy("warranty", "rules.warranty"),
         booking: policy("booking", "rules.booking"),
         faqs,
         faqKept: faqs.slice(0, 3).map((f) => f.id),
@@ -636,7 +790,15 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
         length: length === "Post length: detailed" ? "detailed" : "short",
         pick: stored.voice ? "keep" : (tone === "formal" ? draft.voices[1]?.id : draft.voices[0]?.id) ?? "",
       },
-      love: { quote: "", customerName: "", source: "WHATSAPP", canPublish: false },
+      love: Array.from({ length: MAX_QUIZ_REVIEWS }, () => ({ ...EMPTY_NOTE })),
+      photos: { added: {}, picked: {} },
+      look: {
+        logoPath: stored.look?.logoPath ?? null,
+        logoUrl: stored.look?.logoUrl ?? null,
+        colors: stored.look?.colors.length ? stored.look.colors : (draft.palettes[0] ?? []),
+        palette: stored.look?.colors.length ? "keep" : draft.palettes.length ? "p0" : "",
+        logoColors: [],
+      },
     },
   };
 }

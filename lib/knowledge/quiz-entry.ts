@@ -5,7 +5,7 @@ import { localParts, safeZone } from "@/lib/autopilot/timezone";
 import type { FeatureKey } from "@/lib/features";
 import { can, type Role } from "@/lib/team/roles";
 import { knowledgeProgress } from "./overview";
-import { QUIZ_ROUNDS } from "./quiz-map";
+import { QUIZ_ROUNDS, roundForSection } from "./quiz-map";
 import { overallPercent, sectionByKey, type SectionKey, type SectionProgress } from "./sections";
 
 export type QuizEntry = {
@@ -27,8 +27,9 @@ export async function quizEntry(business: Parameters<typeof knowledgeProgress>[0
     const s = sectionByKey(r.section);
     return (!s.permission || can(role, s.permission)) && (!s.feature || usable.has(s.feature));
   });
-  // "Continue" opens the first round whose section is not complete.
-  const next = overall > 0 && overall < 100 ? rounds.find((r) => (progress[r.section]?.percent ?? 0) < 100) : undefined;
+  // "Continue" opens the first round whose section is not complete (for Products: Photos once there are products).
+  const ids = rounds.map((r) => r.id);
+  const next = overall > 0 && overall < 100 ? rounds.find((r) => (progress[r.section]?.percent ?? 0) < 100 && roundForSection(r.section, progress[r.section], ids) === r.id) : undefined;
   return {
     progress,
     overall,

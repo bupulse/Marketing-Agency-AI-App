@@ -4,7 +4,7 @@ const tx = vi.hoisted(() => ({
   $executeRaw: vi.fn(),
   knowledgeFaq: { count: vi.fn(), findFirst: vi.fn(), createManyAndReturn: vi.fn() },
   competitor: { count: vi.fn(), findFirst: vi.fn(), createManyAndReturn: vi.fn() },
-  product: { count: vi.fn(), createMany: vi.fn() },
+  product: { count: vi.fn(), createManyAndReturn: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ prisma: { $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx) } }));
 
@@ -44,9 +44,9 @@ describe("the quiz's batch creates", () => {
   it("create the products in one write under the products lock and limit", async () => {
     const data = productInputSchema.parse({ kind: "PHYSICAL", name: "Passion Juice", summary: "Fresh", priceModel: "ON_REQUEST", currency: "RWF", usps: ["Made fresh"], status: "DRAFT" });
     tx.product.count.mockResolvedValue(10);
-    tx.product.createMany.mockResolvedValue({ count: 1 });
-    expect(await createProducts("b1", [data])).toBe(1);
-    expect(tx.product.createMany.mock.calls[0][0].data[0]).toMatchObject({ businessId: "b1", name: "Passion Juice", priceModel: "ON_REQUEST", status: "DRAFT" });
+    tx.product.createManyAndReturn.mockResolvedValue([{ id: "p1", name: "Passion Juice" }]);
+    expect(await createProducts("b1", [data])).toEqual([{ id: "p1", name: "Passion Juice" }]);
+    expect(tx.product.createManyAndReturn.mock.calls[0][0].data[0]).toMatchObject({ businessId: "b1", name: "Passion Juice", priceModel: "ON_REQUEST", status: "DRAFT" });
     tx.product.count.mockResolvedValue(MAX_PRODUCTS_PER_BUSINESS);
     await expect(createProducts("b1", [data])).rejects.toThrow(/limit/);
   });
