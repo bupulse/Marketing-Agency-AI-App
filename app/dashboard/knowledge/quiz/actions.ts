@@ -9,7 +9,7 @@ import { createReview } from "@/app/dashboard/knowledge/reviews/actions";
 import { localParts, safeZone } from "@/lib/autopilot/timezone";
 import type { KnowledgeInput } from "@/lib/brand/schemas";
 import { prisma } from "@/lib/db";
-import { featureBlocked } from "@/lib/entitlements";
+import { companyEntitlements, featureBlocked } from "@/lib/entitlements";
 import { personaInputSchema, type PersonaInput } from "@/lib/knowledge/audience";
 import { competitorInputSchema, positioningSchema, type PositioningInput } from "@/lib/knowledge/competitors";
 import { knowledgeAction, type Failure, type Result } from "@/lib/knowledge/guard";
@@ -23,9 +23,10 @@ import type { QuizDraft } from "@/lib/knowledge/quiz-draft";
 import { MAX_QUIZ_PRODUCTS } from "@/lib/knowledge/quiz-map";
 import { createCompetitors, createFaqs, createPersona, savePolicies as savePoliciesRow, savePositioning as savePositioningRow, updatePersona } from "@/lib/knowledge/records";
 import type { ReviewInput } from "@/lib/knowledge/reviews";
-import { overallPercent } from "@/lib/knowledge/sections";
+import { overallPercent, toReachFull, type KnowledgeSection, type ToDo } from "@/lib/knowledge/sections";
 import { createProducts } from "@/lib/knowledge/service";
 import { RATE_LIMITS, rateLimit } from "@/lib/rate-limit";
+import { can } from "@/lib/team/roles";
 
 /**
  * Knowledge base -> the Business info quiz (docs/QUIZ_MODE.md). The quiz saves through each section's own actions;
@@ -40,16 +41,21 @@ export async function draftQuiz(): Promise<Result<{ draft: QuizDraft }>> {
   });
 }
 
-/** The overall Business info %, recomputed after the quiz saved (the finish screen's score ring). */
-export async function quizScore(): Promise<Result<{ percent: number }>> {
-  return knowledgeAction({ permission: "content", source: "knowledge.quiz.score" }, async ({ businessId }) => {
+/**
+ * The overall Business info %, recomputed after the quiz saved (the finish screen's score ring), and "To reach 100%":
+ * up to 4 to-dos the person may act on, each with the page that fixes it.
+ */
+export async function quizScore(): Promise<Result<{ percent: number; todo: ToDo[] }>> {
+  return knowledgeAction({ permission: "content", source: "knowledge.quiz.score" }, async ({ businessId, role }) => {
     const business = await prisma.business.findUniqueOrThrow({
       where: { id: businessId },
       select: { id: true, name: true, website: true, industryId: true, industryOther: true, profile: true, knowledge: true, logoUrl: true, brandColors: true, tone: true, positioning: true, policies: true, marketingProfile: true, timezone: true },
     });
     const p = localParts(new Date(), safeZone(business.timezone));
     const today = `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
-    return { percent: overallPercent(await knowledgeProgress(business, today)) };
+    const [progress, entitlements] = await Promise.all([knowledgeProgress(business, today), companyEntitlements(businessId)]);
+    const allowed = (s: KnowledgeSection) => (!s.permission || can(role, s.permission)) && (!s.feature || entitlements.usable.has(s.feature));
+    return { percent: overallPercent(progress), todo: toReachFull(progress, allowed) };
   });
 }
 

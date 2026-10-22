@@ -87,7 +87,7 @@ prices, your customers and your voice"), and two buttons: "Make my first posts" 
 | `draftQuiz` (the guesses), `saveQuizRound` (a round in one request) and `quizScore` (the overall % after saving) | app/dashboard/knowledge/quiz/actions.ts |
 | The entry card on Business info ("Start the quiz" / "Continue" at the first incomplete round / "Play again") and "Do it as a quiz" in each section's header | app/dashboard/knowledge/page.tsx, components/knowledge/quiz-link.tsx |
 | Moving on safely (the move guard) | lib/knowledge/quiz-move.ts |
-| Tests | tests/quiz/business-map.test.ts, business-draft.test.ts, business-ai.test.ts, business-move.test.ts, business-save.test.ts, business-batch.test.ts |
+| Tests | tests/quiz/business-map.test.ts, business-draft.test.ts, business-ai.test.ts, business-move.test.ts, business-save.test.ts, business-batch.test.ts, business-finish.test.ts |
 
 **The AI.** One call when the quiz opens, on the cheap text model, through the cost ledger as feature `knowledgeQuiz`
 (so the admin switch and the company's allowance apply), with a rate limit (8 an hour) and a daily cap (20 a day) per
@@ -111,6 +111,11 @@ section's permission and plan feature, one rate-limit hit per item as the sectio
 revalidation for the round. Rounds with one write (You, Find us, Your voice, Love notes) call the section's own action.
 While a round saves, the card shows `Thinking` with the round's line ("Saving your products…"). A save's problem shows under
 the question, scrolled into view and focused.
+
+**The finish screen.** `quizScore` recomputes the overall % on the server and returns "To reach 100%": up to 4
+incomplete sections the person may edit (their role and plan), the furthest from complete first, each with its to-do
+from `knowledgeProgress` (`next`, e.g. "Add photos to 3 products", "Upload your logo", "Connect a social account") and a
+link to the page that fixes it (`toReachFull`, lib/knowledge/sections.ts).
 
 **Moving on safely.** Every move names the question it was made for (lib/knowledge/quiz-move.ts): a tile's delayed
 move, Next, Enter and Skip. A move for a question no longer on screen, a second move while one is saving, or Enter
