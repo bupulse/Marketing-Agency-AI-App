@@ -24,6 +24,7 @@ const good: AiDraft = {
   taglines: ["Bread with love", "Bread with love", "Baked fresh since 1999", "Kigali's morning bread"],
   about: "Inzozi Bakery bakes bread and cakes every morning in Kigali.",
   missions: ["To put fresh bread on every table."],
+  visions: ["To open a second bakery in 2030.", "To be Kigali's favourite bakery."],
   values: ["Freshness", "Family"],
   languages: ["Kinyarwanda", "English"],
   products: [
@@ -39,7 +40,7 @@ const good: AiDraft = {
     { question: "Can I order a cake?", answer: "Yes, free delivery over 20,000 RWF." },
     { question: "Do you open at 6 am?", answer: "Yes, from 6 am." },
   ],
-  policies: { delivery: "city", returns: "unsure", booking: "walkIn", payment: ["cash", "mtn_momo"] },
+  policies: { delivery: "city", returns: "unsure", warranty: "work30", booking: "walkIn", payment: ["cash", "mtn_momo"] },
   voices: [voice("Warm"), { ...voice("Broken"), voice: "" }, voice("Professional")],
 };
 
@@ -123,8 +124,8 @@ describe("parseDraft", () => {
 });
 
 describe("templateDraft", () => {
-  // Every text the owner may keep (the age range is a choice from a list, not text).
-  const strings = (d: QuizDraft) => JSON.stringify({ ...d, personas: d.personas.map((p) => ({ ...p, ageRange: "" })), voices: d.voices.map((v) => v.summary) }).match(/"(?:[^"\\]|\\.)*"/g) ?? [];
+  // Every text the owner may keep (the age range is a choice from a list and the colours are colours, not text).
+  const strings = (d: QuizDraft) => JSON.stringify({ ...d, palettes: [], personas: d.personas.map((p) => ({ ...p, ageRange: "" })), voices: d.voices.map((v) => v.summary) }).match(/"(?:[^"\\]|\\.)*"/g) ?? [];
 
   it("fills every round without inventing a number or a promise", () => {
     const facts = factsOf(ctx);

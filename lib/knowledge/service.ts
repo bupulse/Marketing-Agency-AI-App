@@ -153,15 +153,25 @@ export async function createProduct(businessId: string, data: ProductData): Prom
 }
 
 /** Several products in one write (the Business info quiz), under the same lock and limit as createProduct. */
-export async function createProducts(businessId: string, list: ProductData[]): Promise<number> {
-  if (!list.length) return 0;
+export async function createProducts(businessId: string, list: ProductData[]): Promise<{ id: string; name: string }[]> {
+  if (!list.length) return [];
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`products:${businessId}`}))`;
     if ((await tx.product.count({ where: { businessId } })) + list.length > MAX_PRODUCTS_PER_BUSINESS) {
       throw new KnowledgeError(`You have reached the limit of ${MAX_PRODUCTS_PER_BUSINESS} products. Archive or delete some to add more.`);
     }
-    return (await tx.product.createMany({ data: list.map((data) => ({ businessId, ...productRow(data) })) })).count;
+    return tx.product.createManyAndReturn({ data: list.map((data) => ({ businessId, ...productRow(data) })), select: { id: true, name: true } });
   });
+}
+
+/**
+ * The Business info quiz made these products as drafts (a product without a photo is not ready for posts); the ones
+ * that have a photo now become active. Other products, and drafts the owner made themselves, are not touched.
+ */
+export async function activateDraftsWithPhotos(businessId: string, ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const { count } = await prisma.product.updateMany({ where: { id: { in: ids }, businessId, status: "DRAFT", photos: { some: {} } }, data: { status: "ACTIVE" } });
+  return count;
 }
 
 export async function updateProduct(businessId: string, id: string, data: ProductData): Promise<void> {

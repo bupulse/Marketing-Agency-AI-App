@@ -59,7 +59,8 @@ export async function saveVoice(input: { tone: string }): Promise<SaveResult> {
   return update(user.id, { tone: parsed.data.tone }, "voice");
 }
 
-export async function saveLook(input: { logoPath: string | null; brandColors: string[] }): Promise<SaveResult> {
+/** `quiet` (the Business info quiz): no revalidation, so the page on screen is not rendered again inside the response. */
+export async function saveLook(input: { logoPath: string | null; brandColors: string[] }, opts: { quiet?: boolean } = {}): Promise<SaveResult> {
   const user = await requireUser();
   const parsed = lookSchema.safeParse({ logoPath: input.logoPath ?? undefined, brandColors: input.brandColors });
   if (!parsed.success) return { ok: false, fieldErrors: flatErrors(parsed.error) };
@@ -68,7 +69,7 @@ export async function saveLook(input: { logoPath: string | null; brandColors: st
   if (logoPath && !isOwnLogoPath(user.id, logoPath)) return { ok: false, error: "That logo could not be used. Please upload it again." };
 
   const before = await prisma.business.findUnique({ where: { userId: user.id }, select: { logoUrl: true } });
-  const result = await update(user.id, { logoUrl: logoPath ?? null, brandColors }, "look");
+  const result = await update(user.id, { logoUrl: logoPath ?? null, brandColors }, "look", opts?.quiet === true);
 
   // Tidy up the replaced logo; failing to delete it must never block saving.
   const old = before?.logoUrl;

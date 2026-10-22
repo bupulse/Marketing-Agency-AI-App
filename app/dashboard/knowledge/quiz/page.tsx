@@ -15,7 +15,8 @@ import { readPolicies } from "@/lib/knowledge/policies";
 import { profileFormValues } from "@/lib/knowledge/profile";
 import { loadQuizContext } from "@/lib/knowledge/quiz-ai";
 import { likelyKind, reasonIdeas, templateDraft } from "@/lib/knowledge/quiz-draft";
-import { isQuizRound, QUIZ_ROUNDS, type QuizRoundId, type QuizStored } from "@/lib/knowledge/quiz-map";
+import { isQuizRound, MAX_QUIZ_PHOTO_STEPS, QUIZ_ROUNDS, type QuizRoundId, type QuizStored } from "@/lib/knowledge/quiz-map";
+import { isHexColor } from "@/lib/color-contrast";
 import { listCompetitors, listFaqs, listPersonas } from "@/lib/knowledge/records";
 import { defaultCurrency } from "@/lib/knowledge/service";
 import { can } from "@/lib/team/roles";
@@ -28,7 +29,7 @@ export const metadata = { title: "Business info quiz" };
  * under the quiz), as its form page would refuse it. `?round=you` starts at a round.
  */
 export default async function QuizPage({ searchParams }: { searchParams: Promise<{ round?: string }> }) {
-  const { business, role, entitlements } = await getAppContext();
+  const { business, role, entitlements, logoUrl } = await getAppContext();
   const params = await searchParams;
   const settings = can(role, "settings");
   const content = can(role, "content");
@@ -37,12 +38,15 @@ export default async function QuizPage({ searchParams }: { searchParams: Promise
   const access: Record<QuizRoundId, "ok" | "role" | "plan"> = {
     you: settings ? "ok" : "role",
     sell: !content ? "role" : writing ? "ok" : "plan",
+    photos: !content ? "role" : writing ? "ok" : "plan",
     customers: !content ? "role" : writing ? "ok" : "plan",
     why: !content ? "role" : writing ? "ok" : "plan",
     rules: settings ? "ok" : "role",
     find: settings ? "ok" : "role",
+    look: settings ? "ok" : "role",
     voice: !settings ? "role" : writing ? "ok" : "plan",
     love: !content ? "role" : writing ? "ok" : "plan",
+    golive: can(role, "channels") ? "ok" : "role",
   };
   const rounds = QUIZ_ROUNDS.filter((r) => access[r.id] === "ok").map((r) => r.id);
   const locked = QUIZ_ROUNDS.filter((r) => access[r.id] !== "ok").map((r) => ({ id: r.id, title: `${r.emoji} ${r.title}`, why: access[r.id] as "role" | "plan" }));
@@ -58,7 +62,7 @@ export default async function QuizPage({ searchParams }: { searchParams: Promise
   }
 
   const on = new Set(rounds);
-  const [sector, personas, competitors, faqs, products, currency, ctx] = await Promise.all([
+  const [sector, personas, competitors, faqs, products, currency, ctx, photoless, connections] = await Promise.all([
     on.has("you") ? prisma.business.findUnique({ where: { id: business.id }, select: { industryId: true, industryOther: true, industryDescription: true, industryRef: { select: { slug: true } } } }) : null,
     on.has("customers") ? listPersonas(business.id) : [],
     on.has("why") ? listCompetitors(business.id) : [],
@@ -66,6 +70,10 @@ export default async function QuizPage({ searchParams }: { searchParams: Promise
     on.has("sell") ? prisma.product.findMany({ where: { businessId: business.id }, select: { name: true }, take: 500 }) : [],
     defaultCurrency(business.id),
     loadQuizContext(business.id),
+    on.has("photos")
+      ? prisma.product.findMany({ where: { businessId: business.id, status: { not: "ARCHIVED" }, photos: { none: {} } }, orderBy: { updatedAt: "desc" }, take: MAX_QUIZ_PHOTO_STEPS, select: { id: true, name: true } })
+      : [],
+    on.has("golive") ? prisma.connection.count({ where: { businessId: business.id, kind: "SOCIAL" } }) : 0,
   ]);
   const knowledge = readKnowledge(business.knowledge);
   const marketing = readMarketingProfile(business.marketingProfile);
@@ -83,6 +91,10 @@ export default async function QuizPage({ searchParams }: { searchParams: Promise
     brand: on.has("find") ? initialValues(business) : null,
     voice: marketing ? { voice: marketing.voice, do: marketing.do, dont: marketing.dont, samples: marketing.samples } : null,
     voiceAnswers: marketing?.answers ?? [],
+    photoless,
+    productIds: {},
+    look: on.has("look") ? { logoPath: business.logoUrl, logoUrl, colors: business.brandColors.filter(isHexColor) } : null,
+    connected: connections > 0,
   };
   const start = isQuizRound(params.round) && on.has(params.round) ? params.round : null;
   const postsHref = entitlements.usable.has("calendar") ? "/dashboard/content/general?create=1" : "/dashboard/content";

@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   savePositioning: vi.fn(),
   createFaqs: vi.fn(),
   savePolicies: vi.fn(),
+  activateDraftsWithPhotos: vi.fn(),
+  linkPhotos: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
@@ -21,7 +23,10 @@ vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: mocks.requireActiveUser }));
 vi.mock("@/lib/entitlements", () => ({ featureBlocked: mocks.featureBlocked }));
 vi.mock("@/lib/rate-limit", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/rate-limit")>()), rateLimit: mocks.rateLimit }));
-vi.mock("@/lib/knowledge/service", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/knowledge/service")>()), createProducts: mocks.createProducts }));
+vi.mock("@/lib/knowledge/service", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/knowledge/service")>()), createProducts: mocks.createProducts, activateDraftsWithPhotos: mocks.activateDraftsWithPhotos }));
+vi.mock("@/lib/media/albums", () => ({ linkPhotos: mocks.linkPhotos }));
+vi.mock("@/lib/brand/logo-from-gallery", () => ({ logoFromGalleryPhoto: vi.fn() }));
+vi.mock("@/lib/storage", () => ({ createSignedDownloadUrl: vi.fn() }));
 vi.mock("@/lib/knowledge/records", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/knowledge/records")>()),
   createPersona: mocks.createPersona,
@@ -32,8 +37,8 @@ vi.mock("@/lib/knowledge/records", async (importOriginal) => ({
   savePolicies: mocks.savePolicies,
 }));
 // The one-write rounds call their section's action; not under test here.
-const single = vi.hoisted(() => ({ saveKnowledge: vi.fn(), approveVoice: vi.fn(), saveProfile: vi.fn(), createReview: vi.fn() }));
-vi.mock("@/app/onboarding/actions", () => ({ saveKnowledge: single.saveKnowledge }));
+const single = vi.hoisted(() => ({ saveKnowledge: vi.fn(), saveLook: vi.fn(), approveVoice: vi.fn(), saveProfile: vi.fn(), createReview: vi.fn() }));
+vi.mock("@/app/onboarding/actions", () => ({ saveKnowledge: single.saveKnowledge, saveLook: single.saveLook }));
 vi.mock("@/app/dashboard/knowledge/interview/actions", () => ({ approveVoice: single.approveVoice }));
 vi.mock("@/app/dashboard/knowledge/profile/actions", () => ({ saveProfile: single.saveProfile }));
 vi.mock("@/app/dashboard/knowledge/reviews/actions", () => ({ createReview: single.createReview }));
@@ -53,7 +58,7 @@ beforeEach(() => {
   mocks.prisma.business.findUnique.mockResolvedValue({ id: "b1" });
   mocks.featureBlocked.mockResolvedValue(null);
   mocks.rateLimit.mockResolvedValue(undefined);
-  mocks.createProducts.mockResolvedValue(2);
+  mocks.createProducts.mockResolvedValue([{ id: "p1", name: "Passion Juice" }, { id: "p2", name: "Mango Juice" }]);
   mocks.createCompetitors.mockResolvedValue(["c1"]);
   mocks.createFaqs.mockResolvedValue(["f1", "f2"]);
 });
@@ -61,7 +66,8 @@ beforeEach(() => {
 describe("saveQuizRound", () => {
   it("saves a round's products in one write, counts one rate-limit hit each, and revalidates nothing", async () => {
     const r = await saveQuizRound({ round: "sell", products: [product("Passion Juice"), product("Mango Juice", { priceModel: "FIXED", price: "1,500" })] });
-    expect(r).toEqual({ ok: true });
+    // The ids come back: each new product's photo question needs its album.
+    expect(r).toEqual({ ok: true, products: [{ id: "p1", name: "Passion Juice" }, { id: "p2", name: "Mango Juice" }] });
     expect(mocks.requireActiveUser).toHaveBeenCalledWith("content", "throw");
     expect(mocks.featureBlocked).toHaveBeenCalledWith("b1", "content");
     expect(mocks.createProducts).toHaveBeenCalledTimes(1);
@@ -111,11 +117,33 @@ describe("saveQuizRound", () => {
     await saveQuizRound({ round: "you", profile });
     await saveQuizRound({ round: "find", knowledge: { hours: "" } });
     await saveQuizRound({ round: "voice", summary: { voice: "Warm." }, answers: [] });
-    await saveQuizRound({ round: "love", review: { quote: "Great", customerName: "A", source: "OTHER" } });
+    await saveQuizRound({ round: "love", reviews: [{ quote: "Great", customerName: "A", source: "OTHER" }] });
     expect(single.saveProfile).toHaveBeenCalledWith(profile, { quiet: true });
     expect(single.saveKnowledge).toHaveBeenCalledWith({ hours: "" }, { quiet: true });
     expect(single.approveVoice).toHaveBeenCalledWith({ voice: "Warm." }, "quiz", [], { quiet: true });
     expect(single.createReview).toHaveBeenCalledWith(expect.objectContaining({ quote: "Great" }), { quiet: true });
+  });
+
+  it("Photos: links the gallery picks and activates the quiz's drafts that have a photo, in one request", async () => {
+    const r = await saveQuizRound({ round: "photos", links: [{ productId: "p1", assetIds: ["m1", "m2"] }], activate: ["p9"] });
+    expect(r).toEqual({ ok: true });
+    expect(mocks.requireActiveUser).toHaveBeenCalledWith("content", "throw");
+    expect(mocks.featureBlocked).toHaveBeenCalledWith("b1", "content");
+    expect(mocks.linkPhotos).toHaveBeenCalledWith("b1", "product", "p1", ["m1", "m2"]);
+    expect(mocks.activateDraftsWithPhotos).toHaveBeenCalledWith("b1", ["p9"]);
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(await saveQuizRound({ round: "photos", links: [{ productId: "p1", assetIds: [] }], activate: [] })).toMatchObject({ ok: false });
+  });
+
+  it("Your look and Love notes go through their section actions, quietly; the failing review is named", async () => {
+    single.saveLook.mockResolvedValue({ ok: true });
+    await saveQuizRound({ round: "look", logoPath: "u1/logo/a.png", brandColors: ["#D63384"] });
+    expect(single.saveLook).toHaveBeenCalledWith({ logoPath: "u1/logo/a.png", brandColors: ["#D63384"] }, { quiet: true });
+    single.createReview.mockResolvedValueOnce({ ok: true, reviewId: "r1" }).mockResolvedValueOnce({ ok: false, error: "Check the highlighted fields.", fieldErrors: { customerName: "Add the customer's name or initials." } });
+    const r = await saveQuizRound({ round: "love", reviews: [{ quote: "One", customerName: "A", source: "OTHER" }, { quote: "Two", customerName: "", source: "OTHER" }] });
+    expect(r).toMatchObject({ ok: false, item: 1, fieldErrors: { customerName: expect.any(String) } });
+    expect(single.createReview).toHaveBeenCalledTimes(2);
+    expect(await saveQuizRound({ round: "love", reviews: Array.from({ length: 4 }, () => ({ quote: "x", customerName: "A", source: "OTHER" as const })) })).toMatchObject({ ok: false });
   });
 
   it("refuses an oversized batch", async () => {

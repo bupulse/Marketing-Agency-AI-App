@@ -30,6 +30,13 @@ describe("where the Business info quiz starts (Business info page and dashboard 
     expect(e.overall).toBeGreaterThan(0);
   });
 
+  it("continues at Photos when the products only lack photos, and at Your look for the logo", async () => {
+    progress = { profile: p(100), products: { percent: 0, summary: "2 items · 2 need details", next: "Add photos to 2 products" } };
+    expect((await quizEntry(business, "OWNER", all)).href).toBe("/dashboard/knowledge/quiz?round=photos");
+    progress = { profile: p(100), products: p(100), audience: p(100), competitors: p(100), faqs: p(100), locations: p(100), brand: p(33) };
+    expect((await quizEntry(business, "OWNER", all)).href).toBe("/dashboard/knowledge/quiz?round=look");
+  });
+
   it("says play again when everything is complete", async () => {
     progress = { profile: p(100) };
     const e = await quizEntry(business, "OWNER", all);

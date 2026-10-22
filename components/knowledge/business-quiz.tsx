@@ -1,23 +1,48 @@
 "use client";
 
-import { ArrowRight, Check, Lock } from "lucide-react";
+import { ArrowRight, Camera, Check, ImagePlus, Images, Lock, Palette, Plus, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { draftQuiz, quizScore, saveQuizRound } from "@/app/dashboard/knowledge/quiz/actions";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { draftQuiz, quizLogoFromGallery, quizScore, saveQuizRound } from "@/app/dashboard/knowledge/quiz/actions";
+import { useLogoUpload } from "@/components/brand-profile/use-logo-upload";
+import { ImportMenu } from "@/components/media/import-menu";
+import { MediaPicker } from "@/components/media/media-picker";
+import { GalleryThumb } from "@/components/media/media-thumb";
+import { UploadProgress } from "@/components/media/upload-progress";
+import { useGalleryUpload } from "@/components/media/use-gallery-upload";
+import { useImporter } from "@/components/media/use-importer";
 import { Chips, GuessTag, KeepOrDrop, QuestionHead, QuizFrame, RoundDone, ScoreRing, TextAnswer, ThisOrThat, Thinking, Tiles, useQuiz, type TileOption } from "@/components/quiz";
 import { Button, GlassCard, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { extractColorsFromFile } from "@/lib/brand/image-colors";
+import { LOGO_TYPES, MAX_COLORS } from "@/lib/brand/schemas";
+import { UPLOAD_ACCEPT } from "@/lib/media/rules";
+import type { MediaItem } from "@/lib/media/service";
 import { DAY_SHORT, DAYS, dayRanges, timeRange, type DayKey } from "@/lib/business-info/hours";
 import { AGE_LABEL, AGE_RANGES, GENDER_LABEL, ONLINE_PLACES, personaLine, type AgeRange, type Gender } from "@/lib/knowledge/audience";
 import { PAYMENT_LABEL, PAYMENT_METHODS, type PaymentMethod } from "@/lib/knowledge/policies";
-import { KIND_LABEL, type ProductKindValue } from "@/lib/knowledge/products";
+import { KIND_LABEL, MAX_ALBUM_PHOTOS, type ProductKindValue } from "@/lib/knowledge/products";
 import { COMMON_LANGUAGES, SIZE_LABEL, type CompanySize } from "@/lib/knowledge/profile";
 import type { PolicyKind, QuizDraft } from "@/lib/knowledge/quiz-draft";
 import {
   alignFaqs,
+  EMPTY_NOTE,
   headAddress,
   hoursChoiceOf,
+  lookSaveFrom,
+  loveStepId,
+  MAX_QUIZ_REVIEWS,
+  paletteOptions,
+  photosSaveFrom,
+  photoStepId,
+  photoTargets,
+  policyTitle,
+  reviewInputsFrom,
+  roundForSection,
+  type LoveNote,
+  type PhotoTarget,
+  type QuizPhoto,
   ideaPersonaKey,
   initialAnswers,
   itemKey,
@@ -38,7 +63,6 @@ import {
   QUIZ_ROUNDS,
   quizRound,
   quizSteps,
-  reviewInputFrom,
   stepForField,
   stepProblem,
   storedPersonaKey,
@@ -83,7 +107,10 @@ const SAVING: Record<QuizRoundId, string[]> = {
   rules: ["Saving your rules and questions…", "Almost there…"],
   find: ["Saving your hours and address…"],
   voice: ["Saving your voice…"],
-  love: ["Saving the review…"],
+  love: ["Saving your reviews…"],
+  photos: ["Saving your photos…"],
+  look: ["Saving your logo and colours…"],
+  golive: ["Almost done…"],
 };
 
 /** A save's problem, under the question: scrolled into view and focused, so a screen reader reads it too. */
@@ -171,9 +198,18 @@ export function BusinessQuiz(props: Props) {
 
 type Saved = { ok: true; line: string } | { ok: false; stepId: string; error: string };
 
-function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, reasonIdeas, currency, country, places, canGrant, startRound, postsHref }: Props & { draft: QuizDraft }) {
+/** After the Photos round saved, the gallery picks are in the albums too: shown with the uploads, not linked again. */
+function mergePhotos(added: Record<string, QuizPhoto[]>, picked: Record<string, QuizPhoto[]>): Record<string, QuizPhoto[]> {
+  const out = { ...added };
+  for (const [key, list] of Object.entries(picked)) out[key] = [...(out[key] ?? []), ...list.filter((p) => !(out[key] ?? []).some((x) => x.id === p.id))];
+  return out;
+}
+
+function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, reasonIdeas, currency, country, places: where, canGrant, startRound, postsHref }: Props & { draft: QuizDraft }) {
+  // The policy tiles that fit this business (a salon is not asked about food returns).
+  const places = useMemo(() => ({ ...where, type: draft.businessType }), [where, draft.businessType]);
   // Read once: the page's props refresh after every save (the actions revalidate), the quiz's state must not.
-  const [first] = useState(() => initialAnswers(storedAtStart, draft, { likelyKind, reasonIdeas, places }));
+  const [first] = useState(() => initialAnswers(storedAtStart, draft, { likelyKind, reasonIdeas, places: { ...where, type: draft.businessType } }));
   const [answers, setAnswers] = useState<QuizAnswers>(first.answers);
   const [stored, setStored] = useState<QuizStored>(storedAtStart);
   const [guessed, setGuessed] = useState<Set<string>>(() => new Set(first.guessed));
@@ -184,6 +220,21 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
   const [todo, setTodo] = useState<ToDo[]>([]);
   const router = useRouter();
   const [savedReviews, setSavedReviews] = useState<string[]>([]);
+
+  // 📸 Photos: uploads and imports go straight into the product's album, with the gallery's own upload and Import menu.
+  // Each remembers the photo question it was started from, so a late finish lands on the right product.
+  const uploadKey = useRef<string | null>(null);
+  const importKey = useRef<string | null>(null);
+  const addPhotos = useCallback((key: string | null, items: MediaItem[]) => {
+    if (!key || !items.length) return;
+    setAnswers((a) => ({ ...a, photos: { ...a.photos, added: { ...a.photos.added, [key]: [...(a.photos.added[key] ?? []), ...items.map(toQuizPhoto)] } } }));
+  }, []);
+  const uploader = useGalleryUpload(useCallback((items: MediaItem[]) => addPhotos(uploadKey.current, items), [addPhotos]));
+  const importer = useImporter(useCallback((items: MediaItem[]) => addPhotos(importKey.current, items), [addPhotos]));
+  // 🎨 Your look: the brand form's own logo upload.
+  const logo = useLogoUpload();
+  const [logoBusy, setLogoBusy] = useState(false);
+  const mediaBusy = uploader.state.active || importer.state.active || logo.uploading || logoBusy;
 
   // The products asked about are the ones new at the start, frozen: once saved they keep their question, so the round
   // keeps its length. (Read from the live props, the saved products dropped out after the page refreshed, the steps
@@ -200,9 +251,17 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
     latest.current = { answers, stored, quiz };
   });
 
-  function set<K extends keyof QuizAnswers>(round: K, patch: Partial<QuizAnswers[K]>, stepId?: string) {
+  function set<K extends Exclude<keyof QuizAnswers, "love">>(round: K, patch: Partial<QuizAnswers[K]>, stepId?: string) {
     setAnswers((a) => ({ ...a, [round]: { ...a[round], ...patch } }));
-    const id = stepId ?? latest.current.quiz.step?.id;
+    touched(stepId ?? latest.current.quiz.step?.id);
+  }
+  /** One review slot of Love notes. */
+  function setNote(i: number, patch: Partial<LoveNote>) {
+    setAnswers((a) => ({ ...a, love: a.love.map((n, j) => (j === i ? { ...n, ...patch } : n)) }));
+    touched(latest.current.quiz.step?.id);
+  }
+  /** An answer changed: it is no longer BuPulse's guess, and its error goes. */
+  function touched(id: string | undefined) {
     if (id) {
       setGuessed((g) => {
         if (!g.has(id)) return g;
@@ -252,9 +311,33 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
           return { ok: false, stepId: productStepId(name), error: Object.values(r.fieldErrors ?? {})[0] ?? r.error };
         }
         const added = items.map((i) => i.name);
-        setStored((x) => ({ ...x, products: [...x.products, ...added] }));
-        return { ok: true, line: `${added.length === 1 ? `${added[0]} is` : `${added.length} products are`} saved as a draft. Add a photo on the Products page to make ${added.length === 1 ? "it" : "them"} ready for posts.` };
+        // The ids: each new product's photo question needs its album.
+        const ids = Object.fromEntries((r.products ?? []).map((p) => [itemKey(p.name), p.id]));
+        setStored((x) => ({ ...x, products: [...x.products, ...added], productIds: { ...x.productIds, ...ids } }));
+        return { ok: true, line: `${added.length === 1 ? `${added[0]} is` : `${added.length} products are`} saved.${rounds.includes("photos") ? ` Next, a photo of ${added.length === 1 ? "it" : "each"}: that makes ${added.length === 1 ? "it" : "them"} ready for posts.` : ""}` };
       }
+      case "photos": {
+        const targets = photoTargets({ ...s, products: startProducts }, a);
+        const save = photosSaveFrom(targets, a.photos, given);
+        const count = targets.filter((t) => (a.photos.added[t.key]?.length ?? 0) + (given(photoStepId(t.key)) ? (a.photos.picked[t.key]?.length ?? 0) : 0) > 0).length;
+        if (save.links.length || save.activate.length) {
+          const r = await saveQuizRound({ round: "photos", ...save });
+          if (!r.ok) return { ok: false, stepId: steps.find((x) => x.round === "photos")?.id ?? "photos", error: r.error };
+          setAnswers((x) => ({ ...x, photos: { added: mergePhotos(x.photos.added, x.photos.picked), picked: {} } }));
+        }
+        return { ok: true, line: count ? `${count === 1 ? "1 product has" : `${count} products have`} a photo now: ready for posts.` : "No photos this time. You can add them on the Products page." };
+      }
+      case "look": {
+        if (!s.look) return { ok: true, line: "" };
+        const save = lookSaveFrom(s.look, a.look, given);
+        if (!save) return { ok: true, line: "Nothing changed this time." };
+        const r = await saveQuizRound({ round: "look", ...save });
+        if (!r.ok) return fieldError("look", "look.logo", r);
+        setStored((x) => ({ ...x, look: { logoPath: save.logoPath, logoUrl: a.look.logoUrl ?? x.look?.logoUrl ?? null, colors: save.brandColors } }));
+        return { ok: true, line: "Your logo and colours are saved. Your designs use them." };
+      }
+      case "golive":
+        return { ok: true, line: "" };
       case "customers": {
         const saves = personaSavesFrom(s.personas, draft.personas, a.customers, given);
         if (!saves.length) return { ok: true, line: "Nothing new to save." };
@@ -324,14 +407,21 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
         return { ok: true, line: label && a.voice.pick !== "keep" ? `Your posts will now sound ${label.toLowerCase()}.` : "Your brand voice is saved." };
       }
       case "love": {
-        const input = reviewInputFrom(a.love, given);
-        if (!input || savedReviews.includes(input.quote)) return { ok: true, line: input ? "That review is already saved." : "No review this time. You can add one any time." };
-        const r = await saveQuizRound({ round: "love", review: input });
-        if (!r.ok) return fieldError("love", "love.quote", r);
-        setSavedReviews((x) => [...x, input.quote]);
-        return { ok: true, line: `${input.customerName}'s words are saved.${input.canPublish ? " BuPulse may quote them in posts." : ""}` };
+        const items = reviewInputsFrom(a.love, given).filter((x) => !savedReviews.includes(x.input.quote));
+        if (!items.length) return { ok: true, line: reviewInputsFrom(a.love, given).length ? "Those reviews are already saved." : "No review this time. You can add one any time." };
+        const r = await saveQuizRound({ round: "love", reviews: items.map((x) => x.input) });
+        if (!r.ok) {
+          const slot = items[r.item ?? 0]?.slot ?? 0;
+          const [field, message] = Object.entries(r.fieldErrors ?? {})[0] ?? [];
+          const part = field && /^source/.test(field) ? "source" : field && /^canPublish/.test(field) ? "consent" : "quote";
+          return { ok: false, stepId: loveStepId(part, slot), error: message ?? r.error };
+        }
+        setSavedReviews((x) => [...x, ...items.map((i) => i.input.quote)]);
+        const quoted = items.filter((i) => i.input.canPublish).length;
+        return { ok: true, line: `${items.length === 1 ? "1 review is" : `${items.length} reviews are`} saved.${quoted ? ` BuPulse may quote ${quoted === 1 ? "it" : quoted === items.length ? "them" : `${quoted} of them`} in posts.` : ""}` };
       }
     }
+    return { ok: true, line: "" };
   }
 
   // Every move names the question it was made for (lib/knowledge/quiz-move.ts): a stale one does nothing.
@@ -444,14 +534,35 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
                   To reach 100%
                 </h3>
                 <ul className="flex flex-col gap-2">
-                  {todo.map((t) => (
-                    <li key={t.key}>
-                      <Link href={t.href} className="flex min-h-12 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-2.5 text-[15px] font-medium no-underline hover:border-pulse-blue/40">
-                        <span className="min-w-0 flex-1">{t.label}</span>
-                        <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
-                      </Link>
-                    </li>
-                  ))}
+                  {todo.map((t) => {
+                    // Back into the round that fixes it, when the quiz has one (Go live's account needs its own page).
+                    const round = t.key === "channels" ? null : roundForSection(t.key, { next: t.label }, rounds);
+                    const row = "flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-2.5 text-left text-[15px] font-medium no-underline hover:border-pulse-blue/40";
+                    return (
+                      <li key={t.key}>
+                        {round ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Finishing again recomputes the score.
+                              setScore(null);
+                              setTodo([]);
+                              quiz.goToRound(round);
+                            }}
+                            className={row}
+                          >
+                            <span className="min-w-0 flex-1">{t.label}</span>
+                            <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
+                          </button>
+                        ) : (
+                          <Link href={t.href} className={row}>
+                            <span className="min-w-0 flex-1">{t.label}</span>
+                            <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
+                          </Link>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             )}
@@ -506,6 +617,21 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
       head={head}
       answers={answers}
       set={set}
+      setNote={setNote}
+      media={{
+        uploader,
+        importer,
+        upload: (key, files, destination) => {
+          uploadKey.current = key;
+          void uploader.start(files, destination);
+        },
+        importFor: (key) => {
+          importKey.current = key;
+        },
+        logo,
+        setLogoBusy,
+        busy: mediaBusy,
+      }}
       stored={stored}
       places={places}
       startProducts={startProducts}
@@ -523,7 +649,7 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
         rounds={roundList}
         steps={steps}
         quiz={frameQuiz}
-        primary={{ label: last ? "Save" : "Next", onClick: () => void move("answer", step.id), busy }}
+        primary={{ label: step.id === "golive.connect" ? "Finish" : last ? "Save" : "Next", onClick: () => void move("answer", step.id), busy, disabled: mediaBusy }}
         fullForm={{ href: round.href, label: `Open the full ${round.title.toLowerCase()} form` }}
       >
         {busy ? <Thinking lines={SAVING[round.id]} /> : body}
@@ -535,11 +661,26 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
 
 // ---- One question ----------------------------------------------------------------------------------------------------
 
+type Media = {
+  uploader: ReturnType<typeof useGalleryUpload>;
+  importer: ReturnType<typeof useImporter>;
+  /** Uploads files into an album, for the photo question `key`. */
+  upload: (key: string, files: File[], destination: string) => void;
+  /** The Import menu's next imports belong to the photo question `key`. */
+  importFor: (key: string) => void;
+  logo: ReturnType<typeof useLogoUpload>;
+  setLogoBusy: (busy: boolean) => void;
+  /** An upload or import is running: the quiz waits for it before moving on. */
+  busy: boolean;
+};
+
 type QuestionProps = {
   id: string;
   head: (title: string, hint?: string) => React.ReactNode;
   answers: QuizAnswers;
-  set: <K extends keyof QuizAnswers>(round: K, patch: Partial<QuizAnswers[K]>, stepId?: string) => void;
+  set: <K extends Exclude<keyof QuizAnswers, "love">>(round: K, patch: Partial<QuizAnswers[K]>, stepId?: string) => void;
+  setNote: (i: number, patch: Partial<LoveNote>) => void;
+  media: Media;
   stored: QuizStored;
   places: Places;
   /** The products stored when the quiz began (each new one has its question). */
@@ -563,7 +704,13 @@ const HOURS_LABEL: Record<Exclude<HoursChoice, "keep" | "custom">, { label: stri
   always: { label: "Open 24/7", hint: "Day and night", emoji: "🌙" },
 };
 
-function Question({ id, head, answers: a, set, stored, places, startProducts, draft, likelyKind, reasonIdeas, currency, onTap }: QuestionProps) {
+function Question({ id, head, answers: a, set, setNote, media, stored, places, startProducts, draft, likelyKind, reasonIdeas, currency, onTap }: QuestionProps) {
+  if (id.startsWith("photos.")) {
+    const target = photoTargets({ ...stored, products: startProducts }, a).find((t) => photoStepId(t.key) === id);
+    return target ? <PhotoQuestion target={target} head={head} a={a} set={set} media={media} /> : null;
+  }
+  const slot = /^love\.(quote|source|consent)\.(\d)$/.exec(id);
+  if (slot) return <LoveQuestion part={slot[1] as "quote" | "source" | "consent"} i={Number(slot[2])} head={head} a={a} setNote={setNote} onTap={onTap} />;
   if (id.startsWith("sell.item.")) {
     const name = newProductNames(startProducts, a.sell.picked).find((n) => productStepId(n) === id) ?? "";
     return <ProductQuestion name={name} head={head} a={a} set={set} draft={draft} likelyKind={likelyKind} reasonIdeas={reasonIdeas} currency={currency} />;
@@ -621,6 +768,20 @@ function Question({ id, head, answers: a, set, stored, places, startProducts, dr
         <>
           {head("What do you stand for?", "Pick up to 8 values.")}
           <Chips label="Values" options={[]} suggested={draft.values} values={a.you.values} onChange={(values) => set("you", { values })} max={8} addPlaceholder="Your own value" addMax={60} />
+        </>
+      );
+    case "you.vision":
+      return (
+        <>
+          {head("Where do you want to be in a few years?", "Your vision, in one sentence.")}
+          <TextAnswer label="Vision" value={a.you.vision} onChange={(vision) => set("you", { vision })} suggestions={draft.visions} maxLength={500} multiline />
+        </>
+      );
+    case "you.website":
+      return (
+        <>
+          {head("Where can people find you online?", "Your website, or your main social page. Skip it if you have neither.")}
+          <TextAnswer label="Website or social page" value={a.you.website} onChange={(website) => set("you", { website })} inputMode="url" placeholder="e.g. yourbusiness.rw or instagram.com/yourbusiness" maxLength={200} />
         </>
       );
     case "you.mission":
@@ -757,11 +918,37 @@ function Question({ id, head, answers: a, set, stored, places, startProducts, dr
       );
     }
     case "rules.delivery":
-      return <PolicyQuestion kind="delivery" title="Do you deliver?" head={head} a={a} set={set} places={places} onTap={onTap} />;
     case "rules.returns":
-      return <PolicyQuestion kind="returns" title="What about returns and refunds?" head={head} a={a} set={set} places={places} onTap={onTap} />;
-    case "rules.booking":
-      return <PolicyQuestion kind="booking" title="How do people book?" head={head} a={a} set={set} places={places} onTap={onTap} />;
+    case "rules.warranty":
+    case "rules.booking": {
+      const kind = id.slice(6) as PolicyKind;
+      return <PolicyQuestion kind={kind} title={policyTitle(kind, places.type)} head={head} a={a} set={set} places={places} onTap={onTap} />;
+    }
+
+    // 🎨 Your look
+    case "look.logo":
+      return <LogoQuestion head={head} a={a} set={set} media={media} />;
+    case "look.colors":
+      return <ColorsQuestion head={head} a={a} set={set} stored={stored} draft={draft} />;
+
+    // 🚀 Go live
+    case "golive.connect":
+      return (
+        <>
+          {head("Connect Instagram, Facebook and more", "So BuPulse can post for you. Your quiz answers are saved.")}
+          {stored.connected ? (
+            <p className="flex items-center gap-2 rounded-2xl bg-success-bg px-4 py-3 text-[15px] font-medium text-success">
+              <Check aria-hidden className="size-4" />
+              You have a connected account. You can add more any time.
+            </p>
+          ) : (
+            <p className="text-[15px] text-muted">It takes a minute: you sign in to your account and allow BuPulse to post. Then come back here or carry on from your dashboard.</p>
+          )}
+          <Button href="/dashboard/connections" size="lg" variant={stored.connected ? "outline" : "primary"} trailing={<ArrowRight aria-hidden className="size-4" />}>
+            {stored.connected ? "See my accounts" : "Connect an account"}
+          </Button>
+        </>
+      );
     case "rules.faqs":
       return (
         <>
@@ -855,49 +1042,6 @@ function Question({ id, head, answers: a, set, stored, places, startProducts, dr
     case "voice.pick":
       return <VoicePick head={head} a={a} set={set} stored={stored} draft={draft} />;
 
-    // 💬 Love notes
-    case "love.quote":
-      return (
-        <>
-          {head("Got a nice message from a customer?", "Paste it here, word for word. No message yet? Skip this.")}
-          <Textarea aria-label="What the customer said" rows={4} maxLength={1000} placeholder="“Best service in town, thank you!”" value={a.love.quote} onChange={(e) => set("love", { quote: e.target.value })} />
-          {a.love.quote.trim() && <Input aria-label="Customer's name or initials" maxLength={80} placeholder="Their name or initials, e.g. Aline K." value={a.love.customerName} onChange={(e) => set("love", { customerName: e.target.value })} />}
-        </>
-      );
-    case "love.source": {
-      const options: TileOption<ReviewSourceValue>[] = REVIEW_SOURCES.map((v) => ({ value: v, label: SOURCE_LABEL[v], emoji: SOURCE_EMOJI[v] }));
-      return (
-        <>
-          {head("Where did it come from?")}
-          <Tiles
-            label="Where it came from"
-            options={options}
-            value={a.love.source || null}
-            onPick={(source) => {
-              set("love", { source });
-              onTap();
-            }}
-            columns={3}
-          />
-        </>
-      );
-    }
-    case "love.consent":
-      return (
-        <>
-          {head("Did they agree to be quoted?", "BuPulse quotes a review in public posts only when they agreed.")}
-          <ThisOrThat
-            label="Agreed to be quoted"
-            left={{ value: "yes", label: "Yes, they agreed", emoji: "👍" }}
-            right={{ value: "no", label: "Not asked yet", emoji: "🤔" }}
-            value={a.love.canPublish ? "yes" : "no"}
-            onPick={(v) => {
-              set("love", { canPublish: v === "yes" });
-              onTap();
-            }}
-          />
-        </>
-      );
   }
   return null;
 }
@@ -1102,6 +1246,290 @@ function VoicePick({ head, a, set, stored, draft }: { head: QuestionProps["head"
           );
         })}
       </div>
+    </>
+  );
+}
+
+// ---- 📸 Photos ---------------------------------------------------------------------------------------------------------
+
+const toQuizPhoto = (m: Pick<MediaItem, "id" | "url" | "kind" | "posterUrl">): QuizPhoto => ({ id: m.id, url: m.url, kind: m.kind, posterUrl: m.posterUrl });
+
+/**
+ * A photo or video of one product, the way its album card adds them (components/knowledge/album-card.tsx): upload from
+ * the phone, pick from the gallery (MediaPicker), or the Import menu. Uploads and imports land in the album at once;
+ * gallery picks are linked when the round saves.
+ */
+function PhotoQuestion({ target, head, a, set, media }: { target: PhotoTarget; head: QuestionProps["head"]; a: QuizAnswers; set: QuestionProps["set"]; media: Media }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [picking, setPicking] = useState(false);
+  const { uploader, importer, importFor } = media;
+  const shown = [...(a.photos.added[target.key] ?? []), ...(a.photos.picked[target.key] ?? [])];
+  const room = Math.max(0, MAX_ALBUM_PHOTOS - shown.length);
+  const destination = target.productId ? `product:${target.productId}` : null;
+  // The Import menu's imports belong to the product on screen.
+  useEffect(() => importFor(target.key), [importFor, target.key]);
+
+  return (
+    <>
+      {head(`Show us ${target.name}`, "A real photo or a short video makes the best posts. Photos up to 10 MB; videos up to 60 seconds.")}
+      {!destination ? (
+        <p className="rounded-2xl bg-soft px-4 py-3 text-[15px] text-muted">{target.name} was not saved in What you sell, so it has no album yet. Skip this one, or go back and finish it.</p>
+      ) : (
+        <>
+          <input
+            ref={input}
+            type="file"
+            multiple
+            accept={UPLOAD_ACCEPT}
+            className="sr-only"
+            tabIndex={-1}
+            aria-label={`Upload photos or videos of ${target.name}`}
+            onChange={(e) => {
+              if (e.target.files?.length) media.upload(target.key, Array.from(e.target.files).slice(0, room), destination);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            disabled={media.busy || room === 0}
+            onClick={() => input.current?.click()}
+            className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-pulse-blue/50 bg-pulse-blue/5 px-6 py-6 text-center hover:bg-pulse-blue/10 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Camera aria-hidden className="size-8 text-pulse-blue" />
+            <span className="text-[17px] font-semibold">Upload from your phone</span>
+            <span className="text-[13px] text-muted">Photos or videos</span>
+          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" disabled={media.busy || room === 0} leading={<Images aria-hidden className="size-4" />} onClick={() => setPicking(true)}>
+              From your photos
+            </Button>
+            <ImportMenu importer={importer} destinations={[{ key: destination, label: target.name, group: "Products" }]} defaultDestination={destination} />
+          </div>
+          <UploadProgress state={uploader.state} onDismiss={uploader.dismiss} />
+          <UploadProgress state={importer.state} onDismiss={importer.dismiss} verb="Importing" />
+          {shown.length > 0 && (
+            <ul aria-label={`Photos of ${target.name}`} className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+              {shown.map((p, i) => (
+                <li key={p.id} className="aspect-square overflow-hidden rounded-xl bg-soft">
+                  <GalleryThumb item={p} alt={`${target.name}, ${p.kind === "video" ? "video" : "photo"} ${i + 1}`} />
+                </li>
+              ))}
+            </ul>
+          )}
+          <MediaPicker
+            open={picking}
+            onOpenChange={setPicking}
+            multiple
+            videos
+            max={Math.max(room, 1)}
+            title={`Photos of ${target.name}`}
+            confirmLabel={(n) => `Add ${n || ""} ${n === 1 ? "photo" : "photos"}`}
+            onPick={(picked) => {
+              const have = a.photos.picked[target.key] ?? [];
+              const add = picked.filter((p) => !shown.some((x) => x.id === p.id)).map((p) => ({ id: p.id, url: p.url, kind: p.mimeType.startsWith("video/") ? "video" : "photo" }));
+              set("photos", { picked: { ...a.photos.picked, [target.key]: [...have, ...add] } });
+            }}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+// ---- 🎨 Your look -------------------------------------------------------------------------------------------------------
+
+/** The colours of a gallery photo, read in the browser like an uploaded logo's (none when it cannot be read). */
+async function colorsOf(url: string, type: string): Promise<string[]> {
+  try {
+    const blob = await (await fetch(url)).blob();
+    return await extractColorsFromFile(new File([blob], "logo", { type: blob.type || type }));
+  } catch {
+    return [];
+  }
+}
+
+function LogoQuestion({ head, a, set, media }: { head: QuestionProps["head"]; a: QuizAnswers; set: QuestionProps["set"]; media: Media }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [picking, setPicking] = useState(false);
+  const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
+  const look = a.look;
+  // A new logo's colours become the colours, unless the owner already chose their own.
+  const withColors = (colors: string[]) => (colors.length && look.palette !== "own" ? { logoColors: colors, colors, palette: "logo" } : { logoColors: colors });
+
+  async function onFile(file: File) {
+    setMessage(null);
+    const r = await media.logo.upload(file);
+    if (!r.ok) return setMessage({ tone: "error", text: r.error });
+    set("look", { logoPath: r.path, logoUrl: r.preview, ...withColors(r.colors) });
+    setMessage({ tone: "info", text: r.colors.length ? "Logo added. We took your colours from it." : "Logo added." });
+  }
+
+  return (
+    <>
+      {head("Your logo", "It goes on your designs. A square PNG with a clear background works best.")}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="glass flex size-28 shrink-0 items-center justify-center overflow-hidden rounded-3xl">
+          {look.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- private signed URL or local blob
+            <img src={look.logoUrl} alt="Your logo" className="max-h-full max-w-full object-contain p-2" />
+          ) : (
+            <ImagePlus aria-hidden className="size-8 text-muted" />
+          )}
+        </div>
+        <div className="flex flex-col items-start gap-2">
+          <input
+            ref={input}
+            type="file"
+            accept={LOGO_TYPES.join(",")}
+            className="sr-only"
+            tabIndex={-1}
+            aria-label="Upload your logo"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void onFile(file);
+              e.target.value = "";
+            }}
+          />
+          <Button size="lg" disabled={media.busy} leading={<Upload aria-hidden className="size-4" />} onClick={() => input.current?.click()}>
+            {media.logo.uploading ? "Uploading…" : look.logoUrl ? "Upload another" : "Upload your logo"}
+          </Button>
+          <Button variant="outline" size="sm" disabled={media.busy} leading={<Images aria-hidden className="size-4" />} onClick={() => setPicking(true)}>
+            From your photos
+          </Button>
+          <p className="text-[13px] text-muted">PNG, JPG or WebP, up to 5 MB.</p>
+        </div>
+      </div>
+      {message && (
+        <p role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-[14px] font-medium text-danger" : "text-[14px] text-muted"}>
+          {message.text}
+        </p>
+      )}
+      <MediaPicker
+        open={picking}
+        onOpenChange={setPicking}
+        title="Choose your logo"
+        onPick={async ([photo]) => {
+          if (!photo) return;
+          setMessage(null);
+          media.setLogoBusy(true);
+          try {
+            const [r, colors] = await Promise.all([quizLogoFromGallery(photo.id), colorsOf(photo.url, photo.mimeType)]);
+            if (!r.ok) return setMessage({ tone: "error", text: r.error });
+            set("look", { logoPath: r.path, logoUrl: r.url, ...withColors(colors) });
+            setMessage({ tone: "info", text: colors.length ? "Logo added. We took your colours from it." : "Logo added." });
+          } finally {
+            media.setLogoBusy(false);
+          }
+        }}
+      />
+    </>
+  );
+}
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+function ColorsQuestion({ head, a, set, stored, draft }: { head: QuestionProps["head"]; a: QuizAnswers; set: QuestionProps["set"]; stored: QuizStored; draft: QuizDraft }) {
+  const look = a.look;
+  const options = paletteOptions(look, stored.look ?? { logoPath: null, logoUrl: null, colors: [] }, draft.palettes);
+  const own = look.palette === "own";
+  const swatches = (colors: string[]) => (
+    <span aria-hidden className="flex gap-1">
+      {colors.map((c, i) => (
+        <span key={i} className="size-8 rounded-full border border-line" style={{ background: c }} />
+      ))}
+    </span>
+  );
+  const setColor = (i: number, value: string) => set("look", { palette: "own", colors: look.colors.map((c, j) => (j === i ? value.toUpperCase() : c)) });
+  return (
+    <>
+      {head("Pick your brand colours", "Your designs use them. Tap a set, or make your own.")}
+      <div role="radiogroup" aria-label="Brand colours" className="grid gap-2.5 sm:grid-cols-2">
+        {[...options, { id: "own", label: "My own colours", colors: own ? look.colors : [] }].map((o) => {
+          const on = look.palette === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => set("look", o.id === "own" ? { palette: "own", colors: look.colors.length ? look.colors : ["#2F6BFF"] } : { palette: o.id, colors: o.colors })}
+              className={cn("flex min-h-16 cursor-pointer items-center justify-between gap-3 rounded-2xl border-2 p-3.5 text-left", on ? "border-pulse-blue bg-pulse-blue/8" : "border-line bg-surface hover:border-pulse-blue/40")}
+            >
+              <span className="text-[15px] font-semibold">{o.label}</span>
+              {o.colors.length ? swatches(o.colors) : <Palette aria-hidden className="size-6 text-muted" />}
+            </button>
+          );
+        })}
+      </div>
+      {own && (
+        <div className="flex flex-wrap items-center gap-3">
+          {look.colors.map((c, i) => (
+            <span key={i} className="flex items-center gap-1">
+              <input type="color" aria-label={`Colour ${i + 1}`} value={HEX.test(c) ? c.toLowerCase() : "#000000"} onChange={(e) => setColor(i, e.target.value)} className="size-11 cursor-pointer rounded-xl border border-line bg-transparent p-1" />
+              {look.colors.length > 1 && (
+                <button type="button" aria-label={`Remove colour ${i + 1}`} onClick={() => set("look", { colors: look.colors.filter((_, j) => j !== i) })} className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-soft">
+                  <X aria-hidden className="size-4" />
+                </button>
+              )}
+            </span>
+          ))}
+          {look.colors.length < MAX_COLORS && (
+            <Button variant="outline" size="sm" leading={<Plus aria-hidden className="size-4" />} onClick={() => set("look", { colors: [...look.colors, "#111827"] })}>
+              Add a colour
+            </Button>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---- 💬 Love notes ------------------------------------------------------------------------------------------------------
+
+function LoveQuestion({ part, i, head, a, setNote, onTap }: { part: "quote" | "source" | "consent"; i: number; head: QuestionProps["head"]; a: QuizAnswers; setNote: QuestionProps["setNote"]; onTap: () => void }) {
+  const note = a.love[i] ?? EMPTY_NOTE;
+  if (part === "quote") {
+    return (
+      <>
+        {i === 0
+          ? head("Got a nice message from a customer?", "Paste it here, word for word. No message yet? Skip this.")
+          : head(`Another one? (${i + 1} of ${MAX_QUIZ_REVIEWS})`, "Three reviews customers agreed to share make this part complete. No more? Skip.")}
+        <Textarea aria-label="What the customer said" rows={4} maxLength={1000} placeholder="“Best service in town, thank you!”" value={note.quote} onChange={(e) => setNote(i, { quote: e.target.value })} />
+        {note.quote.trim() && <Input aria-label="Customer's name or initials" maxLength={80} placeholder="Their name or initials, e.g. Aline K." value={note.customerName} onChange={(e) => setNote(i, { customerName: e.target.value })} />}
+      </>
+    );
+  }
+  if (part === "source") {
+    const options: TileOption<ReviewSourceValue>[] = REVIEW_SOURCES.map((v) => ({ value: v, label: SOURCE_LABEL[v], emoji: SOURCE_EMOJI[v] }));
+    return (
+      <>
+        {head("Where did it come from?")}
+        <Tiles
+          label="Where it came from"
+          options={options}
+          value={note.source || null}
+          onPick={(source) => {
+            setNote(i, { source });
+            onTap();
+          }}
+          columns={3}
+        />
+      </>
+    );
+  }
+  return (
+    <>
+      {head("Did they agree to be quoted?", "BuPulse quotes a review in public posts only when they agreed.")}
+      <ThisOrThat
+        label="Agreed to be quoted"
+        left={{ value: "yes", label: "Yes, they agreed", emoji: "👍" }}
+        right={{ value: "no", label: "Not asked yet", emoji: "🤔" }}
+        value={note.canPublish ? "yes" : "no"}
+        onPick={(v) => {
+          setNote(i, { canPublish: v === "yes" });
+          onTap();
+        }}
+      />
     </>
   );
 }

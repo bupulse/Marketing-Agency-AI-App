@@ -63,14 +63,17 @@ audience, products, and website. A template answers when the AI is not available
 
 | Round | Asks (one screen each) | Saves to |
 | --- | --- | --- |
-| 🏠 You | Which tagline fits (3 ideas + your own); what you do (idea to confirm); team size (tiles); year founded; languages you talk to customers in (chips); your values (chips); mission (3 ideas) | `saveProfile` (Business.profile, name, sector) |
+| 🏠 You | Which tagline fits (3 ideas + your own); what you do (idea to confirm); team size (tiles); year founded; languages you talk to customers in (chips); your values (chips); mission (3 ideas); vision (3 ideas); website or main social page (optional) | `saveProfile` (Business.profile, name, sector) |
 | 🛍️ What you sell | Which of these you sell (chips of guessed products + your own). For each new one: kind (tiles), price (number + "Ask for price"), and its best reason to buy (ideas) | `createProduct` (drafts if photos are missing) |
+| 📸 Photos | "Show us Classic Manicure": one screen per product without a photo (the stored ones, then each new one): upload from the phone, pick from your photos, or the Import menu. Photos and videos | the product's album (`product:<id>`); the quiz's drafts that now have a photo become active |
 | 👥 Your customers | Who buys most (3 persona cards, pick 1–2); age (tiles); mostly women / men / any; where they are online (chips); what they need; what bugs them; what makes them buy (chips of ideas) | `createPersona` / `updatePersona` |
 | ⭐ Why you | Who else they consider (chips + your own); why they choose you (ideas); which sentence sums you up (3 positioning ideas) | `createCompetitor`, `savePositioning` |
-| 📋 Rules | How people pay (chips); delivery, returns, booking (tiles of common answers + your own); common questions (5 FAQ ideas to keep or drop, answers you can edit) | `savePolicies`, `createFaq` |
+| 📋 Rules | How people pay (chips); delivery, returns, guarantee, booking (tiles of common answers that fit the business + your own); common questions (5 FAQ ideas to keep or drop, answers you can edit) | `savePolicies`, `createFaq` |
 | 📍 Find us | Opening hours (presets: Mon–Fri 8–18, Mon–Sat 8–20, every day, 24/7, custom); phone / WhatsApp; where you are (address) | the Business info knowledge save (same as the Locations page) |
+| 🎨 Your look | Your logo (upload, or from your photos); your brand colours (from the logo, your current ones, 3 sets that fit the industry, or your own) | `saveLook` (the Brand page's save) |
 | 🎙️ Your voice | Three this-or-that questions (friendly / formal, emojis or not, short / detailed); then "Which post sounds like you?" (3 sample posts written in different voices) | `approveVoice` (the marketing profile; same as the interview) |
-| 💬 Love notes | "Got a nice message from a customer? Paste it" (optional): name, where it came from (tiles), and whether they agreed to be quoted | `createReview` |
+| 💬 Love notes | "Got a nice message from a customer? Paste it" (optional): name, where it came from (tiles), and whether they agreed to be quoted. Then "Another one?", up to 3 (three the AI may quote make the section complete) | `createReview` |
+| 🚀 Go live | "Connect Instagram, Facebook and more": a button to Channels (signing in to an account cannot happen inside the quiz). The answers are saved already | nothing |
 
 The finish screen shows the score ring with the overall Business info %, what got better ("Your posts now know your
 prices, your customers and your voice"), and two buttons: "Make my first posts" and "Back to Business info".
@@ -119,10 +122,22 @@ one `router.refresh()` in the background once the finish screen has its score. T
 While a round saves, the card shows `Thinking` with the round's line ("Saving your products…"). A save's problem shows under
 the question, scrolled into view and focused.
 
+**The photo step.** Products exist only once What you sell saves, so the 📸 Photos round's questions are keyed by the
+product (a stored product without a photo by its id, a new one by its name, `photoTargets`): they are in the quiz before
+the products are saved, and the round keeps its length. The save of What you sell returns the new products' ids, which
+the questions then use. Each screen is the album card's own tools (components/knowledge/album-card.tsx): "Upload from
+your phone" (`useGalleryUpload`, `UPLOAD_ACCEPT`: photos and videos), "From your photos" (`MediaPicker`, videos too) and
+the gallery's Import menu (`ImportMenu`, Google Drive and Dropbox when their keys are set; "From a link" comes with the
+media-link branch). Uploads and imports go straight into the product's album (`product:<id>`) and show on the screen;
+gallery picks are linked when the round saves. The round's save (one request) links the picks and makes the quiz's
+drafts that now have a photo active. Next waits while an upload or import runs.
+
 **The finish screen.** `quizScore` recomputes the overall % on the server and returns "To reach 100%": up to 4
 incomplete sections the person may edit (their role and plan), the furthest from complete first, each with its to-do
 from `knowledgeProgress` (`next`, e.g. "Add photos to 3 products", "Upload your logo", "Connect a social account") and a
-link to the page that fixes it (`toReachFull`, lib/knowledge/sections.ts).
+link to the page that fixes it (`toReachFull`, lib/knowledge/sections.ts). On the finish screen each to-do opens the quiz
+round that fixes it (`roundForSection`: Products' photos open 📸 Photos, the logo 🎨 Your look); connecting an account
+links to Channels. "Continue" on Business info opens the first incomplete round the same way (lib/knowledge/quiz-entry.ts).
 
 **Moving on safely.** Every move names the question it was made for (lib/knowledge/quiz-move.ts): a tile's delayed
 move, Next, Enter and Skip. A move for a question no longer on screen, a second move while one is saving, or Enter
@@ -133,13 +148,16 @@ starts (the page's props refresh after every save).
 | Round | Saved with | Notes |
 | --- | --- | --- |
 | 🏠 You | `saveProfile` | The whole stored profile is sent, with the answers on top. A sign-up description too short for the check is filled from "what you do". |
-| 🛍️ What you sell | `createProduct` | One question per new product (up to 6), starting with the first reason idea picked. Saved as drafts (no photos yet). No number typed means "Ask for price" (on request): a price is never guessed. Next checks the question with `productInputSchema` in the browser, so a problem shows at once. |
+| 🛍️ What you sell | `createProduct` | One question per new product (up to 6), starting with the first reason idea picked. Saved as drafts (no photos yet); the save returns their ids for the Photos round. No number typed means "Ask for price" (on request): a price is never guessed. Next checks the question with `productInputSchema` in the browser, so a problem shows at once. |
 | 👥 Your customers | `updatePersona` / `createPersona` | The questions after the cards describe the first card picked. A second new card is saved as guessed. |
 | ⭐ Why you | `createCompetitor`, `savePositioning` | |
-| 📋 Rules | `savePolicies`, `createFaq` | Delivery, returns and booking are tiles of common answers, each a policy sentence ("No booking, just walk in" → "No booking needed: just walk in."), plus "Something else" for the owner's words. The AI only picks the likeliest tile. A stored policy shows as its tile, or as Something else with its words. Warranty and payment notes are kept. The common questions never contradict the tiles: a question about delivery, returns, booking or payment takes its answer from the round's picks ("No delivery, pick-up only" → "Do you deliver?" "No, we don't deliver. You can pick up at …" with the stored address), unless the owner wrote or changed it (`alignFaqs`). |
+| 📸 Photos | the product's album, `linkPhotos`, `activateDraftsWithPhotos` | See "The photo step" below. |
+| 📋 Rules | `savePolicies`, `createFaq` | Delivery, returns, warranty and booking are tiles of common answers that fit the business (`POLICY_TILES` per type: a shop, food, a service: a salon gets "Free redo within 7 days if you're not happy", never "No returns on food and drinks"), each a policy sentence ("No booking, just walk in" → "No booking needed: just walk in."), plus "Something else" for the owner's words. The AI only picks the likeliest tile. A stored policy shows as its tile, or as Something else with its words. Warranty and payment notes are kept. The common questions never contradict the tiles: a question about delivery, returns, booking or payment takes its answer from the round's picks ("No delivery, pick-up only" → "Do you deliver?" "No, we don't deliver. You can pick up at …" with the stored address), unless the owner wrote or changed it (`alignFaqs`). |
 | 📍 Find us | `saveKnowledge` (the Locations page's save) | The whole stored card is sent, with the hours preset, the first phone row and the head office address on top. Skipped or unchanged: no save. |
 | 🎙️ Your voice | `approveVoice(summary, "quiz", answers)` | A new `quiz` mode (lib/knowledge/interview-service.ts `saveQuizVoice`) approves the picked voice without an interview. The this-or-that answers become rules and are kept as the profile's answers. |
-| 💬 Love notes | `createReview` | Only Owners and Admins are asked about consent (the action enforces it too). |
+| 🎨 Your look | `saveLook` (quiet) | The logo: the brand form's own upload (`useLogoUpload`, shared with LookFields), or a gallery photo copied into the brand bucket (`quizLogoFromGallery`, lib/brand/logo-from-gallery.ts). Colours: read from a new logo (`extractColorsFromFile`), the stored ones, the industry's sets, or the owner's own. |
+| 💬 Love notes | `createReview`, one per review, in one request | Up to 3 slots; each opens once the one before has a quote. Only Owners and Admins are asked about consent (the action enforces it too). |
+| 🚀 Go live | nothing | A link to /dashboard/connections. |
 
 ### B. Own campaign quiz: `/dashboard/knowledge/campaigns/new?who=me`
 

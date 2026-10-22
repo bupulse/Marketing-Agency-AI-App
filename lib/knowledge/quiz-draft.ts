@@ -52,6 +52,7 @@ export type QuizDraft = {
   taglines: string[];
   about: string;
   missions: string[];
+  visions: string[];
   values: string[];
   languages: string[];
   products: ProductIdea[];
@@ -61,22 +62,43 @@ export type QuizDraft = {
   positioning: string[];
   faqs: { question: string; answer: string }[];
   /** The likeliest common answer of each policy (a tile; "" when no guess), and the payment methods. */
-  policies: { delivery: PolicyChoice<"delivery"> | ""; returns: PolicyChoice<"returns"> | ""; booking: PolicyChoice<"booking"> | ""; payment: PaymentMethod[] };
+  policies: { delivery: PolicyChoice<"delivery"> | ""; returns: PolicyChoice<"returns"> | ""; warranty: PolicyChoice<"warranty"> | ""; booking: PolicyChoice<"booking"> | ""; payment: PaymentMethod[] };
+  /** What kind of business it is, for the policy tiles that fit it (a salon is not asked about food returns). */
+  businessType: BusinessType;
+  /** Brand colour sets that suit the industry (from the template; the AI does not pick colours). */
+  palettes: string[][];
   voices: VoiceOption[];
   source: "ai" | "template";
 };
 
 /**
  * The common answers of each policy, shown as tiles (each one a policy sentence, lib/knowledge/quiz-map.ts
- * policySentence), plus "Something else" for the owner's own words. The AI only says which tile is likeliest.
+ * policyText), plus "Something else" for the owner's own words. Every answer the quiz knows, per policy; which ones a
+ * business sees depends on its type (POLICY_TILES). The AI only says which tile is likeliest.
  */
 export const POLICY_CHOICES = {
-  delivery: ["pickup", "city", "country", "app"],
-  returns: ["noFood", "exchange", "refund"],
+  delivery: ["pickup", "city", "country", "app", "atPlace", "homeVisit", "both", "online"],
+  returns: ["noFood", "replaceOrder", "exchange", "refund", "noReturns", "redo", "noRefund"],
+  warranty: ["w12", "w3", "checked", "fresh", "work30", "satisfaction", "none"],
   booking: ["walkIn", "whatsapp", "online"],
 } as const;
 export type PolicyKind = keyof typeof POLICY_CHOICES;
 export type PolicyChoice<K extends PolicyKind> = (typeof POLICY_CHOICES)[K][number];
+
+export const BUSINESS_TYPES = ["goods", "food", "service"] as const;
+export type BusinessType = (typeof BUSINESS_TYPES)[number];
+
+/** The tiles each type of business sees, in order: a shop, a place that serves food, a service (a salon, a garage). */
+export const POLICY_TILES: { [T in BusinessType]: { [K in PolicyKind]: readonly PolicyChoice<K>[] } } = {
+  goods: { delivery: ["pickup", "city", "country", "app"], returns: ["exchange", "refund", "noReturns"], warranty: ["w12", "w3", "checked", "none"], booking: ["walkIn", "whatsapp", "online"] },
+  food: { delivery: ["pickup", "city", "app"], returns: ["noFood", "replaceOrder"], warranty: ["fresh", "none"], booking: ["walkIn", "whatsapp", "online"] },
+  service: { delivery: ["atPlace", "homeVisit", "both", "online"], returns: ["redo", "noRefund"], warranty: ["work30", "satisfaction", "none"], booking: ["whatsapp", "walkIn", "online"] },
+};
+
+/** The AI's pick when it fits this business's tiles, else the template's. */
+function fitting<K extends PolicyKind>(kind: K, type: BusinessType, pick: string, fallback: PolicyChoice<K> | ""): PolicyChoice<K> | "" {
+  return (POLICY_TILES[type][kind] as readonly string[]).includes(pick) ? (pick as PolicyChoice<K>) : fallback;
+}
 
 /** The key two lines are compared on: case, punctuation and spacing do not count ("Just walk in." = "just walk in"). */
 export function sameKey(text: string): string {
@@ -86,6 +108,7 @@ export function sameKey(text: string): string {
 export const DRAFT_COUNTS = {
   taglines: 3,
   missions: 3,
+  visions: 3,
   values: 6,
   languages: 4,
   products: 6,
@@ -107,6 +130,7 @@ export const aiDraftSchema = z.object({
   taglines: lines("3 short taglines, each under 80 characters, different from each other"),
   about: z.string().describe("What the business does, 2 or 3 plain sentences, only from the data"),
   missions: lines("3 one-sentence mission ideas"),
+  visions: lines("3 one-sentence vision ideas: where the business wants to be in a few years"),
   values: lines("Up to 6 values, 1 to 3 words each (e.g. Honesty, Fast service)"),
   languages: lines("Languages the business most likely talks to customers in"),
   products: z
@@ -139,8 +163,15 @@ export const aiDraftSchema = z.object({
   positioning: lines("3 one-sentence positioning statements: for whom, what, why different"),
   faqs: z.array(z.object({ question: z.string(), answer: z.string().describe("An answer using only the data; when the data does not say, invite the customer to ask") })).describe("5 questions customers often ask"),
   policies: z.object({
-    delivery: z.enum([...POLICY_CHOICES.delivery, "unsure"]).describe("The likeliest: pickup (no delivery), city (deliver in their city), country (across the country), app (through a delivery app), or unsure"),
-    returns: z.enum([...POLICY_CHOICES.returns, "unsure"]).describe("The likeliest: noFood (no returns on food and drinks), exchange (exchange with the receipt), refund (refund with the receipt), or unsure"),
+    delivery: z
+      .enum([...POLICY_CHOICES.delivery, "unsure"])
+      .describe("The likeliest. Shops and food: pickup (no delivery), city (deliver in their city), country (across the country), app (a delivery app). Services: atPlace (customers come to them), homeVisit (they go to the customer), both, online. Or unsure"),
+    returns: z
+      .enum([...POLICY_CHOICES.returns, "unsure"])
+      .describe("The likeliest. Food: noFood (no returns on food and drinks), replaceOrder (a wrong order is replaced). Shops: exchange, refund, noReturns. Services: redo (free redo if not happy), noRefund (no refunds after the service). Or unsure"),
+    warranty: z
+      .enum([...POLICY_CHOICES.warranty, "unsure"])
+      .describe("The likeliest. Shops: w12 (12-month warranty), w3 (3-month), checked (checked before sale), none. Food: fresh, none. Services: work30 (work guaranteed 30 days), satisfaction (happy or we fix it), none. Or unsure"),
     booking: z.enum([...POLICY_CHOICES.booking, "unsure"]).describe("The likeliest: walkIn (no booking), whatsapp (book by WhatsApp or a call), online (book online), or unsure"),
     payment: z.array(z.enum(PAYMENT_METHODS)).describe("Payment methods they most likely take"),
   }),
@@ -310,6 +341,7 @@ export function sanitizeDraft(raw: unknown, ctx: QuizContext, template: QuizDraf
     taglines: topUp(list(a.taglines, DRAFT_COUNTS.taglines, PROFILE_LIMITS.tagline, facts), template.taglines, DRAFT_COUNTS.taglines),
     about: text(a.about, 600, facts) || template.about,
     missions: topUp(list(a.missions, DRAFT_COUNTS.missions, PROFILE_LIMITS.mission, facts), template.missions, DRAFT_COUNTS.missions),
+    visions: topUp(list(a.visions, DRAFT_COUNTS.visions, PROFILE_LIMITS.vision, facts), template.visions, DRAFT_COUNTS.visions),
     values: topUp(list(a.values, DRAFT_COUNTS.values, PROFILE_LIMITS.value, facts), template.values, DRAFT_COUNTS.values),
     languages: languages.length ? languages : template.languages,
     products: products.length ? products : template.products,
@@ -319,12 +351,15 @@ export function sanitizeDraft(raw: unknown, ctx: QuizContext, template: QuizDraf
     positioning: topUp(list(a.positioning, DRAFT_COUNTS.positioning, COMPETITOR_LIMITS.statement, facts), template.positioning, DRAFT_COUNTS.positioning),
     faqs,
     policies: {
-      delivery: a.policies.delivery === "unsure" ? template.policies.delivery : a.policies.delivery,
-      returns: a.policies.returns === "unsure" ? template.policies.returns : a.policies.returns,
-      booking: a.policies.booking === "unsure" ? template.policies.booking : a.policies.booking,
+      delivery: fitting("delivery", template.businessType, a.policies.delivery, template.policies.delivery),
+      returns: fitting("returns", template.businessType, a.policies.returns, template.policies.returns),
+      warranty: fitting("warranty", template.businessType, a.policies.warranty, template.policies.warranty),
+      booking: fitting("booking", template.businessType, a.policies.booking, template.policies.booking),
       payment: a.policies.payment.length ? PAYMENT_METHODS.filter((m) => a.policies.payment.includes(m)) : template.policies.payment,
     },
     voices,
+    businessType: template.businessType,
+    palettes: template.palettes,
     source: "ai",
   };
 }
@@ -342,6 +377,8 @@ export function parseDraft(textValue: string, ctx: QuizContext, template: QuizDr
 
 type Kit = {
   kind: ProductKindValue;
+  type: BusinessType;
+  palettes: string[][];
   values: string[];
   reasons: string[];
   personas: Omit<PersonaIdea, "location">[];
@@ -350,6 +387,7 @@ type Kit = {
   faqs: { question: string; answer: string }[];
   delivery: PolicyChoice<"delivery"> | "";
   returns: PolicyChoice<"returns"> | "";
+  warranty: PolicyChoice<"warranty"> | "";
   booking: PolicyChoice<"booking"> | "";
 };
 
@@ -357,6 +395,12 @@ const ASK = "Message us and we will tell you.";
 
 const GENERIC: Kit = {
   kind: "SERVICE",
+  type: "service",
+  palettes: [
+    ["#2F6BFF", "#F59E0B", "#111827"],
+    ["#16A34A", "#FACC15", "#1F2937"],
+    ["#DC2626", "#F3F4F6", "#111827"],
+  ],
   values: ["Honesty", "Quality", "Respect for customers", "Reliability", "Fast service", "Community"],
   reasons: ["Friendly, personal service", "Quality you can count on", "Easy to order by phone or WhatsApp"],
   personas: [
@@ -373,8 +417,9 @@ const GENERIC: Kit = {
     { question: "Do you deliver?", answer: "Message us with your location and we will tell you." },
     { question: "When are you open?", answer: "See our opening hours, or message us any time." },
   ],
-  delivery: "city",
-  returns: "exchange",
+  delivery: "",
+  returns: "",
+  warranty: "",
   booking: "whatsapp",
 };
 
@@ -383,6 +428,14 @@ const KITS: { match: RegExp; kit: Partial<Kit> }[] = [
     match: /food|restaurant|caf[eé]|bakery|bake|juice|catering|coffee|kitchen|snack|drink|butcher|grocer/i,
     kit: {
       kind: "PHYSICAL",
+      type: "food",
+      palettes: [
+        ["#E4572E", "#FFC914", "#2E282A"],
+        ["#6A994E", "#F2E8CF", "#BC4749"],
+        ["#8D5524", "#F4A261", "#264653"],
+      ],
+      delivery: "city",
+      warranty: "fresh",
       values: ["Fresh every day", "Clean kitchen", "Local ingredients", "Friendly service", "Fair prices", "Family"],
       reasons: ["Made fresh", "Tastes like home", "Ready when you need it"],
       competitors: ["Other restaurants nearby", "Supermarket food", "Home cooking", "Food delivery apps"],
@@ -405,8 +458,15 @@ const KITS: { match: RegExp; kit: Partial<Kit> }[] = [
       values: ["Care", "Hygiene", "Style", "Respect for your time", "Confidence", "Quality products"],
       reasons: ["Skilled, careful hands", "Clean and relaxing place", "Looks that last"],
       competitors: ["Other salons nearby", "Home stylists", "Beauty shops"],
-      delivery: "pickup",
-      returns: "",
+      type: "service",
+      palettes: [
+        ["#D63384", "#F8C8DC", "#2B2D42"],
+        ["#B5838D", "#FFCDB2", "#6D6875"],
+        ["#7B2CBF", "#E0AAFF", "#10002B"],
+      ],
+      delivery: "atPlace",
+      returns: "redo",
+      warranty: "satisfaction",
       booking: "whatsapp",
       differentiators: ["Skilled team", "Clean tools every time", "We listen to what you want", "On time"],
       faqs: [
@@ -425,6 +485,15 @@ const KITS: { match: RegExp; kit: Partial<Kit> }[] = [
       values: ["Style", "Quality fabric", "Made with care", "Fair prices", "Proudly local", "Personal service"],
       reasons: ["Unique style", "Good fabric", "Made to fit you"],
       competitors: ["Other boutiques", "Second-hand markets", "Online sellers"],
+      type: "goods",
+      palettes: [
+        ["#1D3557", "#E63946", "#F1FAEE"],
+        ["#264653", "#E9C46A", "#F4A261"],
+        ["#000000", "#C9A227", "#FFFFFF"],
+      ],
+      delivery: "city",
+      returns: "exchange",
+      warranty: "checked",
       booking: "walkIn",
       differentiators: ["Pieces you will not see everywhere", "Good fabric", "Made to measure", "Friendly advice on what suits you"],
       faqs: [
@@ -443,8 +512,15 @@ const KITS: { match: RegExp; kit: Partial<Kit> }[] = [
       values: ["Reliability", "Simplicity", "Support that answers", "Innovation", "Security", "Honesty"],
       reasons: ["Easy to use", "Saves you time", "Help when you need it"],
       competitors: ["Bigger international brands", "Local IT shops", "Doing it by hand"],
+      type: "goods",
+      palettes: [
+        ["#2F6BFF", "#7B5CFF", "#0B1020"],
+        ["#00B4D8", "#0077B6", "#03045E"],
+        ["#22C55E", "#111827", "#F9FAFB"],
+      ],
       delivery: "country",
       returns: "refund",
+      warranty: "w12",
       booking: "online",
       differentiators: ["Local support that answers", "Simple to use", "Built for how business works here", "Honest advice"],
       faqs: [
@@ -496,6 +572,7 @@ export function templateDraft(ctx: QuizContext): QuizDraft {
     taglines: [`${name}: ${industry || "quality"} you can count on`, `Made for you, by ${name}`, industry ? `Your ${what} people in ${place}` : `Proudly serving ${place}`].map((t) => clean(t, PROFILE_LIMITS.tagline)),
     about: about || (industry ? clean(`${name} is a ${what} business serving customers in ${place}.`, 600) : ""),
     missions: [`To give every customer ${what} they can trust.`, `To make life easier for people in ${place}.`, `To grow with our community and serve it well.`].map((m) => clean(m, PROFILE_LIMITS.mission)),
+    visions: [`To be the first name people in ${place} think of for ${what}.`, `To grow ${name} into a brand known across ${clean(ctx.country, 80) || "the country"}.`, `To serve more customers every year, without losing our personal touch.`].map((v) => clean(v, PROFILE_LIMITS.vision)),
     values: kit.values.slice(0, DRAFT_COUNTS.values),
     languages: guessLanguages(ctx),
     products: [],
@@ -508,8 +585,10 @@ export function templateDraft(ctx: QuizContext): QuizDraft {
       `Unlike the rest, ${name} knows its customers and treats each one personally.`,
     ].map((p) => clean(p, COMPETITOR_LIMITS.statement)),
     faqs: kit.faqs.filter((f) => !ctx.faqs.some((q) => sameKey(q) === sameKey(f.question))).slice(0, DRAFT_COUNTS.faqs),
-    policies: { delivery: kit.delivery, returns: kit.returns, booking: kit.booking, payment: ["mtn_momo", "cash"] },
+    policies: { delivery: kit.delivery, returns: kit.returns, warranty: kit.warranty, booking: kit.booking, payment: ["mtn_momo", "cash"] },
     voices: templateVoices(name, what),
+    businessType: kit.type,
+    palettes: kit.palettes,
     source: "template",
   };
 }
