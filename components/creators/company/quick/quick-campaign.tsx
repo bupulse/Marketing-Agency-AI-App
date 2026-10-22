@@ -4,6 +4,10 @@
 // draft as the 12-step wizard. Card 1 makes the draft (createDraftAction: the AI fills every step), each later card
 // saves its wizard step(s) with saveStepAction, and "We prepared the rest" opens a detailed step and comes back. The
 // detailed wizard ("Detailed setup") is one tap away on every card.
+//
+// Speed (owner feedback, 22 October 2026): Next moves on at once and the card's steps save in the background, one after
+// another, without re-rendering the page. A refused save brings the owner back to its card with the problem. Only Files
+// (the folders and their counts) and Ready (the go-live list) wait for the saves and read the draft from the server.
 
 import { ArrowRight, Check, Globe, LoaderCircle, Pencil, Rocket, TriangleAlert, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -43,7 +47,7 @@ import {
 } from "@/lib/creators/quick";
 import { NICHES } from "@/lib/creators/requirements";
 import { BRIEF_EVERY, CAMPAIGN_GOALS, POST_FORMATS, stepNumber, WIZARD_STEPS, type BriefEvery, type CampaignGoal, type WizardStepId } from "@/lib/creators/wizard";
-import { checkStep, costEstimate, readinessChecklist, stepInput, type StepInput, type WizardAnswers } from "@/lib/creators/wizard-steps";
+import { checkStep, costEstimate, ideaExamplesFor, readinessChecklist, stepInput, type StepInput, type WizardAnswers } from "@/lib/creators/wizard-steps";
 import { POINTS } from "@/lib/quiz/flow";
 import type { Network } from "@/lib/social/types";
 import { FilesStep } from "../wizard/files-step";
@@ -54,6 +58,9 @@ const GOALS: TileOption<CampaignGoal>[] = CAMPAIGN_GOALS.map((g) => ({ value: g.
 const CADENCE: TileOption<BriefEvery>[] = BRIEF_EVERY.map((b) => ({ value: b.value, label: b.label, emoji: { MONTH: "1️⃣", WEEK: "📆", DAY: "☀️" }[b.value] }));
 const NETWORK_ICONS: readonly string[] = ["instagram", "facebook", "tiktok", "youtube", "linkedin"];
 const AUTO_NEXT_MS = 250;
+/** The cards that read the draft from the server (folders, counts, the go-live list); the others only change the URL. */
+const SERVER_CARDS: readonly QuickCard[] = ["files", "ready"];
+const OFFLINE = "We could not save that. Check your connection and try again.";
 const VIEWS_EACH = 10_000;
 
 const VERDICT: Record<RateLevel, { text: string; tone: "low" | "ok" | "great" | "high" }> = {
@@ -90,6 +97,11 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
   const [live, setLive] = useState(false);
   const [looksGood, setLooksGood] = useState<WizardStepId[]>([]);
   const [syncing, startSync] = useTransition();
+  /** Card saves still running in the background, and the card the server last read the draft for. */
+  const [pending, setPending] = useState(0);
+  const [loadedFor, setLoadedFor] = useState<QuickCard>(card);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const failed = useRef(false);
   const shown = useRef(card);
   const id = o.campaignId;
   const here = (quiz.step?.id ?? "ready") as QuickCard;
@@ -99,13 +111,31 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
     setA((cur) => ({ ...cur, ...patch }));
   };
 
-  // The URL follows the card, so the server reads the draft again: the Files card's folders, the go-live list, and a
-  // reload or a "Change" return lands here.
+  // The URL follows the card, so a reload or a "Change" return lands here. Files and Ready wait for the saves, then the
+  // server reads the draft again; the other cards only change the address (no request).
   useEffect(() => {
     if (!id || shown.current === here) return;
     shown.current = here;
-    startSync(() => router.replace(`/dashboard/creators/${id}/quick?card=${here}`, { scroll: false }));
+    const url = `/dashboard/creators/${id}/quick?card=${here}`;
+    if (!SERVER_CARDS.includes(here)) return window.history.replaceState(null, "", url);
+    let gone = false;
+    void queue.current.then(() => {
+      if (gone) return;
+      setLoadedFor(here);
+      startSync(() => router.replace(url, { scroll: false }));
+    });
+    return () => {
+      gone = true;
+    };
   }, [id, here, router]);
+
+  // Leaving while a card is still saving asks first.
+  useEffect(() => {
+    if (!pending) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [pending]);
 
   async function createDraft() {
     const input = stepInput("idea", a);
@@ -121,8 +151,12 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
     router.push(`/dashboard/creators/${r.id}/quick?card=goal`);
   }
 
-  /** Saves the card's wizard steps, in order; false (and the problem on screen) when one is refused. */
-  async function save(c: QuickCard, answers: WizardAnswers): Promise<boolean> {
+  /**
+   * Queues the card's wizard steps to save in the background, after the ones before (the same checks run first, so a
+   * refusal is rare: a rate limit, a lost connection). A refused save brings the owner back to that card with the
+   * problem. False when the answers do not pass the checks.
+   */
+  function save(c: QuickCard, answers: WizardAnswers): boolean {
     if (!id) return false;
     const inputs = cardInputs(c, prepare(c, answers));
     for (const { step, input } of inputs) {
@@ -132,24 +166,38 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
         return false;
       }
     }
-    setBusy("save");
-    for (const { step, input } of inputs) {
-      const r = await saveStepAction(id, step, input);
-      if (!r.ok) {
-        setBusy(null);
-        setError(r.error);
-        return false;
-      }
-    }
-    setBusy(null);
     if (c === "pay") setA(prepare(c, answers));
+    setPending((n) => n + 1);
+    queue.current = queue.current.then(async () => {
+      let problem: string | null = null;
+      for (const { step, input } of inputs) {
+        const r = await saveStepAction(id, step, input, { quiet: true }).catch(() => ({ ok: false as const, error: OFFLINE }));
+        if (!r.ok) {
+          problem = r.error;
+          break;
+        }
+      }
+      setPending((n) => n - 1);
+      if (problem) {
+        failed.current = true;
+        setError(problem);
+        quiz.goTo(c);
+      }
+    });
     return true;
   }
 
-  async function next(answers = a) {
+  /** Waits for the background saves; false when one was refused (its card is on screen with the problem). */
+  async function flush(): Promise<boolean> {
+    failed.current = false;
+    await queue.current;
+    return !failed.current;
+  }
+
+  function next(answers = a) {
     setError(null);
-    if (here === "idea" && !id) return createDraft();
-    if (await save(here, answers)) quiz.next();
+    if (here === "idea" && !id) return void createDraft();
+    if (save(here, answers)) quiz.next();
   }
 
   /**
@@ -159,9 +207,10 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
   async function change(step: WizardStepId) {
     if (!id) return;
     const n = stepNumber(step);
+    setBusy("save");
+    if (!(await flush())) return setBusy(null);
     if (n > o.reached) {
-      setBusy("save");
-      const r = await saveStepAction(id, step, stepInput(step, initial));
+      const r = await saveStepAction(id, step, stepInput(step, initial), { quiet: true });
       if (!r.ok) {
         setBusy(null);
         return setError(r.error);
@@ -173,6 +222,7 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
   async function goLive() {
     if (!id) return;
     setBusy("live");
+    if (!(await flush())) return setBusy(null);
     const r = await setCampaignStatusAction(id, "LIVE");
     setBusy(null);
     if (!r.ok) return setError(r.error);
@@ -182,6 +232,7 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
   async function saveDraft() {
     if (!id) return;
     setBusy("save");
+    if (!(await flush())) return setBusy(null);
     const r = await finishSetupAction(id);
     if (!r.ok) {
       setBusy(null);
@@ -197,7 +248,7 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
   const facts = { products: o.products, knowledgeCampaigns: o.knowledgeCampaigns, counts: o.counts, hasCover: Boolean(a.look.coverAssetId) };
   const checklist = readinessChecklist({ brief: initial.brief, dos: initial.dos, donts: initial.donts, tasks: initial.tasks.length, images: o.counts.images, videos: o.counts.videos, exampleLinks: a.files.exampleLinks.length });
   // The server read the draft for the card on screen (the URL follows the card): its folders and go-live list are current.
-  const fresh = card === here && !syncing;
+  const fresh = card === here && loadedFor === here && !syncing && pending === 0;
   const blockers = o.problems;
   const roundDone = quiz.roundDone ? QUICK_ROUNDS.find((r) => r.id === quiz.roundDone) : null;
   const kicker = `${QUICK_ROUNDS.find((r) => r.id === quiz.round)?.title ?? ""} · ${quiz.stepInRound} of ${quiz.stepsInRound}`;
@@ -206,7 +257,10 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
       ? null
       : here === "ready"
         ? { label: "Go live", onClick: () => void goLive(), disabled: !fresh || blockers.length > 0 || busy !== null, busy: busy === "live" }
-        : { label: here === "idea" && !id ? "Write my campaign" : "Next", onClick: () => void next(), disabled: Boolean(problem) || busy !== null, busy: busy === "save" };
+        : { label: here === "idea" && !id ? "Write my campaign" : "Next", onClick: () => next(), disabled: Boolean(problem) || busy !== null, busy: busy === "save" };
+  // Card 1's examples name the products picked ("Film yourself trying our Passion Juice"), else the server's from the first products.
+  const pickedNames = o.products.filter((p) => a.productIds.includes(p.id)).map((p) => p.label);
+  const examples = pickedNames.length ? ideaExamplesFor(o.industry, pickedNames) : o.ideaExamples;
   const detailed = id ? `${detailedHref}?step=${stepNumber(CARD_DETAILED[here])}` : detailedHref;
 
   return (
@@ -214,11 +268,11 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
       {busy === "create" ? (
         <Thinking lines={["Reading your idea…", "Picking the right creators…", "Writing the brief and the tasks…", "Setting a fair pay…"]} />
       ) : roundDone ? (
-        <RoundDone round={roundDone} next={QUICK_ROUNDS[QUICK_ROUNDS.indexOf(roundDone) + 1] ?? null} points={quiz.points} saved="Saved. Your draft waits in Creator campaigns if you stop here." onContinue={quiz.continueRound} />
+        <RoundDone round={roundDone} next={QUICK_ROUNDS[QUICK_ROUNDS.indexOf(roundDone) + 1] ?? null} points={quiz.points} saved="Your draft waits in Creator campaigns if you stop here." onContinue={quiz.continueRound} />
       ) : here === "idea" ? (
         <>
           <QuestionHead kicker={kicker} title="What's the campaign about?" hint="One line is enough. BuPulse fills in the rest from it and your Business info." />
-          <TextAnswer label="Your idea in one line" value={a.idea} onChange={(idea) => set({ idea })} suggestions={o.ideaExamples} maxLength={300} placeholder="Or write your own" />
+          <TextAnswer label="Your idea in one line" value={a.idea} onChange={(idea) => set({ idea })} suggestions={examples} maxLength={300} placeholder="Or write your own" />
           {o.products.length > 0 && <ProductChips options={o.products} selected={a.productIds} onChange={(productIds) => set({ productIds })} />}
         </>
       ) : here === "goal" ? (
@@ -231,7 +285,7 @@ export function QuickCampaign({ card, initial, options: o, detailedHref }: { car
             guess={initial.goal}
             onPick={(goal) => {
               set({ goal });
-              window.setTimeout(() => void next({ ...a, goal }), AUTO_NEXT_MS);
+              window.setTimeout(() => next({ ...a, goal }), AUTO_NEXT_MS);
             }}
           />
         </>

@@ -36,6 +36,8 @@ export type WizardOptions = {
   products: PickOption[];
   knowledgeCampaigns: PickOption[];
   ideaExamples: string[];
+  /** The business's industry: quick mode makes the idea examples again from the products picked. */
+  industry?: string | null;
   /** "@leafjuice": the business's Instagram handle as a mention. */
   handle: string | null;
   brand: BrandLook;
