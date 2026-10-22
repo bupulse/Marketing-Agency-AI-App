@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advance, back, jumpToRound, percentDone, points, position, POINTS, START, type QuizStep } from "@/lib/quiz/flow";
+import { advance, anchored, back, jumpToRound, percentDone, points, position, POINTS, START, type QuizStep } from "@/lib/quiz/flow";
 
 const steps: QuizStep[] = [
   { id: "a1", round: "a" },
@@ -38,5 +38,15 @@ describe("quiz flow", () => {
     expect(back(START).index).toBe(0);
     expect(jumpToRound(steps, START, "b").index).toBe(2);
     expect(jumpToRound(steps, START, "nope")).toBe(START);
+  });
+
+  it("keeps the owner on the same question when questions are added or dropped", () => {
+    const p = { ...START, index: 2 };
+    const fewer = steps.filter((s) => s.id !== "a2");
+    expect(anchored(fewer, p, "b1").index).toBe(1);
+    const more = [{ id: "a0", round: "a" }, ...steps];
+    expect(anchored(more, p, "b1").index).toBe(3);
+    expect(anchored(steps, p, "b1")).toBe(p);
+    expect(anchored(fewer, p, "gone")).toBe(p);
   });
 });

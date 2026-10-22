@@ -6,6 +6,7 @@ import { featureGate, pageGate } from "@/components/app/no-access";
 import { Badge, Button, type BadgeTone } from "@/components/ui";
 import { CAMPAIGN_STATUS_LABEL, type CampaignStatus } from "@/lib/creators/company-forms";
 import { CreatorCampaignError, getCampaign, type CampaignActor, type CampaignView } from "@/lib/creators/campaigns";
+import { continueHref, detailedSetupHref } from "@/lib/creators/quick";
 import { STEP_COUNT } from "@/lib/creators/wizard";
 import { CampaignControls, PublicLink } from "./campaign-controls";
 import { CampaignTabs, type CampaignTab } from "./campaign-tabs";
@@ -60,9 +61,14 @@ export function CampaignHeader({ campaign, tab }: { campaign: CampaignView; tab:
           <p className="text-[15px] font-medium text-ok">
             Draft · step {campaign.setupStep} of {STEP_COUNT}. Finish setting it up to go live.
           </p>
-          <Button href={`/dashboard/creators/${campaign.id}/setup?step=${campaign.setupStep}`} size="sm">
-            Continue
-          </Button>
+          <span className="flex items-center gap-1">
+            <Link href={detailedSetupHref(campaign.id, campaign.setupStep)} className="inline-flex min-h-11 items-center px-2 text-[13px] font-medium text-muted underline underline-offset-2 hover:text-text">
+              Detailed setup
+            </Link>
+            <Button href={continueHref(campaign.id, campaign.setupStep)} size="sm">
+              Continue
+            </Button>
+          </span>
         </div>
       )}
       <CampaignTabs campaignId={campaign.id} current={tab} applied={campaign.applied} />

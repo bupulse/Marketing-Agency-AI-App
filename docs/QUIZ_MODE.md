@@ -163,3 +163,55 @@ The 12-step wizard stays as "Detailed setup". Quick mode is the default for a ne
 9. Ready: the summary card, then "Go live" or "Save as draft".
 
 Each card saves with `saveStepAction` for its wizard step, so the data is the same as the detailed wizard's.
+
+## Own campaign quiz (built 22 October 2026)
+
+`/dashboard/knowledge/campaigns/new?who=me` opens the quiz; `&form=1` opens the full form, and each links to the
+other. `?product=<id>` picks that product on card 2. The page is gated like before (`featureGate("content")`), and
+the save goes through `createCampaign` (permission `content`, feature `content`, the `projectCreate` rate limit).
+
+| Card | Answer | Saves to (campaignInputSchema) |
+| --- | --- | --- |
+| 1. What kind? | Tiles: Offer, Event, Launch, Promotion, Other; moves on by itself | `type` |
+| 2. What's it about? | One line (3 ideas to tap) and product chips | `description` when card 6 is left empty, `productIds` |
+| 3. When? | Today, This weekend, Next week, This month, No dates, Pick dates (Events get no "No dates") | `startsOn`, `endsOn` (`datesForChip`, from the business's local day) |
+| 4. The deal | BuPulse's ideas, "No price or discount", or your own words | `priceInfo` |
+| 5. Highlights | Keep or drop, change, add (up to 10) | `highlights` |
+| 6. Your campaign | The name and description BuPulse wrote, editable; "Add campaign" | `name`, `description`; `status` ACTIVE |
+
+After card 2, one AI call (`suggestOwnCampaignAction` → `suggestOwnCampaign` in `lib/knowledge/campaign-ai.ts`,
+feature key `campaignQuiz`) writes the name, description, dates, deals and highlights. It runs through the ledger and
+the AI allowance on the cheap text model, with a rate limit (20 an hour) and a daily cap (40) per company, and a
+25-second limit. `templateOwnSuggestion` answers per kind when the AI cannot (or the call fails). The pure parts are in
+`lib/knowledge/campaign-quiz.ts`: `sanitizeOwnSuggestion` keeps a deal, highlight, name or description only when every
+number in it is in the owner's line or a picked product's stored price, and deal words ("free", "off", "discount",
+"half price", "sale"…) only when the owner's line or a price has them. The template's deals come only from the line
+and the stored prices. After saving, a celebration offers "Make posts for it now" (the campaign's page).
+
+## Creator quick mode (built 22 October 2026)
+
+`/dashboard/creators/new` opens quick mode; `?detailed=1` opens step 1 of the 12-step wizard ("Detailed setup"). Both
+keep `?from=` and `?product=`. After card 1 the draft lives at `/dashboard/creators/[id]/quick?card=<card>` (a draft
+still being set up; anything else opens Settings). Settings keeps opening the detailed steps. The detailed wizard
+links to quick mode ("Prefer quick setup?") while a draft is being set up, and a step opened from quick mode's
+"Change" shows "Save and back to quick setup" (`?back=<card>`). Gates are the wizard's: `creatorsGate`, the
+`creators` permission and feature on every action, the plan's creators per campaign, the live-campaign limit at
+"Go live", "Coming soon" networks, the pay floor and the go-live list.
+
+| Card | Answer | Saves (saveStepAction) |
+| --- | --- | --- |
+| 1. The idea | One line (industry ideas) and product chips; `Thinking` while the AI writes | `createDraftAction` (step `idea`; the AI fills every step) |
+| 2. Goal | Tiles; moves on by itself | `goal` |
+| 3. Creators | Size tiles (Anyone / 1k+ / 10k+ / 50k+), place chips, topic chips (the AI's marked) | `creators` (languages and creators wanted kept) |
+| 4. Where | Network tiles ("Coming soon" disabled), format chips | `where` (mentions and mode kept) |
+| 5. When | Starts today / Next Monday / pick; 1 week / 2 weeks / 1 month / pick; brief cadence tiles | `when` |
+| 6. Pay | Slider from the floor with the `rateLevel` meter, the cost estimate at 10,000 views each, budget chips | `pay` (fees or milestones set in detailed setup are shown, not changed) |
+| 7. We prepared the rest | Content, Rules, Form, Look summaries; "Looks good" or "Change" | `rules`, `form`, `look`; Content is saved by its detailed step |
+| 8. Files | The wizard's Files step itself (folders, uploads, Drive, example links, the go-live ticks) | `files` |
+| 9. Ready | Summary, go-live ticks and what is missing; "Go live" or "Save as draft" | `setCampaignStatusAction(LIVE)` / `finishSetupAction` |
+
+Pure parts: `lib/creators/quick.ts` (`CARD_STEPS`, `cardInputs` built on the wizard's `stepInput`, `cardForStep`,
+`progressAt`, the size tiles, `quickDates`, `rateRange`, `withRate`, `budgetPresets`). Quick mode never sends the tasks:
+the server plans them again when When changes, so a stale copy could overwrite them. The URL follows the card, so the
+server reads the draft again on each card (the Files card makes the campaign's Photos folders, as step 10 does, and
+Ready shows the server's go-live list). Tests: `tests/quiz/own-campaign.test.ts`, `tests/quiz/creator-quick.test.ts`.

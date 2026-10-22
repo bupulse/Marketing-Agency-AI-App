@@ -53,6 +53,15 @@ export function advance(steps: readonly QuizStep[], p: QuizProgress, how: "answe
   return { progress: { index: p.index + 1, answered, skipped, doneRounds: roundDone ? [...p.doneRounds, roundDone] : p.doneRounds }, roundDone };
 }
 
+/**
+ * The progress with its place found again by the question's id (`at`): questions may be added or dropped while the
+ * owner answers, and the owner stays on the same question. A question that is gone leaves the number as it was.
+ */
+export function anchored(steps: readonly QuizStep[], p: QuizProgress, at: string | null): QuizProgress {
+  const i = at ? steps.findIndex((s) => s.id === at) : -1;
+  return i >= 0 && i !== p.index ? { ...p, index: i } : p;
+}
+
 export function back(p: QuizProgress): QuizProgress {
   return { ...p, index: Math.max(0, p.index - 1) };
 }
