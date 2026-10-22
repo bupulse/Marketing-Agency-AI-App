@@ -121,7 +121,7 @@ describe("the built application form", () => {
   it("keeps campaigns made before the wizard working: one name box, questions, a best post required", () => {
     const legacy = legacyForm([{ id: "why", label: "Why you?", required: true }]);
     expect(legacy.samples).toBe("REQUIRED");
-    expect(legacy.fields).toEqual([{ id: "why", type: "SHORT_TEXT", label: "Why you?", required: true }]);
+    expect(legacy.fields).toEqual([{ id: "why", type: "LONG_TEXT", label: "Why you?", required: true }]);
     const old = new Map(Object.entries({ name: "Ana Uwase", email: "a@b.rw", phone: "+250791954277", handle_instagram: "ana", followers_instagram: "100", sample_1: "https://www.instagram.com/p/x/", q_why: "Because" }));
     expect(readApplication(old, { platforms: ["instagram"], questions: [{ id: "why", label: "Why you?", required: true }], country: "Rwanda" })).toMatchObject({ ok: true, value: { name: "Ana Uwase", answers: { why: "Because" } } });
   });

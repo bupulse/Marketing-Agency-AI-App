@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import type { CampaignQuestion } from "./company-forms";
+import { formatDay } from "./describe";
 import { LANGUAGES, NICHES } from "./requirements";
 
 export const FIELD_TYPES = ["SHORT_TEXT", "LONG_TEXT", "SINGLE_CHOICE", "MULTI_CHOICE", "DROPDOWN", "YES_NO", "NUMBER", "MONEY_RANGE", "SCALE", "DATE", "DATE_RANGE", "UPLOAD", "LINK", "LOCATION"] as const;
@@ -125,7 +126,8 @@ export const PRESET_FIELDS: FormField[] = [
 export function readApplicationForm(value: unknown, legacyQuestions: CampaignQuestion[] = []): ApplicationForm {
   const parsed = applicationFormSchema.safeParse(value);
   if (parsed.success) return parsed.data;
-  return { ...defaultForm(), fields: legacyQuestions.map((q) => ({ id: q.id, type: "SHORT_TEXT" as const, label: q.label, required: q.required })) };
+  // Paragraphs: the old form took answers of up to 1,000 characters.
+  return { ...defaultForm(), fields: legacyQuestions.map((q) => ({ id: q.id, type: "LONG_TEXT" as const, label: q.label, required: q.required })) };
 }
 
 /** A new field of a type, with a fresh id and starting options where it needs them. */
@@ -219,9 +221,10 @@ export function answerInWords(field: FormField, value: Answer | null | undefined
   if (typeof value === "number") return field.type === "SCALE" ? `${value} out of ${field.max ?? 5}` : value.toLocaleString("en-US");
   if (typeof value === "object") {
     if ("min" in value) return `${value.min.toLocaleString("en-US")} - ${value.max.toLocaleString("en-US")} ${field.currency ?? currency}`;
-    return `${value.from} to ${value.to}`;
+    return `${formatDay(value.from)} to ${formatDay(value.to)}`;
   }
   if (field.type === "YES_NO") return value === "yes" ? "Yes" : "No";
+  if (field.type === "DATE") return formatDay(value);
   if (field.type === "UPLOAD") return "File sent";
   return value;
 }

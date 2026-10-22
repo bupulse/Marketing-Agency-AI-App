@@ -44,7 +44,7 @@ describe("rate per any number of views", () => {
 describe("application form", () => {
   it("falls back to the default form with old questions as fields", () => {
     const form = readApplicationForm(null, [{ id: "q1", label: "Why us?", required: true }]);
-    expect(form).toMatchObject({ phone: "REQUIRED", samples: "OPTIONAL", fields: [{ id: "q1", type: "SHORT_TEXT", label: "Why us?", required: true }] });
+    expect(form).toMatchObject({ phone: "REQUIRED", samples: "OPTIONAL", fields: [{ id: "q1", type: "LONG_TEXT", label: "Why us?", required: true }] });
   });
 
   it("accepts the presets and refuses a choice field without answers", () => {

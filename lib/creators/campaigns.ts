@@ -24,7 +24,7 @@ import {
   type TaskInput,
   type TaskRepeat,
 } from "./company-forms";
-import { defaultForm, readApplicationForm } from "./form-fields";
+import { defaultForm, readApplicationForm, type Answer } from "./form-fields";
 import { paysAnything, readPayRules, withoutPost, type PayoutBreakdown } from "./pay";
 import { dayIn, daysInclusive, MAX_CAMPAIGN_DAYS, periodsFor, ymdOf } from "./periods";
 import { readRequirements } from "./requirements";
@@ -243,7 +243,8 @@ export async function listCampaignCreators(actor: CampaignActor, campaignId: str
       phone: hideContact ? null : r.phone,
       handles: readHandles(r.handles),
       samples: r.samples,
-      answers: (r.answers && typeof r.answers === "object" ? r.answers : {}) as Record<string, string>,
+      // Text, lists, numbers or ranges, by the form's field types (lib/creators/form-fields.ts).
+      answers: (r.answers && typeof r.answers === "object" ? r.answers : {}) as Record<string, Answer>,
       inviteExpiresAt: r.inviteExpiresAt?.toISOString() ?? null,
       offeredAt: r.offeredAt?.toISOString() ?? null,
       appliedAt: r.createdAt.toISOString(),
