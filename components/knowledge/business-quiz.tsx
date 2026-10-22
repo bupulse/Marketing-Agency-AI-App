@@ -136,7 +136,9 @@ function cachedDraft(key: string): QuizDraft | null {
   try {
     const raw = sessionStorage.getItem(key);
     const d = raw ? (JSON.parse(raw) as QuizDraft) : null;
-    return d && Array.isArray(d.taglines) && Array.isArray(d.voices) && d.voices.length ? d : null;
+    // A draft from an older quiz (before a deploy added a list) is asked for again rather than read with holes.
+    const lists = [d?.taglines, d?.missions, d?.visions, d?.values, d?.languages, d?.products, d?.personas, d?.competitors, d?.differentiators, d?.positioning, d?.faqs, d?.palettes];
+    return d && lists.every(Array.isArray) && d.policies && Array.isArray(d.policies.payment) && d.businessType && Array.isArray(d.voices) && d.voices.length ? d : null;
   } catch {
     return null;
   }
