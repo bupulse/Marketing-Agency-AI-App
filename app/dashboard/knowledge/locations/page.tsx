@@ -5,6 +5,7 @@ import { BrandSection } from "@/components/brand-profile/brand-section";
 import { initialValues } from "@/components/brand-profile/initial";
 import { EssentialsBanner } from "@/components/business-info/essentials-banner";
 import { BackLink } from "@/components/knowledge/back-link";
+import { QuizLink } from "@/components/knowledge/quiz-link";
 import { placesKey } from "@/lib/places/google";
 
 export const metadata = { title: "Locations, hours & contacts" };
@@ -18,7 +19,7 @@ export default async function LocationsPage() {
   return (
     <>
       <BackLink />
-      <PageHeader title="Locations, hours & contacts" description="Where to find you, when you are open and how to reach you. Your chat assistant and your posts use these." />
+      <PageHeader title="Locations, hours & contacts" description="Where to find you, when you are open and how to reach you. Your chat assistant and your posts use these." action={<QuizLink round="find" />} />
       <EssentialsBanner knowledge={business.knowledge} href="#brand-knowledge" />
       <BrandSection step="knowledge" initial={initialValues(business)} context={context} />
     </>

@@ -41,6 +41,7 @@ import {
   type InterviewQuestion,
   type InterviewStep,
   type MarketingProfile,
+  type StepTopic,
   type VoiceSummary,
 } from "./interview";
 import { readProfile } from "./profile";
@@ -255,6 +256,19 @@ export async function approveProfile(businessId: string, summary: VoiceSummary):
     prisma.business.update({ where: { id: businessId }, data: { marketingProfile: profile as unknown as Prisma.InputJsonValue } }),
     prisma.marketingInterview.update({ where: { id: row.id }, data: { status: "approved", summary: summary as Prisma.InputJsonValue } }),
   ]);
+}
+
+/**
+ * The voice picked in the Business info quiz (docs/QUIZ_MODE.md) becomes the brand voice, with or without an
+ * interview. Its this-or-that answers replace the stored answers of the same topics; the others stay.
+ */
+export async function saveQuizVoice(businessId: string, summary: VoiceSummary, answers: { topic: StepTopic; answer: string }[]): Promise<void> {
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { marketingProfile: true } });
+  const current = readMarketingProfile(business?.marketingProfile);
+  const topics = new Set(answers.map((a) => a.topic));
+  const kept = (current?.answers ?? []).filter((a) => !topics.has(a.topic) && !(a.topic === "followup" && a.answer.startsWith("Post length:")));
+  const profile: MarketingProfile = { ...summary, answers: [...kept, ...answers].slice(0, MAX_QUESTIONS), approvedAt: new Date().toISOString() };
+  await prisma.business.update({ where: { id: businessId }, data: { marketingProfile: profile as unknown as Prisma.InputJsonValue } });
 }
 
 /** Edits the approved profile in place (voice, rules, samples) without a new interview. */

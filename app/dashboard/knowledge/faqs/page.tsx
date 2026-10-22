@@ -1,6 +1,7 @@
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { BackLink } from "@/components/knowledge/back-link";
+import { QuizLink } from "@/components/knowledge/quiz-link";
 import { FaqEditor, PoliciesForm } from "@/components/knowledge/faq-editor";
 import { readPolicies } from "@/lib/knowledge/policies";
 import { listFaqs } from "@/lib/knowledge/records";
@@ -14,7 +15,11 @@ export default async function FaqsPage() {
   return (
     <>
       <BackLink />
-      <PageHeader title="FAQs & policies" description="Answers to what customers ask, and your rules for delivery, returns, payment and bookings. Your website chat and your posts use them." />
+      <PageHeader
+        title="FAQs & policies"
+        description="Answers to what customers ask, and your rules for delivery, returns, payment and bookings. Your website chat and your posts use them."
+        action={can(role, "settings") ? <QuizLink round="rules" /> : undefined}
+      />
       <FaqEditor faqs={faqs.map((f) => ({ id: f.id, question: f.question, answer: f.answer }))} canEdit={can(role, "settings")} />
       <PoliciesForm initial={readPolicies(business.policies)} canEdit={can(role, "settings")} />
     </>

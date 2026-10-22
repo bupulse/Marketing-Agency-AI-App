@@ -5,6 +5,7 @@ import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { BackLink } from "@/components/knowledge/back-link";
+import { QuizLink } from "@/components/knowledge/quiz-link";
 import { ProductGrid } from "@/components/knowledge/product-grid";
 import { Button, GlassCard, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -62,7 +63,17 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       <PageHeader
         title="Products & services"
         description="Everything you sell. Each one gets its own photo album, and BuPulse writes posts and designs from its details."
-        action={total > 0 ? <div className="flex flex-wrap gap-2">{importButtons}{newButton}</div> : undefined}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <QuizLink round="sell" />
+            {total > 0 && (
+              <>
+                {importButtons}
+                {newButton}
+              </>
+            )}
+          </div>
+        }
       />
       {total === 0 ? (
         <EmptyState

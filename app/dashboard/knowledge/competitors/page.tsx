@@ -2,6 +2,7 @@ import { featureGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { BackLink } from "@/components/knowledge/back-link";
+import { QuizLink } from "@/components/knowledge/quiz-link";
 import { CompetitorEditor } from "@/components/knowledge/competitor-editor";
 import { competitorFormValues, readPositioning } from "@/lib/knowledge/competitors";
 import { listCompetitors } from "@/lib/knowledge/records";
@@ -18,7 +19,7 @@ export default async function CompetitorsPage() {
   return (
     <>
       <BackLink />
-      <PageHeader title="Competitors & what makes you different" description="Why customers choose you. BuPulse leads with your differences in every post." />
+      <PageHeader title="Competitors & what makes you different" description="Why customers choose you. BuPulse leads with your differences in every post." action={can(role, "content") ? <QuizLink round="why" /> : undefined} />
       <CompetitorEditor
         competitors={competitors.map((c) => ({ id: c.id, values: competitorFormValues(c) }))}
         differentiators={positioning.differentiators}
