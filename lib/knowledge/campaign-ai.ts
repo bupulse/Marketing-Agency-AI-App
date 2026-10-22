@@ -94,6 +94,7 @@ export async function suggestOwnCampaign(actor: { userId: string; businessId: st
       "THE CAMPAIGN SO FAR (JSON; the owner's line is the most important):",
       JSON.stringify({ kind: input.type, line: input.line }),
       "Write the campaign. Deals: only with numbers from the owner's line or the product prices above, else an empty list.",
+      "When the owner's line has a price or a deal, say it in the description in the owner's words.",
     ].join("\n");
     const result = await withLedger(
       { userId: actor.userId, businessId: actor.businessId, feature: CAMPAIGN_QUIZ_AI_FEATURE },
