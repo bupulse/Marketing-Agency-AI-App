@@ -1321,6 +1321,8 @@ function PhotoQuestion({ target, head, a, set, media }: { target: PhotoTarget; h
             onOpenChange={setPicking}
             multiple
             videos
+            // Uploads and imports made inside the picker go into this product's album too (linking again is harmless).
+            saveTo={destination}
             max={Math.max(room, 1)}
             title={`Photos of ${target.name}`}
             confirmLabel={(n) => `Add ${n || ""} ${n === 1 ? "photo" : "photos"}`}

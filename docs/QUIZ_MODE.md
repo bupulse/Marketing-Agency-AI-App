@@ -127,8 +127,8 @@ product (a stored product without a photo by its id, a new one by its name, `pho
 the products are saved, and the round keeps its length. The save of What you sell returns the new products' ids, which
 the questions then use. Each screen is the album card's own tools (components/knowledge/album-card.tsx): "Upload from
 your phone" (`useGalleryUpload`, `UPLOAD_ACCEPT`: photos and videos), "From your photos" (`MediaPicker`, videos too) and
-the gallery's Import menu (`ImportMenu`, Google Drive and Dropbox when their keys are set; "From a link" comes with the
-media-link branch). Uploads and imports go straight into the product's album (`product:<id>`) and show on the screen;
+the gallery's Import menu (`ImportMenu`: From a link, and Google Drive and Dropbox when their keys are set). The picker
+saves its own uploads and imports there too (`saveTo`). Uploads and imports go straight into the product's album (`product:<id>`) and show on the screen;
 gallery picks are linked when the round saves. The round's save (one request) links the picks and makes the quiz's
 drafts that now have a photo active. Next waits while an upload or import runs.
 
