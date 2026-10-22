@@ -14,6 +14,17 @@ export function typingInField(e: KeyboardEvent): boolean {
   return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 }
 
+/**
+ * Enter goes to the next question, also from a one-line text field (the year, a price, a name). Not from a text area
+ * or a select, and not when the field used the Enter itself (Chips' "Add your own" adds the chip and stops it).
+ */
+export function enterMeansNext(e: KeyboardEvent): boolean {
+  if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented || e.isComposing) return false;
+  if (!typingInField(e)) return true;
+  const el = e.target as HTMLElement;
+  return el.tagName === "INPUT" && ["text", "number", "tel", "email", "url", "search", "date"].includes((el as HTMLInputElement).type);
+}
+
 type Primary = { label?: string; onClick: () => void; disabled?: boolean; busy?: boolean };
 
 /**
@@ -41,7 +52,7 @@ export function QuizFrame({
   useEffect(() => {
     if (!primary || primary.disabled || primary.busy) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !typingInField(e)) {
+      if (enterMeansNext(e)) {
         e.preventDefault();
         primary.onClick();
       }
@@ -175,7 +186,7 @@ export function Confetti({ pieces = 28 }: { pieces?: number }) {
 export function RoundDone({ round, next, points, saved, onContinue }: { round: QuizRound; next: QuizRound | null; points: number; saved?: string; onContinue: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !typingInField(e)) {
+      if (enterMeansNext(e)) {
         e.preventDefault();
         onContinue();
       }
