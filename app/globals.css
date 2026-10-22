@@ -254,6 +254,18 @@ body {
     transform: scaleX(0);
   }
 }
+/* Quiz mode: confetti falling across the "round done" card (components/quiz/frame.tsx). */
+@keyframes bp-confetti {
+  0% {
+    opacity: 1;
+    translate: 0 0;
+  }
+  100% {
+    opacity: 0;
+    translate: 0 520px;
+    rotate: 540deg;
+  }
+}
 @keyframes bp-pop {
   from {
     opacity: 0;
