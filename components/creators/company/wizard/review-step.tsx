@@ -28,7 +28,7 @@ export function stepLines(step: WizardStepId, a: WizardAnswers, f: SummaryFacts)
     case "idea":
       return [
         a.name,
-        a.idea ? `“${a.idea}”` : "",
+        a.idea && a.idea.trim().toLowerCase() !== a.name.trim().toLowerCase() ? `“${a.idea}”` : "",
         CAMPAIGN_KINDS.find((k) => k.value === a.kind)?.label ?? "",
         a.productIds.length ? `Products: ${list(a.productIds.map((id) => f.products.find((p) => p.id === id)?.label ?? "").filter(Boolean))}` : "",
         a.knowledgeCampaignId ? `Promotes: ${f.knowledgeCampaigns.find((c) => c.id === a.knowledgeCampaignId)?.label ?? "a Business info campaign"}` : "",

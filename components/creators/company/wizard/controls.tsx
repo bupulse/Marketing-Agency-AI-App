@@ -82,7 +82,7 @@ export const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((
 /** A two-or-more-way switch (one picked). */
 export function Segmented<T extends string>({ options, value, onChange, label, disabled }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void; label: string; disabled?: boolean }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full flex-wrap gap-1 rounded-full border border-line bg-soft p-1">
+    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full gap-1 overflow-x-auto rounded-full border border-line bg-soft p-1">
       {options.map((o) => (
         <button
           key={o.value}
@@ -91,7 +91,7 @@ export function Segmented<T extends string>({ options, value, onChange, label, d
           aria-checked={value === o.value}
           disabled={disabled}
           onClick={() => onChange(o.value)}
-          className={cn("min-h-11 cursor-pointer rounded-full px-4 text-[14px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60", value === o.value ? "bg-brand-gradient text-white shadow-glow" : "text-muted hover:text-text")}
+          className={cn("min-h-11 shrink-0 cursor-pointer rounded-full px-3 text-[14px] font-semibold whitespace-nowrap transition-colors sm:px-4 disabled:cursor-not-allowed disabled:opacity-60", value === o.value ? "bg-brand-gradient text-white shadow-glow" : "text-muted hover:text-text")}
         >
           {o.label}
         </button>
@@ -143,6 +143,8 @@ export function MoneyInput({ currency, value, onChange, placeholder, label, disa
           onChange(d ? Number(d) : null);
         }}
         className="min-w-0 flex-1 bg-transparent py-3 text-[15px] tabular-nums outline-none placeholder:text-muted/80 disabled:cursor-not-allowed"
+        // The box around it shows the focus (the global :focus-visible outline would draw a second one inside).
+        style={{ outline: "none" }}
       />
       {suffix && <span className="shrink-0 text-[13px] text-muted">{suffix}</span>}
     </div>
@@ -185,6 +187,7 @@ export function TagInput({ values, onChange, placeholder, label, suggestions = [
           }}
           onBlur={() => text.trim() && add(text)}
           className="min-h-9 min-w-32 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted/80"
+          style={{ outline: "none" }}
         />
       </div>
       {left.length > 0 && values.length < max && (

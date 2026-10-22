@@ -226,7 +226,7 @@ export function PayStep({ a, set, o }: StepProps) {
 
       {showViews && (
         <Question label="Pay per views" hint={`Creators earn this for every ${views(per)} their posts make.`} id="q-rate">
-          <Segmented label="For every" value={String(per) as `${(typeof RATE_VIEWS)[number]}`} onChange={(v) => setRules({ rateViews: Number(v) as (typeof RATE_VIEWS)[number] })} options={RATE_VIEWS.map((v) => ({ value: String(v) as `${(typeof RATE_VIEWS)[number]}`, label: `${short(v)} views` }))} />
+          <Segmented label="Views the price is for" value={String(per) as `${(typeof RATE_VIEWS)[number]}`} onChange={(v) => setRules({ rateViews: Number(v) as (typeof RATE_VIEWS)[number] })} options={RATE_VIEWS.map((v) => ({ value: String(v) as `${(typeof RATE_VIEWS)[number]}`, label: short(v) }))} />
           <MoneyInput label={`Price for every ${views(per)}`} currency={a.currency} value={rules.ratePerThousand} onChange={(ratePerThousand) => setRules({ ratePerThousand, rateViews: per })} placeholder={suggestedRate(a.currency, per).toLocaleString("en-US")} invalid={level === "LOW" || level === "TOO_HIGH"} suffix={`per ${short(per)} views`} />
           <div className="flex flex-col gap-1.5">
             <div className="grid grid-cols-4 gap-1" aria-hidden>

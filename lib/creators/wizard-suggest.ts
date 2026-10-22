@@ -96,14 +96,27 @@ const sameCase = (list: readonly string[], v: unknown) => (typeof v === "string"
 const picks = (list: readonly string[], v: unknown, max: number) => [...new Set((Array.isArray(v) ? v : []).map((x) => sameCase(list, x)).filter((x): x is string => Boolean(x)))].slice(0, max);
 const lines = (v: unknown, max: number) => [...new Set((Array.isArray(v) ? v : []).map((x) => clean(x, 160)).filter((x) => x.length >= 2))].slice(0, max);
 
-/** A hashtag of letters and numbers ("#LeafJuice"), or null. */
+const COMPANY_WORDS = /^(ltd|limited|group|co|company|inc|plc|sarl|llc|business|enterprises?|holdings?|rwanda)$/i;
+const SMALL_WORDS = /^(a|an|the|of|to|our|your|and|for|in|on|at|with|from|where|who|get|people|show|film|new|this|that|is|it|its|we|us)$/i;
+
+/** The name people say: "LEAF Business GROUP LTD" → "LEAF" (the words a registered name adds are left out). */
+export function shortBusinessName(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const kept = words.filter((w) => !COMPANY_WORDS.test(w.replace(/[.,]/g, "")));
+  return (kept.length ? kept : words).slice(0, 3).join(" ");
+}
+
+/** A short hashtag of letters and numbers ("#MilkComes", "#LEAFChallenge"): at most 3 words, small words left out. */
 export function hashtagOf(text: string): string | null {
-  const body = text
+  const words = text
     .replace(/^#/, "")
     .normalize("NFKD")
     .replace(/[^\p{L}\p{N}\s]/gu, "")
     .split(/\s+/)
-    .filter(Boolean)
+    .filter(Boolean);
+  const kept = words.filter((w) => !SMALL_WORDS.test(w) && !COMPANY_WORDS.test(w));
+  const body = (kept.length ? kept : words)
+    .slice(0, 3)
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join("")
     .slice(0, 30);
@@ -312,12 +325,12 @@ export function templateSuggestion(ctx: SuggestContext): CampaignSuggestion {
   const kind = ctx.kind ?? "OTHER";
   const t = TEMPLATES[kind];
   const product = ctx.productNames[0] || (kind === "EVENT" ? "our event" : "our products");
-  const business = ctx.businessName || "us";
+  const business = shortBusinessName(ctx.businessName) || "us";
   const niche = NICHE_OF.find(([re]) => ctx.industry && re.test(ctx.industry))?.[1] ?? "Lifestyle";
   const rwanda = /rwanda|^rw$/i.test(ctx.country ?? "");
   const language = LANGUAGES.find((l) => l.toLowerCase() === (ctx.contentLanguage ?? "").toLowerCase());
   const languages = [...new Set([...(rwanda ? ["Kinyarwanda"] : []), language ?? "English"])].slice(0, 2);
-  const mentions = [handleMention(ctx.instagramHandle), hashtagOf(ctx.name || ctx.businessName)].filter((m): m is string => Boolean(m));
+  const mentions = [handleMention(ctx.instagramHandle), hashtagOf(`${business}${kind === "CHALLENGE" ? " Challenge" : ""}`)].filter((m): m is string => Boolean(m));
   return {
     name: ctx.name || nameFromIdea(ctx.idea) || `${business} creators`.slice(0, 80),
     kind,

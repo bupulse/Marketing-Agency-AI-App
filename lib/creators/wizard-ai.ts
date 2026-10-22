@@ -139,6 +139,12 @@ function promptFor(ctx: SuggestContext, facts: unknown, answers: AnswersSoFar, s
   ].join("\n");
 }
 
+/** The text AI has its key (AI_TEXT_PROVIDER and its key): without one, the templates answer and nothing is logged. */
+function aiConfigured(): boolean {
+  const choice = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
+  return choice === "claude" ? Boolean(process.env.ANTHROPIC_API_KEY) : choice === "gemini" ? Boolean(process.env.GEMINI_API_KEY) : false;
+}
+
 /** AI calls the company made in the last 24 hours (failed ones too: they may have been billed). */
 function callsToday(businessId: string, now = new Date()) {
   return prisma.aiCall.count({ where: { businessId, feature: WIZARD_AI_FEATURE, createdAt: { gte: new Date(now.getTime() - DAY_MS) } } });
@@ -151,6 +157,7 @@ function callsToday(businessId: string, now = new Date()) {
 export async function suggestCampaign(actor: CampaignActor, input: { step: WizardStepId | "all"; answers: AnswersSoFar; tiktokReady: boolean }): Promise<CampaignSuggestion> {
   const { ctx, facts } = await loadContext(actor, input.answers, input.tiktokReady);
   const fallback = templateSuggestion(ctx);
+  if (!aiConfigured()) return fallback;
   try {
     if ((await callsToday(actor.businessId)) >= MAX_WIZARD_AI_CALLS_PER_DAY) return fallback;
     await rateLimit(`creatorWizardAi:${actor.businessId}`, RATE);

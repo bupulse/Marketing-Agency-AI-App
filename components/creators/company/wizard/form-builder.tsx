@@ -42,7 +42,7 @@ export function FormStep({ a, set, o, suggestion }: StepProps) {
   const presets = PRESET_FIELDS.filter((f) => !has(f));
 
   return (
-    <div className="grid gap-7 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
+    <div className="grid gap-7 2xl:grid-cols-[minmax(0,1fr)_300px] 2xl:items-start">
       <div className="flex min-w-0 flex-col gap-7">
         <Field label="A line at the top (optional)" hint="Under your logo, before the questions.">
           <Input value={form.intro ?? ""} maxLength={500} onChange={(e) => setForm({ intro: e.target.value || null })} placeholder="Love our juice? Tell us about you and your accounts." />
@@ -95,17 +95,17 @@ export function FormStep({ a, set, o, suggestion }: StepProps) {
           )}
         </Question>
 
-        <button type="button" aria-expanded={preview} onClick={() => setPreview(!preview)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 self-start rounded-full border border-line px-4 text-[14px] font-semibold hover:bg-soft xl:hidden">
+        <button type="button" aria-expanded={preview} onClick={() => setPreview(!preview)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 self-start rounded-full border border-line px-4 text-[14px] font-semibold hover:bg-soft 2xl:hidden">
           <Smartphone aria-hidden className="size-4" /> {preview ? "Hide the preview" : "See it on a phone"}
         </button>
         {preview && (
-          <div className="xl:hidden">
+          <div className="2xl:hidden">
             <PhonePreview form={form} brand={o.brand} name={a.name} />
           </div>
         )}
       </div>
 
-      <div className="hidden xl:sticky xl:top-4 xl:block">
+      <div className="hidden 2xl:sticky 2xl:top-4 2xl:block">
         <PhonePreview form={form} brand={o.brand} name={a.name} />
       </div>
 

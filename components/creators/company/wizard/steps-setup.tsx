@@ -13,7 +13,7 @@ import { searchPlaces } from "@/lib/creators/places";
 import { FOLLOWER_STEPS, LANGUAGES, NICHES } from "@/lib/creators/requirements";
 import { BRIEF_EVERY, CAMPAIGN_GOALS, CAMPAIGN_KINDS, POST_FORMATS } from "@/lib/creators/wizard";
 import { MAX_IDEA, REPEAT_OF, type TaskMedia } from "@/lib/creators/wizard-steps";
-import { hashtagOf } from "@/lib/creators/wizard-suggest";
+import { hashtagOf, shortBusinessName } from "@/lib/creators/wizard-suggest";
 import { addDaysYmd } from "@/lib/demo/slots";
 import type { Network } from "@/lib/social/types";
 import { ChipGroup, ChoiceCards, NumberSlider, Question, SearchPicker, Segmented, Stepper, StopSlider, TagInput, toggle } from "./controls";
@@ -115,7 +115,7 @@ const ICONS: readonly string[] = ["instagram", "facebook", "tiktok", "youtube", 
 const asMention = (v: string) => (/^[@#]|^https?:\/\//i.test(v) ? v : (hashtagOf(v) ?? v));
 
 export function WhereStep({ a, set, o }: StepProps) {
-  const suggestions = [o.handle, hashtagOf(a.name)].filter((m): m is string => Boolean(m));
+  const suggestions = [...new Set([o.handle, hashtagOf(shortBusinessName(o.brand.name)), hashtagOf(a.name)].filter((m): m is string => Boolean(m)))];
   return (
     <div className="flex flex-col gap-7">
       <Question label="Networks" hint="BuPulse counts the views on these. Instagram must be a professional account and Facebook a Page." id="q-networks">

@@ -110,7 +110,7 @@ describe("step 1 makes the draft", () => {
   it("fills every later step from the suggestion, from next Monday", async () => {
     await createDraft(OWNER, idea(), suggestion({ name: "Mango Madness", platforms: ["tiktok", "instagram"] }), { tiktokReady: false });
     const data = h.prisma.creatorCampaign.create.mock.calls[0][0].data;
-    expect(data).toMatchObject({ name: "Mango Madness", idea: "Film our new juice", kind: "CHALLENGE", setupStep: 2, goal: "VIEWS", platforms: ["instagram"], formats: ["REEL"], mentions: ["@leafjuice", "#LEAF"], briefEvery: "WEEK", currency: "RWF", startsOn: new Date("2026-10-26"), endsOn: new Date("2026-11-24") });
+    expect(data).toMatchObject({ name: "Mango Madness", idea: "Film our new juice", kind: "CHALLENGE", setupStep: 2, goal: "VIEWS", platforms: ["instagram"], formats: ["REEL"], mentions: ["@leafjuice", "#LEAFChallenge"], briefEvery: "WEEK", currency: "RWF", startsOn: new Date("2026-10-26"), endsOn: new Date("2026-11-24") });
     expect(data.brief).toMatch(/LEAF challenge/);
     expect(data.payRules).toEqual({ ratePerThousand: 1_500, rateViews: 1_000, feePerPost: null, milestones: [], capPerPost: null, capPerCreator: null });
     expect(data.requirements).toMatchObject({ niches: ["Food and drinks"], locations: ["Kigali"], creatorsWanted: 5 });

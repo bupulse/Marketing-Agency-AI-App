@@ -21,7 +21,7 @@ import {
   tasksMatchSpans,
   type WizardAnswers,
 } from "@/lib/creators/wizard-steps";
-import { handleMention, hashtagOf, sanitizeSuggestion, stepFromSuggestion, templateSuggestion, type SuggestContext } from "@/lib/creators/wizard-suggest";
+import { handleMention, hashtagOf, sanitizeSuggestion, shortBusinessName, stepFromSuggestion, templateSuggestion, type SuggestContext } from "@/lib/creators/wizard-suggest";
 
 // The company side of the campaign wizard (docs/CREATOR_CAMPAIGN_WIZARD.md): each step's check, the tasks made from
 // step 5, pay helpers, folder names, the go-live list, and the suggestions (templates and the AI's answer made safe).
@@ -258,5 +258,7 @@ describe("suggestions", () => {
     expect(handleMention("https://instagram.com/leaf.juice/")).toBe("@leaf.juice");
     expect(handleMention("not a handle!")).toBeNull();
     expect(hashtagOf("Kigali juice week")).toBe("#KigaliJuiceWeek");
+    expect(hashtagOf("Show where our milk comes from")).toBe("#MilkComes");
+    expect(shortBusinessName("LEAF Business GROUP LTD")).toBe("LEAF");
   });
 });
