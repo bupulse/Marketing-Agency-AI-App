@@ -492,10 +492,20 @@ describe("to 100%: the new questions", () => {
     ];
     const photo = (id: string) => ({ id, url: `https://example.test/${id}.jpg`, kind: "photo" });
     const a = { added: { "n-cake": [photo("m1")] }, picked: { "p-p1": [photo("m2"), photo("m2")] } };
-    // Every quiz draft is sent: the server activates the ones with a photo, also one added outside the quiz.
-    expect(photosSaveFrom(targets, a, all)).toEqual({ links: [{ productId: "p1", assetIds: ["m2"] }], activate: ["p9", "p10"] });
+    // Every quiz draft of this visit is sent, and a stored product given a photo here (a draft from an earlier visit):
+    // the server activates the drafts among them that have a photo.
+    expect(photosSaveFrom(targets, a, all)).toEqual({ links: [{ productId: "p1", assetIds: ["m2"] }], activate: ["p1", "p9", "p10"] });
     // Skipped: the picks are not linked; an upload is in the album already.
     expect(photosSaveFrom(targets, a, none)).toEqual({ links: [], activate: ["p9", "p10"] });
+  });
+
+  it("activates a stored draft from an earlier quiz visit that gets an upload or import in this round", () => {
+    const targets: PhotoTarget[] = [
+      { key: "p-p1", name: "Classic Manicure", productId: "p1", isNew: false },
+      { key: "p-p2", name: "Pedicure", productId: "p2", isNew: false },
+    ];
+    const a = { added: { "p-p1": [{ id: "m1", url: "https://example.test/m1.mp4", kind: "video" }] }, picked: {} };
+    expect(photosSaveFrom(targets, a, all).activate).toEqual(["p1"]);
   });
 
   it("saves the logo and colours over what is stored, and nothing when unchanged", () => {
