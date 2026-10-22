@@ -75,6 +75,44 @@ audience, products, and website. A template answers when the AI is not available
 The finish screen shows the score ring with the overall Business info %, what got better ("Your posts now know your
 prices, your customers and your voice"), and two buttons: "Make my first posts" and "Back to Business info".
 
+#### What was built (Business info quiz)
+
+| Part | File |
+| --- | --- |
+| The page: loads every stored value, leaves out the rounds the role or plan cannot edit (named under the quiz with a lock), `?round=` starts at a round | app/dashboard/knowledge/quiz/page.tsx |
+| The quiz: the AI wait, the 8 rounds, the save at the end of each round, the errors on the question, the finish screen | components/knowledge/business-quiz.tsx |
+| The rounds, the questions, the first answers (stored, else the guess, tagged "Our guess"), and each round's answers mapped to its action's input | lib/knowledge/quiz-map.ts |
+| The guesses: the AI's schema, the sanitiser, the template per industry (food, beauty, fashion, tech, or general) | lib/knowledge/quiz-draft.ts |
+| The one AI call, `draftBusinessQuiz` | lib/knowledge/quiz-ai.ts |
+| `draftQuiz` (the guesses) and `quizScore` (the overall % after saving) | app/dashboard/knowledge/quiz/actions.ts |
+| The entry card on Business info ("Start the quiz" / "Continue" at the first incomplete round / "Play again") and "Do it as a quiz" in each section's header | app/dashboard/knowledge/page.tsx, components/knowledge/quiz-link.tsx |
+| Tests | tests/quiz/business-map.test.ts, business-draft.test.ts, business-ai.test.ts |
+
+**The AI.** One call when the quiz opens, on the cheap text model, through the cost ledger as feature `knowledgeQuiz`
+(so the admin switch and the company's allowance apply), with a rate limit (8 an hour) and a daily cap (20 a day) per
+company. Plans without AI writing (the `content` feature) get the template with no call. The owner's data is fenced in
+the prompt as data, never instructions. What comes back must pass a strict schema (otherwise the template is used).
+Then every line is cleaned and clipped to the limits the actions check, and **dropped when it carries a number or a
+promise ("free", "discount", "guarantee", "%") that is not in the business data**. Every list is topped up from the
+template. The call gives up after 22 seconds. The page starts with the template after 25 seconds, or at once with
+"Don't wait, start now" (shown after 6 seconds). A draft from the AI is kept in sessionStorage for the tab, so a reload
+does not pay again.
+
+**Saving.** Each round saves when its last question is passed (Next or Skip), through the section's own actions. A
+skipped question, an empty text or an empty list keeps the stored value. Products, competitors and FAQs that already
+exist (matched by name or question) are never created twice. Nothing is deleted.
+
+| Round | Saved with | Notes |
+| --- | --- | --- |
+| 🏠 You | `saveProfile` | The whole stored profile is sent, with the answers on top. A sign-up description too short for the check is filled from "what you do". |
+| 🛍️ What you sell | `createProduct` | One question per new product (up to 6). Saved as drafts (no photos yet). A price, or "Ask for price" (on request); never guessed. |
+| 👥 Your customers | `updatePersona` / `createPersona` | The questions after the cards describe the first card picked. A second new card is saved as guessed. |
+| ⭐ Why you | `createCompetitor`, `savePositioning` | |
+| 📋 Rules | `savePolicies`, `createFaq` | Warranty and payment notes are kept. |
+| 📍 Find us | `saveKnowledge` (the Locations page's save) | The whole stored card is sent, with the hours preset, the first phone row and the head office address on top. Skipped or unchanged: no save. |
+| 🎙️ Your voice | `approveVoice(summary, "quiz", answers)` | A new `quiz` mode (lib/knowledge/interview-service.ts `saveQuizVoice`) approves the picked voice without an interview. The this-or-that answers become rules and are kept as the profile's answers. |
+| 💬 Love notes | `createReview` | Only Owners and Admins are asked about consent (the action enforces it too). |
+
 ### B. Own campaign quiz: `/dashboard/knowledge/campaigns/new?who=me`
 
 This replaces the long form as the default. `?form=1` opens the full form. There are 6 cards:

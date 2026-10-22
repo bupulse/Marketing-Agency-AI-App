@@ -2,6 +2,7 @@ import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { BackLink } from "@/components/knowledge/back-link";
+import { QuizLink } from "@/components/knowledge/quiz-link";
 import { MarketingInterview } from "@/components/knowledge/interview";
 import { getInterviewView } from "@/lib/knowledge/interview-service";
 
@@ -15,7 +16,7 @@ export default async function InterviewPage() {
   return (
     <>
       <BackLink />
-      <PageHeader title="Digital marketing profile" description="A short AI interview about how your brand should sound. The voice you approve is used for every post, plan and design text." />
+      <PageHeader title="Digital marketing profile" description="A short AI interview about how your brand should sound. The voice you approve is used for every post, plan and design text." action={<QuizLink round="voice" />} />
       <MarketingInterview view={view} />
     </>
   );
