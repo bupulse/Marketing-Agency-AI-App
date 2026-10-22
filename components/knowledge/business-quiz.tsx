@@ -1321,9 +1321,10 @@ function PhotoQuestion({ target, head, a, set, media }: { target: PhotoTarget; h
             onOpenChange={setPicking}
             multiple
             videos
+            saveTo={destination ?? undefined}
             max={Math.max(room, 1)}
-            title={`Photos of ${target.name}`}
-            confirmLabel={(n) => `Add ${n || ""} ${n === 1 ? "photo" : "photos"}`}
+            title={`Photos or videos of ${target.name}`}
+            confirmLabel={(n) => `Add ${n || ""}`.trim()}
             onPick={(picked) => {
               const have = a.photos.picked[target.key] ?? [];
               const add = picked.filter((p) => !shown.some((x) => x.id === p.id)).map((p) => ({ id: p.id, url: p.url, kind: p.mimeType.startsWith("video/") ? "video" : "photo" }));
