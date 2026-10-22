@@ -14,7 +14,7 @@ import { AGE_RANGES, type AgeRange, type Gender, type IncomeBand, type PersonaFo
 import type { PositioningInput } from "./competitors";
 import type { VoiceSummary } from "./interview";
 import { SUMMARY_LIMITS } from "./interview";
-import type { Policies, PaymentMethod } from "./policies";
+import { PAYMENT_LABEL, type Policies, type PaymentMethod } from "./policies";
 import { productInputSchema, type ProductInput, type ProductKindValue } from "./products";
 import type { CompanySize, ProfileFormValues, ProfileInput } from "./profile";
 import { POLICY_CHOICES, sameKey, type PersonaIdea, type PolicyKind, type ProductIdea, type QuizDraft, type VoiceOption } from "./quiz-draft";
@@ -55,7 +55,7 @@ export type QuizAnswers = {
   sell: { picked: string[]; details: Record<string, ProductAnswer> };
   customers: { picked: string[]; ageRange: AgeRange | ""; gender: Gender | ""; channels: string[]; needs: string[]; pains: string[]; triggers: string[] };
   why: { competitors: string[]; differentiators: string[]; statement: string };
-  rules: { payment: PaymentMethod[]; delivery: PolicyAnswer; returns: PolicyAnswer; booking: PolicyAnswer; faqs: { id: string; question: string; answer: string }[]; faqKept: string[] };
+  rules: { payment: PaymentMethod[]; delivery: PolicyAnswer; returns: PolicyAnswer; booking: PolicyAnswer; faqs: { id: string; question: string; answer: string }[]; faqKept: string[]; faqEdited?: string[] };
   find: { hours: HoursChoice | ""; custom: Schedule; phone: string; address: string };
   voice: { tone: "friendly" | "formal" | ""; emojis: "yes" | "no" | ""; length: "short" | "detailed" | ""; pick: string };
   love: { quote: string; customerName: string; source: ReviewSourceValue | ""; canPublish: boolean };
@@ -212,8 +212,11 @@ export function positioningFrom(stored: { differentiators: string[]; statement: 
 
 /** A policy question's answer: a common answer's tile (`choice`), "other" with the owner's words, or "" (none yet). */
 export type PolicyAnswer = { choice: string; text: string };
-/** Where the business is, for "We deliver in Kigali" (the area served, else nothing) and "across Rwanda". */
-export type Places = { city: string; country: string };
+/**
+ * Where the business is, for "We deliver in Kigali" (the area served, else nothing) and "across Rwanda", and the head
+ * office address for "You can pick up at …" (empty when not stored).
+ */
+export type Places = { city: string; country: string; address?: string };
 
 const CHOICE_TEXT: Record<PolicyKind, Record<string, (p: Places) => { label: string; sentence: string; emoji: string }>> = {
   delivery: {
@@ -265,10 +268,46 @@ export function policiesFrom(stored: Policies, a: QuizAnswers["rules"], given: G
   return changed ? next : null;
 }
 
-export function newFaqsFrom(storedQuestions: readonly string[], a: QuizAnswers["rules"], given: Given): { question: string; answer: string }[] {
+/** The policy a common question is about ("Do you deliver?" -> delivery), or null. */
+export function faqTopic(question: string): PolicyKind | "payment" | null {
+  if (/\bdeliver/i.test(question)) return "delivery";
+  if (/\b(return|refund|exchange)/i.test(question)) return "returns";
+  if (/\b(book|booking|appointment|reserv)/i.test(question)) return "booking";
+  if (/\b(pay|payment|mobile money|momo)\b/i.test(question)) return "payment";
+  return null;
+}
+
+/** The answer the round's own picks give to a question on that topic; null when nothing was picked for it. */
+export function tileAnswer(topic: PolicyKind | "payment", a: QuizAnswers["rules"], places: Places): string | null {
+  if (topic === "payment") {
+    const labels = a.payment.map((m) => PAYMENT_LABEL[m]);
+    return labels.length ? `You can pay by ${labels.length > 1 ? `${labels.slice(0, -1).join(", ")} or ${labels.at(-1)}` : labels[0]}.` : null;
+  }
+  const answer = a[topic];
+  if (topic === "delivery" && answer.choice === "pickup") return `No, we don't deliver. You can pick up at ${places.address?.trim() || "our place"}.`;
+  const text = policyText(topic, answer, places);
+  if (!text) return null;
+  return topic === "delivery" && answer.choice !== "other" ? `Yes. ${text}` : text;
+}
+
+/**
+ * The common questions as the round's picks answer them: a question about delivery, returns, booking or payment gets
+ * its answer from the tiles picked in the same round, so an idea never contradicts them ("No delivery, pick-up only"
+ * makes "Do you deliver?" answer "No, we don't deliver…"). A question the owner wrote or changed stays as it is.
+ */
+export function alignFaqs(a: QuizAnswers["rules"], places: Places): QuizAnswers["rules"]["faqs"] {
+  const edited = new Set(a.faqEdited ?? []);
+  return a.faqs.map((f) => {
+    const topic = edited.has(f.id) ? null : faqTopic(f.question);
+    const answer = topic ? tileAnswer(topic, a, places) : null;
+    return answer ? { ...f, answer } : f;
+  });
+}
+
+export function newFaqsFrom(storedQuestions: readonly string[], a: QuizAnswers["rules"], given: Given, places?: Places): { question: string; answer: string }[] {
   if (!given("rules.faqs")) return [];
   const have = new Set(storedQuestions.map(itemKey));
-  return a.faqs.flatMap((f) => {
+  return (places ? alignFaqs(a, places) : a.faqs).flatMap((f) => {
     const key = itemKey(f.question);
     if (!a.faqKept.includes(f.id) || !key || have.has(key)) return [];
     have.add(key);
@@ -583,6 +622,7 @@ export function initialAnswers(stored: QuizStored, draft: QuizDraft, opts: { lik
         booking: policy("booking", "rules.booking"),
         faqs,
         faqKept: faqs.slice(0, 3).map((f) => f.id),
+        faqEdited: [],
       },
       find: {
         hours: hours || "monSat",
