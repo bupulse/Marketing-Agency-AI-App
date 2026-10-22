@@ -2,15 +2,16 @@
 
 // The own campaign quiz (docs/QUIZ_MODE.md, "B. Own campaign quiz"): six cards instead of the long form. The kind, one
 // line and the products, the dates, the deal, the highlights, then the name and description BuPulse wrote. It saves
-// through the same createCampaign action and schema as the full form, so the campaign is the same record.
+// through the same createCampaign action and schema as the full form, so the campaign is the same record. Six cards
+// are short, so the rounds show as pills and points only: no "round done" screens, one celebration at the end.
 
 import { ArrowRight, CalendarDays, Gift, Sparkles, Tag, Zap } from "lucide-react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { createCampaign, suggestOwnCampaignAction } from "@/app/dashboard/knowledge/campaigns/actions";
-import { Chips, Confetti, GuessTag, KeepOrDrop, QuestionHead, QuizFrame, RoundDone, TextAnswer, Thinking, Tiles, useQuiz, type KeepItem, type TileOption } from "@/components/quiz";
+import { Chips, Confetti, GuessTag, KeepOrDrop, QuestionHead, QuizFrame, TextAnswer, Thinking, Tiles, useQuiz, type KeepItem, type TileOption } from "@/components/quiz";
 import { Button, Field, GlassCard, Input, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { campaignFromQuiz, datesForChip, lineIdeas, templateOwnSuggestion, WHEN_GUESS, whenChipsFor, type OwnQuizAnswers, type OwnSuggestion, type WhenChip } from "@/lib/knowledge/campaign-quiz";
+import { campaignFromQuiz, datesForChip, lineIdeas, productsNamedIn, templateOwnSuggestion, WHEN_GUESS, whenChipsFor, withDeal, type OwnQuizAnswers, type OwnSuggestion, type WhenChip } from "@/lib/knowledge/campaign-quiz";
 import { CAMPAIGN_LIMITS, CAMPAIGN_TYPE_LABEL, campaignInputSchema, formatDateRange, MAX_CAMPAIGN_PRODUCTS, MAX_HIGHLIGHTS, type CampaignTypeValue } from "@/lib/knowledge/campaigns";
 import { fieldErrorMap } from "@/lib/knowledge/products";
 import { POINTS, type QuizRound, type QuizStep } from "@/lib/quiz/flow";
@@ -56,7 +57,12 @@ export function OwnCampaignQuiz({ products, initialProductIds, today, businessNa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<{ id: string; name: string } | null>(null);
-  const touched = useRef({ when: false, deal: false, name: false, description: false, highlights: false });
+  const touched = useRef({ when: false, deal: false, name: false, highlights: false });
+  // The description BuPulse wrote says the deal picked on card 4 until the owner changes the words themselves.
+  const [ownDescription, setOwnDescription] = useState(false);
+  // Products picked because the line names them; a chip the owner took off stays off.
+  const [named, setNamed] = useState<string[]>([]);
+  const dropped = useRef<string[]>([]);
   const asked = useRef<string | null>(null);
   const nextId = useRef(0);
 
@@ -78,7 +84,8 @@ export function OwnCampaignQuiz({ products, initialProductIds, today, businessNa
   const shownChips = chips.filter((c, i) => i < 24 || a.productIds.includes(c.id));
   const picked = products.filter((p) => a.productIds.includes(p.id));
 
-  const input = campaignFromQuiz({ ...a, highlights: items.filter((i) => kept.includes(i.id)).map((i) => i.text) }, today);
+  const description = ownDescription ? a.description : withDeal(a.description, a.deal);
+  const input = campaignFromQuiz({ ...a, description, highlights: items.filter((i) => kept.includes(i.id)).map((i) => i.text) }, today);
   const check = campaignInputSchema.safeParse(input);
   const fieldErrors = check.success ? {} : fieldErrorMap(check.error);
   const dates = datesForChip(a.when, today, { startsOn: a.pickStartsOn, endsOn: a.pickEndsOn });
@@ -91,7 +98,7 @@ export function OwnCampaignQuiz({ products, initialProductIds, today, businessNa
       when: t.when || (cur.type === "EVENT" && s.when === "NONE") ? cur.when : s.when,
       deal: t.deal ? cur.deal : (s.deals[0] ?? ""),
       name: t.name ? cur.name : s.name,
-      description: t.description ? cur.description : s.description,
+      description: ownDescription ? cur.description : s.description,
     }));
     if (!t.highlights) {
       const list = s.highlights.map((text) => ({ id: `h${nextId.current++}`, text }));
@@ -110,6 +117,20 @@ export function OwnCampaignQuiz({ products, initialProductIds, today, businessNa
     const r = await suggestOwnCampaignAction({ type: a.type, line: a.line, productIds: a.productIds });
     setThinking(false);
     apply(r.ok ? r.suggestion : templateOwnSuggestion({ type: a.type, line: a.line, businessName, products: picked.map((p) => ({ name: p.name, price: p.price })) }));
+  }
+
+  /** The line, and the products it names picked with it ("Buy 2 Passion Juices" picks Passion Juice). */
+  function changeLine(line: string) {
+    const manual = a.productIds.filter((pid) => !named.includes(pid));
+    const now = productsNamedIn(line, products).filter((pid) => !dropped.current.includes(pid) && !manual.includes(pid));
+    setNamed(now);
+    set({ line, productIds: [...manual, ...now].slice(0, MAX_CAMPAIGN_PRODUCTS) });
+  }
+
+  function pickProducts(ids: string[]) {
+    dropped.current = [...new Set([...dropped.current, ...named.filter((pid) => !ids.includes(pid))])];
+    setNamed((list) => list.filter((pid) => ids.includes(pid)));
+    set({ productIds: ids });
   }
 
   function pickKind(type: CampaignTypeValue) {
@@ -146,21 +167,12 @@ export function OwnCampaignQuiz({ products, initialProductIds, today, businessNa
 
   const id = quiz.step?.id;
   const kicker = `${ROUNDS.find((r) => r.id === quiz.round)?.title ?? ""} · ${quiz.stepInRound} of ${quiz.stepsInRound}`;
-  const roundDone = quiz.roundDone ? ROUNDS.find((r) => r.id === quiz.roundDone) : null;
-  const primary = thinking || roundDone || quiz.finished ? null : id === "about" ? { onClick: () => void afterAbout() } : id === "final" ? { label: "Add campaign", onClick: () => void save(), busy: saving } : id === "when" ? { onClick: quiz.next, disabled: Boolean(fieldErrors.startsOn || fieldErrors.endsOn) } : { onClick: quiz.next };
+  const primary = thinking || quiz.finished ? null : id === "about" ? { onClick: () => void afterAbout() } : id === "final" ? { label: "Add campaign", onClick: () => void save(), busy: saving } : id === "when" ? { onClick: quiz.next, disabled: Boolean(fieldErrors.startsOn || fieldErrors.endsOn) } : { onClick: quiz.next };
 
   return (
     <QuizFrame rounds={ROUNDS} steps={STEPS} quiz={quiz} primary={primary} canSkip={id !== "kind" && id !== "about" && id !== "final"} fullForm={{ href: fullFormHref }}>
       {thinking ? (
         <Thinking lines={["Reading your idea…", picked.length ? `Looking at ${picked[0].name}…` : "Looking at your business…", "Writing a name and the highlights…"]} />
-      ) : roundDone ? (
-        <RoundDone
-          round={roundDone}
-          next={ROUNDS[ROUNDS.indexOf(roundDone) + 1] ?? null}
-          points={quiz.points}
-          saved={roundDone.id === "idea" ? (suggestion?.source === "ai" ? "BuPulse wrote ideas from your line. Keep them or change them." : "Here are some starting ideas. Change anything you like.") : "Nearly there. One last look and it's added."}
-          onContinue={quiz.continueRound}
-        />
       ) : id === "kind" ? (
         <>
           <QuestionHead kicker={kicker} title="What kind of campaign?" hint="Tap one. You can change it later." />
@@ -169,15 +181,16 @@ export function OwnCampaignQuiz({ products, initialProductIds, today, businessNa
       ) : id === "about" ? (
         <>
           <QuestionHead kicker={kicker} title="What's it about?" hint="One line is enough. Tap an idea or write your own, with the price or discount if there is one." />
-          <TextAnswer label="What the campaign is about" value={a.line} onChange={(line) => set({ line })} suggestions={lineIdeas(a.type, picked[0]?.name ?? null)} maxLength={300} placeholder="For example: 20% off all juices this weekend" />
+          <TextAnswer label="What the campaign is about" value={a.line} onChange={changeLine} suggestions={lineIdeas(a.type, picked[0]?.name ?? null)} maxLength={300} placeholder="For example: 20% off all juices this weekend" />
           {chips.length > 0 && (
             <div className="flex flex-col gap-2">
               <p className="text-[14px] font-semibold">Which products? <span className="font-normal text-muted">Optional</span></p>
               <Chips
                 label="Products in this campaign"
                 options={shownChips.map((c) => c.label)}
+                suggested={chips.filter((c) => named.includes(c.id)).map((c) => c.label)}
                 values={chips.filter((c) => a.productIds.includes(c.id)).map((c) => c.label)}
-                onChange={(labels) => set({ productIds: chips.filter((c) => labels.includes(c.label)).map((c) => c.id) })}
+                onChange={(labels) => pickProducts(chips.filter((c) => labels.includes(c.label)).map((c) => c.id))}
                 max={MAX_CAMPAIGN_PRODUCTS}
               />
             </div>
@@ -264,7 +277,15 @@ export function OwnCampaignQuiz({ products, initialProductIds, today, businessNa
               <Input value={a.name} maxLength={CAMPAIGN_LIMITS.name} onChange={(e) => set({ name: e.target.value }, "name")} placeholder="Give it a name" className="text-[18px] font-semibold" />
             </Field>
             <Field label="Description" error={fieldErrors.description}>
-              <Textarea rows={4} value={a.description} maxLength={CAMPAIGN_LIMITS.description} onChange={(e) => set({ description: e.target.value }, "description")} />
+              <Textarea
+                rows={4}
+                value={description}
+                maxLength={CAMPAIGN_LIMITS.description}
+                onChange={(e) => {
+                  setOwnDescription(true);
+                  set({ description: e.target.value });
+                }}
+              />
             </Field>
             <ul className="flex flex-col gap-1.5 text-[14px]">
               <Line icon={<CalendarDays aria-hidden className="size-4" />}>{dates.startsOn ? formatDateRange(dates.startsOn, dates.endsOn) : "No dates"}</Line>
@@ -275,7 +296,7 @@ export function OwnCampaignQuiz({ products, initialProductIds, today, businessNa
           </div>
         </>
       ) : null}
-      {error && !thinking && !roundDone && (
+      {error && !thinking && (
         <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-[14px] font-medium text-danger">
           {error}
         </p>

@@ -253,3 +253,48 @@ export function lineIdeas(type: CampaignTypeValue, product: string | null): stri
       return ["Our anniversary", "Meet the team behind us", "A big thank you to our customers"];
   }
 }
+
+// ---- Products named in the line, and the deal in the description ------------------------------------------------
+
+const wordsOf = (text: string) => text.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** The same word, or one is the other's simple plural ("juice"/"juices", "box"/"boxes", "berry"/"berries"). */
+function sameWord(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return long === `${short}s` || long === `${short}es` || (short.endsWith("y") && long === `${short.slice(0, -1)}ies`);
+}
+
+/** The ids of the products whose whole name is in the owner's line, any case, singular or plural ("Buy 2 Passion Juices"). */
+export function productsNamedIn(line: string, products: { id: string; name: string }[]): string[] {
+  const said = wordsOf(line);
+  return products
+    .filter((p) => {
+      const name = wordsOf(p.name);
+      if (!name.length || name.join("").length < 3) return false;
+      return said.some((_, i) => name.every((w, j) => said[i + j] !== undefined && sameWord(said[i + j], w)));
+    })
+    .map((p) => p.id);
+}
+
+/** True when the description already says the deal: its words in order, or every number and deal word of it. */
+export function dealMentioned(description: string, deal: string): boolean {
+  const d = wordsOf(deal).join(" ");
+  if (!d) return true;
+  const text = wordsOf(description).join(" ");
+  if (text.includes(d)) return true;
+  const numbers = numbersIn(deal);
+  const dealWords = (deal.match(DEAL_WORDS) ?? []).map((w) => w.toLowerCase());
+  if (!numbers.length && !dealWords.length) return false;
+  const have = new Set(numbersIn(description));
+  return numbers.every((n) => have.has(n)) && dealWords.every((w) => text.split(" ").includes(w));
+}
+
+/** The description with the deal said in it, when it is set and not said yet ("… The deal: Buy 2, get 1 free."). */
+export function withDeal(description: string, deal: string): string {
+  const d = deal.trim().replace(/[.!]+$/, "");
+  if (!d || dealMentioned(description, d)) return description;
+  const base = description.trim();
+  const line = `The deal: ${d}.`;
+  return (base ? `${base.replace(/([^.!?])$/, "$1.")} ${line}` : line).slice(0, CAMPAIGN_LIMITS.description);
+}

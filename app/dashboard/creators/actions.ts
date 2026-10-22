@@ -268,15 +268,19 @@ export async function createDraftAction(input: StepInput<"idea">) {
   });
 }
 
-/** Saves one step. Step 1 of a draft also fills the later steps still empty (the AI is asked only then). */
-export async function saveStepAction(campaignId: string, step: WizardStepId, input: unknown) {
+/**
+ * Saves one step. Step 1 of a draft also fills the later steps still empty (the AI is asked only then). `quiet` (quick
+ * mode, which moves on before the save ends) skips the refresh: it would render the page on screen again for nothing.
+ * The creators pages are dynamic, so they read the draft fresh on the next visit; going live or "Save as draft" refresh.
+ */
+export async function saveStepAction(campaignId: string, step: WizardStepId, input: unknown, opts: { quiet?: boolean } = {}) {
   return guarded(async () => {
     const actor = await manager();
     if (!isStepId(step)) throw new CreatorCampaignError("invalid", "That step does not exist.");
     const tiktokReady = Boolean(tiktokAuthConfig());
     const suggest = step === "idea" ? () => suggestCampaign(actor, { step: "all", answers: answersOf(input), tiktokReady }) : undefined;
     await saveStep(actor, id.parse(campaignId), step, input, { tiktokReady, suggest });
-    refresh();
+    if (opts?.quiet !== true) refresh();
     return {};
   });
 }

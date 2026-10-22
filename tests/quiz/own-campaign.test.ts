@@ -3,11 +3,14 @@ import {
   allowedFacts,
   campaignFromQuiz,
   datesForChip,
+  dealMentioned,
   numbersIn,
+  productsNamedIn,
   sanitizeOwnSuggestion,
   templateOwnSuggestion,
   usesOnlyFacts,
   whenChipsFor,
+  withDeal,
   type OwnQuizAnswers,
   type OwnSuggestContext,
 } from "@/lib/knowledge/campaign-quiz";
@@ -161,5 +164,53 @@ describe("the template (no AI)", () => {
       for (const text of [t.name, t.description, ...t.highlights]) expect(usesOnlyFacts(text, facts)).toBe(true);
       expect(campaignInputSchema.safeParse(campaignFromQuiz({ type, line: c.line, productIds: [], when: t.when, pickStartsOn: "", pickEndsOn: "", deal: "", highlights: t.highlights, name: t.name, description: t.description }, THURSDAY)).success).toBe(true);
     }
+  });
+});
+
+describe("products named in the line", () => {
+  const products = [
+    { id: "passion", name: "Passion Juice" },
+    { id: "mango", name: "Mango juice" },
+    { id: "berry", name: "Strawberry Smoothie" },
+    { id: "box", name: "Gift box" },
+    { id: "tea", name: "Tea" },
+  ];
+
+  it("are picked by their whole name, any case, singular or plural", () => {
+    expect(productsNamedIn("Buy 2 Passion Juices, get 1 free this weekend", products)).toEqual(["passion"]);
+    expect(productsNamedIn("passion juice and MANGO JUICE for everyone", products)).toEqual(["passion", "mango"]);
+    expect(productsNamedIn("Two strawberry smoothies for one", products)).toEqual(["berry"]);
+    expect(productsNamedIn("Our gift boxes are back", products)).toEqual(["box"]);
+    expect(productsNamedIn("Free tea on Fridays", products)).toEqual(["tea"]);
+  });
+
+  it("are not picked from part of a name or inside another word", () => {
+    expect(productsNamedIn("Passion fruit week", products)).toEqual([]);
+    expect(productsNamedIn("Our new team", products)).toEqual([]);
+    expect(productsNamedIn("", products)).toEqual([]);
+  });
+});
+
+describe("the deal in the description", () => {
+  const deal = "Buy 2 Passion Juices, get 1 free this weekend";
+
+  it("is added when the description does not say it", () => {
+    expect(withDeal("Fresh passion juice, made every morning.", deal)).toBe("Fresh passion juice, made every morning. The deal: Buy 2 Passion Juices, get 1 free this weekend.");
+    expect(withDeal("Come and try it", "20% off")).toBe("Come and try it. The deal: 20% off.");
+    expect(withDeal("", "20% off")).toBe("The deal: 20% off.");
+  });
+
+  it("is left alone when the description says it already, or there is no deal", () => {
+    expect(dealMentioned("This weekend: buy 2 passion juices, get 1 free this weekend!", deal)).toBe(true);
+    expect(dealMentioned("Get 1 free when you buy 2 juices.", deal)).toBe(true);
+    expect(withDeal("Get 1 free when you buy 2 juices.", deal)).toBe("Get 1 free when you buy 2 juices.");
+    expect(withDeal("Fresh juice.", "  ")).toBe("Fresh juice.");
+  });
+
+  it("passes the sanitiser, since the numbers and 'free' are the owner's", () => {
+    const c = ctx({ line: deal, products: [{ name: "Passion Juice", price: "2,500 RWF" }] });
+    const s = sanitizeOwnSuggestion({ name: "Passion weekend", description: "This weekend only: buy 2 Passion Juices and get 1 free.", when: "WEEKEND", deals: [deal], highlights: ["Fresh every morning"] }, c, templateOwnSuggestion(c));
+    expect(s.description).toBe("This weekend only: buy 2 Passion Juices and get 1 free.");
+    expect(s.deals).toEqual([deal]);
   });
 });

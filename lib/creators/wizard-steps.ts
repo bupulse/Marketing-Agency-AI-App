@@ -302,6 +302,29 @@ export function ideaExamples(industry: string | null | undefined): string[] {
   return hit ? hit[1] : DEFAULT_IDEAS;
 }
 
+const PRODUCT_IDEAS: [RegExp, ((p: string) => string)[]][] = [
+  [/food|restaurant|caf|juice|drink|bak|bar\b|coffee|kitchen|catering/i, [(p) => `Film yourself trying our ${p}`, (p) => `Your first sip or bite of our ${p} in 15 seconds`, (p) => `Show a friend tasting our ${p}`]],
+  [/fashion|cloth|shoe|boutique|tailor|wear/i, [(p) => `Style our ${p} three ways`, (p) => `Wear our ${p} on the streets of Kigali`, (p) => `Unbox your ${p} from our shop`]],
+  [/beauty|salon|hair|spa|cosmetic|barber|nail|skin/i, [(p) => `Try our ${p} for a week and tell us`, (p) => `Your before and after with our ${p}`, (p) => `Show how you use our ${p}`]],
+  [/tech|phone|electronic|software|app|computer/i, [(p) => `Unbox our ${p}`, (p) => `Three things you didn't know our ${p} does`, (p) => `Show how our ${p} saves you time`]],
+  [/school|education|training|course|academy|tutor/i, [(p) => `Tell people what you learned in our ${p}`, (p) => `A day in our ${p}`, (p) => `Invite friends to try our ${p}`]],
+  [/gym|fitness|sport|yoga|health/i, [(p) => `Film your workout with our ${p}`, (p) => `Take our 30-day challenge with our ${p}`, (p) => `Show your progress with our ${p}`]],
+  [/travel|tour|hotel|lodge|safari|resort/i, [(p) => `Show a weekend with our ${p}`, (p) => `Your best moment on our ${p}`, (p) => `Film the view from our ${p}`]],
+  [/farm|agri|seed|dairy/i, [(p) => `Show where our ${p} comes from`, (p) => `Cook a meal with our ${p}`, (p) => `Film yourself trying our ${p}`]],
+];
+const DEFAULT_PRODUCT_IDEAS = [(p: string) => `Film yourself trying our ${p}`, (p: string) => `Show why you love our ${p}`, (p: string) => `Unbox our ${p}`];
+
+/**
+ * Three lines the owner can tap on step 1, built from their products and industry ("Film yourself trying our Passion
+ * Juice"): one product per idea, in the order given. Without products, the industry's examples (ideaExamples).
+ */
+export function ideaExamplesFor(industry: string | null | undefined, products: string[]): string[] {
+  const names = products.map((p) => p.trim().replace(/\s+/g, " ")).filter((p) => p.length >= 2 && p.length <= 60);
+  if (!names.length) return ideaExamples(industry);
+  const ideas = PRODUCT_IDEAS.find(([re]) => industry && re.test(industry))?.[1] ?? DEFAULT_PRODUCT_IDEAS;
+  return ideas.map((idea, i) => idea(names[i % names.length]).slice(0, MAX_IDEA));
+}
+
 /** A Business info campaign's type as the wizard's kind. */
 export function kindFromKnowledgeType(type: string | null | undefined): CampaignKind | null {
   return type === "EVENT" ? "EVENT" : type === "LAUNCH" ? "LAUNCH" : type === "PROMOTION" ? "PRODUCT_REVIEW" : type ? "OTHER" : null;

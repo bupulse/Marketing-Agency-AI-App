@@ -20,7 +20,7 @@ import {
   withRate,
   withSize,
 } from "@/lib/creators/quick";
-import { checkStep, planTasks, type WizardAnswers } from "@/lib/creators/wizard-steps";
+import { checkStep, ideaExamples, ideaExamplesFor, MAX_IDEA, planTasks, type WizardAnswers } from "@/lib/creators/wizard-steps";
 import { stepFromSuggestion, templateSuggestion, type SuggestContext } from "@/lib/creators/wizard-suggest";
 import { SUGGEST_STEPS } from "@/lib/creators/wizard-suggest";
 
@@ -181,5 +181,20 @@ describe("the chips and tiles", () => {
     expect(sliderPay({ ratePerThousand: 1_500 })).toBe(true);
     expect(sliderPay({ feePerPost: 2_000 })).toBe(false);
     expect(budgetPresets("RWF")).toEqual([50_000, 100_000, 250_000]);
+  });
+});
+
+describe("card 1's idea examples", () => {
+  it("name the business's products, one per idea, in its industry's words", () => {
+    expect(ideaExamplesFor("Juice bar", ["Passion Juice"])).toEqual(["Film yourself trying our Passion Juice", "Your first sip or bite of our Passion Juice in 15 seconds", "Show a friend tasting our Passion Juice"]);
+    expect(ideaExamplesFor("Juice bar", ["Passion Juice", "Mango juice"]).map((i) => i.includes("Mango juice"))).toEqual([false, true, false]);
+    expect(ideaExamplesFor("Hair salon", ["Shea butter cream"])[0]).toBe("Try our Shea butter cream for a week and tell us");
+    expect(ideaExamplesFor(null, ["Sample product"])[0]).toBe("Film yourself trying our Sample product");
+  });
+
+  it("fall back to the industry's examples without a usable product name", () => {
+    expect(ideaExamplesFor("Juice bar", [])).toEqual(ideaExamples("Juice bar"));
+    expect(ideaExamplesFor("Juice bar", [" ", "x".repeat(80)])).toEqual(ideaExamples("Juice bar"));
+    for (const idea of ideaExamplesFor("Tech shop", ["Laptop"])) expect(idea.length).toBeLessThanOrEqual(MAX_IDEA);
   });
 });

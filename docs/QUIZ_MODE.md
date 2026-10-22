@@ -193,6 +193,14 @@ number in it is in the owner's line or a picked product's stored price, and deal
 "half price", "sale"…) only when the owner's line or a price has them. The template's deals come only from the line
 and the stored prices. After saving, a celebration offers "Make posts for it now" (the campaign's page).
 
+Owner feedback (22 October 2026), changed the same day:
+- Six cards are short, so there are no "round done" screens in the middle: the round pills and the points stay, and
+  the only celebration is "…is added!" at the end.
+- Card 2 picks a product's chip when the line names it (`productsNamedIn`: the whole name, any case, simple plurals,
+  so "Buy 2 Passion Juices" picks Passion Juice). A chip the owner takes off stays off.
+- When a deal is set, the description says it (`withDeal` adds "The deal: …" unless it is said already), until the
+  owner changes the description's words themselves. The AI is asked to say the owner's deal in the description too.
+
 ## Creator quick mode (built 22 October 2026)
 
 `/dashboard/creators/new` opens quick mode; `?detailed=1` opens step 1 of the 12-step wizard ("Detailed setup"). Both
@@ -220,3 +228,14 @@ Pure parts: `lib/creators/quick.ts` (`CARD_STEPS`, `cardInputs` built on the wiz
 the server plans them again when When changes, so a stale copy could overwrite them. The URL follows the card, so the
 server reads the draft again on each card (the Files card makes the campaign's Photos folders, as step 10 does, and
 Ready shows the server's go-live list). Tests: `tests/quiz/own-campaign.test.ts`, `tests/quiz/creator-quick.test.ts`.
+
+Owner feedback (22 October 2026), changed the same day:
+- **Instant cards.** Testers waited 8 to 10 seconds between cards: each save re-rendered the page (the action's
+  `revalidatePath` of the creators layout) and the URL change rendered it again (the test database is far from the
+  test server, about 250 ms a query). Now Next moves on at once and the card's steps save in the background, in order,
+  with `saveStepAction(…, { quiet: true })` (no re-render; the creators pages are dynamic, so they read the draft fresh
+  on the next visit). The URL changes with `history.replaceState`. A refused save brings the owner back to that card
+  with the problem. Only Files and Ready wait for the saves and read the draft from the server; "Change", "Go live"
+  and "Save as draft" wait for them too. Leaving the page while a save runs asks first.
+- **Idea examples from the products.** Card 1 (and the wizard's step 1) offer `ideaExamplesFor(industry, products)`:
+  "Film yourself trying our Passion Juice", one product per idea, the products picked first. No AI call.

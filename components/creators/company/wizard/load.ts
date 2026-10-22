@@ -8,7 +8,7 @@ import { logoUrls } from "@/lib/creators/logos";
 import { campaignNetworks } from "@/lib/creators/networks";
 import { dayIn } from "@/lib/creators/periods";
 import { readFiles, STEP_COUNT, type WizardStepId } from "@/lib/creators/wizard";
-import { ideaExamples, type WizardAnswers } from "@/lib/creators/wizard-steps";
+import { ideaExamplesFor, type WizardAnswers } from "@/lib/creators/wizard-steps";
 import { handleMention } from "@/lib/creators/wizard-suggest";
 import { CAMPAIGN_TYPE_LABEL } from "@/lib/knowledge/campaigns";
 import { KIND_SHORT } from "@/lib/knowledge/products";
@@ -63,7 +63,8 @@ export async function wizardOptions(actor: CampaignActor, business: Business, ca
     networks: campaignNetworks(Boolean(tiktokAuthConfig())),
     products: lists.products.map((p) => ({ id: p.id, label: p.name, hint: KIND_SHORT[p.kind as keyof typeof KIND_SHORT] })),
     knowledgeCampaigns: lists.campaigns.map((c) => ({ id: c.id, label: c.name, hint: CAMPAIGN_TYPE_LABEL[c.type as keyof typeof CAMPAIGN_TYPE_LABEL] })),
-    ideaExamples: ideaExamples(business.industry),
+    ideaExamples: ideaExamplesFor(business.industry, lists.products.slice(0, 3).map((p) => p.name)),
+    industry: business.industry,
     handle: handleMention(business.instagramHandle),
     brand: { name: business.name, logoUrl: business.logoUrl ? (logos.get(business.logoUrl) ?? null) : null, colors, accent: colors[0] ?? PULSE_BLUE },
     folders,
