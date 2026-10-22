@@ -6,6 +6,8 @@ import {
   CARD_STEPS,
   cardForStep,
   cardInputs,
+  continueHref,
+  detailedSetupHref,
   lengthChipOf,
   progressAt,
   QUICK_CARDS,
@@ -127,6 +129,13 @@ describe("where a draft continues", () => {
     expect(cardForStep(9)).toBe("prepared");
     expect(cardForStep(12)).toBe("files");
     expect(cardForStep(null)).toBe("files");
+  });
+
+  it("opens quick mode from the draft list's Continue, with the detailed wizard beside it", () => {
+    expect(continueHref("c1", 2)).toBe("/dashboard/creators/c1/quick?card=goal");
+    expect(continueHref("c1", 8)).toBe("/dashboard/creators/c1/quick?card=pay");
+    expect(continueHref("c1", 12)).toBe("/dashboard/creators/c1/quick?card=files");
+    expect(detailedSetupHref("c1", 8)).toBe("/dashboard/creators/c1/setup?step=8");
   });
 
   it("counts the cards before as answered and their rounds as done", () => {

@@ -70,6 +70,12 @@ export function cardForStep(reached: number | null): QuickCard {
   return "files";
 }
 
+/** "Continue" on a draft still being set up: quick mode at the card matching how far it got. */
+export const continueHref = (campaignId: string, setupStep: number) => `/dashboard/creators/${campaignId}/quick?card=${cardForStep(setupStep)}`;
+
+/** The smaller "Detailed setup" next to it: the wizard at the furthest step reached. */
+export const detailedSetupHref = (campaignId: string, setupStep: number) => `/dashboard/creators/${campaignId}/setup?step=${setupStep}`;
+
 /** The quiz's place when it opens at `card`: the cards before it count as answered, their rounds as done. */
 export function progressAt(card: QuickCard) {
   const index = QUICK_STEPS.findIndex((s) => s.id === card);

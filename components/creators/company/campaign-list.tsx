@@ -5,6 +5,7 @@ import { Badge, Button, GlassCard } from "@/components/ui";
 import { formatShortDate } from "@/components/analytics/format";
 import { CAMPAIGN_STATUS_LABEL, PLATFORM_LABEL, type CampaignStatus, type Platform } from "@/lib/creators/company-forms";
 import type { CampaignRow } from "@/lib/creators/campaigns";
+import { continueHref, detailedSetupHref } from "@/lib/creators/quick";
 import { STEP_COUNT } from "@/lib/creators/wizard";
 import { STATUS_TONE } from "./campaign-page";
 
@@ -16,7 +17,7 @@ export function CampaignList({ campaigns }: { campaigns: CampaignRow[] }) {
         icon={Megaphone}
         title="Your first creator campaign"
         text="Content creators post about you on their own Instagram, Facebook Page or TikTok. You set the tasks and the pay; BuPulse counts every post's views and works out what each creator earned. You pay them by Mobile Money."
-        points={["Write one line: the AI drafts the whole campaign in 12 short steps", "Share one link: creators apply on it, and you pick the ones you like", "Watch the views come in, then pay at the end of each 30 days"]}
+        points={["Write one line: the AI drafts the whole campaign, you check it in a few quick cards", "Share one link: creators apply on it, and you pick the ones you like", "Watch the views come in, then pay at the end of each 30 days"]}
         action={<Button href="/dashboard/creators/new">New campaign</Button>}
       />
     );
@@ -24,9 +25,9 @@ export function CampaignList({ campaigns }: { campaigns: CampaignRow[] }) {
   return (
     <GlassCard padding="none" className="divide-y divide-line">
       {campaigns.map((c) => {
-        // A draft left in the wizard: "Draft · step 6 of 12" and Continue there.
+        // A draft still being set up: "Draft · step 6 of 12", Continue in quick mode, or the detailed wizard.
         const setting = c.status === "DRAFT" && c.setupStep !== null;
-        const href = setting ? `/dashboard/creators/${c.id}/setup?step=${c.setupStep}` : `/dashboard/creators/${c.id}`;
+        const href = setting ? continueHref(c.id, c.setupStep!) : `/dashboard/creators/${c.id}`;
         return (
           <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5 hover:bg-soft">
             <Link href={href} className="flex min-w-0 flex-1 flex-col gap-1 no-underline">
@@ -42,9 +43,14 @@ export function CampaignList({ campaigns }: { campaigns: CampaignRow[] }) {
               </span>
             </Link>
             {setting ? (
-              <Button href={href} size="sm" trailing={<ArrowRight aria-hidden className="size-4" />}>
-                Continue
-              </Button>
+              <span className="flex items-center gap-1">
+                <Link href={detailedSetupHref(c.id, c.setupStep!)} className="inline-flex min-h-11 items-center px-2 text-[13px] font-medium text-muted underline underline-offset-2 hover:text-text">
+                  Detailed setup
+                </Link>
+                <Button href={href} size="sm" trailing={<ArrowRight aria-hidden className="size-4" />}>
+                  Continue
+                </Button>
+              </span>
             ) : (
               <span className="text-right text-[13px] text-muted">
                 {c.joined} {c.joined === 1 ? "creator" : "creators"} · {c.tasks} {c.tasks === 1 ? "task" : "tasks"}
