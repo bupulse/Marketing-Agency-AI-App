@@ -1,15 +1,11 @@
 "use client";
 
 import { ArrowRight, Check, Lock } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { saveKnowledge } from "@/app/onboarding/actions";
-import { createPersona, updatePersona } from "@/app/dashboard/knowledge/audience/actions";
-import { createCompetitor, savePositioning } from "@/app/dashboard/knowledge/competitors/actions";
-import { createFaq, savePolicies } from "@/app/dashboard/knowledge/faqs/actions";
 import { approveVoice } from "@/app/dashboard/knowledge/interview/actions";
-import { createProduct } from "@/app/dashboard/knowledge/products/actions";
 import { saveProfile } from "@/app/dashboard/knowledge/profile/actions";
-import { draftQuiz, quizScore } from "@/app/dashboard/knowledge/quiz/actions";
+import { draftQuiz, quizScore, saveQuizPersonas, saveQuizProducts, saveQuizRules, saveQuizWhy } from "@/app/dashboard/knowledge/quiz/actions";
 import { createReview } from "@/app/dashboard/knowledge/reviews/actions";
 import { Chips, GuessTag, KeepOrDrop, QuestionHead, QuizFrame, RoundDone, ScoreRing, TextAnswer, ThisOrThat, Thinking, Tiles, useQuiz, type TileOption } from "@/components/quiz";
 import { Button, GlassCard, Input, Textarea } from "@/components/ui";
@@ -43,6 +39,7 @@ import {
   quizSteps,
   reviewInputFrom,
   stepForField,
+  stepProblem,
   storedPersonaKey,
   voiceSaveFrom,
   type Given,
@@ -51,6 +48,7 @@ import {
   type QuizRoundId,
   type QuizStored,
 } from "@/lib/knowledge/quiz-map";
+import { moveGuard } from "@/lib/knowledge/quiz-move";
 import { REVIEW_SOURCES, SOURCE_LABEL, type ReviewSourceValue } from "@/lib/knowledge/reviews";
 
 // The Business info quiz (docs/QUIZ_MODE.md, "A. Business info quiz"). The page loads what is stored; this asks for
@@ -71,6 +69,31 @@ type Props = {
   cacheKey: string;
   postsHref: string;
 };
+
+const SAVING: Record<QuizRoundId, string[]> = {
+  you: ["Saving your profile…"],
+  sell: ["Saving your products…", "Almost there…"],
+  customers: ["Saving your customers…"],
+  why: ["Saving what makes you different…"],
+  rules: ["Saving your rules and questions…", "Almost there…"],
+  find: ["Saving your hours and address…"],
+  voice: ["Saving your voice…"],
+  love: ["Saving the review…"],
+};
+
+/** A save's problem, under the question: scrolled into view and focused, so a screen reader reads it too. */
+function ErrorNote({ message }: { message: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView({ block: "center" });
+    ref.current?.focus({ preventScroll: true });
+  }, [message]);
+  return (
+    <p ref={ref} role="alert" tabIndex={-1} className="rounded-2xl bg-danger-bg px-4 py-3 text-[14px] font-medium text-danger outline-none">
+      {message}
+    </p>
+  );
+}
 
 const WAIT_MS = 25_000;
 const SHOW_SKIP_WAIT_MS = 6_000;
@@ -144,7 +167,8 @@ export function BusinessQuiz(props: Props) {
 type Saved = { ok: true; line: string } | { ok: false; stepId: string; error: string };
 
 function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, reasonIdeas, currency, country, canGrant, startRound, postsHref }: Props & { draft: QuizDraft }) {
-  const first = useMemo(() => initialAnswers(storedAtStart, draft, { likelyKind }), [storedAtStart, draft, likelyKind]);
+  // Read once: the page's props refresh after every save (the actions revalidate), the quiz's state must not.
+  const [first] = useState(() => initialAnswers(storedAtStart, draft, { likelyKind, reasonIdeas }));
   const [answers, setAnswers] = useState<QuizAnswers>(first.answers);
   const [stored, setStored] = useState<QuizStored>(storedAtStart);
   const [guessed, setGuessed] = useState<Set<string>>(() => new Set(first.guessed));
@@ -154,9 +178,10 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
   const [score, setScore] = useState<number | null>(null);
   const [savedReviews, setSavedReviews] = useState<string[]>([]);
 
-  // The products asked about are the ones new at the start: once saved they keep their question, so the round keeps
-  // its length and the quiz does not jump ahead.
-  const startProducts = storedAtStart.products;
+  // The products asked about are the ones new at the start, frozen: once saved they keep their question, so the round
+  // keeps its length. (Read from the live props, the saved products dropped out after the page refreshed, the steps
+  // shrank and the quiz, which keeps its place by number, landed questions further on.)
+  const [startProducts] = useState(() => storedAtStart.products);
   const steps = useMemo(() => quizSteps(rounds, answers, { ...stored, products: startProducts }, { canGrant }), [rounds, answers, stored, startProducts, canGrant]);
   const startIndex = startRound ? Math.max(0, steps.findIndex((s) => s.round === startRound)) : 0;
   const quiz = useQuiz(steps, { index: startIndex });
@@ -212,82 +237,71 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
       }
       case "sell": {
         const items = productInputsFrom(s.products, a.sell, draft.products, currency, given);
-        const added: string[] = [];
-        for (const { name, input } of items) {
-          const r = await createProduct(input);
-          if (!r.ok) {
-            if (added.length) setStored((x) => ({ ...x, products: [...x.products, ...added] }));
-            const [, message] = Object.entries(r.fieldErrors ?? {})[0] ?? [];
-            return { ok: false, stepId: productStepId(name), error: message ?? r.error };
-          }
-          added.push(name);
+        if (!items.length) return { ok: true, line: "Nothing new to add this time." };
+        const results = await saveQuizProducts(items.map((i) => i.input));
+        const added = items.filter((_, i) => results[i]?.ok).map((i) => i.name);
+        if (added.length) setStored((x) => ({ ...x, products: [...x.products, ...added] }));
+        const failed = results.findIndex((r) => !r.ok);
+        if (failed >= 0) {
+          const r = results[failed] as { error: string; fieldErrors?: Record<string, string> };
+          const name = items[failed]?.name ?? items[0].name;
+          return { ok: false, stepId: productStepId(name), error: Object.values(r.fieldErrors ?? {})[0] ?? r.error };
         }
-        if (!added.length) return { ok: true, line: "Nothing new to add this time." };
-        setStored((x) => ({ ...x, products: [...x.products, ...added] }));
         return { ok: true, line: `${added.length === 1 ? `${added[0]} is` : `${added.length} products are`} saved as a draft. Add a photo on the Products page to make ${added.length === 1 ? "it" : "them"} ready for posts.` };
       }
       case "customers": {
         const saves = personaSavesFrom(s.personas, draft.personas, a.customers, given);
-        const names: string[] = [];
-        for (const save of saves) {
+        if (!saves.length) return { ok: true, line: "Nothing new to save." };
+        const results = await saveQuizPersonas(saves.map((x) => (x.id ? { id: x.id, input: x.input } : { input: x.input })));
+        let problem: Saved | null = null;
+        saves.forEach((save, i) => {
+          const r = results[i];
+          if (!r?.ok) {
+            problem ??= fieldError("customers", "customers.pick", r ?? { error: "We could not save that. Please try again." });
+            return;
+          }
           if (save.id) {
-            const r = await updatePersona(save.id, save.input);
-            if (!r.ok) return fieldError("customers", "customers.pick", r);
             const id = save.id;
             setStored((x) => ({ ...x, personas: x.personas.map((p) => (p.id === id ? { ...p, ...(save.input as typeof p) } : p)) }));
-          } else {
-            const r = await createPersona(save.input);
-            if (!r.ok) return fieldError("customers", "customers.pick", r);
-            const persona = { ...(save.input as QuizStored["personas"][number]), id: r.personaId };
+          } else if ("personaId" in r) {
+            const personaId = r.personaId as string;
+            const persona = { ...(save.input as QuizStored["personas"][number]), id: personaId };
             const key = a.customers.picked.find((k) => k.startsWith("idea:") && draft.personas[Number(k.slice(5))]?.name === save.input.name);
             setStored((x) => ({ ...x, personas: [...x.personas, persona] }));
             // Played again, the card is the stored persona now: it is updated, not created twice.
-            if (key) setAnswers((x) => ({ ...x, customers: { ...x.customers, picked: x.customers.picked.map((k) => (k === key ? storedPersonaKey(r.personaId) : k)) } }));
+            if (key) setAnswers((x) => ({ ...x, customers: { ...x.customers, picked: x.customers.picked.map((k) => (k === key ? storedPersonaKey(personaId) : k)) } }));
           }
-          names.push(save.input.name);
-        }
-        return { ok: true, line: names.length ? `Saved: ${names.join(" and ")}.` : "Nothing new to save." };
+        });
+        if (problem) return problem;
+        return { ok: true, line: `Saved: ${saves.map((x) => x.input.name).join(" and ")}.` };
       }
       case "why": {
         const names = newCompetitorNames(s.competitors, a.why, given);
-        const added: string[] = [];
-        for (const name of names) {
-          const r = await createCompetitor({ name });
-          if (!r.ok) {
-            setStored((x) => ({ ...x, competitors: [...x.competitors, ...added] }));
-            return fieldError("why", "why.competitors", r);
-          }
-          added.push(name);
-        }
-        setStored((x) => ({ ...x, competitors: [...x.competitors, ...added] }));
         const positioning = positioningFrom(s.positioning, a.why, given);
-        if (positioning) {
-          const r = await savePositioning(positioning);
-          if (!r.ok) return fieldError("why", "why.differentiators", r);
-          setStored((x) => ({ ...x, positioning: { differentiators: positioning.differentiators ?? [], statement: positioning.statement || null } }));
-        }
-        if (!added.length && !positioning) return { ok: true, line: "Nothing changed this time." };
+        if (!names.length && !positioning) return { ok: true, line: "Nothing changed this time." };
+        const r = await saveQuizWhy({ competitors: names, positioning });
+        const added = names.filter((_, i) => r.competitors[i]?.ok);
+        setStored((x) => ({ ...x, competitors: [...x.competitors, ...added] }));
+        if (positioning && r.positioning?.ok) setStored((x) => ({ ...x, positioning: { differentiators: positioning.differentiators ?? [], statement: positioning.statement || null } }));
+        const failed = r.competitors.find((c) => !c.ok);
+        if (failed && !failed.ok) return fieldError("why", "why.competitors", failed);
+        if (r.positioning && !r.positioning.ok) return fieldError("why", "why.differentiators", r.positioning);
         return { ok: true, line: [added.length && `${added.length} competitor${added.length === 1 ? "" : "s"}`, positioning && "what makes you different"].filter(Boolean).join(" and ").replace(/^./, (c) => c.toUpperCase()) + " saved." };
       }
       case "rules": {
         const policies = policiesFrom(s.policies, a.rules, given);
-        if (policies) {
-          const r = await savePolicies(policies);
-          if (!r.ok) return fieldError("rules", "rules.payment", r);
-          setStored((x) => ({ ...x, policies }));
-        }
         const faqs = newFaqsFrom(s.faqs, a.rules, given);
-        const added: string[] = [];
-        for (const faq of faqs) {
-          const r = await createFaq(faq);
-          if (!r.ok) {
-            setStored((x) => ({ ...x, faqs: [...x.faqs, ...added] }));
-            return { ok: false, stepId: "rules.faqs", error: `“${faq.question}”: ${Object.values(r.fieldErrors ?? {})[0] ?? r.error}` };
-          }
-          added.push(faq.question);
-        }
+        if (!policies && !faqs.length) return { ok: true, line: "Nothing changed this time." };
+        const r = await saveQuizRules({ policies, faqs });
+        if (policies && r.policies?.ok) setStored((x) => ({ ...x, policies }));
+        const added = faqs.filter((_, i) => r.faqs[i]?.ok).map((f) => f.question);
         setStored((x) => ({ ...x, faqs: [...x.faqs, ...added] }));
-        if (!policies && !added.length) return { ok: true, line: "Nothing changed this time." };
+        if (r.policies && !r.policies.ok) return fieldError("rules", "rules.payment", r.policies);
+        const failed = r.faqs.findIndex((f) => !f.ok);
+        if (failed >= 0) {
+          const f = r.faqs[failed] as { error: string; fieldErrors?: Record<string, string> };
+          return { ok: false, stepId: "rules.faqs", error: `${faqs[failed] ? `“${faqs[failed].question}”: ` : ""}${Object.values(f.fieldErrors ?? {})[0] ?? f.error}` };
+        }
         return { ok: true, line: [policies && "Your payment and delivery rules", added.length && `${added.length} common question${added.length === 1 ? "" : "s"}`].filter(Boolean).join(" and ") + " saved. Your chat assistant uses them." };
       }
       case "find": {
@@ -322,39 +336,68 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
     }
   }
 
-  async function move(how: "answer" | "skip") {
+  // Every move names the question it was made for (lib/knowledge/quiz-move.ts): a stale one does nothing.
+  const [guard] = useState(moveGuard);
+  const onScreen = quiz.step?.id ?? null;
+  useEffect(() => guard.seen(onScreen), [guard, onScreen]);
+
+  async function move(how: "answer" | "skip", stepId: string | null | undefined) {
     const q = latest.current.quiz;
     const step = q.step;
-    if (!step || busy) return;
-    if (q.stepInRound === q.stepsInRound) {
-      const skipped = new Set(q.progress.skipped);
-      if (how === "skip") skipped.add(step.id);
-      else skipped.delete(step.id);
-      setBusy(true);
-      let result: Saved;
-      try {
-        result = await saveRound(step.round as QuizRoundId, (id) => !skipped.has(id));
-      } catch {
-        result = { ok: false, stepId: step.id, error: "We could not save that. Check your connection and try again." };
+    if (!step || !stepId || !guard.begin(stepId, step.id)) return;
+    let moved = false;
+    try {
+      if (how === "answer") {
+        const problem = stepProblem(step.id, latest.current.answers, draft.products, currency);
+        if (problem) {
+          setErrors((e) => ({ ...e, [step.id]: problem }));
+          return;
+        }
       }
-      setBusy(false);
-      if (!result.ok) {
-        const { stepId, error } = result;
-        setErrors((e) => ({ ...e, [stepId]: error }));
-        if (stepId !== step.id) q.goTo(stepId);
-        return;
+      let now = q;
+      if (q.stepInRound === q.stepsInRound) {
+        const skipped = new Set(q.progress.skipped);
+        if (how === "skip") skipped.add(step.id);
+        else skipped.delete(step.id);
+        setBusy(true);
+        let result: Saved;
+        try {
+          result = await saveRound(step.round as QuizRoundId, (id) => !skipped.has(id));
+        } catch {
+          result = { ok: false, stepId: step.id, error: "We could not save that. Check your connection and try again." };
+        }
+        setBusy(false);
+        now = latest.current.quiz;
+        if (!result.ok) {
+          const { stepId: at, error } = result;
+          setErrors((e) => ({ ...e, [at]: error }));
+          if (at !== now.step?.id) now.goTo(at);
+          return;
+        }
+        const line = result.line;
+        setSavedLines((x) => ({ ...x, [step.round]: line }));
+        // The owner may have opened another round while it saved: move on only from the same question.
+        if (!guard.stillOn(stepId, now.step?.id ?? null)) return;
       }
-      const line = result.line;
-      setSavedLines((x) => ({ ...x, [step.round]: line }));
+      moved = true;
+      if (how === "answer") now.next();
+      else now.skip();
+    } finally {
+      guard.end(moved);
     }
-    if (how === "answer") q.next();
-    else q.skip();
   }
   const moveRef = useRef(move);
   useEffect(() => {
     moveRef.current = move;
   });
-  const tapThenMove = () => setTimeout(() => moveRef.current("answer"), 250);
+  // A tap on a tile moves on 250 ms later, for the question it was tapped on only.
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(tapTimer.current), []);
+  const tapThenMove = () => {
+    const id = latest.current.quiz.step?.id;
+    clearTimeout(tapTimer.current);
+    tapTimer.current = setTimeout(() => moveRef.current("answer", id), 250);
+  };
 
   // The score, recomputed on the server once the last round is saved.
   useEffect(() => {
@@ -378,7 +421,7 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
     </p>
   );
 
-  const frameQuiz = { ...quiz, skip: () => void move("skip") };
+  const frameQuiz = { ...quiz, skip: () => void move("skip", onScreen) };
 
   // ---- Finish ------------------------------------------------------------------------------------------------------
 
@@ -426,10 +469,13 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
   const last = quiz.stepInRound === quiz.stepsInRound;
   const kicker = `${round.emoji} ${round.title} · ${quiz.stepInRound} of ${quiz.stepsInRound}`;
   const guess = guessed.has(step.id);
+  const error = errors[step.id];
+  // The error sits under the question, at the top of the card (never behind the bottom bar), and is scrolled to.
   const head = (title: string, hint?: string) => (
     <div className="flex flex-col gap-2">
       <QuestionHead kicker={kicker} title={title} hint={hint} />
       {guess && <GuessTag className="w-fit" />}
+      {error && <ErrorNote message={error} />}
     </div>
   );
 
@@ -455,15 +501,10 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
         rounds={roundList}
         steps={steps}
         quiz={frameQuiz}
-        primary={{ label: last ? "Save" : "Next", onClick: () => void move("answer"), busy }}
+        primary={{ label: last ? "Save" : "Next", onClick: () => void move("answer", step.id), busy }}
         fullForm={{ href: round.href, label: `Open the full ${round.title.toLowerCase()} form` }}
       >
-        {body}
-        {errors[step.id] && (
-          <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-[14px] font-medium text-danger">
-            {errors[step.id]}
-          </p>
-        )}
+        {busy ? <Thinking lines={SAVING[round.id]} /> : body}
       </QuizFrame>
       {lockedNote}
     </div>
@@ -584,7 +625,7 @@ function Question({ id, head, answers: a, set, stored, startProducts, draft, lik
             addMax={80}
             onChange={(picked) => {
               const details = { ...a.sell.details };
-              for (const n of picked) if (!details[itemKey(n)]) details[itemKey(n)] = productDefaults(n, draft.products, likelyKind);
+              for (const n of picked) if (!details[itemKey(n)]) details[itemKey(n)] = productDefaults(n, draft.products, likelyKind, reasonIdeas);
               set("sell", { picked, details });
             }}
           />
@@ -862,7 +903,11 @@ function personaIdeasFor(draft: QuizDraft, key: "channels" | "needs" | "pains" |
 
 function ProductQuestion({ name, head, a, set, draft, likelyKind, reasonIdeas, currency }: { name: string; head: QuestionProps["head"]; a: QuizAnswers; set: QuestionProps["set"]; draft: QuizDraft; likelyKind: ProductKindValue; reasonIdeas: string[]; currency: string }) {
   const key = itemKey(name);
-  const d = a.sell.details[key] ?? productDefaults(name, draft.products, likelyKind);
+  const d = a.sell.details[key] ?? productDefaults(name, draft.products, likelyKind, reasonIdeas);
+  const priceId = useId();
+  // No number typed is "Ask for price"; typing one turns it off. The field is never disabled, so the typing never
+  // falls through to the tiles.
+  const askForPrice = !d.price.trim();
   const patch = (p: Partial<typeof d>) => set("sell", { details: { ...a.sell.details, [key]: { ...d, ...p } } });
   const idea = draft.products.find((i) => itemKey(i.name) === key);
   const ideas = [...(idea?.reasons ?? []), ...reasonIdeas].filter((r, i, all) => all.findIndex((x) => x.toLowerCase() === r.toLowerCase()) === i).slice(0, 4);
@@ -874,21 +919,22 @@ function ProductQuestion({ name, head, a, set, draft, likelyKind, reasonIdeas, c
         <p className="text-[14px] font-semibold">Price</p>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-0 flex-1">
-            <Input aria-label={`Price in ${currency}`} inputMode="decimal" placeholder="e.g. 15000" maxLength={20} value={d.onRequest ? "" : d.price} disabled={d.onRequest} onChange={(e) => patch({ price: e.target.value, onRequest: false })} className="pr-16" />
+            <Input id={priceId} aria-label={`Price in ${currency}`} inputMode="decimal" placeholder="e.g. 15000" maxLength={20} value={d.price} onChange={(e) => patch({ price: e.target.value, onRequest: !e.target.value.trim() })} className="pr-16" />
             <span aria-hidden className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-muted">
               {currency}
             </span>
           </div>
           <button
             type="button"
-            aria-pressed={d.onRequest}
-            onClick={() => patch({ onRequest: !d.onRequest })}
-            className={cn("inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border px-4 text-[14px] font-medium", d.onRequest ? "border-transparent bg-brand-gradient text-white" : "border-line bg-surface")}
+            aria-pressed={askForPrice}
+            onClick={() => (askForPrice ? document.getElementById(priceId)?.focus() : patch({ price: "", onRequest: true }))}
+            className={cn("inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full border px-4 text-[14px] font-medium", askForPrice ? "border-transparent bg-brand-gradient text-white" : "border-line bg-surface")}
           >
-            {d.onRequest && <Check aria-hidden className="size-3.5" />}
+            {askForPrice && <Check aria-hidden className="size-3.5" />}
             Ask for price
           </button>
         </div>
+        <p className="text-[13px] text-muted">{askForPrice ? "No price shown: customers ask you. Type a number to show it." : `Shown as ${d.price.trim()} ${currency}.`}</p>
       </div>
       <div className="flex flex-col gap-2">
         <p className="text-[14px] font-semibold">Best reason to buy it</p>

@@ -86,7 +86,8 @@ prices, your customers and your voice"), and two buttons: "Make my first posts" 
 | The one AI call, `draftBusinessQuiz` | lib/knowledge/quiz-ai.ts |
 | `draftQuiz` (the guesses) and `quizScore` (the overall % after saving) | app/dashboard/knowledge/quiz/actions.ts |
 | The entry card on Business info ("Start the quiz" / "Continue" at the first incomplete round / "Play again") and "Do it as a quiz" in each section's header | app/dashboard/knowledge/page.tsx, components/knowledge/quiz-link.tsx |
-| Tests | tests/quiz/business-map.test.ts, business-draft.test.ts, business-ai.test.ts |
+| Moving on safely (the move guard) | lib/knowledge/quiz-move.ts |
+| Tests | tests/quiz/business-map.test.ts, business-draft.test.ts, business-ai.test.ts, business-move.test.ts |
 
 **The AI.** One call when the quiz opens, on the cheap text model, through the cost ledger as feature `knowledgeQuiz`
 (so the admin switch and the company's allowance apply), with a rate limit (8 an hour) and a daily cap (20 a day) per
@@ -100,12 +101,22 @@ does not pay again.
 
 **Saving.** Each round saves when its last question is passed (Next or Skip), through the section's own actions. A
 skipped question, an empty text or an empty list keeps the stored value. Products, competitors and FAQs that already
-exist (matched by name or question) are never created twice. Nothing is deleted.
+exist (matched by name or question) are never created twice. Nothing is deleted. The browser sends server actions one
+at a time, so the rounds with several items (products, personas, competitors and positioning, policies and FAQs) send
+one request (`saveQuizProducts`, `saveQuizPersonas`, `saveQuizWhy`, `saveQuizRules`) that runs the same section actions
+side by side on the server. While a round saves, the card shows "Saving your products…". A save's problem shows under
+the question, scrolled into view and focused.
+
+**Moving on safely.** Every move names the question it was made for (lib/knowledge/quiz-move.ts): a tile's delayed
+move, Next, Enter and Skip. A move for a question no longer on screen, a second move while one is saving, or Enter
+together with the button's own click does nothing. The new products asked about are fixed when the quiz starts: the
+page's props refresh after every save, and reading them live once made the saved products' questions drop out, so the
+quiz (which keeps its place by number) landed two questions on, in Customers.
 
 | Round | Saved with | Notes |
 | --- | --- | --- |
 | 🏠 You | `saveProfile` | The whole stored profile is sent, with the answers on top. A sign-up description too short for the check is filled from "what you do". |
-| 🛍️ What you sell | `createProduct` | One question per new product (up to 6). Saved as drafts (no photos yet). A price, or "Ask for price" (on request); never guessed. |
+| 🛍️ What you sell | `createProduct` | One question per new product (up to 6), starting with the first reason idea picked. Saved as drafts (no photos yet). No number typed means "Ask for price" (on request): a price is never guessed. Next checks the question with `productInputSchema` in the browser, so a problem shows at once. |
 | 👥 Your customers | `updatePersona` / `createPersona` | The questions after the cards describe the first card picked. A second new card is saved as guessed. |
 | ⭐ Why you | `createCompetitor`, `savePositioning` | |
 | 📋 Rules | `savePolicies`, `createFaq` | Warranty and payment notes are kept. |
