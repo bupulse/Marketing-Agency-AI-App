@@ -155,8 +155,10 @@ developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-log
 followers_count"), docs.composio.dev/toolkits/facebook (`FACEBOOK_GET_PAGE_DETAILS` fields include `fan_count,
 followers_count`), developers.tiktok.com/doc/tiktok-api-v2-get-user-info (`follower_count`, `user.info.stats`).
 **Not verified without real credentials:** whether Composio's managed Instagram and Facebook apps return these counts
-(a missing value just means no "Verified" line), and the exact TikTok error when `user.info.stats` was not granted (the
-code treats any error code mentioning "scope" as "no count"). BuPulse's TikTok auth config asks for `user.info.basic`,
+(a missing value just means no "Verified" line), the permissions behind them (Instagram `instagram_business_basic`, Facebook
+`pages_read_engagement` / `pages_show_list` are assumptions), and what TikTok does when `user.info.stats` was not
+granted: its error codes `scope_not_authorized` (401) and `scope_permission_missed` (400) are expected to fail the
+whole call, so the code treats any error code mentioning "scope" as "no count" and asks again with fewer fields. BuPulse's TikTok auth config asks for `user.info.basic`,
 `user.info.profile` and `video.list` only: add `user.info.stats` to it to get TikTok counts.
 
 **Creator portal** (`components/creators/portal/campaign-files.tsx`, `/creator/campaigns/<id>/brief`): a joined
