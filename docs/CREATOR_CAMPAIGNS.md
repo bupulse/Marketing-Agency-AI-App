@@ -115,11 +115,14 @@ Page. Personal accounts can't share views, and screenshots aren't accepted.
 
 ## The company's dashboard (decisions made while building it)
 
-Menu → Publish → **Creators**, `/dashboard/creators`, permission `creators` (Owner and Admin, lib/team/roles.ts).
-Client guide: `docs/guide/features/37-creator-campaigns.md`. These details were left open by the owner and decided so:
+Menu → Publish → **Creator campaigns**, `/dashboard/creators`, permission `creators` (Owner and Admin,
+lib/team/roles.ts). Client guide: `docs/guide/features/37-creator-campaigns.md`. Campaigns are made and changed in the
+12-step wizard (docs/CREATOR_CAMPAIGN_WIZARD.md), which replaced the old one-page campaign form; Settings opens the
+same steps. These details were left open by the owner and decided so:
 
-- **Statuses.** A new campaign is a `DRAFT`. Going `LIVE` needs at least one task, a last day still ahead and a free
-  place under `liveCampaigns`; `LIVE` ⇄ `PAUSED`; any status → `ENDED`. Ending turns applications off and deletes the
+- **Statuses.** A new campaign is a `DRAFT`. Going `LIVE` needs a last day still ahead, a free place under
+  `liveCampaigns` and at least one task; a campaign made with the wizard needs the whole go-live list instead
+  (`readinessProblems`: brief, tasks, do's and don'ts, photos in Images, an example, and the full campaign check); `LIVE` ⇄ `PAUSED`; any status → `ENDED`. Ending turns applications off and deletes the
   periods that had not started; the period running now closes on its day and pays as usual. A draft nobody applied to
   can be deleted.
 - **Dates and currency** change only while the campaign is a draft (its periods are made again). The first day cannot
@@ -127,7 +130,7 @@ Client guide: `docs/guide/features/37-creator-campaigns.md`. These details were 
 - **Pay rules** are the campaign's own, so a change applies to every period still `OPEN` (the running one from its
   start); closed periods keep their payouts. New default targets and budget go to periods that have not started; the
   running period's goals change on Payouts. The campaign has no budget column: the budget lives on each period, and
-  the settings form starts from the next period's.
+  the wizard's Pay step starts from the next period's.
 - **Platforms** can change; tasks keep only the platforms the campaign still has, and a change that would leave a task
   with none is refused.
 - **Tasks** must fall inside the campaign's dates and use its platforms. "One per week" makes 7-day tasks from the
@@ -285,7 +288,7 @@ What the docs say, and where:
 | --- | --- |
 | Tables | `prisma/schema.prisma` (CreatorCampaign … CreatorPayout), migration `20261028100000_creator_campaigns` |
 | Pay rules, periods, ledger | `lib/creators/pay.ts`, `periods.ts`, `ledger.ts` |
-| Company side | `lib/creators/campaigns.ts`, `lib/creators/analytics.ts`, `lib/creators/company-forms.ts`, `lib/creators/slug.ts`, `app/dashboard/creators/**`, `components/creators/company/**` |
+| Company side | `lib/creators/campaigns.ts`, `lib/creators/analytics.ts`, `lib/creators/company-forms.ts`, `lib/creators/slug.ts`, `app/dashboard/creators/**`, `components/creators/company/**`; the wizard: `lib/creators/wizard-steps.ts`, `wizard-suggest.ts`, `wizard-ai.ts`, `components/creators/company/wizard/**` |
 | Creator side | `lib/creators/portal.ts`, `auth.ts`, `join.ts`, `apply.ts`, `application.ts`, `handin.ts`, `media.ts`, `connections.ts`, `connect-flow.ts`, `describe.ts`, `tasks.ts`, `app/c/[slug]`, `app/creator/**`, `app/api/creator/[network]/{connect,callback}`, `components/creators/portal/**` |
 | Reading posts | `lib/creators/tracking/**` (links, checks, adapters, resolve, the 6-hourly job, close, removal, notify, cleanup), `app/api/cron/creator-views`, `netlify/functions/cron-creator-views.mts` (every 6 hours at :31 UTC, cursor calls), `worker-crons.ts` `CREATOR_VIEWS_CRON` |
 | Tests | `tests/creators/*.test.ts`; against the TEST database: `RUN_DB_TESTS=1 node --env-file=.env node_modules/vitest/vitest.mjs run tests/creators/flow.db.test.ts` |

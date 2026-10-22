@@ -5,29 +5,61 @@ daily tasks, set the pay, and share one link where creators apply. You pick the 
 login, connect their accounts and hand in a post every day. BuPulse reads every post's views and works out what each
 creator earned. You pay them yourself by Mobile Money and mark each payout paid: BuPulse never holds the money.
 
-**Where:** Menu → Publish → **Creators** (`/dashboard/creators`). **Plans:** feature key `creators`: the Business plan
+**Where:** Menu → Publish → **Creator campaigns** (`/dashboard/creators`). **Plans:** feature key `creators`: the Business plan
 and custom plans. Only Owners and Admins run campaigns (permission `creators`); Members do not see the page.
 **Limits:** 2 campaigns live or paused at once and 20 creators per campaign, unless your plan says otherwise (Admin →
 Plans → Live creator campaigns, Creators per campaign).
 
 ## Start a campaign
 
-1. **Creators → New campaign.** Write the name and the **brief** (what the posts should show), your own **rules**
-   (optional), and pick the **platforms**. Instagram must be a professional account and Facebook a Page: personal
-   accounts cannot share their views.
-2. Pick the **first and last day** (your timezone, at most a year) and the **required mentions**: `@yourhandle`,
-   `#yourhashtag` or a link. The caption must contain one of them. Leave it empty for no check.
-3. Set the **pay**, any mix of: an amount per 1,000 views, an amount per post handed in, **milestones** (a one-off
-   amount when a post reaches a number of views) and the most one post or one creator earns in a period. Under it you
-   see the rules as creators will read them. Rules that pay nothing are refused.
-4. Set the **goals** of each 30-day period: views per creator, views of all creators, and a **budget**. Views past a
-   target do not earn; when all creators together pass the campaign target, everyone's counted views shrink by the
-   same share. Leave a field empty for no limit.
-5. Add **your questions** for the application form (optional). Leave **Show on the marketplace** on (it is on by
-   default) to list the campaign on **bupulse.com/creators**, where creators find campaigns themselves. Then **Save as
-   a draft**.
+Start from **Creator campaigns → New campaign**, or from **Business info → Campaigns → New campaign → Content
+creators**, or from one of your Business info campaigns with **Get creators to post it** (its idea, products and dates
+are filled in for you).
 
-The campaign is split into 30-day **pay periods** (the last one can be shorter), each with the goals you set.
+You make the campaign in **12 short steps**, one screen each. The bar at the top says where you are ("Step 6 of 12 ·
+Content"). **Next** saves the step; you can stop at any time and **Continue** later from the list ("Draft · step 6 of
+12").
+
+1. **Idea.** Write one line, for example "Get people to film our new juice", or tap one of the examples. Pick the kind
+   (Product review, Challenge, Unboxing, How-to, Event, Launch, Testimonial, Other) and, if you like, the Business info
+   campaign and the products it is about. Leave the name empty and we suggest one. When you tap **Next**, the AI writes
+   the next steps from your line and your Business info. It takes a few seconds. If the AI is not available, you get
+   ready-made answers for the kind you picked.
+2. **Goal.** Get seen, sell more, visits, followers or app downloads.
+3. **Creators.** What they post about, where they live (search a district or city), their languages, the least
+   followers and how many creators you want (up to your plan's limit). Creators who don't match can still apply: you
+   see who matches first.
+4. **Where.** The networks. Those BuPulse cannot count views on yet say **Coming soon**. With more than one network,
+   choose one post on any of them or one on each. The kind of posts, and what the caption must say (your @account, a
+   #hashtag or a link).
+5. **When.** The first and last day (or tap 2 weeks, 1 month, 2 months, 3 months), how often creators get a new brief
+   (once, every week or every day), posts a day, and video or photo.
+6. **Content.** The brief (**Rewrite the brief** asks the AI again) and the tasks made from step 5: one for the whole
+   campaign, one per week or one per day. Change the words of each task, its posts a day, video or photo, networks and
+   days.
+7. **Rules.** Tap the do's and don'ts you want, add your own, and anything else creators should know.
+8. **Pay.** Per views, per post, milestones, or a mix. For views, pick 1,000 / 10,000 / 100,000 / 1,000,000 views and
+   the price: the bar shows **Too low**, **Fair**, **Generous** or **Too high**. You must pay at least 1,000 RWF for
+   every 1,000 views. Set a budget for each 30 days and view targets if you like. **Creators will read** shows your
+   rules in their words, and **What it could cost you** gives an estimate.
+9. **Form.** First name, last name, email and social accounts are always asked. Phone and best posts can be required,
+   optional or hidden. Add ready-made questions with one tap, or **Add a field** of any kind (text, choices, numbers,
+   dates, money, a scale, an upload, a link, a place). Move them up and down. **See it on a phone** shows the form as
+   creators see it.
+10. **Files.** BuPulse makes three folders in Photos for the campaign: Images, Videos and Documents. **Upload** or
+    **Import** (Google Drive, Dropbox, Canva) into each. Put PDFs in a shared Google Drive folder and paste its link.
+    Add links to posts you like. The list at the top shows what is still needed before going live.
+11. **Look.** Your application page uses your logo and colour from Brand. Pick a cover photo or video from Photos.
+    Choose whether it shows on the marketplace and takes applications.
+12. **Review.** Every step on one page, each with **Edit**. **Save as draft** keeps it for later; **Go live** opens it
+    to creators.
+
+**Before you can go live:** the brief, at least one task, do's and don'ts, your logo and product photos in the Images
+folder, and an example video or a link to a post you like. Review lists anything missing and the step to fix it in.
+"Suggest again" on a step asks the AI for new ideas for that step only; nothing is saved until you tap Next.
+
+The campaign is split into 30-day **pay periods** (the last one can be shorter), each with the budget and targets you
+set.
 
 ## Tasks
 
@@ -40,7 +72,7 @@ cannot be deleted; change it instead.
 
 ## Go live and share the link
 
-**Go live** needs a task. The campaign's page `/c/<name>` (top of every campaign page, with **Copy**) shows the brief,
+**Go live** (at the end of the steps, or at the top of the campaign's page) needs everything above. The campaign's page `/c/<name>` (top of every campaign page, with **Copy**) shows the brief,
 your rules, the platforms, the dates and the pay; creators apply there. **Pause** stops hand-ins until you **Resume**.
 **Settings → Close applications** keeps the page up without taking applications.
 
@@ -69,7 +101,7 @@ creators per campaign.
 
 ## Find creators
 
-**Creators → Find creators** (`/dashboard/creators/find`) lists creators who chose **Let companies find me** in their
+**Creator campaigns → Find creators** (`/dashboard/creators/find`) lists creators who chose **Let companies find me** in their
 creator profile. Filter by **platform**, **followers** (from and up to, on the platform picked), **location** and
 **Verified only** (they connected that account to BuPulse, so its views are real readings). The filters are in the
 page's address, so you can share a filtered list. Each creator shows their location, a few lines about them, their
@@ -116,16 +148,20 @@ running or still to come.
 
 ## Settings
 
-Change the campaign. The dates and the currency change only while it is a draft. New pay rules count for the period
-running now and the ones after it; periods already closed keep what they paid. New default goals go to the periods
-that have not started. **Delete draft** works while nobody applied. **End campaign** (top of the page) stops
-applications and hand-ins: the period running now still closes on its last day and pays what was earned.
+**Settings** shows your campaign step by step; **Edit** opens a step (or **Go through all steps**), **Save and
+close** brings you back. The dates and the currency change only while it is a draft. New pay rules count for the
+period running now and the ones after it; periods already closed keep what they paid. New budget and targets go to
+the periods that have not started. Settings also has **Close applications**, **Take off the marketplace**, and
+**Delete draft** (while nobody applied). **End campaign** (top of the page) stops applications and hand-ins: the
+period running now still closes on its last day and pays what was earned.
 
 ## For developers
 
 - Spec and the owner's decisions: `docs/CREATOR_CAMPAIGNS.md`.
-- Pages: `app/dashboard/creators/**` (list, `new`, `find`, `[id]` overview, `tasks`, `applicants`, `creators`,
-  `creators/[creatorId]`, `posts`, `payouts`, `settings`); server actions in `app/dashboard/creators/actions.ts`.
+- Pages: `app/dashboard/creators/**` (list, `new` (wizard step 1), `find`, `[id]` overview, `setup` (wizard steps),
+  `tasks`, `applicants`, `creators`, `creators/[creatorId]`, `posts`, `payouts`, `settings`); server actions in
+  `app/dashboard/creators/actions.ts`. The wizard: `docs/CREATOR_CAMPAIGN_WIZARD.md`,
+  `components/creators/company/wizard/**`, `lib/creators/wizard-steps.ts`, `wizard-suggest.ts`, `wizard-ai.ts`.
 - Marketplace (company side): `lib/creators/finder.ts` (Find creators, the record, reporting a creator),
   `lib/creators/offers.ts` (invitations), `docs/CREATOR_MARKETPLACE.md`. Admin: Admin → Clients → Creator marketplace
   (`/admin/creators`, `lib/admin/creators-marketplace.ts`); open reports show in Admin → Inbox.

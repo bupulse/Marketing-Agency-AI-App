@@ -81,3 +81,66 @@ form with their questions as short text fields. New campaigns write `application
   and every field type, uploads, reading and checking answers, marketplace one-tap with the form, matching and answers
   on the company's Applicants list, the follower check on connect, and the campaign's files, brief and do's and don'ts
   on the creator portal.
+
+## Company side: what was built (22 October 2026)
+
+- **Entry.** Business info → Campaigns → **New campaign** (`/dashboard/knowledge/campaigns/new`) asks "Who will post
+  it?": **My business, on my pages** (`?who=me`, the old form) or **Content creators** (`/dashboard/creators/new`).
+  Without the `creators` feature the card says "Add to your plan" (to `/dashboard/upgrade?feature=creators`), or "Not
+  in your plan" / "Owners and admins" for people who cannot add it. A Business info campaign's page has **Get creators
+  to post it** → `/dashboard/creators/new?from=<id>`: its idea line ("Get people to come to …"), kind, products, and
+  its dates when they are still ahead. `?product=<id>` is kept both ways. Menu: **Creator campaigns**.
+- **Pages.** Step 1 is `/dashboard/creators/new`; its Next makes the DRAFT and opens `/dashboard/creators/[id]/setup?
+  step=2`. Every step: "Step N of 12 · Title", a progress bar, the step list (a row of pills on a phone, a column on
+  a computer; steps reached can be opened, all of them when editing), the step's question as the heading, Back / Next
+  (both save the step first), and "Suggest again" on steps 2 to 9. A draft opens at most the furthest step it
+  reached. Settings shows a card per step with Edit (the same cards as Review) plus the switches it had.
+- **Saving** (`saveStep` in `lib/creators/campaigns.ts`, the checks in `lib/creators/wizard-steps.ts` STEP_SCHEMAS):
+  each step checks and saves only its own answers and moves `setupStep` to the furthest step reached; Review's "Save
+  as draft" and going live set it to null. Old rules stay: dates and currency only while a draft, a platform a live
+  task needs cannot be taken off, a task with hand-ins is never deleted, the pay floor (`rateProblem`) and the plan's
+  creators per campaign.
+- **Going live.** A campaign made with the wizard (`setupStep` or `applicationForm` set) goes live only when
+  `readinessProblems` is empty: `goLiveProblems` (photos counted in the campaign's Images and Videos folders) and the
+  full `campaignSchema`, each problem with the step to fix it in. Campaigns made before keep the old rule (a task).
+  The check runs for DRAFT → LIVE only: resuming a paused campaign is never blocked.
+- **AI** (`lib/creators/wizard-ai.ts`, ledger feature `creatorWizard`): one call writes the whole campaign as JSON
+  (`aiSuggestionSchema`), with Business info (profile, industry, products promoted and others, Business info
+  campaigns, audience, brand voice or the approved voice profile, Instagram handle, language) and the owner's answers
+  so far. It goes through `withLedger` (the company allowance and the admin switch), a rate limit of 30 an hour and 60
+  a day per company, and a 40-second limit. Its answer is checked value by value (`sanitizeSuggestion`): anything
+  missing or wrong comes from the template, the price is never below the floor, TikTok only once it is ready. When the
+  AI is not set up, switched off, over the allowance, slow or wrong, the **template of the kind** answers
+  (`templateSuggestion`, eight kinds), so the wizard always works. "Suggest again" puts the step's part on screen
+  without saving; the brief has its own "Rewrite".
+
+### Decisions made while building
+
+- **Step 1's Next** asks the AI once and makes the draft with every later step filled: goal, creators (5 wanted, or
+  fewer on a small plan), networks, formats, mentions (the business's @handle and a short #hashtag), how often a brief
+  comes, the brief and its tasks, do's and don'ts, pay (1.5 times the floor per 1,000 views) and 2-3 form fields.
+  Saving step 1 again fills only the steps not reached yet that are still empty (the AI is asked only then).
+- **New drafts start next Monday** and run the suggested days (30 by the templates), or take the Business info
+  campaign's dates when they are ahead (a short one, such as a one-day event, starts up to 13 days before it ends).
+- **Posts a day and video or photo (step 5)** have no column of their own: they live on the tasks. While a draft,
+  saving step 5 plans the tasks again when their days no longer fit (`tasksMatchSpans`; the texts are kept,
+  `taskTexts`) and sets these two on every task. Once live, step 5 changes only how often a brief comes; posts a day
+  and media change on each task in step 6.
+- **Content while a draft** replaces all tasks with the ones on screen; once live it updates, adds and deletes like
+  the Tasks tab, and refuses to delete a task creators handed in. A daily brief is limited to 120 days.
+- **Pay method** is shown as a card (Per views / Per post / Milestones / Mix) read from the rules; switching to one
+  kind clears the others (caps stay). The cost estimate uses the real pay maths (`computePeriodPay`) for "if each of
+  your creators gets 5K / 10K / 50K / 100K views a month". A milestone without both numbers says so in words.
+- **Files.** The three folders are made when the owner reaches step 10 (under a lock, once; one is made again if it
+  was deleted in Photos), named "<campaign> – Images" etc. with " (2)" on a clash, under 60 characters. Photos only
+  takes photos and videos, so **Documents holds photos or screenshots of documents; PDFs go in the shared Drive
+  folder** (the page says so). The suggested documents are a checklist ticked on the device only. Uploads and imports
+  use the gallery's own upload and Import menu with `folder:<id>`.
+- **Look.** The preview uses the logo (signed link from the private "brand" bucket) and the first brand colour; the
+  cover is any Photos photo or video (`look.coverAssetId`, checked to be the company's). The Brand page has no font
+  yet, so the preview has none.
+- **Form builder.** Built-in rows (locked "Always asked", phone and best posts Required / Optional / Hidden), the
+  AI's fields as violet chips and the ready-made ones as chips, "Add a field" by group in a sheet, field cards (label,
+  help, example, answers, smallest / largest, upload kind, required), move up / down, delete, and a phone preview (at
+  the side on wide screens, "See it on a phone" otherwise). Empty answer boxes are dropped before the check.
+- **Drafts in the list** show "Draft · step N of 12" with **Continue**; a draft's own pages show the same line.
