@@ -9,6 +9,8 @@ import { productInputSchema } from "@/lib/knowledge/products";
 import { profileInputSchema, type ProfileFormValues } from "@/lib/knowledge/profile";
 import { templateDraft, type QuizContext } from "@/lib/knowledge/quiz-draft";
 import {
+  alignFaqs,
+  faqTopic,
   HOURS_PRESETS,
   hoursChoiceOf,
   initialAnswers,
@@ -265,6 +267,57 @@ describe("📋 Rules -> savePolicies, createFaq", () => {
     expect(faqs).toEqual([{ question: "Can I order a cake?", answer: "Yes, two days before." }]);
     expect(faqInputSchema.safeParse(faqs[0]).success).toBe(true);
     expect(newFaqsFrom(stored.faqs, rules, none)).toEqual([]);
+  });
+});
+
+describe("📋 Rules: the questions never contradict the tiles", () => {
+  const rules = (patch: Partial<QuizAnswers["rules"]> = {}): QuizAnswers["rules"] => ({
+    ...answers().rules,
+    payment: ["mtn_momo", "cash"],
+    delivery: { choice: "pickup", text: "" },
+    returns: { choice: "noFood", text: "" },
+    booking: { choice: "walkIn", text: "" },
+    faqs: [
+      { id: "idea-0", question: "Do you deliver?", answer: "Message us with your location and we will tell you." },
+      { id: "idea-1", question: "How can I pay?", answer: "Message us and we will tell you." },
+      { id: "idea-2", question: "Do I need to book?", answer: "Booking is best." },
+      { id: "idea-3", question: "Can I return or exchange?", answer: "Message us and we will tell you." },
+      { id: "idea-4", question: "What is on the menu today?", answer: "Message us and we will tell you." },
+    ],
+    faqKept: ["idea-0", "idea-1", "idea-2", "idea-3", "idea-4"],
+    faqEdited: [],
+    ...patch,
+  });
+
+  it("answers delivery, payment, booking and returns from what was picked, with the stored address", () => {
+    const faqs = alignFaqs(rules(), { ...places, address: "KN 4 Ave, Kiyovu, Kigali" });
+    expect(faqs.map((f) => f.answer)).toEqual([
+      "No, we don't deliver. You can pick up at KN 4 Ave, Kiyovu, Kigali.",
+      "You can pay by MTN Mobile Money or Cash.",
+      "No booking needed: just walk in.",
+      "We do not take returns on food and drinks.",
+      "Message us and we will tell you.", // not about a policy: as BuPulse wrote it
+    ]);
+    expect(alignFaqs(rules(), places)[0].answer).toBe("No, we don't deliver. You can pick up at our place.");
+    expect(alignFaqs(rules({ delivery: { choice: "city", text: "" } }), places)[0].answer).toBe("Yes. We deliver in Kigali. Message us with your address.");
+  });
+
+  it("keeps the idea's answer when nothing was picked for its topic, and the owner's own words always", () => {
+    const none = alignFaqs(rules({ delivery: { choice: "", text: "" }, payment: [] }), places);
+    expect(none[0].answer).toBe("Message us with your location and we will tell you.");
+    expect(none[1].answer).toBe("Message us and we will tell you.");
+    const own = alignFaqs(rules({ faqs: [{ id: "idea-0", question: "Do you deliver?", answer: "Yes, on Saturdays." }], faqEdited: ["idea-0"] }), places);
+    expect(own[0].answer).toBe("Yes, on Saturdays.");
+  });
+
+  it("saves the aligned answers", () => {
+    const faqs = newFaqsFrom([], rules(), all, places);
+    expect(faqs[0]).toEqual({ question: "Do you deliver?", answer: "No, we don't deliver. You can pick up at our place." });
+    expect(faqs.every((f) => faqInputSchema.safeParse(f).success)).toBe(true);
+  });
+
+  it("knows the topic of a question", () => {
+    expect(["Do you deliver?", "How much is delivery?", "Can I get a refund?", "Can I book a table?", "Do you take Mobile Money?", "Where are you?"].map(faqTopic)).toEqual(["delivery", "delivery", "returns", "booking", "payment", null]);
   });
 });
 

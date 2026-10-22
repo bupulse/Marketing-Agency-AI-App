@@ -15,6 +15,8 @@ import { KIND_LABEL, type ProductKindValue } from "@/lib/knowledge/products";
 import { COMMON_LANGUAGES, SIZE_LABEL, type CompanySize } from "@/lib/knowledge/profile";
 import type { PolicyKind, QuizDraft } from "@/lib/knowledge/quiz-draft";
 import {
+  alignFaqs,
+  headAddress,
   hoursChoiceOf,
   ideaPersonaKey,
   initialAnswers,
@@ -287,7 +289,7 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
       }
       case "rules": {
         const policies = policiesFrom(s.policies, a.rules, given, places);
-        const faqs = newFaqsFrom(s.faqs, a.rules, given);
+        const faqs = newFaqsFrom(s.faqs, a.rules, given, { ...places, address: headAddress(s.brand?.locations ?? []) });
         if (!policies && !faqs.length) return { ok: true, line: "Nothing changed this time." };
         const r = await saveQuizRound({ round: "rules", policies, faqs });
         if (!r.ok) {
@@ -766,17 +768,17 @@ function Question({ id, head, answers: a, set, stored, places, startProducts, dr
           {head("Questions customers often ask", "Keep the ones you hear, and change the answers to yours. Your chat assistant answers with them.")}
           <KeepOrDrop
             label="Common questions"
-            items={a.rules.faqs.map((f) => ({ id: f.id, text: f.question, sub: f.answer }))}
+            items={alignFaqs(a.rules, { ...places, address: headAddress(stored.brand?.locations ?? []) }).map((f) => ({ id: f.id, text: f.question, sub: f.answer }))}
             kept={a.rules.faqKept}
             withSub
             maxLength={200}
             subMaxLength={1000}
             addLabel="Add a question"
             onChange={(faqKept) => set("rules", { faqKept })}
-            onEdit={(fid, patch) => set("rules", { faqs: a.rules.faqs.map((f) => (f.id === fid ? { ...f, question: patch.text, answer: patch.sub ?? f.answer } : f)) })}
+            onEdit={(fid, patch) => set("rules", { faqs: a.rules.faqs.map((f) => (f.id === fid ? { ...f, question: patch.text, answer: patch.sub ?? f.answer } : f)), faqEdited: [...(a.rules.faqEdited ?? []), fid] })}
             onAdd={(item) => {
               const fid = `own-${Date.now()}`;
-              set("rules", { faqs: [...a.rules.faqs, { id: fid, question: item.text, answer: item.sub ?? "" }], faqKept: [...a.rules.faqKept, fid] });
+              set("rules", { faqs: [...a.rules.faqs, { id: fid, question: item.text, answer: item.sub ?? "" }], faqKept: [...a.rules.faqKept, fid], faqEdited: [...(a.rules.faqEdited ?? []), fid] });
             }}
           />
         </>
