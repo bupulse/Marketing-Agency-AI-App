@@ -4,7 +4,7 @@ import { CircleCheck } from "lucide-react";
 import { useActionState } from "react";
 import { Button, Field, GlassCard, Input } from "@/components/ui";
 import type { ApplyState } from "@/app/c/[slug]/actions";
-import { BRAND_BUTTON, FieldInput, type StartUpload, type Values } from "@/components/creators/apply/field-input";
+import { BRAND_BUTTON, FieldInput, holdWhileUploading, type StartUpload, type Values } from "@/components/creators/apply/field-input";
 import { SocialsPicker } from "@/components/creators/apply/socials-picker";
 import type { ApplicationForm } from "@/lib/creators/form-fields";
 
@@ -71,7 +71,7 @@ export function ApplyForm({ apply, startUpload, form, platforms, currency, compa
   return (
     <GlassCard strong padding="lg" className="p-5 sm:p-8">
       {/* Keyed by what came back, so the fields keep what was typed after an error (React resets a form after its action). */}
-      <form key={JSON.stringify(values)} action={action} noValidate className="flex flex-col gap-6">
+      <form key={JSON.stringify(values)} action={action} onSubmit={holdWhileUploading} noValidate className="flex flex-col gap-6">
         <div aria-hidden className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
           <label>
             Website

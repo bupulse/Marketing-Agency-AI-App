@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { CircleCheck } from "lucide-react";
+import { ChevronDown, CircleCheck } from "lucide-react";
 import { useActionState } from "react";
 import { Button, Field, GlassCard, Input } from "@/components/ui";
 import type { QuickApplyState } from "@/app/c/[slug]/actions";
-import { BRAND_BUTTON, FieldInput, type StartUpload, type Values } from "@/components/creators/apply/field-input";
+import { BRAND_BUTTON, FieldInput, holdWhileUploading, type StartUpload, type Values } from "@/components/creators/apply/field-input";
 import type { ApplicationForm, FormField } from "@/lib/creators/form-fields";
 import { FormProblems, SamplesInput } from "./apply-form";
 
@@ -74,7 +74,7 @@ export function QuickApplyForm(props: {
 
   return (
     <GlassCard strong padding="lg" className="p-5 sm:p-8">
-      <form key={JSON.stringify(state.values ?? {})} action={action} noValidate className="flex flex-col gap-5">
+      <form key={JSON.stringify(state.values ?? {})} action={action} onSubmit={holdWhileUploading} noValidate className="flex flex-col gap-5">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Apply</h2>
           <p className="text-[13px] text-muted">
@@ -89,16 +89,20 @@ export function QuickApplyForm(props: {
               <FieldInput key={f.id} field={f} values={values} error={errors[`q_${f.id}`]} currency={currency} startUpload={startUpload} />
             ))}
             {optional.length > 0 && (
-              <details className="group rounded-2xl border border-line p-4" open={asks.optional.some((f) => errors[`q_${f.id}`])}>
-                <summary className="min-h-11 cursor-pointer text-[15px] font-semibold">More questions (optional)</summary>
-                <div className="mt-3 flex flex-col gap-5">{optional}</div>
+              <details className="group rounded-2xl border border-line px-4 py-1" open={asks.optional.some((f) => errors[`q_${f.id}`])}>
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">More questions (optional)
+                  <ChevronDown aria-hidden className="size-4 shrink-0 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="mb-3 mt-2 flex flex-col gap-5">{optional}</div>
               </details>
             )}
           </>
         ) : (
-          <details className="rounded-2xl border border-line p-4" open={Object.keys(errors).length > 0}>
-            <summary className="min-h-11 cursor-pointer text-[15px] font-semibold">Change or add{optional.length ? " (optional questions)" : ""}</summary>
-            <div className="mt-3 flex flex-col gap-5">
+          <details className="group rounded-2xl border border-line px-4 py-1" open={Object.keys(errors).length > 0}>
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">Change or add{optional.length ? " (optional questions)" : ""}
+              <ChevronDown aria-hidden className="size-4 shrink-0 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mb-3 mt-2 flex flex-col gap-5">
               {basics}
               {optional}
             </div>

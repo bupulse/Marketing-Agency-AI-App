@@ -163,7 +163,7 @@ function Upload({ field, id, name, value, fileName, startUpload, preview, error 
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" data-uploading={state.status === "uploading" || undefined}>
       <input type="hidden" name={name} value={state.status === "done" ? state.path : ""} />
       <input type="hidden" name={`${name}.name`} value={state.status === "done" ? state.name : ""} />
       <label htmlFor={id} className={cn(OPTION, "justify-center gap-2 border-dashed", invalidRing(error))}>
@@ -183,6 +183,13 @@ function Upload({ field, id, name, value, fileName, startUpload, preview, error 
 }
 
 const invalidRing = (error?: string) => (error ? "border-danger" : "");
+
+/** For the forms' onSubmit: holds the form back while a file is still being sent (its path is not in the form yet). */
+export function holdWhileUploading(e: React.FormEvent<HTMLFormElement>): void {
+  if (!e.currentTarget.querySelector("[data-uploading]")) return;
+  e.preventDefault();
+  window.alert("Your file is still being sent. Send the form when it is done.");
+}
 
 /** The control for one field, under its question. `values`: what came back after an error. */
 export function FieldInput({ field, values, error, currency, startUpload, preview }: { field: FormField; values: Values; error?: string; currency: string; startUpload: StartUpload; preview?: boolean }) {

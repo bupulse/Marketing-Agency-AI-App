@@ -46,7 +46,7 @@ function InviteDialog({ invite, onClose }: { invite: Invite | null; onClose: () 
 /** "Matches", "Doesn't match: <reasons>" or what they did not say (docs/CREATOR_CAMPAIGN_WIZARD.md, "Requirements"). */
 function MatchLine({ match }: { match: MatchState }) {
   if (match.kind === "none") return null;
-  if (match.kind === "match") return <Badge tone="success">Matches</Badge>;
+  if (match.kind === "match") return <Badge tone="success" className="self-start">Matches</Badge>;
   if (match.kind === "unknown") return <span className="text-[13px] text-muted">{match.unknown.join(" · ")}</span>;
   return (
     <span className="text-[13px] font-medium text-danger">
