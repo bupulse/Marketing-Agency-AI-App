@@ -30,7 +30,7 @@ describe("menu groups", () => {
     expect(labels([...NAV_GROUPS])).toEqual([
       [null, ["Home"]],
       ["Create", ["Posts", "Videos", "Designs", "Photos", "Autopilot"]],
-      ["Publish", ["Calendar", "Channels", "Creators", "Link in bio"]],
+      ["Publish", ["Calendar", "Channels", "Creator campaigns", "Link in bio"]],
       ["Customers", ["Inbox", "Leads", "Contacts", "Automations", "Website chat"]],
       ["Results", ["Analytics"]],
       ["My business", ["Business info", "Brand"]],
@@ -61,8 +61,8 @@ describe("menu groups", () => {
   });
 
   it("puts Creators under Publish, for the roles that may run campaigns", () => {
-    expect(NAV_ITEMS.find((i) => i.label === "Creators")).toMatchObject({ href: "/dashboard/creators", feature: "creators", permission: "creators" });
-    expect(navFor("MEMBER", ALL).flatMap((g) => g.items.map((i) => i.label))).not.toContain("Creators");
+    expect(NAV_ITEMS.find((i) => i.label === "Creator campaigns")).toMatchObject({ href: "/dashboard/creators", feature: "creators", permission: "creators" });
+    expect(navFor("MEMBER", ALL).flatMap((g) => g.items.map((i) => i.label))).not.toContain("Creator campaigns");
   });
 
   it("hides pages a role may not open, and a group left empty", () => {

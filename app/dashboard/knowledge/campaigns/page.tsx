@@ -26,7 +26,7 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
   const today = localDateISO(new Date(), safeZone(business.timezone));
   const newButton = (
     <Button href={`${BASE}/new`} leading={<Plus aria-hidden className="size-[18px]" />}>
-      Add campaign
+      New campaign
     </Button>
   );
   const chip = (active: boolean) => cn("inline-flex min-h-11 items-center rounded-full px-4 text-[14px] font-medium no-underline", active ? "bg-brand-gradient text-white" : "glass text-text");

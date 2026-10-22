@@ -1,3 +1,4 @@
+import { Megaphone } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAppContext } from "@/components/app/context";
@@ -7,12 +8,13 @@ import { BackLink } from "@/components/knowledge/back-link";
 import { DetailsList } from "@/components/knowledge/details-list";
 import { ItemActions } from "@/components/knowledge/item-actions";
 import { SubjectContentLink } from "@/components/knowledge/subject-content-link";
-import { Badge, GlassCard } from "@/components/ui";
+import { Badge, Button, GlassCard } from "@/components/ui";
 import { localDateISO, safeZone } from "@/lib/autopilot/timezone";
 import { CAMPAIGN_TYPE_LABEL, campaignPhase, dayString, formatDateRange, PHASE_LABEL } from "@/lib/knowledge/campaigns";
 import { formatPrice, KIND_SHORT, STATUS_LABEL } from "@/lib/knowledge/products";
 import { albumItems } from "@/lib/media/service";
 import { getCampaign } from "@/lib/knowledge/service";
+import { can } from "@/lib/team/roles";
 
 export const metadata = { title: "Campaign" };
 
@@ -20,7 +22,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const blocked = await featureGate("content");
   if (blocked) return blocked;
   const { id } = await params;
-  const { business } = await getAppContext();
+  const { business, entitlements, role } = await getAppContext();
   const campaign = await getCampaign(business.id, id);
   if (!campaign) notFound();
   const photos = await albumItems(business.id, "campaign", campaign.id);
@@ -71,6 +73,28 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       </GlassCard>
 
       <AlbumCard kind="campaign" id={campaign.id} name={campaign.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name, kind: p.kind, posterUrl: p.posterUrl, durationMs: p.durationMs }))} />
+
+      {can(role, "creators") && (
+        <GlassCard as="section" aria-labelledby="campaign-creators" className="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
+          <div className="flex max-w-xl flex-col gap-1">
+            <h2 id="campaign-creators" className="text-lg font-semibold tracking-[-0.02em]">
+              Content creators
+            </h2>
+            <p className="text-[15px] text-muted">Creators post about it on their own Instagram, Facebook or TikTok, and you pay for the views. The campaign&apos;s idea, products and dates are filled in for you.</p>
+          </div>
+          {entitlements.usable.has("creators") ? (
+            <Button href={`/dashboard/creators/new?from=${campaign.id}`} leading={<Megaphone aria-hidden className="size-4" />}>
+              Get creators to post it
+            </Button>
+          ) : can(role, "upgrade") ? (
+            <Button variant="outline" href="/dashboard/upgrade?feature=creators">
+              Add creator campaigns to your plan
+            </Button>
+          ) : (
+            <Badge tone="neutral">Not in your plan</Badge>
+          )}
+        </GlassCard>
+      )}
 
       <SubjectContentLink href={`/dashboard/content/campaigns/${campaign.id}`} label="See this campaign's content" />
     </>

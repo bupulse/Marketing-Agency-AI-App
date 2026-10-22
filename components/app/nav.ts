@@ -83,7 +83,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       item("/dashboard/calendar", "Calendar", CalendarDays, "schedule planner dates publish post later"),
       item("/dashboard/connections", "Channels", Plug, "connections connect apps social accounts instagram facebook tiktok linkedin youtube whatsapp", "channels"),
-      item("/dashboard/creators", "Creators", Megaphone, "creator campaigns influencers ambassadors challenge views payouts", "creators"),
+      item("/dashboard/creators", "Creator campaigns", Megaphone, "creators campaigns influencers ambassadors challenge views payouts", "creators"),
       item("/dashboard/bio", "Link in bio", Link2, "bio linktree link page instagram profile", "settings"),
     ],
   },
