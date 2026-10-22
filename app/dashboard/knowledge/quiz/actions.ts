@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { saveKnowledge } from "@/app/onboarding/actions";
 import { approveVoice } from "@/app/dashboard/knowledge/interview/actions";
@@ -9,7 +8,7 @@ import { createReview } from "@/app/dashboard/knowledge/reviews/actions";
 import { localParts, safeZone } from "@/lib/autopilot/timezone";
 import type { KnowledgeInput } from "@/lib/brand/schemas";
 import { prisma } from "@/lib/db";
-import { featureBlocked } from "@/lib/entitlements";
+import { companyEntitlements, featureBlocked } from "@/lib/entitlements";
 import { personaInputSchema, type PersonaInput } from "@/lib/knowledge/audience";
 import { competitorInputSchema, positioningSchema, type PositioningInput } from "@/lib/knowledge/competitors";
 import { knowledgeAction, type Failure, type Result } from "@/lib/knowledge/guard";
@@ -23,9 +22,10 @@ import type { QuizDraft } from "@/lib/knowledge/quiz-draft";
 import { MAX_QUIZ_PRODUCTS } from "@/lib/knowledge/quiz-map";
 import { createCompetitors, createFaqs, createPersona, savePolicies as savePoliciesRow, savePositioning as savePositioningRow, updatePersona } from "@/lib/knowledge/records";
 import type { ReviewInput } from "@/lib/knowledge/reviews";
-import { overallPercent } from "@/lib/knowledge/sections";
+import { overallPercent, toReachFull, type KnowledgeSection, type ToDo } from "@/lib/knowledge/sections";
 import { createProducts } from "@/lib/knowledge/service";
 import { RATE_LIMITS, rateLimit } from "@/lib/rate-limit";
+import { can } from "@/lib/team/roles";
 
 /**
  * Knowledge base -> the Business info quiz (docs/QUIZ_MODE.md). The quiz saves through each section's own actions;
@@ -40,16 +40,21 @@ export async function draftQuiz(): Promise<Result<{ draft: QuizDraft }>> {
   });
 }
 
-/** The overall Business info %, recomputed after the quiz saved (the finish screen's score ring). */
-export async function quizScore(): Promise<Result<{ percent: number }>> {
-  return knowledgeAction({ permission: "content", source: "knowledge.quiz.score" }, async ({ businessId }) => {
+/**
+ * The overall Business info %, recomputed after the quiz saved (the finish screen's score ring), and "To reach 100%":
+ * up to 4 to-dos the person may act on, each with the page that fixes it.
+ */
+export async function quizScore(): Promise<Result<{ percent: number; todo: ToDo[] }>> {
+  return knowledgeAction({ permission: "content", source: "knowledge.quiz.score" }, async ({ businessId, role }) => {
     const business = await prisma.business.findUniqueOrThrow({
       where: { id: businessId },
       select: { id: true, name: true, website: true, industryId: true, industryOther: true, profile: true, knowledge: true, logoUrl: true, brandColors: true, tone: true, positioning: true, policies: true, marketingProfile: true, timezone: true },
     });
     const p = localParts(new Date(), safeZone(business.timezone));
     const today = `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
-    return { percent: overallPercent(await knowledgeProgress(business, today)) };
+    const [progress, entitlements] = await Promise.all([knowledgeProgress(business, today), companyEntitlements(businessId)]);
+    const allowed = (s: KnowledgeSection) => (!s.permission || can(role, s.permission)) && (!s.feature || entitlements.usable.has(s.feature));
+    return { percent: overallPercent(progress), todo: toReachFull(progress, allowed) };
   });
 }
 
@@ -57,8 +62,8 @@ export async function quizScore(): Promise<Result<{ percent: number }>> {
 // Each server action is a round trip of its own (the browser sends them one at a time), and a round used to send one
 // per item. saveQuizRound does a whole round in one request: the same schemas as the section actions, then the same
 // lib/knowledge services through knowledgeAction with the section's permission, plan feature and rate limits (one hit
-// per item, as the section actions count), the rows written together, and one revalidation for the round. Rounds with
-// one write call their section's action. A failure names the first failing item (`item`, `part`) and its fields.
+// per item, as the section actions count), and the rows written together, without revalidation. Rounds with one write
+// call their section's action, quietly. A failure names the first failing item (`item`, `part`) and its fields.
 
 export type QuizRoundPayload =
   | { round: "you"; profile: ProfileInput }
@@ -88,24 +93,28 @@ function parseAll<S extends z.ZodType>(schema: S, list: unknown[], part?: "compe
   return { data };
 }
 
-function refresh(...paths: string[]) {
-  for (const path of ["/dashboard/knowledge", ...paths]) revalidatePath(path);
-}
+/**
+ * Quiz saves are silent: no revalidatePath, because Next renders the page on screen again inside the action's
+ * response, and the quiz page takes seconds to render. The dashboard pages are dynamic (no cache, no staleTimes), so
+ * every other page reads fresh data on the next visit; the quiz refreshes the router once at the end, for the shared
+ * layout and the back/forward cache (components/knowledge/business-quiz.tsx).
+ */
+const QUIET = { quiet: true } as const;
 
 const hits = (key: string, rule: (typeof RATE_LIMITS)[keyof typeof RATE_LIMITS], n: number) => Promise.all(Array.from({ length: n }, () => rateLimit(key, rule)));
 
 export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoundResult> {
   switch (payload?.round) {
     case "you":
-      return saveProfile(payload.profile);
+      return saveProfile(payload.profile, QUIET);
     case "find": {
-      const r = await saveKnowledge(payload.knowledge);
+      const r = await saveKnowledge(payload.knowledge, QUIET);
       return r.ok ? r : { ok: false, error: r.error ?? CHECK, fieldErrors: r.fieldErrors };
     }
     case "voice":
-      return approveVoice(payload.summary, "quiz", payload.answers);
+      return approveVoice(payload.summary, "quiz", payload.answers, QUIET);
     case "love":
-      return createReview(payload.review);
+      return createReview(payload.review, QUIET);
 
     case "sell": {
       if (!Array.isArray(payload.products) || payload.products.length > MAX_QUIZ_PRODUCTS) return TOO_MANY;
@@ -116,7 +125,6 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
         await createProducts(businessId, parsed.data);
         return {};
       });
-      if (r.ok) refresh("/dashboard/knowledge/products", "/dashboard/content");
       return r;
     }
 
@@ -132,7 +140,6 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
         const ids = await Promise.all(saves.map((s) => (s.id ? updatePersona(businessId, s.id, s.data).then(() => s.id!) : createPersona(businessId, s.data))));
         return { ids };
       });
-      if (r.ok) refresh("/dashboard/knowledge/audience");
       return r;
     }
 
@@ -147,7 +154,6 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
         await Promise.all([createCompetitors(businessId, parsed.data), positioning?.success ? savePositioningRow(businessId, positioning.data) : null]);
         return {};
       });
-      if (r.ok) refresh("/dashboard/knowledge/competitors");
       return r;
     }
 
@@ -163,7 +169,6 @@ export async function saveQuizRound(payload: QuizRoundPayload): Promise<QuizRoun
         await Promise.all([createFaqs(businessId, parsed.data), policies?.success ? savePoliciesRow(businessId, policies.data) : null]);
         return {};
       });
-      if (r.ok) refresh("/dashboard/knowledge/faqs");
       return r;
     }
   }

@@ -55,7 +55,8 @@ export function sectionByKey(key: SectionKey): KnowledgeSection {
   return KNOWLEDGE_SECTIONS.find((s) => s.key === key)!;
 }
 
-export type SectionProgress = { percent: number | null; summary: string };
+/** `next`: the one thing that raises the section most, as a to-do ("Add photos to 3 products"); the summary otherwise. */
+export type SectionProgress = { percent: number | null; summary: string; next?: string };
 
 /** The overall score: the average of the ready sections that report a percentage. */
 export function overallPercent(progress: Partial<Record<SectionKey, SectionProgress>>): number {
@@ -64,4 +65,21 @@ export function overallPercent(progress: Partial<Record<SectionKey, SectionProgr
     return typeof p === "number" ? [p] : [];
   });
   return values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0;
+}
+
+export type ToDo = { key: SectionKey; label: string; href: string };
+
+/**
+ * "To reach 100%" (the Business info quiz's finish screen): the incomplete sections the person may edit (`allowed`),
+ * the furthest from complete first, at most `max`, each with its to-do and the page that fixes it.
+ */
+export function toReachFull(progress: Partial<Record<SectionKey, SectionProgress>>, allowed: (s: KnowledgeSection) => boolean, max = 4): ToDo[] {
+  return KNOWLEDGE_SECTIONS.flatMap((s) => {
+    const p = progress[s.key];
+    if (s.status !== "ready" || typeof p?.percent !== "number" || p.percent >= 100 || !allowed(s)) return [];
+    return [{ key: s.key, percent: p.percent, label: p.next ?? p.summary, href: s.href }];
+  })
+    .sort((a, b) => a.percent - b.percent)
+    .slice(0, max)
+    .map(({ key, label, href }) => ({ key, label, href }));
 }

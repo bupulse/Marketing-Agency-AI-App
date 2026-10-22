@@ -13,7 +13,7 @@ import { profileInputSchema, profileJson, type ProfileInput } from "@/lib/knowle
  * Your industry write), the profile JSON, and the service area into Business.knowledge.area (one value with the
  * business info card). Needs the `settings` permission, like the rest of the company's details.
  */
-export async function saveProfile(input: ProfileInput): Promise<Result> {
+export async function saveProfile(input: ProfileInput, opts: { quiet?: boolean } = {}): Promise<Result> {
   const parsed = profileInputSchema().safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields.", fieldErrors: fieldErrorMap(parsed.error) };
   const data = parsed.data;
@@ -32,6 +32,7 @@ export async function saveProfile(input: ProfileInput): Promise<Result> {
   });
   if (!result.ok) return result;
   if (result.unknownSector) return { ok: false, error: "Check the highlighted fields.", fieldErrors: { industry: "Choose your business sector from the list." } };
-  revalidatePath("/dashboard", "layout");
+  // `quiet` (the Business info quiz): no revalidation, so the page on screen is not rendered again inside the response.
+  if (!opts?.quiet) revalidatePath("/dashboard", "layout");
   return { ok: true };
 }

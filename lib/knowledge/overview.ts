@@ -55,6 +55,7 @@ export async function knowledgeProgress(business: BusinessRow, today: string): P
 
   const ready = products.filter((p) => productReadiness({ ...p, photoCount: p._count.photos }).ready).length;
   const needs = products.length - ready;
+  const noPhoto = products.filter((p) => p._count.photos === 0).length;
 
   const phases = campaigns.map((c) => campaignPhase({ startsOn: dayString(c.startsAt), endsOn: dayString(c.endsAt) }, today));
   const running = phases.filter((p) => p === "running" || p === "undated").length;
@@ -69,18 +70,26 @@ export async function knowledgeProgress(business: BusinessRow, today: string): P
     products: {
       percent: products.length ? Math.round((ready / products.length) * 100) : 0,
       summary: products.length ? `${plural(products.length, "item")}${needs ? ` · ${needs} need${needs === 1 ? "s" : ""} details` : " · all ready"}` : "Add what you sell",
+      next: !products.length ? "Add what you sell" : noPhoto ? `Add photos to ${plural(noPhoto, "product")}` : needs ? `Finish the details of ${plural(needs, "product")}` : undefined,
     },
     campaigns: { percent: null, summary: campaigns.length ? [running && `${running} on now`, upcoming && `${upcoming} upcoming`].filter(Boolean).join(" · ") || "None running" : "None yet" },
     locations: {
       percent: Math.round((essentials.filter(Boolean).length / 3) * 100),
       summary: essentials.every(Boolean) ? "Hours, location and phone added" : `Add your ${[missing.hours && "opening hours", missing.location && "main location", missing.phone && "phone"].filter(Boolean).join(", ")}`,
     },
-    brand: { percent: Math.round((brand.filter(Boolean).length / 3) * 100), summary: brand.every(Boolean) ? "Logo, colours and voice set" : `Add your ${[!brand[0] && "logo", !brand[1] && "colours", !brand[2] && "voice"].filter(Boolean).join(", ")}` },
+    brand: {
+      percent: Math.round((brand.filter(Boolean).length / 3) * 100),
+      summary: brand.every(Boolean) ? "Logo, colours and voice set" : `Add your ${[!brand[0] && "logo", !brand[1] && "colours", !brand[2] && "voice"].filter(Boolean).join(", ")}`,
+      next: !brand[0] ? "Upload your logo" : !brand[1] ? "Pick your brand colours" : !brand[2] ? "Choose your brand voice" : undefined,
+    },
     channels: { percent: channels > 0 ? 100 : 0, summary: channels ? `${plural(channels, "account")} connected` : "Connect a social account" },
-    audience: audienceCompleteness(personas),
+    audience: (() => {
+      const a = audienceCompleteness(personas);
+      return { ...a, next: personas.length ? a.summary.replace(/^Add their /, "Add your customers' ") : "Describe your main customer" };
+    })(),
     competitors: competitorsCompleteness(competitors, readPositioning(business.positioning)),
     faqs: faqsCompleteness(faqs, readPolicies(business.policies)),
-    reviews: reviewsCompleteness(reviews, permitted),
-    interview: interviewCompleteness(readMarketingProfile(business.marketingProfile), interview),
+    reviews: { ...reviewsCompleteness(reviews, permitted), next: !reviews ? "Add what customers say about you" : permitted < 3 ? `Add ${plural(3 - permitted, "review")} customers agreed to share` : undefined },
+    interview: { ...interviewCompleteness(readMarketingProfile(business.marketingProfile), interview), next: "Set your brand voice" },
   };
 }

@@ -32,10 +32,11 @@ vi.mock("@/lib/knowledge/records", async (importOriginal) => ({
   savePolicies: mocks.savePolicies,
 }));
 // The one-write rounds call their section's action; not under test here.
-vi.mock("@/app/onboarding/actions", () => ({ saveKnowledge: vi.fn() }));
-vi.mock("@/app/dashboard/knowledge/interview/actions", () => ({ approveVoice: vi.fn() }));
-vi.mock("@/app/dashboard/knowledge/profile/actions", () => ({ saveProfile: vi.fn() }));
-vi.mock("@/app/dashboard/knowledge/reviews/actions", () => ({ createReview: vi.fn() }));
+const single = vi.hoisted(() => ({ saveKnowledge: vi.fn(), approveVoice: vi.fn(), saveProfile: vi.fn(), createReview: vi.fn() }));
+vi.mock("@/app/onboarding/actions", () => ({ saveKnowledge: single.saveKnowledge }));
+vi.mock("@/app/dashboard/knowledge/interview/actions", () => ({ approveVoice: single.approveVoice }));
+vi.mock("@/app/dashboard/knowledge/profile/actions", () => ({ saveProfile: single.saveProfile }));
+vi.mock("@/app/dashboard/knowledge/reviews/actions", () => ({ createReview: single.createReview }));
 vi.mock("@/lib/knowledge/quiz-ai", () => ({ draftBusinessQuiz: vi.fn() }));
 vi.mock("@/lib/knowledge/overview", () => ({ knowledgeProgress: vi.fn() }));
 
@@ -58,7 +59,7 @@ beforeEach(() => {
 });
 
 describe("saveQuizRound", () => {
-  it("saves a round's products in one write, counts one rate-limit hit each, and revalidates once", async () => {
+  it("saves a round's products in one write, counts one rate-limit hit each, and revalidates nothing", async () => {
     const r = await saveQuizRound({ round: "sell", products: [product("Passion Juice"), product("Mango Juice", { priceModel: "FIXED", price: "1,500" })] });
     expect(r).toEqual({ ok: true });
     expect(mocks.requireActiveUser).toHaveBeenCalledWith("content", "throw");
@@ -67,8 +68,8 @@ describe("saveQuizRound", () => {
     expect(mocks.createProducts.mock.calls[0][1].map((p: { name: string; priceAmount: number | null }) => [p.name, p.priceAmount])).toEqual([["Passion Juice", null], ["Mango Juice", 1500]]);
     expect(mocks.rateLimit).toHaveBeenCalledTimes(2);
     expect(mocks.rateLimit).toHaveBeenCalledWith("projectCreate:u1", expect.anything());
-    const paths = mocks.revalidatePath.mock.calls.map((c) => c[0]);
-    expect(paths).toEqual(["/dashboard/knowledge", "/dashboard/knowledge/products", "/dashboard/content"]);
+    // Silent: a revalidation re-renders the (slow) quiz page inside the response. Other pages are dynamic.
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("checks every item first: the first failing one is named and nothing is written", async () => {
@@ -86,7 +87,7 @@ describe("saveQuizRound", () => {
     expect(mocks.featureBlocked).not.toHaveBeenCalled();
     expect(mocks.createFaqs).toHaveBeenCalledWith("b1", [{ question: "Do you deliver?", answer: "Yes." }, { question: "Can I order a cake?", answer: "Yes." }]);
     expect(mocks.savePolicies).toHaveBeenCalledWith("b1", expect.objectContaining({ paymentMethods: ["cash"], booking: "No booking needed: just walk in.", delivery: null }));
-    expect(mocks.revalidatePath).toHaveBeenCalledTimes(2);
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
   it("names the failing part: a question, or the positioning", async () => {
@@ -102,6 +103,19 @@ describe("saveQuizRound", () => {
     expect(r).toEqual({ ok: true, ids: ["p1", "p9"] });
     expect(mocks.rateLimit).toHaveBeenCalledWith("knowledgeCreate:u1", expect.anything());
     expect(mocks.rateLimit).toHaveBeenCalledWith("knowledgeEdit:u1", expect.anything());
+  });
+
+  it("calls the one-write rounds' own actions quietly", async () => {
+    for (const fn of Object.values(single)) fn.mockResolvedValue({ ok: true });
+    const profile = { name: "Inzozi Bakery" } as never;
+    await saveQuizRound({ round: "you", profile });
+    await saveQuizRound({ round: "find", knowledge: { hours: "" } });
+    await saveQuizRound({ round: "voice", summary: { voice: "Warm." }, answers: [] });
+    await saveQuizRound({ round: "love", review: { quote: "Great", customerName: "A", source: "OTHER" } });
+    expect(single.saveProfile).toHaveBeenCalledWith(profile, { quiet: true });
+    expect(single.saveKnowledge).toHaveBeenCalledWith({ hours: "" }, { quiet: true });
+    expect(single.approveVoice).toHaveBeenCalledWith({ voice: "Warm." }, "quiz", [], { quiet: true });
+    expect(single.createReview).toHaveBeenCalledWith(expect.objectContaining({ quote: "Great" }), { quiet: true });
   });
 
   it("refuses an oversized batch", async () => {

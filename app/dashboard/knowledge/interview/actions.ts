@@ -60,7 +60,7 @@ const quizAnswersSchema = z.array(z.object({ topic: z.enum(["formality", "emojis
  * Approves the summary the owner edited (after the interview), saves edits to the approved one (`edit`), or approves
  * the voice picked in the Business info quiz (`quiz`, no interview needed) with its this-or-that answers.
  */
-export async function approveVoice(input: VoiceSummaryInput, mode: "approve" | "edit" | "quiz" = "approve", quizAnswers: { topic: string; answer: string }[] = []): Promise<Result> {
+export async function approveVoice(input: VoiceSummaryInput, mode: "approve" | "edit" | "quiz" = "approve", quizAnswers: { topic: string; answer: string }[] = [], opts: { quiet?: boolean } = {}): Promise<Result> {
   const parsed = summarySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields.", fieldErrors: fieldErrorMap(parsed.error) };
   const answers = quizAnswersSchema.safeParse(quizAnswers);
@@ -71,7 +71,8 @@ export async function approveVoice(input: VoiceSummaryInput, mode: "approve" | "
     else await approveProfile(businessId, parsed.data);
     return {};
   });
-  if (result.ok) {
+  // `quiet` (the Business info quiz): no revalidation, so the page on screen is not rendered again inside the response.
+  if (result.ok && !opts?.quiet) {
     refresh();
     revalidatePath("/dashboard/brand");
   }

@@ -1,6 +1,8 @@
 "use client";
 
 import { ArrowRight, Check, Lock } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { draftQuiz, quizScore, saveQuizRound } from "@/app/dashboard/knowledge/quiz/actions";
 import { Chips, GuessTag, KeepOrDrop, QuestionHead, QuizFrame, RoundDone, ScoreRing, TextAnswer, ThisOrThat, Thinking, Tiles, useQuiz, type TileOption } from "@/components/quiz";
@@ -47,6 +49,7 @@ import {
   type QuizStored,
 } from "@/lib/knowledge/quiz-map";
 import { moveGuard } from "@/lib/knowledge/quiz-move";
+import type { ToDo } from "@/lib/knowledge/sections";
 import { REVIEW_SOURCES, SOURCE_LABEL, type ReviewSourceValue } from "@/lib/knowledge/reviews";
 
 // The Business info quiz (docs/QUIZ_MODE.md, "A. Business info quiz"). The page loads what is stored; this asks for
@@ -176,6 +179,8 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
   const [savedLines, setSavedLines] = useState<Partial<Record<QuizRoundId, string>>>({});
   const [busy, setBusy] = useState(false);
   const [score, setScore] = useState<number | null>(null);
+  const [todo, setTodo] = useState<ToDo[]>([]);
+  const router = useRouter();
   const [savedReviews, setSavedReviews] = useState<string[]>([]);
 
   // The products asked about are the ones new at the start, frozen: once saved they keep their question, so the round
@@ -394,9 +399,15 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
   useEffect(() => {
     if (!quiz.finished || score !== null) return;
     quizScore()
-      .then((r) => setScore(r.ok ? r.percent : 0))
+      .then((r) => {
+        setScore(r.ok ? r.percent : 0);
+        if (r.ok) setTodo(r.todo);
+        // The saves were silent (no revalidation: it re-rendered this slow page inside every save). Once, at the end,
+        // in the background: refresh the router so the shared layout and the back/forward cache show the new data.
+        router.refresh();
+      })
       .catch(() => setScore(0));
-  }, [quiz.finished, score]);
+  }, [quiz.finished, score, router]);
 
   const lockedNote = locked.length > 0 && (
     <p className="flex items-start justify-center gap-1.5 text-center text-[13px] text-muted">
@@ -425,6 +436,23 @@ function QuizPlay({ rounds, locked, stored: storedAtStart, draft, likelyKind, re
             {score === null ? <Thinking lines={["Adding up your score…"]} /> : <ScoreRing percent={score} label="BuPulse knows your business" />}
             <h2 className="text-[26px] font-semibold tracking-[-0.025em]">BuPulse knows your business {score ?? "…"}%</h2>
             <p className="max-w-md text-[15px] text-muted">Your posts now know your prices, your customers and your voice. The more you add, the more they sound like you.</p>
+            {todo.length > 0 && (
+              <section aria-labelledby="quiz-todo" className="flex w-full max-w-md flex-col gap-2 text-left">
+                <h3 id="quiz-todo" className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted">
+                  To reach 100%
+                </h3>
+                <ul className="flex flex-col gap-2">
+                  {todo.map((t) => (
+                    <li key={t.key}>
+                      <Link href={t.href} className="flex min-h-12 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-2.5 text-[15px] font-medium no-underline hover:border-pulse-blue/40">
+                        <span className="min-w-0 flex-1">{t.label}</span>
+                        <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
               <Button href={postsHref} size="lg" trailing={<ArrowRight aria-hidden className="size-4" />}>
                 Make my first posts
