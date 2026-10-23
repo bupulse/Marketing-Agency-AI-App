@@ -116,6 +116,24 @@ export function urgencyOf(upset: boolean, aiUrgency: "none" | "upset" | "urgent"
   return aiUrgency === "urgent" ? "urgent" : null;
 }
 
+/** Who is asking: a signed-in client (owner or teammate of a business), a signed-in creator, or a possible customer. */
+export type Person = "client" | "creator" | "prospect";
+
+export function personOf(visitor: { userId: string | null; businessId: string | null; creatorProfileId: string | null }): Person {
+  if (visitor.userId && visitor.businessId) return "client";
+  if (visitor.userId && visitor.creatorProfileId) return "creator";
+  return "prospect";
+}
+
+/** Pages only a possible customer needs: someone already signed in is never sent to sign up, log in or start a trial. */
+export const SIGN_UP_PAGES = ["/signup", "/login", "/start-trial"];
+
+/** The pages an AI button may open for this person: the base list and the guide's pages, minus sign-up pages for anyone signed in. */
+export function allowedPagesFor(person: Person, pages: readonly string[]): string[] {
+  const all = [...new Set(pages)];
+  return person === "prospect" ? all : all.filter((p) => !SIGN_UP_PAGES.includes(p));
+}
+
 const MAX_TAGS = 8;
 
 /** The conversation's tags after this message: earlier tags kept, new ones added, lead tags replaced by the latest. */

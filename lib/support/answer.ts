@@ -11,7 +11,8 @@ import { ensureGuideIndexed, guideMap, searchGuide } from "./guide";
 import { handOver, handoverText } from "./handover";
 import { HISTORY_FOR_AI, JUDGE_AFTER_MS, SUPPORT_LIMITS } from "./limits";
 import { broadcast } from "./realtime";
-import { decideHandover, leadScore, mergeTags, soundsUpset, urgencyOf } from "./rules";
+import { allowedPagesFor, decideHandover, leadScore, mergeTags, personOf, soundsUpset, urgencyOf } from "./rules";
+import { pageSources } from "./sources";
 import { getSupportSettings, teamHours, type SupportSettings } from "./settings";
 
 // The AI's turn after a visitor message (docs/SUPPORT_CHAT.md section 2): search the guide, add the plans and the
@@ -56,7 +57,7 @@ export async function answerVisitor(conversationId: string, ctx: { ipHash: strin
     where: { id: conversationId },
     select: {
       id: true, status: true, aiActive: true, surface: true, tags: true, language: true, departmentId: true,
-      visitor: { select: { userId: true, name: true, email: true, phone: true, businessName: true, businessId: true } },
+      visitor: { select: { userId: true, name: true, email: true, phone: true, businessName: true, businessId: true, creatorProfileId: true } },
       visit: { select: { country: true } },
     },
   });
@@ -67,6 +68,7 @@ export async function answerVisitor(conversationId: string, ctx: { ipHash: strin
   const history = historyFor(rows.reverse());
   const visitorTexts = history.filter((h) => h.from === "visitor").map((h) => h.text);
   const lastText = visitorTexts[visitorTexts.length - 1] ?? "";
+  const person = personOf(c.visitor);
 
   let ai: AiReply | null = null;
   let guide: Awaited<ReturnType<typeof searchGuide>> = [];
@@ -74,7 +76,8 @@ export async function answerVisitor(conversationId: string, ctx: { ipHash: strin
   if (settings.aiEnabled && lastText && (await aiAllowed(ctx.ipHash))) {
     try {
       await ensureGuideIndexed();
-      const facts = surface === "dashboard" && c.visitor.businessId ? await accountFacts(c.visitor.businessId, now) : null;
+      // A signed-in client's own account, wherever they ask from (the dashboard or the public site).
+      const facts = person === "client" && c.visitor.businessId ? await accountFacts(c.visitor.businessId, now) : null;
       planStatus = facts?.planStatus ?? null;
       const [hits, map, pricing] = await Promise.all([
         searchGuide(visitorTexts.slice(-2).join(" "), 4),
@@ -82,7 +85,7 @@ export async function answerVisitor(conversationId: string, ctx: { ipHash: strin
         surface === "creator" ? Promise.resolve(null) : pricingContext(c.visit?.country ?? null).catch(() => null),
       ]);
       guide = hits;
-      const allowedPages = [...new Set([...BASE_PAGES, ...map.flatMap((m) => (m.page ? [m.page] : []))])];
+      const allowedPages = allowedPagesFor(person, [...BASE_PAGES, ...map.flatMap((m) => (m.page ? [m.page] : []))]);
       ai = await generateReply(
         {
           surface,
@@ -96,6 +99,7 @@ export async function answerVisitor(conversationId: string, ctx: { ipHash: strin
           handoverTopics: settings.handoverTopics,
           allowedPages,
           visitorName: c.visitor.name,
+          person,
         },
         c.visitor.userId,
       );
@@ -129,7 +133,7 @@ export async function answerVisitor(conversationId: string, ctx: { ipHash: strin
           body: ai.reply,
           lang: ai.language,
           aiConfident: ai.confident,
-          aiSources: ai.sources.map((n) => guide[n - 1]).map((g) => ({ id: g.id, title: `${g.title}: ${g.heading}`, heading: g.heading, href: g.page })) as Prisma.InputJsonValue,
+          aiSources: pageSources(ai.sources.map((n) => guide[n - 1])) as Prisma.InputJsonValue,
           aiActions: ai.actions.length ? (ai.actions as Prisma.InputJsonValue) : undefined,
         },
         select: { id: true },

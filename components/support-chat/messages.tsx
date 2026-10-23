@@ -119,7 +119,7 @@ function AiLabel({ m }: { m: MessageView }) {
           const href = safeHref(s.href);
           return (
             <span key={s.title + i}>
-              {i > 0 && ", "}
+              {i > 0 && " · "}
               {href ? (
                 <a href={href} className="text-muted underline-offset-2 hover:underline">
                   {s.title}
