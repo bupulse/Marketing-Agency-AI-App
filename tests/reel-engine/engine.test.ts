@@ -94,7 +94,8 @@ describe("the reel engine (test only)", () => {
     expect(h.design.mock.calls[0][0]).toMatchObject({ aspectRatio: "9:16", model: "gemini-3.1-flash-image", usePhotoPath: "u1/gallery/a.jpg" });
     expect(h.submit).not.toHaveBeenCalled();
     await stepReel(owner, id);
-    expect(h.submit).toHaveBeenCalledTimes(7);
+    // At most 3 clips filming at once: Google answers more with RESOURCE_EXHAUSTED.
+    expect(h.submit).toHaveBeenCalledTimes(3);
     expect(h.submit.mock.calls[0][0]).toMatchObject({ ratio: "9:16", seconds: 8, resolution: "720p", image: { mimeType: "image/png" } });
     // One finished clip is saved and checked per step, so no request runs long.
     expect(h.upload).toHaveBeenCalledTimes(1);
@@ -109,16 +110,11 @@ describe("the reel engine (test only)", () => {
     const id = await startReel(owner, { language: "English", tier: "lite" });
     for (let i = 0; i < 7; i++) await stepReel(owner, id);
     const refused = { name: "op", done: true, videoUri: null, error: new Error("Google declined this clip under its safety rules.") };
-    h.poll.mockResolvedValueOnce(refused);
-    await stepReel(owner, id);
-    expect(h.jobs.get(id)).toMatchObject({ status: "filming" });
-    expect(h.submit).toHaveBeenCalledTimes(7);
-    h.poll.mockResolvedValueOnce(refused);
-    await stepReel(owner, id);
-    expect(h.submit).toHaveBeenCalledTimes(8);
-    h.poll.mockResolvedValueOnce(refused);
-    await stepReel(owner, id);
-    expect(h.submit).toHaveBeenCalledTimes(9);
+    // The first clip polled (the hook) is refused three times; each refusal sends it again at the next step.
+    for (let k = 0; k < 3; k++) {
+      h.poll.mockResolvedValueOnce(refused);
+      await stepReel(owner, id);
+    }
     // The other clips finish first, so trying again never pays for them twice.
     await settle(id);
     expect(h.submit).toHaveBeenCalledTimes(9);
@@ -126,12 +122,13 @@ describe("the reel engine (test only)", () => {
     expect(String(h.jobs.get(id)!.error)).toMatch(/safety rules/);
     // Only the filmed clips are paid; the refused one costs nothing.
     const filmed = (h.jobs.get(id)!.plan as { clips: { status: string; seconds: number }[] }).clips.filter((c) => c.status === "done");
+    expect(filmed).toHaveLength(6);
     expect(h.jobs.get(id)!.costUsd).toBeCloseTo(7 * 0.067 + filmed.reduce((t, c) => t + veoClipUsd(c.seconds, veoModel()), 0), 2);
 
     // "Try the failed clips again": the 3 filmed clips are kept, only the failed one is filmed again.
     await retryReel(owner, id);
     expect(h.jobs.get(id)).toMatchObject({ status: "filming", error: null });
-    await stepReel(owner, id);
+    await settle(id);
     expect(h.submit).toHaveBeenCalledTimes(10);
     expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
   });
@@ -176,7 +173,7 @@ describe("the clip checker in the engine", () => {
     expect(plan.clips[0].avoid).toEqual(["5 s: her fingers melt into the leaves"]);
     expect(plan.clips[0].problems).toEqual(["1 s: a face changes"]);
     expect(h.submit).toHaveBeenCalledTimes(9);
-    expect(h.submit.mock.calls.slice(4).map((c) => String(c[0].prompt)).join(" ")).toContain("avoid exactly this: 3 s: a man walks through the tower.");
+    expect(h.submit.mock.calls.map((c) => String(c[0].prompt)).join(" ")).toContain("avoid exactly this: 3 s: a man walks through the tower.");
     expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
     // 6 clips paid: the 4 and the 2 filmed again.
     expect(h.jobs.get(id)!.costUsd).toBeCloseTo(7 * 0.067 + 5 * veoClipUsd(8, veoModel()) + 4 * veoClipUsd(4, veoModel()), 2);
@@ -210,5 +207,37 @@ describe("re-cutting a finished reel", () => {
     await settle(id);
     expect(await reelUploadTarget(owner, id)).toEqual({ path: `u1/clips/reels/${id}.mp4`, token: "tok" });
     expect(storage.createSignedUploadUrl).toHaveBeenCalledWith("gallery-videos", `u1/clips/reels/${id}.mp4`, { service: true, upsert: true });
+  });
+});
+
+describe("Google at its limit", () => {
+  it("never films more than 3 clips at once, and a clip Google is too busy for waits a minute without counting as a try", async () => {
+    const id = await startReel(owner, { language: "English", tier: "lite" });
+    for (let i = 0; i < 7; i++) await stepReel(owner, id);
+    const t0 = new Date();
+    h.poll.mockResolvedValueOnce({ name: "op", done: true, videoUri: null, error: Object.assign(new Error("Google Veo is at its limit right now."), { kind: "quota" }) });
+    await stepReel(owner, id, t0);
+    const clip = (h.jobs.get(id)!.plan as { clips: { status: string; tries?: number; retryAt?: number }[] }).clips[0];
+    expect(clip).toMatchObject({ status: "framed" });
+    expect(clip.tries ?? 0).toBe(0);
+    expect(clip.retryAt).toBe(t0.getTime() + 60_000);
+    // Not sent again before the minute is up, then filmed like the others.
+    await stepReel(owner, id, new Date(t0.getTime() + 10_000));
+    expect((h.jobs.get(id)!.plan as { clips: { status: string }[] }).clips[0].status).toBe("framed");
+    for (let n = 0; n < 30 && h.jobs.get(id)!.status === "filming"; n++) await stepReel(owner, id, new Date(t0.getTime() + 61_000 + n * 1000));
+    expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
+  });
+
+  it("a submit Google refuses for its limit (HTTP 429) waits too, instead of failing the reel", async () => {
+    const id = await startReel(owner, { language: "English", tier: "lite" });
+    for (let i = 0; i < 7; i++) await stepReel(owner, id);
+    h.submit.mockRejectedValueOnce(Object.assign(new Error("Google Veo is at its limit right now."), { name: "VeoError", kind: "quota" }));
+    const t0 = new Date();
+    await stepReel(owner, id, t0);
+    expect(h.jobs.get(id)).toMatchObject({ status: "filming" });
+    const clip = (h.jobs.get(id)!.plan as { clips: { status: string; retryAt?: number }[] }).clips[0];
+    expect(clip).toMatchObject({ status: "framed", retryAt: t0.getTime() + 60_000 });
+    for (let n = 0; n < 30 && h.jobs.get(id)!.status === "filming"; n++) await stepReel(owner, id, new Date(t0.getTime() + 61_000 + n * 1000));
+    expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
   });
 });

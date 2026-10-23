@@ -42,6 +42,10 @@ const FRAME_USD = 0.067;
 const PORTRAIT_USD = 0.134;
 const STEP_LEASE_MS = 3 * 60 * 1000;
 const CLIP_RETRIES = 2;
+/** How long a clip waits when Google is at its limit (RESOURCE_EXHAUSTED). */
+const BUSY_WAIT_MS = 60_000;
+/** Google at its limit: too many clips at once, or the day's quota (VeoError kind "quota", or its own words). */
+const isBusy = (error: unknown) => (error as { kind?: string } | null)?.kind === "quota" || /RESOURCE_EXHAUSTED|at its limit|quota/i.test(String((error as Error | null)?.message ?? ""));
 /** Clips the checker may send back to be filmed again in one reel (each costs a clip). */
 export const MAX_REFILMS = 2;
 const CLIPS_BUCKET = "gallery-videos";
@@ -214,12 +218,24 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
       await save();
       return;
     }
-    // 2. Every framed clip to Veo (each answers in seconds with an operation to check later).
-    for (const clip of plan.clips.filter((c) => c.status === "framed")) {
+    // 2. Framed clips to the video model, at most VEO_PARALLEL filming at once: Google takes only a few clips at a time
+    // and answers the rest with RESOURCE_EXHAUSTED (the first 7-clip reel lost 6 clips to it). A clip Google is too busy
+    // for waits a minute and goes again; the wait is not counted as a try.
+    for (const clip of plan.clips.filter((c) => c.status === "framed" && (c.retryAt ?? 0) <= now.getTime())) {
+      if (plan.clips.filter((c) => c.status === "filming").length >= veo.VEO_PARALLEL) break;
       const frame = await bytesOf("designs", clip.framePath!);
       const mimeType = frame[0] === 0x89 ? "image/png" : "image/jpeg";
-      clip.operation = await submitVeo({ model, prompt: veoClipPrompt(clip, job.language as ReelLanguage, plan.setting), image: { base64: base64(frame), mimeType }, ratio: "9:16", seconds: clip.seconds === 4 ? 4 : CLIP_SECONDS, resolution: "720p" }, { apiKey });
+      try {
+        clip.operation = await submitVeo({ model, prompt: veoClipPrompt(clip, job.language as ReelLanguage, plan.setting), image: { base64: base64(frame), mimeType }, ratio: "9:16", seconds: clip.seconds === 4 ? 4 : CLIP_SECONDS, resolution: "720p" }, { apiKey });
+      } catch (error) {
+        if (isBusy(error)) {
+          clip.retryAt = now.getTime() + BUSY_WAIT_MS;
+          break;
+        }
+        throw error;
+      }
       clip.status = "filming";
+      clip.retryAt = null;
     }
     // 3. The clips being filmed: one finished clip is downloaded and checked per step (four in one request took longer
     // than the test site's connection waits, and the screen lost the reel).
@@ -228,9 +244,15 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
       const op = await getVeoOperation(clip.operation, { apiKey });
       if (!op.done) continue;
       if (op.error || (!op.videoUri && !(op as { videoBytes?: Buffer | null }).videoBytes)) {
+        clip.operation = null;
+        if (isBusy(op.error)) {
+          // Google was at its limit: the clip goes again in a minute, and this is not a try.
+          clip.status = "framed";
+          clip.retryAt = now.getTime() + BUSY_WAIT_MS;
+          continue;
+        }
         // Google sometimes refuses a clip with a general error and charges nothing: send it again, up to 2 times.
         clip.error = op.error?.message ?? "Google could not make this clip.";
-        clip.operation = null;
         clip.tries = (clip.tries ?? 0) + 1;
         clip.status = clip.tries <= CLIP_RETRIES ? "framed" : "failed";
         continue;
@@ -347,6 +369,7 @@ export async function retryReel(owner: Owner, jobId: string): Promise<void> {
     clip.operation = null;
     clip.error = null;
     clip.tries = 0;
+    clip.retryAt = null;
   }
   await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json(plan), status: "filming", error: null, stepUntil: null } });
 }

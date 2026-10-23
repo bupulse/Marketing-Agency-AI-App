@@ -114,6 +114,8 @@ export type ReelClip = {
   error?: string | null;
   /** How many times the video model refused this clip (a refusal costs nothing, so it is sent again, up to 2 times). */
   tries?: number;
+  /** Google was at its limit: the clip waits until this time (ms) before it is sent again; the wait is not a try. */
+  retryAt?: number | null;
   /** What the clip checker saw wrong in an earlier take, told to the video model on the next one. */
   avoid?: string[];
   /** What the clip checker saw in the take that was kept (empty when it passed). */
