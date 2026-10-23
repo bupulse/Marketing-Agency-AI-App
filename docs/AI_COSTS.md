@@ -109,6 +109,15 @@ input tokens and priced per second in `lib/ai/pricing.ts`) for a client.
 | 6 | 19 Oct 2026 | 4 s, studio route, fixed prompt (`vc-fbd17b278a07`) | the same rack stays in its greenhouse; slow orbit, the sun flares through; the product and its LEAF base unchanged | 0.20 | 1.20 |
 | 7-9 | 19 Oct 2026 | 3 clips of 4 s made together from the Create page for a viral recipe's AI beats (run `vr-32e2d800bc09`, 55 to 74 s) | the spiral, terracotta and sculpture towers from their own photos, hands reaching in; then designed (same recipe), rendered to a 15 s MP4 with music: clips placed in scenes 2 to 4, their sound absent from the mix | 0.60 | 1.80 |
 
+**Reel engine test reels** (owner-approved test budget: $10 in total for all reels, docs/REEL_ENGINE.md; LEAF Hydro
+Tower, TEST database, Gemini Omni Flash at about $0.10 a second; refused clips cost nothing):
+
+| # | Date | What | Provider cost (USD) | Running total |
+| --- | --- | --- | --- | --- |
+| 1 | 23 Oct 2026 | Reel `cmvl6ynoi0005ns45iigbvwmi`, Kinyarwanda: the presenter's portrait, 4 start frames (one repainted by the Checker), 3 clips of 8 s filmed (Omni speaks Kinyarwanda); the call to action refused 3 times (it said the price) | 3.00 | 3.00 |
+| 2 | 23 Oct 2026 | Finding the cause by hand: the refused script with a filmed clip's start frame (refused, free), without "WhatsApp" (refused, free), without the price sentence (filmed, not used) | 0.80 | 3.80 |
+| 3 | 23 Oct 2026 | Gemini transcript of the 3 filmed clips (what is said, which language) | < 0.01 | 3.80 |
+
 **What the margins say:**
 - **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to
   $0.07 (85 to 100 RWF) against 150 RWF, and even the longest take measured ($0.078, 113 RWF) is covered. On a

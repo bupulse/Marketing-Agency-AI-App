@@ -115,8 +115,23 @@ export const variantOf = (key: string) => {
   return BEATS.find((b) => b.id === beatId)?.variants.find((v) => v.id === id) ?? null;
 };
 
+const MONEY = /amafaranga|igiciro|ibihumbi|miliyoni|\b(rwf|frw|francs?|price|prices|priced|cost|costs|usd|dollars?)\b|\$|€|£/i;
+
+/**
+ * The words that may be spoken: Google's video model refuses a clip whose spoken line says a price (first test, 23
+ * October 2026: "Iboneka ku mafaranga ibihumbi magana abiri na mirongo itanu…" refused 5 times, the same clip without
+ * that sentence filmed at once). So a sentence about money is never spoken; the price is in the caption.
+ */
+export function spokenLine(line: string): string {
+  return (line.match(/[^.!?]+[.!?]*/g) ?? [])
+    .map((s) => s.trim())
+    .filter((s) => s && !MONEY.test(s))
+    .join(" ");
+}
+
 /** Veo's prompt for one clip: the action and camera, the line spoken in the reel's language, real footage, no words. */
 export function veoClipPrompt(clip: Pick<ReelClip, "motion" | "line" | "camera" | "presenter">, language: ReelLanguage): string {
+  clip = { ...clip, line: spokenLine(clip.line) };
   const speech = clip.line
     ? clip.presenter
       ? `The presenter speaks to the camera in ${language}, clearly and warmly, lips in sync: "${clip.line}"`
@@ -130,7 +145,7 @@ export function veoClipPrompt(clip: Pick<ReelClip, "motion" | "line" | "camera" 
 }
 
 /** The words that may be shown as a subtitle: the line, clipped to two short lines. */
-export const subtitleOf = (line: string) => line.replace(/\s+/g, " ").trim().slice(0, 140);
+export const subtitleOf = (line: string) => spokenLine(line).replace(/\s+/g, " ").trim().slice(0, 140);
 
 /**
  * The finished reel as a motion spec for the browser encoder: 4 scenes of 7.5 s, each one clip with its own sound and
@@ -149,7 +164,7 @@ export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name:
   });
   const scenes: Scene[] = plan.clips.map((clip, i) => {
     const layers: Layer[] = [{ kind: "video", url: clipUrls[i], fit: "cover", start: 0, sound: true, x: 0.5, y: 0.5, w: 1, h: 1 }];
-    if (clip.line) layers.push(text({ text: subtitleOf(clip.line), size: 0.045, y: 0.82, h: 0.12, box: { color: "rgba(0,0,0,0.55)", padding: 0.02, radius: 0.02 }, from: 0.04, to: 0.98 }));
+    if (subtitleOf(clip.line)) layers.push(text({ text: subtitleOf(clip.line), size: 0.045, y: 0.82, h: 0.12, box: { color: "rgba(0,0,0,0.55)", padding: 0.02, radius: 0.02 }, from: 0.04, to: 0.98 }));
     if (i === plan.clips.length - 1) layers.push(text({ text: brand.name, size: 0.06, y: 0.12, h: 0.09, w: 0.8, box: { color: brand.color, padding: 0.025, radius: 0.04 }, from: 0.35 }));
     return { seconds: SCENE_SECONDS, background: { kind: "solid", colors: ["#000000"] }, layers, ...(i > 0 ? { transition: "cut" as const } : {}) };
   });

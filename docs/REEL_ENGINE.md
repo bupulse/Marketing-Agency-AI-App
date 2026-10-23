@@ -57,3 +57,8 @@ Kinyarwanda speech is untested by Google; if it is poor, the fallback stays an E
   almost word for word, clear and natural, lips in sync on camera, ambient sound, no music. Weak spots: hands warp a
   little when the presenter gestures, and in one clip the tower changed shape halfway (a reason to keep the product's
   own photo as the start frame and to ask for little product movement).
+- **Google refuses a spoken price**: the call to action ("Iboneka ku mafaranga ibihumbi magana abiri na mirongo
+  itanu. Twandikire kuri WhatsApp uyu munsi!") was refused with `INVALID_ARGUMENT` every time; with a start frame Google
+  had accepted it was still refused, without "WhatsApp" still refused, without the price sentence it was filmed at once.
+  So `spokenLine` leaves every sentence about money out of the speech and the subtitle, and the writer is told the
+  price goes in the caption only. "Try the failed clips again" re-sends with the new rule.
