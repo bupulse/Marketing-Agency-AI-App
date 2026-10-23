@@ -44,3 +44,12 @@ choice), keeping submit / check / download: about $0.10 a second, so about $0.80
 reel engine follows `veoModel()` and `veoClipUsd()`, reads clips through `veoClipBytes` (a link or inline bytes), and asks
 for "about 8 seconds" in the prompt (Omni has no duration setting). One model for now: the Lite / Pro choice is hidden.
 Kinyarwanda speech is untested by Google; if it is poor, the fallback stays an English voice with Kinyarwanda subtitles.
+
+## First test (23 October 2026, LEAF, Kinyarwanda): what it taught
+
+- **The tab must stay in front**: Chrome pauses a background tab's timers, so the reel stopped after 2 start frames.
+  Now the Videos page opens on the latest reel and carries on with it, and a step runs again when the tab comes back.
+- **Google sometimes refuses a clip** (Omni: `INVALID_ARGUMENT`, "There was a problem processing your request", failed
+  at once, nothing charged). 3 of 4 clips were filmed and the 4th refused, which failed the reel. Now a refused clip is
+  sent again up to 2 times, and a failed reel has "Try the failed clips again" that keeps the filmed clips.
+- The presenter's description said "undefined" for some company ids (fixed); the portrait itself was right.

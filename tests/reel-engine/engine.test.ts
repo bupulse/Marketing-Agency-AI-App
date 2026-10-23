@@ -49,7 +49,7 @@ vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => ({ download: async () => ({ data: new Blob([new Uint8Array([0x89, 1, 2])]), error: null }), upload: h.upload, createSignedUrls: async () => ({ data: [] }) }) } }) }));
 vi.mock("@/lib/video-engine/veo", async (orig) => ({ ...(await orig<typeof import("@/lib/video-engine/veo")>()), submitVeo: h.submit, getVeoOperation: h.poll, veoClipBytes: undefined, downloadVeo: async () => Buffer.from([0, 0, 0, 24]) }));
 
-import { latestReel, reelEngineOn, startReel, stepReel } from "@/lib/reel-engine/engine";
+import { latestReel, reelEngineOn, retryReel, startReel, stepReel } from "@/lib/reel-engine/engine";
 import { veoClipUsd, veoModel } from "@/lib/video-engine/veo";
 
 const owner = { userId: "u1", businessId: "b1" };
@@ -94,13 +94,30 @@ describe("the reel engine (test only)", () => {
     expect(job.costUsd).toBeCloseTo(4 * 0.067 + 4 * veoClipUsd(8, veoModel()), 2);
   });
 
-  it("a clip Veo declines fails the reel with the reason", async () => {
+  it("a clip Google refuses is sent again twice (refusals cost nothing), then fails the reel with the reason", async () => {
     const id = await startReel(owner, { language: "English", tier: "lite" });
     for (let i = 0; i < 4; i++) await stepReel(owner, id);
-    h.poll.mockResolvedValueOnce({ name: "op", done: true, videoUri: null, error: new Error("Google declined this clip under its safety rules.") });
+    const refused = { name: "op", done: true, videoUri: null, error: new Error("Google declined this clip under its safety rules.") };
+    h.poll.mockResolvedValueOnce(refused);
     await stepReel(owner, id);
+    expect(h.jobs.get(id)).toMatchObject({ status: "filming" });
+    expect(h.submit).toHaveBeenCalledTimes(4);
+    h.poll.mockResolvedValueOnce(refused);
+    await stepReel(owner, id);
+    expect(h.submit).toHaveBeenCalledTimes(5);
+    h.poll.mockResolvedValueOnce(refused);
+    await stepReel(owner, id);
+    expect(h.submit).toHaveBeenCalledTimes(6);
     expect(h.jobs.get(id)).toMatchObject({ status: "failed" });
     expect(String(h.jobs.get(id)!.error)).toMatch(/safety rules/);
+    expect(h.jobs.get(id)!.costUsd).toBeCloseTo(4 * 0.067 + 3 * veoClipUsd(8, veoModel()), 2);
+
+    // "Try the failed clips again": the 3 filmed clips are kept, only the failed one is filmed again.
+    await retryReel(owner, id);
+    expect(h.jobs.get(id)).toMatchObject({ status: "filming", error: null });
+    await stepReel(owner, id);
+    expect(h.submit).toHaveBeenCalledTimes(7);
+    expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
   });
 });
 

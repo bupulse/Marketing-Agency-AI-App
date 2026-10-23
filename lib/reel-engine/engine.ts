@@ -36,6 +36,7 @@ const PORTRAIT_MODEL = () => process.env.GEMINI_IMAGE_PRO_MODEL || "gemini-3-pro
 const FRAME_USD = 0.067;
 const PORTRAIT_USD = 0.134;
 const STEP_LEASE_MS = 3 * 60 * 1000;
+const CLIP_RETRIES = 2;
 const CLIPS_BUCKET = "gallery-videos";
 
 /** The owner's test cap in USD for all reels together. */
@@ -194,8 +195,11 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
       const op = await getVeoOperation(clip.operation, { apiKey });
       if (!op.done) continue;
       if (op.error || (!op.videoUri && !(op as { videoBytes?: Buffer | null }).videoBytes)) {
-        clip.status = "failed";
-        clip.error = op.error?.message ?? "Veo could not make this clip.";
+        // Google sometimes refuses a clip with a general error and charges nothing: send it again, up to 2 times.
+        clip.error = op.error?.message ?? "Google could not make this clip.";
+        clip.operation = null;
+        clip.tries = (clip.tries ?? 0) + 1;
+        clip.status = clip.tries <= CLIP_RETRIES ? "framed" : "failed";
         continue;
       }
       // The clip comes back as a link (Veo) or inline (Omni: veoClipBytes); both are read the same way.
@@ -266,6 +270,26 @@ export async function reelView(owner: Owner, jobId: string): Promise<ReelView | 
     musicUrl: music ? musicUrl(music.path) : null,
     reelUrl: job.path ? (files.get(job.path) ?? null) : null,
   };
+}
+
+/** A failed reel tries its failed clips again; the clips already filmed are kept (the owner's "Try again"). */
+export async function retryReel(owner: Owner, jobId: string): Promise<void> {
+  if (!(await reelEngineOn(owner.businessId))) throw new ReelError("AI reels are being tested and are not on for your business yet.");
+  const job = await prisma.reelJob.findFirst({ where: { id: jobId, businessId: owner.businessId, status: "failed" } });
+  if (!job) throw new ReelError("This reel cannot be tried again.");
+  const plan = job.plan as unknown as ReelPlan;
+  if (!plan.clips?.length) throw new ReelError("This reel was not planned. Make a new one.");
+  const left = plan.clips.filter((c) => c.status !== "done").length;
+  const spent = await reelTestSpentUsd();
+  if (spent + left * (FRAME_USD + veoClipUsd(CLIP_SECONDS, veoModel())) > reelTestCapUsd()) throw new ReelError(`The test budget is used: $${spent.toFixed(2)} of $${reelTestCapUsd()}. Ask to raise it before trying again.`);
+  for (const clip of plan.clips) {
+    if (clip.status === "done") continue;
+    clip.status = clip.framePath ? "framed" : "planned";
+    clip.operation = null;
+    clip.error = null;
+    clip.tries = 0;
+  }
+  await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json(plan), status: "filming", error: null, stepUntil: null } });
 }
 
 /** The company's latest reel of the last week (the screen shows it and carries on with it when it is not finished). */

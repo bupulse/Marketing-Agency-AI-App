@@ -3,7 +3,7 @@
 import { Clapperboard, Copy, LoaderCircle, Wand2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Badge, Button, Chip, GlassCard, Select, Textarea, useToast } from "@/components/ui";
-import { finishReelAction, reelUploadAction, startReelAction, stepReelAction } from "@/app/dashboard/video/reel-actions";
+import { finishReelAction, reelUploadAction, retryReelAction, startReelAction, stepReelAction } from "@/app/dashboard/video/reel-actions";
 import type { ReelView } from "@/lib/reel-engine/engine";
 import { buildReelSpec, reelCostUsd, REEL_LANGUAGES, type ReelLanguage, type ReelPlan } from "@/lib/reel-engine/story";
 import { createClient } from "@/lib/supabase/client";
@@ -90,6 +90,19 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
     void step(res.id);
   }
 
+  async function retry(id: string) {
+    setError(null);
+    setBusy(FILMING);
+    const res = await retryReelAction(id);
+    if (!res.ok) {
+      setBusy(null);
+      setError(res.error);
+      return;
+    }
+    job.current = id;
+    void step(id);
+  }
+
   /** The 4 clips into one 30 s reel with subtitles and music, in this browser, then saved. */
   async function join(view: ReelView) {
     if (joining.current) return;
@@ -173,6 +186,14 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
         <p role="alert" className="text-[14px] font-medium text-danger">
           {error ?? reel?.error ?? "This reel could not be made. Please try again."}
         </p>
+      )}
+      {reel?.status === "failed" && !busy && reel.clips.some((c) => c.status === "done") && (
+        <div>
+          <Button size="sm" variant="outline" onClick={() => retry(reel.id)}>
+            Try the failed clips again
+          </Button>
+          <p className="mt-1 text-[13px] text-muted">The clips already filmed are kept.</p>
+        </div>
       )}
 
       {reel?.reelUrl && (

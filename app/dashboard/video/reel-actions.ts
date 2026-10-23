@@ -7,7 +7,7 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
-import { ReelError, finishReel, reelTestCapUsd, reelTestSpentUsd, reelUploadTarget, reelView, startReel, stepReel, type ReelView } from "@/lib/reel-engine/engine";
+import { ReelError, finishReel, retryReel, reelTestCapUsd, reelTestSpentUsd, reelUploadTarget, reelView, startReel, stepReel, type ReelView } from "@/lib/reel-engine/engine";
 import { REEL_LANGUAGES } from "@/lib/reel-engine/story";
 import { can } from "@/lib/team/roles";
 
@@ -57,6 +57,18 @@ export async function stepReelAction(jobId: string): Promise<{ ok: true; reel: R
     const reel = await reelView(owner, jobId);
     if (!reel) return { ok: false, error: "That reel was not found." };
     return { ok: true, reel, spent: await reelTestSpentUsd(), cap: reelTestCapUsd() };
+  } catch (error) {
+    return failure(error, owner.userId);
+  }
+}
+
+/** A failed reel tries its failed clips again, keeping the ones already filmed. */
+export async function retryReelAction(jobId: string): Promise<{ ok: true } | Fail> {
+  const owner = await ownerOf();
+  if (!owner || !id.safeParse(jobId).success) return { ok: false, error: "That reel was not found." };
+  try {
+    await retryReel(owner, jobId);
+    return { ok: true };
   } catch (error) {
     return failure(error, owner.userId);
   }
