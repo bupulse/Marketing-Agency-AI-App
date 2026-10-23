@@ -22,6 +22,7 @@ export const PERMISSIONS = {
   ai: { label: "AI calls, spend and budget", group: "Areas" },
   system: { label: "Health, services, errors, activity, audit, flags, settings, updates", group: "Areas" },
   jarvis: { label: "Jarvis API keys", group: "Areas" },
+  liveChat: { label: "Live chat: support agents, departments, team hours, greetings and AI rules", group: "Areas" },
   // Actions
   "payments.approve": { label: "Approve or reject payments, mark invoices paid", group: "Actions" },
   "approvals.decide": { label: "Approve money requests (refunds, plan changes)", group: "Actions" },
