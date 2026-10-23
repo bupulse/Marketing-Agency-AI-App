@@ -138,6 +138,15 @@ input tokens and priced per second in `lib/ai/pricing.ts`) for a client.
 | - | 23 Oct 2026 | the overnight clip maker's first try (`lib/visuals/ai-clips.ts`, LEAF Hydro Tower video on TEST) | Google refused both submits: Veo 3.1 Lite shut down the day before (404). Not billed; the video fell back to the slideshow and its 190 credits came back once | 0.00 | 1.80 |
 | 10-11 | 23 Oct 2026 | 2 Gemini Omni Flash clips of 6 s by the overnight clip maker (same LEAF video, owner-approved paid test), both made in about 85 s, 6.0 s each (3.2 and 4.7 MB) | scene 1 from the tower photo: push-in, an adult's hand picks basil, the product unchanged; scene 2: slow move over the terracotta tower. Rendered by the robot's renderer into a 20 s MP4 (4.9 MB, 11 s to make) with the clips under the captions and the music | 1.20 | 3.00 |
 
+**Reel engine test reels** (owner-approved test budget: $10 in total for all reels, docs/REEL_ENGINE.md; LEAF Hydro
+Tower, TEST database, Gemini Omni Flash at about $0.10 a second; refused clips cost nothing):
+
+| # | Date | What | Provider cost (USD) | Running total |
+| --- | --- | --- | --- | --- |
+| 1 | 23 Oct 2026 | Reel `cmvl6ynoi0005ns45iigbvwmi`, Kinyarwanda: the presenter's portrait, 4 start frames (one repainted by the Checker), 3 clips of 8 s filmed (Omni speaks Kinyarwanda); the call to action refused 3 times (it said the price) | 3.00 | 3.00 |
+| 2 | 23 Oct 2026 | Finding the cause by hand: the refused script with a filmed clip's start frame (refused, free), without "WhatsApp" (refused, free), without the price sentence (filmed, not used) | 0.80 | 3.80 |
+| 3 | 23 Oct 2026 | Gemini transcript of the 3 filmed clips (what is said, which language) | < 0.01 | 3.80 |
+
 **What the margins say:**
 - **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to
   $0.07 (85 to 100 RWF) against 150 RWF, and even the longest take measured ($0.078, 113 RWF) is covered. On a

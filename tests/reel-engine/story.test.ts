@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReelSpec, directReel, reelCostUsd, SCENE_SECONDS, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
+import { buildReelSpec, directReel, reelCostUsd, SCENE_SECONDS, spokenLine, subtitleOf, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
 import { totalMs } from "@/lib/video-engine/spec";
 import { readReel, reelPrompt, ruleReel, type ReelInput } from "@/lib/reel-engine/writer";
 
@@ -56,5 +56,23 @@ describe("the reel's writer", () => {
     expect(plan.clips.map((c) => c.line)).toEqual(["Muraho neza!", "", "", "Muraho neza!"]);
     expect(plan.hashtags).toEqual(["#LEAF", "#Rwanda"]);
     expect(readReel({ clips: beats.map((_, i) => ({ index: i, frame: "short", motion, line: "" })) }, input)).toBeNull();
+  });
+});
+
+describe("what is spoken", () => {
+  // Google's video model refused the owner's first call to action 5 times because it said the price; without it, it filmed.
+  const cta = "Iboneka ku mafaranga ibihumbi magana abiri na mirongo itanu. Twandikire kuri WhatsApp uyu munsi!";
+  it("never says a price: that sentence is left out of the speech and the subtitle", () => {
+    expect(spokenLine(cta)).toBe("Twandikire kuri WhatsApp uyu munsi!");
+    expect(spokenLine("Only 250,000 RWF. Message us today!")).toBe("Message us today!");
+    expect(spokenLine("The price is $40.")).toBe("");
+    expect(spokenLine("Muraho! Reba uko umusaruro wiyongera.")).toBe("Muraho! Reba uko umusaruro wiyongera.");
+    expect(subtitleOf(cta)).toBe("Twandikire kuri WhatsApp uyu munsi!");
+    const p = veoClipPrompt({ motion, line: cta, camera: "handheld", presenter: true }, "Kinyarwanda");
+    expect(p).not.toMatch(/amafaranga|ibihumbi/);
+    expect(p).toContain('"Twandikire kuri WhatsApp uyu munsi!"');
+  });
+  it("a line that is only a price leaves the clip with its natural sound", () => {
+    expect(veoClipPrompt({ motion, line: "Only 250,000 RWF.", camera: "handheld", presenter: true }, "English")).toContain("Only natural sound of the place.");
   });
 });
