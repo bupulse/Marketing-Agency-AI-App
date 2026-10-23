@@ -95,7 +95,8 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
-import { CLIP_GIVE_UP_MS, readClipJobs, releaseClips, runAiClips } from "@/lib/visuals/ai-clips";
+import { CLIP_GIVE_UP_MS, CLIP_QUOTA_TRIES, readClipJobs, releaseClips, runAiClips } from "@/lib/visuals/ai-clips";
+import { VEO_PARALLEL } from "@/lib/video-engine/veo";
 import { CLIP_NOTES } from "@/lib/visuals/clip-scenes";
 import { buildVideoPlan } from "@/lib/visuals/video-plan";
 import { UsageLimitError } from "@/lib/usage";
@@ -124,7 +125,7 @@ function addVisual(id: string, extra: Record<string, unknown> = {}) {
  * each check answers from `ops` (by its number), the clip inline. Old Veo operation names (models/.../operations/opN)
  * are answered the Veo way, for clips submitted before the switch.
  */
-function veo(ops: Record<number, "running" | "done" | "blocked" | "failed" | "limit"> = {}, submit: number[] = []) {
+function veo(ops: Record<number, "running" | "done" | "blocked" | "failed" | "limit"> = {}, submit: number[] = [], limitSubmits: number[] = []) {
   let n = 0;
   const calls: string[] = [];
   const data = Buffer.from(MP4).toString("base64");
@@ -134,6 +135,7 @@ function veo(ops: Record<number, "running" | "done" | "blocked" | "failed" | "li
     if (u.endsWith("/interactions") && init?.method === "POST") {
       n += 1;
       if (submit.includes(n)) return new Response(JSON.stringify({ error: { code: "invalid_request", message: "bad" } }), { status: 400 });
+      if (limitSubmits.includes(n)) return new Response(JSON.stringify({ error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "Too many requests" } }), { status: 429 });
       return Response.json({ id: `v1_op${n}`, status: "in_progress" });
     }
     const it = u.match(/interactions\/v1_op(\d+)$/);
@@ -299,15 +301,65 @@ describe("AI clips: made overnight", () => {
     expect(usage.refundUsage.mock.calls[0][3]).toBe(380);
   });
 
-  it("Google at its limit for both clips: a simple video that says Google was busy, all 380 back once", async () => {
+  it("Google at its limit: the clips wait a sweep and are sent again, then made; nothing given back", async () => {
     addVisual("v1");
     const g = veo({ 1: "limit", 2: "limit" });
     await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
-    await runAiClips(later(4 * 60_000), { env, fetchImpl: g.fetchImpl });
+    const turnedAway = await runAiClips(later(4 * 60_000), { env, fetchImpl: g.fetchImpl });
+    expect(turnedAway.retried).toBe(0);
+    expect(row("v1").clipState).toBe("making");
+    expect(readClipJobs(row("v1").clipJobs).map((j) => [j.status, j.tries])).toEqual([["retry", 1], ["retry", 1]]);
+    const again = await runAiClips(later(8 * 60_000), { env, fetchImpl: g.fetchImpl });
+    expect(again.retried).toBe(2);
+    await runAiClips(later(12 * 60_000), { env, fetchImpl: g.fetchImpl });
+    expect(row("v1").clipState).toBe("done");
+    expect(rowPlan("v1").scenes.filter((s) => s.clipPath)).toHaveLength(2);
+    expect(usage.refundUsage).not.toHaveBeenCalled();
+  });
+
+  it("Google at its limit every time: given up after the tries, a simple video that says Google was busy, 380 back once", async () => {
+    addVisual("v1");
+    const g = veo({ 1: "limit", 2: "limit", 3: "limit", 4: "limit", 5: "limit", 6: "limit" });
+    for (let sweep = 0; sweep <= 5; sweep++) await runAiClips(later(sweep * 4 * 60_000), { env, fetchImpl: g.fetchImpl });
+    expect(ledger.submits).toBe(2 * CLIP_QUOTA_TRIES);
     expect(row("v1").clipState).toBe("fallback");
     expect(rowPlan("v1").aiNote).toBe(CLIP_NOTES.googleBusy);
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
     expect(usage.refundUsage.mock.calls[0][3]).toBe(380);
+  });
+
+  it("a send turned away at Google's limit stops the sweep's sends; the clips go from the next sweep", async () => {
+    addVisual("v1");
+    const g = veo({}, [], [1]);
+    await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
+    // The second clip is not sent into a limit Google just reported.
+    expect(g.calls.filter((c) => c.startsWith("POST"))).toHaveLength(1);
+    expect(row("v1").clipState).toBe("making");
+    expect(readClipJobs(row("v1").clipJobs).map((j) => j.status)).toEqual(["retry", "retry"]);
+    await runAiClips(later(4 * 60_000), { env, fetchImpl: g.fetchImpl });
+    await runAiClips(later(8 * 60_000), { env, fetchImpl: g.fetchImpl });
+    expect(row("v1").clipState).toBe("done");
+    expect(usage.refundUsage).not.toHaveBeenCalled();
+  });
+
+  it("at most VEO_PARALLEL clips at Google across videos: the rest wait, a video with no place takes no credits yet", async () => {
+    addVisual("v1");
+    addVisual("v2", { createdAt: later(1) });
+    addVisual("v3", { createdAt: later(2) });
+    const ops: Record<number, "running" | "done"> = { 1: "running", 2: "running", 3: "running" };
+    const g = veo(ops);
+    await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
+    expect(ledger.submits).toBe(VEO_PARALLEL);
+    expect(readClipJobs(row("v2").clipJobs).map((j) => j.status)).toEqual(["submitted", "retry"]);
+    expect(row("v3").clipState).toBe("waiting");
+    expect(usage.consumeUsage).toHaveBeenCalledTimes(2);
+    // Google finishes the first three: v2's waiting clip and v3's two clips go next.
+    ops[1] = ops[2] = ops[3] = "done";
+    await runAiClips(later(4 * 60_000), { env, fetchImpl: g.fetchImpl });
+    expect(row("v1").clipState).toBe("done");
+    expect(readClipJobs(row("v2").clipJobs).map((j) => j.status)).toEqual(["made", "submitted"]);
+    expect(readClipJobs(row("v3").clipJobs).map((j) => j.status)).toEqual(["submitted", "submitted"]);
+    expect(ledger.submits).toBe(6);
   });
 
   it("Google refuses both submissions: a simple video, credits back once", async () => {

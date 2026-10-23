@@ -167,6 +167,13 @@ settled (`robotWaitingWhere`, `leaseVideoForBrowser`; the panel says "AI clips b
 2. **Check:** each sweep asks Google about each clip (`getVeoOperation`); a made clip is taken at once (`veoClipBytes`:
    inline from Gemini Omni, or downloaded) into the media bucket, `<userId>/aiclips/<visualId>-<scene>.mp4`, and its 6
    real seconds go into the ledger (`recordAiCall`). A sweep that cannot reach Google or save a clip tries again next time.
+   **Google's limit:** Google takes only a few clips at a time. At most `VEO_PARALLEL` (3) clips are at Google across all
+   content videos (`clipsAtGoogle`). Clips past that wait in `clipJobs` as `"retry"`, and a video with no free place stays
+   "waiting" with no credits taken. A clip Google turns away at its limit (`RESOURCE_EXHAUSTED`, `VeoError` kind
+   `"quota"`, on the send or when checked; nothing made, nothing billed) waits a sweep and is sent again, up to
+   `CLIP_QUOTA_TRIES` (3) sends. Then it fails and the note says Google was too busy. Each sweep checks the clips at
+   Google first, so the places they free go to waiting clips before new videos. Every resend counts toward
+   `VEO_CLIPS_PER_DAY`.
 3. **Settle** when every clip is made or failed, or 20 minutes after the start: the made clips go into their scenes
    (`VideoScene.clipPath`, the scene held for the clip, the video still within 30 s: `withClips`) and `clipState =
    "done"`; with none made, `withoutClips` clears the mark (`quality = "simple"`) and `clipState = "fallback"`. Owner
