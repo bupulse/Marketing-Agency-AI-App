@@ -141,9 +141,12 @@ async function fail(res: Response): Promise<never> {
   let status = "";
   let text = "";
   try {
-    const body = (await res.json()) as { error?: { status?: string; code?: string | number; message?: string } };
-    status = String(body.error?.status ?? (typeof body.error?.code === "string" ? body.error.code : ""));
-    text = String(body.error?.message ?? "");
+    type GoogleError = { status?: string; code?: string | number; message?: string };
+    const body = (await res.json()) as { error?: GoogleError; errors?: GoogleError[] };
+    // Veo answers { error }, Gemini Omni sometimes { errors: [...] }.
+    const e = body.error ?? body.errors?.[0];
+    status = String(e?.status ?? (typeof e?.code === "string" ? e.code : ""));
+    text = String(e?.message ?? "");
   } catch {
     // No JSON body.
   }
@@ -215,6 +218,8 @@ type InteractionBody = {
   id?: string;
   status?: string;
   error?: { message?: string; code?: string | number };
+  /** A failed interaction can carry its reason here instead, e.g. [{ code: "RESOURCE_EXHAUSTED" }] at Google's limit. */
+  errors?: { message?: string; code?: string | number }[];
   steps?: { type?: string; content?: { type?: string; data?: string; uri?: string; mime_type?: string; text?: string }[] }[];
 };
 
@@ -231,7 +236,11 @@ async function getOmniInteraction(name: string, o: Opts): Promise<VeoOperation> 
   const b = (await res.json()) as InteractionBody;
   if (b.status === "in_progress" || b.status === "requires_action" || !b.status) return { name, done: false, videoUri: null, videoBytes: null, error: null };
   if (b.status !== "completed") {
-    const message = b.error?.message ?? "";
+    const e = b.error ?? b.errors?.[0];
+    const message = e?.message ?? "";
+    // Google's limit (too many clips at once, or the day's quota): nothing was made or billed, try again later.
+    if (e?.code === "RESOURCE_EXHAUSTED" || e?.code === 429 || /RESOURCE_EXHAUSTED/.test(message))
+      return { name, done: true, videoUri: null, videoBytes: null, error: new VeoError("Google Veo is at its limit right now (too many clips at once, or the day's quota). Try again in a few minutes.", "quota") };
     const error = SAFETY.test(message) ? new VeoError("Google declined this clip under its safety rules. Try a different shot or photo.", "blocked", undefined, [message.slice(0, 300)]) : new VeoError("Google Veo could not make this clip.", "failed");
     return { name, done: true, videoUri: null, videoBytes: null, error };
   }

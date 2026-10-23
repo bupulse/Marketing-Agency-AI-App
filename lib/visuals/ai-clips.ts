@@ -191,7 +191,7 @@ async function startClips(id: string, now: Date, deps: ClipDeps, result: AiClips
     await prisma.contentVisual.updateMany({ where: { id, clipState: "waiting" }, data: { clipJobs: json(made) } });
   }
   if (!made.some((j) => j.status === "submitted")) {
-    const note = made.some((j) => j.error === "off") ? CLIP_NOTES.off : made.some((j) => j.error === "blocked") ? CLIP_NOTES.blocked : CLIP_NOTES.failed;
+    const note = made.some((j) => j.error === "off") ? CLIP_NOTES.off : made.some((j) => j.error === "blocked") ? CLIP_NOTES.blocked : made.some((j) => j.error === "quota") ? CLIP_NOTES.googleBusy : CLIP_NOTES.failed;
     return fallback(note);
   }
   await prisma.contentVisual.updateMany({ where: { id, clipState: "waiting" }, data: { clipState: "making", clipUntil: new Date(now.getTime() + CLIP_GIVE_UP_MS) } });
@@ -262,7 +262,7 @@ async function settle(id: string, now: Date, note: string | null, result: AiClip
   let next: VideoPlan | null = plan;
   if (plan) {
     if (made.length) next = withClips(plan, made.map((j) => ({ scene: j.scene, path: j.path!, ms: j.ms ?? AI_CLIP_SECONDS * 1000 })), made.length < jobs.length ? CLIP_NOTES.partial : null);
-    else next = withoutClips(plan, note ?? (jobs.some((j) => j.error === "blocked") ? CLIP_NOTES.blocked : jobs.some((j) => j.error === "timeout") ? CLIP_NOTES.timeout : CLIP_NOTES.failed));
+    else next = withoutClips(plan, note ?? (jobs.some((j) => j.error === "blocked") ? CLIP_NOTES.blocked : jobs.some((j) => j.error === "timeout") ? CLIP_NOTES.timeout : jobs.some((j) => j.error === "quota") ? CLIP_NOTES.googleBusy : CLIP_NOTES.failed));
   }
   const { count } = await prisma.contentVisual.updateMany({
     where: { id, clipState: { in: [...CLIP_WORKING] }, clipCredits: row.clipCredits },

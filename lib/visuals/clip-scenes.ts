@@ -32,6 +32,7 @@ export const CLIP_NOTES = {
   blocked: "Google declined the AI clips for this video under its safety rules, so it is a simple video. Your studio credits are back.",
   failed: "The AI clips could not be made, so this is a simple video. Your studio credits are back.",
   timeout: "The AI clips took too long, so this is a simple video. Your studio credits are back.",
+  googleBusy: "Google was too busy to make the AI clips, so this is a simple video. Your studio credits are back.",
   partial: "One AI clip could not be made, so that scene shows your photo. Its studio credits are back.",
 } as const;
 

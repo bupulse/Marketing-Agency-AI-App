@@ -124,7 +124,7 @@ function addVisual(id: string, extra: Record<string, unknown> = {}) {
  * each check answers from `ops` (by its number), the clip inline. Old Veo operation names (models/.../operations/opN)
  * are answered the Veo way, for clips submitted before the switch.
  */
-function veo(ops: Record<number, "running" | "done" | "blocked" | "failed"> = {}, submit: number[] = []) {
+function veo(ops: Record<number, "running" | "done" | "blocked" | "failed" | "limit"> = {}, submit: number[] = []) {
   let n = 0;
   const calls: string[] = [];
   const data = Buffer.from(MP4).toString("base64");
@@ -140,6 +140,7 @@ function veo(ops: Record<number, "running" | "done" | "blocked" | "failed"> = {}
     if (it) {
       const state = ops[Number(it[1])] ?? "done";
       if (state === "running") return Response.json({ id: `v1_op${it[1]}`, status: "in_progress" });
+      if (state === "limit") return Response.json({ id: `v1_op${it[1]}`, status: "failed", errors: [{ code: "RESOURCE_EXHAUSTED", message: "There was a problem processing your request." }] });
       if (state === "blocked") return Response.json({ id: `v1_op${it[1]}`, status: "failed", error: { code: "invalid_request", message: "The input image violates our usage policies (recognizable person)." } });
       if (state === "failed") return Response.json({ id: `v1_op${it[1]}`, status: "failed", error: { code: "internal", message: "internal" } });
       return Response.json({ id: `v1_op${it[1]}`, status: "completed", steps: [{ type: "user_input" }, { type: "model_output", content: [{ type: "video", mime_type: "video/mp4", data }] }] });
@@ -294,6 +295,17 @@ describe("AI clips: made overnight", () => {
     expect(row("v1").clipState).toBe("fallback");
     expect(rowPlan("v1").quality).toBe("simple");
     expect(rowPlan("v1").aiNote).toBe(CLIP_NOTES.blocked);
+    expect(usage.refundUsage).toHaveBeenCalledTimes(1);
+    expect(usage.refundUsage.mock.calls[0][3]).toBe(380);
+  });
+
+  it("Google at its limit for both clips: a simple video that says Google was busy, all 380 back once", async () => {
+    addVisual("v1");
+    const g = veo({ 1: "limit", 2: "limit" });
+    await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
+    await runAiClips(later(4 * 60_000), { env, fetchImpl: g.fetchImpl });
+    expect(row("v1").clipState).toBe("fallback");
+    expect(rowPlan("v1").aiNote).toBe(CLIP_NOTES.googleBusy);
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
     expect(usage.refundUsage.mock.calls[0][3]).toBe(380);
   });
