@@ -124,9 +124,9 @@ export const ratingBody = z.object({ score: z.union([z.literal(1), z.literal(-1)
 //   POST /visit                               → VisitResponse
 //   POST /prechat                             → { me }
 //   POST /conversations                       → SendMessageResponse  (body: sendMessageBody)
-//   GET  /conversations/:id/messages?after=   → { messages: MessageView[], status, aiActive, agent }
+//   GET  /conversations/:id/messages?after=<message id>  → { messages: MessageView[], status, aiActive, agent }  (newest 60 without after)
 //   POST /conversations/:id/messages          → SendMessageResponse
-//   POST /conversations/:id/typing            → 204  (body: { draft?: string }, throttled 1/s; draft only after the chat is open)
+//   POST /conversations/:id/typing            → 204  (body: typingBody, throttled 1/s; draft only after the chat is open)
 //   POST /conversations/:id/human             → SendMessageResponse  (asks for a person)
 //   POST /conversations/:id/uploads           → UploadResponse; then PUT the file to uploadUrl; then POST …/uploads/:aid/done → { attachmentId }
 //   POST /conversations/:id/rating            → 204
@@ -246,8 +246,8 @@ export type Stats = {
 
 // Agent routes:
 //   GET   /agent/me                                     → AgentMe
-//   PATCH /agent/me                                     → AgentMe   (body: { availability })
-//   POST  /agent/devices, DELETE /agent/devices/:id     (web push subscriptions)
+//   PATCH /agent/me                                     → AgentMe   (body: availabilityBody)
+//   POST  /agent/devices → 201 { id } (body: deviceBody), DELETE /agent/devices/:id → 204  (web push subscriptions)
 //   GET   /agent/conversations?view=mine|waiting|ai|all&q=&after=  → { items: ConversationListItem[], next: string | null }
 //   GET   /agent/conversations/:id                      → ConversationDetail
 //   POST  /agent/conversations/:id/messages             → { message: MessageView }   (body: agentMessageBody)
