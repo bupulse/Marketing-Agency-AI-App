@@ -55,6 +55,15 @@ export function chooseTiers(count: number, budget: number, quality: Quality): Ti
   return Array.from({ length: n }, (_, i): Tier => (i < pro ? "pro" : "lite"));
 }
 
+/**
+ * The tier of one post's picture: Pro when the credits allow it and none of the company's last pictures (newest
+ * first, PRO_EVERY - 1 of them) was Pro, so about one post in four gets Pro; else Lite; null with too few credits.
+ */
+export function postTier(budget: number, lastTiers: readonly Tier[]): Tier | null {
+  if (budget >= TIER_CREDITS.pro && !lastTiers.includes("pro")) return "pro";
+  return budget >= TIER_CREDITS.lite ? "lite" : null;
+}
+
 export const creditsOf = (tiers: readonly Tier[]) => tiers.reduce((sum, t) => sum + TIER_CREDITS[t], 0);
 
 /**

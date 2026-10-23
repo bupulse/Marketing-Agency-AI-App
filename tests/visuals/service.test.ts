@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   createAiDesign: vi.fn(),
   refundUsage: vi.fn(async () => undefined),
   createTemplateDesign: vi.fn(),
+  createPhotoDesign: vi.fn(),
+  paintOne: vi.fn(),
   mediaUsage: vi.fn(),
   assertPlatformRoom: vi.fn(),
   signedUpload: vi.fn(),
@@ -42,7 +44,11 @@ vi.mock("@/lib/ai", () => ({ getCheapTextProvider: () => ({ provider: { name: "g
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: async (_c: unknown, _m: unknown, call: () => unknown) => call(), withLateTimeout: <T,>(p: Promise<T>) => p }));
 vi.mock("@/lib/designs/service", () => {
   class DesignError extends Error {}
-  return { createAiDesign: mocks.createAiDesign, createTemplateDesign: mocks.createTemplateDesign, DesignError };
+  return { createAiDesign: mocks.createAiDesign, createTemplateDesign: mocks.createTemplateDesign, createPhotoDesign: mocks.createPhotoDesign, DesignError };
+});
+vi.mock("@/lib/image-engine/engine", () => {
+  class EngineError extends Error {}
+  return { paintOne: mocks.paintOne, EngineError };
 });
 vi.mock("@/lib/media/service", () => {
   class MediaError extends Error {}
@@ -52,7 +58,7 @@ vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: mocks.signedUpload }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => mocks.storage } }) }));
 
 import { AIBudgetExceededError } from "@/lib/ai/budget";
-import { DesignError } from "@/lib/designs/service";
+import { EngineError } from "@/lib/image-engine/engine";
 import { UsageLimitError } from "@/lib/usage";
 import { fallbackPlan } from "@/lib/visuals/direction";
 import { attachToGroup, drawSlide, finalizeVideo, leaseVideoForBrowser, planVisuals, prepareVideoUpload, readyMedia, countsAsNewVideo, renderImageStep, sniffVideo, updateVideoPlan, VisualError, type PlanInput } from "@/lib/visuals/service";
@@ -104,6 +110,8 @@ beforeEach(() => {
   mocks.prisma.business.findUnique.mockResolvedValue({ userId: U });
   mocks.createTemplateDesign.mockImplementation(async (a: { photoPath: string | null }) => ({ id: `d${++n}`, path: `${U}/designs/d${n}.png`, photo: a.photoPath }));
   mocks.createAiDesign.mockResolvedValue({ id: "ai1", path: `${U}/designs/ai1.png` });
+  mocks.paintOne.mockResolvedValue({ id: "concept1", designId: "ai1", path: `${U}/designs/ai1.png` });
+  mocks.createPhotoDesign.mockImplementation(async (a: { photoPath: string }) => ({ id: `d${++n}`, path: `${U}/designs/d${n}.jpg`, photo: a.photoPath }));
   mocks.hasFeature.mockResolvedValue(true);
   mocks.featureStatus.mockResolvedValue("ok");
   mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videos: 0 }, limits: { image: 50, videos: 120 }, videosToday: 0, videosPerDay: 4 });
@@ -155,69 +163,75 @@ describe("planVisuals (the art director with the content)", () => {
   });
 });
 
-describe("drawSlide (image sources and fallbacks)", () => {
+describe("drawSlide (no templates: the engine's finished ad, else the owner's own photo)", () => {
   const p = plan([]);
 
-  it("an AI slide pays once for the photo, then draws the template over it", async () => {
+  it("an AI slide is the image engine's finished ad, with the post's brief and caption; at the cap, the owner's photo as it is", async () => {
     const state = { aiAllowed: true, aiMade: 0, maxAi: 1 };
-    const out = await drawSlide(owner, "p1", p, slide({ source: "ai", scene: "runner at dawn" }), state);
-    expect(mocks.createAiDesign).toHaveBeenCalledTimes(1);
-    expect(mocks.createAiDesign.mock.calls[0][0]).toMatchObject({ aspectRatio: "4:5", usePhotoPath: photo, subjectId: "p1" });
-    expect(mocks.createTemplateDesign.mock.calls[0][0]).toMatchObject({ photoPath: `${U}/designs/ai1.png`, pack: "bold" });
-    expect(out).toMatchObject({ source: "ai", aiPhotoPath: `${U}/designs/ai1.png`, designId: "d1" });
+    const out = await drawSlide(owner, "p1", p, slide({ source: "ai" }), state, undefined, { source: "content", brief: "Show a farmer", caption: "Grow more." });
+    expect(mocks.paintOne).toHaveBeenCalledTimes(1);
+    expect(mocks.paintOne.mock.calls[0][1]).toMatchObject({ source: "content", subjectId: "p1", aspectRatio: "4:5", photoPath: photo, brief: "Show a farmer", caption: "Grow more." });
+    expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
+    expect(out).toMatchObject({ source: "ai", conceptId: "concept1", aiPhotoPath: `${U}/designs/ai1.png`, designId: "ai1", path: `${U}/designs/ai1.png` });
 
-    // The cap is reached: the next AI slide uses the album photo, with a note.
     const next = await drawSlide(owner, "p1", p, slide({ source: "ai" }), state);
-    expect(mocks.createAiDesign).toHaveBeenCalledTimes(1);
-    expect(next).toMatchObject({ source: "album", photoPath: photo });
+    expect(mocks.paintOne).toHaveBeenCalledTimes(1);
+    expect(mocks.createPhotoDesign.mock.calls[0][0]).toMatchObject({ photoPath: photo, aspectRatio: "4:5" });
+    expect(next).toMatchObject({ source: "album", designId: "d1" });
     expect(next.note).toMatch(/not available/);
   });
 
-  it("uses the credit reserved when the run was planned, and gives it back when no AI photo is made", async () => {
+  it("gives back the one credit reserved when the content was planned: the engine takes its own", async () => {
     const reserved = "2026-10-01T00:00:00.000Z";
-    const state = { aiAllowed: true, aiMade: 0, maxAi: 1 };
-    const out = await drawSlide(owner, "p1", p, slide({ source: "ai", prepaidAi: reserved }), state);
-    expect(mocks.createAiDesign.mock.calls[0][0]).toMatchObject({ prepaid: { periodStart: new Date(reserved) } });
+    const out = await drawSlide(owner, "p1", p, slide({ source: "ai", prepaidAi: reserved }), { aiAllowed: true, aiMade: 0, maxAi: 1 });
     expect(out.prepaidAi).toBeNull();
-    expect(mocks.refundUsage).not.toHaveBeenCalled();
-    // The cap is reached: the reserved credit goes back.
-    const next = await drawSlide(owner, "p1", p, slide({ source: "ai", prepaidAi: reserved }), state);
-    expect(next.source).toBe("album");
     expect(mocks.refundUsage).toHaveBeenCalledWith(owner.userId, "image", new Date(reserved));
   });
 
-  it("no image credits: the album photo, and AI is not tried again this time", async () => {
-    mocks.createAiDesign.mockRejectedValueOnce(new UsageLimitError("limit_reached", "image"));
+  it("the engine cannot start (no credits, not in the plan): the owner's photo, and AI is not tried again this time", async () => {
+    mocks.paintOne.mockRejectedValueOnce(new EngineError("You have no AI image credits left this month."));
     const state = { aiAllowed: true, aiMade: 0, maxAi: 2 };
     const out = await drawSlide(owner, null, p, slide({ source: "ai" }), state);
-    expect(out.note).toMatch(/AI images for this month used/);
+    expect(out.note).toMatch(/no AI image credits left.*own photo/);
     expect(out.source).toBe("album");
     expect(state.aiAllowed).toBe(false);
+    mocks.paintOne.mockRejectedValueOnce(new UsageLimitError("limit_reached", "image"));
+    const second = await drawSlide(owner, null, p, slide({ source: "ai" }), { aiAllowed: true, aiMade: 0, maxAi: 2 });
+    expect(second.note).toMatch(/credits for this month are used/);
   });
 
-  it("no photo and no AI: a free text design (announcement, not a photo template)", async () => {
-    const out = await drawSlide(owner, null, p, slide({ source: "ai", photoPath: null }), { aiAllowed: false, aiMade: 0, maxAi: 1 });
-    expect(out.source).toBe("text");
-    expect(mocks.createTemplateDesign.mock.calls[0][0]).toMatchObject({ template: "announcement", photoPath: null });
+  it("a picture that fails after it started (credits given back by the engine): the owner's photo with a note", async () => {
+    mocks.paintOne.mockResolvedValueOnce(null);
+    const out = await drawSlide(owner, null, p, slide({ source: "ai" }), { aiAllowed: true, aiMade: 0, maxAi: 1 });
+    expect(out).toMatchObject({ source: "album", path: `${U}/designs/d1.jpg` });
+    expect(out.note).toMatch(/could not be made/);
   });
 
-  it("a photo the template cannot draw: drawn again as text", async () => {
-    mocks.createTemplateDesign.mockRejectedValueOnce(new DesignError("Templates need a JPG or PNG photo."));
-    const out = await drawSlide(owner, null, p, slide(), { aiAllowed: false, aiMade: 0, maxAi: 0 });
-    expect(mocks.createTemplateDesign).toHaveBeenCalledTimes(2);
-    expect(mocks.createTemplateDesign.mock.calls[1][0].photoPath).toBeNull();
-    expect(out.note).toMatch(/text design/);
+  it("no photo and no AI, or a designed slide over the cover: skipped, never a template", async () => {
+    const none = await drawSlide(owner, null, p, slide({ source: "ai", photoPath: null }), { aiAllowed: false, aiMade: 0, maxAi: 1 });
+    expect(none).toMatchObject({ skipped: true, path: null });
+    const tip = await drawSlide(owner, null, p, slide({ source: "text", photoPath: null, useCoverPhoto: true }), { aiAllowed: true, aiMade: 1, maxAi: 1 });
+    expect(tip.skipped).toBe(true);
+    expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
   });
 });
 
 describe("renderImageStep", () => {
-  it("draws every slide and marks a carousel ready with its items in order", async () => {
-    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "carousel", plan: plan([slide(), slide({ source: "text", photoPath: null, template: "announcement" }), slide({ source: "text", photoPath: null, template: "announcement" })]) });
+  it("draws every slide in order: photos as they are, designed text slides left out", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "carousel", plan: plan([slide(), slide({ source: "text", photoPath: null, template: "announcement" }), slide({ photoPath: `${U}/gallery/bbbbbbbb-2000.jpg` })]) });
     const r = await renderImageStep(owner, "v1");
     expect(r.status).toBe("ready");
     const data = mocks.prisma.contentVisual.update.mock.calls[0][0].data;
     expect(data).toMatchObject({ status: "ready", kind: "carousel", error: null });
-    expect(data.items.map((i: { designId: string }) => i.designId)).toEqual(["d1", "d2", "d3"]);
+    expect(data.items.map((i: { designId: string }) => i.designId)).toEqual(["d1", "d2"]);
+    expect(data.plan.slides[1].skipped).toBe(true);
+  });
+
+  it("nothing to show at all (no AI, no photo): failed with what to do", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide({ source: "text", photoPath: null })]) });
+    const r = await renderImageStep(owner, "v1");
+    expect(r.status).toBe("failed");
+    expect(mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data.error).toMatch(/add a photo of the product, or AI image credits/);
   });
 
   it("a second call while one is drawing answers 'rendering' and pays for nothing", async () => {
@@ -225,37 +239,34 @@ describe("renderImageStep", () => {
     mocks.prisma.contentVisual.updateMany.mockResolvedValueOnce({ count: 0 });
     const r = await renderImageStep(owner, "v1");
     expect(r.status).toBe("rendering");
-    expect(mocks.createAiDesign).not.toHaveBeenCalled();
-    expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
+    expect(mocks.paintOne).not.toHaveBeenCalled();
+    expect(mocks.createPhotoDesign).not.toHaveBeenCalled();
     const lease = mocks.prisma.contentVisual.updateMany.mock.calls[0][0];
     expect(lease.where).toMatchObject({ id: "v1", businessId: "biz1" });
     expect(lease.data.renderingUntil).toBeInstanceOf(Date);
   });
 
-  it("a paid AI photo is saved before the template is drawn, so a failed draw keeps it and the retry reuses it", async () => {
+  it("a paid AI picture is saved at once and is the slide, so a retry never pays for it again", async () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide({ source: "ai", photoPath: null })]) });
-    mocks.createTemplateDesign.mockRejectedValueOnce(new Error("satori crashed"));
+    mocks.prisma.generatedContent.findFirst.mockResolvedValue({ brief: "Show a farmer", caption: "Grow more." });
     const r = await renderImageStep(owner, "v1");
-    expect(r.status).toBe("failed");
-    const saves = mocks.prisma.contentVisual.update.mock.calls.map(([a]) => a.data.plan?.slides?.[0]?.aiPhotoPath);
-    expect(saves[0]).toBe(`${U}/designs/ai1.png`); // saved right after the photo, before drawing
-    expect(saves.at(-1)).toBe(`${U}/designs/ai1.png`);
-    // The lease is released.
-    expect(mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data.renderingUntil).toBeNull();
-
+    expect(r.status).toBe("ready");
+    expect(mocks.paintOne.mock.calls[0][1]).toMatchObject({ brief: "Show a farmer", caption: "Grow more." });
+    const saves = mocks.prisma.contentVisual.update.mock.calls.map(([a]) => a.data.plan?.slides?.[0]?.path);
+    expect(saves[0]).toBe(`${U}/designs/ai1.png`); // saved right after the picture was made
     const kept = mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data.plan;
+    kept.slides[0].path = null;
     mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: kept });
     const again = await renderImageStep(owner, "v1");
     expect(again.status).toBe("ready");
-    expect(mocks.createAiDesign).toHaveBeenCalledTimes(1);
-    expect(mocks.createTemplateDesign.mock.calls.at(-1)![0].photoPath).toBe(`${U}/designs/ai1.png`);
+    expect(mocks.paintOne).toHaveBeenCalledTimes(1);
   });
 
   it("stops when its time is used and stays pending (the screen calls again)", async () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide()]) });
     const r = await renderImageStep(owner, "v1", { budgetMs: -1 });
     expect(r.status).toBe("pending");
-    expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
+    expect(mocks.createPhotoDesign).not.toHaveBeenCalled();
   });
 
   it("another company's visual is not found", async () => {
@@ -550,20 +561,21 @@ describe("New design (the owner never picks a template)", () => {
 });
 
 describe("people in the pictures (owner decision, 13 October 2026)", () => {
-  it("a carousel pays for one AI image: the designed slides are drawn over the cover's people photo", async () => {
+  it("a carousel pays for one AI picture, the cover; the designed tip slides over it are no more", async () => {
     const carousel = plan([
-      slide({ source: "ai", photoPath: photo, scene: "a Rwandan woman holding the phone; the product from the reference photo appears exactly as it is" }),
+      slide({ source: "ai", photoPath: photo, scene: "a Rwandan woman holding the phone" }),
       slide({ source: "text", photoPath: null, template: "announcement", useCoverPhoto: true, headline: "Tip 1" }),
       slide({ source: "text", photoPath: null, template: "announcement", useCoverPhoto: true, headline: "Tip 2" }),
     ]);
     mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "carousel", plan: carousel });
     const r = await renderImageStep(owner, "v1");
     expect(r.status).toBe("ready");
-    expect(mocks.createAiDesign).toHaveBeenCalledTimes(1);
-    // The real product photo is the reference, and the people scene is the prompt.
-    expect(mocks.createAiDesign.mock.calls[0][0]).toMatchObject({ usePhotoPath: photo, includePeople: true });
-    expect(mocks.createAiDesign.mock.calls[0][0].prompt).toMatch(/Rwandan woman holding the phone/);
-    expect(mocks.createTemplateDesign.mock.calls.map(([a]) => a.photoPath)).toEqual([`${U}/designs/ai1.png`, `${U}/designs/ai1.png`, `${U}/designs/ai1.png`]);
+    expect(mocks.paintOne).toHaveBeenCalledTimes(1);
+    expect(mocks.paintOne.mock.calls[0][1]).toMatchObject({ photoPath: photo });
+    expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
+    const data = mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data;
+    expect(data).toMatchObject({ kind: "image" });
+    expect(data.items).toHaveLength(1);
   });
 
   it("the dollar allowance running out gives the same message, refilled on the 1st of next month", async () => {

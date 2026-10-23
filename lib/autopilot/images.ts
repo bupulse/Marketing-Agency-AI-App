@@ -1,23 +1,18 @@
-// Images for a post group: a gallery or project photo in a free brand template, or (when the owner
-// allows it) an AI photo with the same layout. Failing to make an image never fails the post group.
+// Images for a post group (owner decision, 23 October 2026: no templates): a finished ad from the image engine
+// (lib/image-engine paintOne, its own idea, words and prompt) when the owner allows AI pictures, else the gallery or
+// project photo as it is. Failing to make an image never fails the post group.
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { RateLimitError } from "@/lib/rate-limit";
 import { UsageLimitError } from "@/lib/usage";
-import { createAiPhotoDesign, createTemplateDesign, DesignError } from "@/lib/designs/service";
-import type { TemplateId } from "@/lib/designs/templates/registry";
+import { createPhotoDesign, DesignError } from "@/lib/designs/service";
+import { EngineError, paintOne } from "@/lib/image-engine/engine";
 import type { Network } from "@/lib/social/types";
 import type { PlannedGroup } from "./planner";
 import type { ImageText } from "./writer";
 
 type Aspect = "1:1" | "4:5";
-
-/** Templates built around a photo; without one the plain announcement layout looks better. */
-const PHOTO_TEMPLATES: TemplateId[] = ["new-arrival", "just-listed", "project-done"];
-
-// Satori cannot draw these scripts, so the image carries only the business name.
-const UNDRAWABLE = /hindi|chinese|japanese|korean|thai|hebrew/i;
 
 export const PHOTO_MARK = "photo:";
 
@@ -31,7 +26,7 @@ export interface ImageContext {
   businessId: string;
   businessName: string;
   language: string;
-  /** Owner allows AI photos (uses image credits). */
+  /** Owner allows AI pictures (uses image credits). */
   useAiImages: boolean;
   /** The service key does the Storage work (cron has no session). */
   service: boolean;
@@ -40,32 +35,17 @@ export interface ImageContext {
 export interface GroupImages {
   /** Design file path per aspect ratio. */
   designs: Partial<Record<Aspect, string>>;
-  /** Image credits ran out (or AI images failed): do not try AI again this run. */
+  /** Image credits ran out (or AI pictures failed): do not try AI again this run. */
   aiStopped: boolean;
-  /** Friendly notes for the run, e.g. that free templates were used. */
+  /** Friendly notes for the run, e.g. that the owner's photos were used. */
   notes: string[];
-  /** Whether an AI photo was made (an image credit was used). */
+  /** Whether an AI picture was made (image credits were used). */
   aiUsed: boolean;
 }
 
-function templateFor(group: PlannedGroup, hasPhoto: boolean): TemplateId | null {
-  // Every feed post (a picture or a carousel) shows a picture: an idea without a template of its own gets the
-  // announcement layout. Articles and scripts to film have none.
-  const id = group.idea.template ?? (group.posts.some((p) => p.format === "POST" || p.format === "CAROUSEL") ? "announcement" : null);
-  if (!id) return null;
-  return !hasPhoto && PHOTO_TEMPLATES.includes(id) ? "announcement" : id;
-}
-
-/** Text for the image, always with a headline (the writer may have dropped an unsafe one). */
-function imageText(group: PlannedGroup, image: ImageText, ctx: ImageContext) {
-  if (UNDRAWABLE.test(ctx.language)) return { headline: ctx.businessName, subline: null, chip: null, kicker: "" };
-  return {
-    headline: image.headline || group.project?.title || ctx.businessName,
-    subline: image.subline || null,
-    chip: image.chip || null,
-    // "" means no kicker; undefined would fall back to the English default.
-    kicker: image.kicker,
-  };
+/** Every feed post (a picture or a carousel) shows a picture; articles and scripts to film have none. */
+function needsPicture(group: PlannedGroup): boolean {
+  return !!group.idea.template || group.posts.some((p) => p.format === "POST" || p.format === "CAROUSEL");
 }
 
 /** Remembers which photo a design used, so the next plans prefer photos that were not used recently. */
@@ -74,70 +54,52 @@ async function markPhoto(designId: string, path: string | undefined) {
   await prisma.design.update({ where: { id: designId }, data: { prompt: `${PHOTO_MARK}${path}` } }).catch(() => {});
 }
 
-export async function makeGroupImages(group: PlannedGroup, image: ImageText, ctx: ImageContext, options: { aiStopped?: boolean } = {}): Promise<GroupImages> {
+export async function makeGroupImages(group: PlannedGroup, image: ImageText, ctx: ImageContext, options: { aiStopped?: boolean; caption?: string | null } = {}): Promise<GroupImages> {
   const result: GroupImages = { designs: {}, aiStopped: !!options.aiStopped, notes: [], aiUsed: false };
+  if (!needsPicture(group)) return result;
   const cover = group.photos[0];
-  const template = templateFor(group, !!cover);
-  if (!template) return result;
-
   const owner = { userId: ctx.userId, businessId: ctx.businessId, subjectId: group.project?.id ?? null, service: ctx.service };
-  const text = imageText(group, image, ctx);
   const aspects = [...new Set(group.networks.filter((n) => n !== "tiktok" && n !== "youtube").map(aspectFor))];
   if (aspects.length === 0) return result;
 
-  // AI photo: one image credit for the whole group, used for every size.
-  let aiDone = false;
-  if (ctx.useAiImages && !result.aiStopped && template !== "quote") {
+  // An AI picture: one for the whole group, used for every size.
+  if (ctx.useAiImages && !result.aiStopped) {
     try {
-      const made = await createAiPhotoDesign({
-        ...owner,
-        template,
+      const made = await paintOne(owner, {
+        source: "autopilot",
+        subjectId: owner.subjectId,
         aspectRatio: "4:5",
-        headline: text.headline,
-        subline: text.subline,
-        chip: text.chip,
-        kicker: text.kicker,
-        usePhotoPath: cover?.path ?? null,
+        photoPath: cover?.path ?? null,
+        brief: [group.idea.name, image.headline].filter(Boolean).join(": ") || null,
+        caption: options.caption ?? null,
       });
-      for (const a of aspects) result.designs[a] = made.path;
-      result.aiUsed = true;
-      aiDone = true;
+      if (made) {
+        for (const a of aspects) result.designs[a] = made.path;
+        result.aiUsed = true;
+        return result;
+      }
     } catch (error) {
-      if (error instanceof UsageLimitError) {
+      if (error instanceof EngineError || error instanceof UsageLimitError) {
         result.aiStopped = true;
-        result.notes.push("You ran out of image credits, so the remaining posts use your free templates.");
-      } else if (error instanceof RateLimitError || error instanceof DesignError) {
-        result.aiStopped = error instanceof RateLimitError;
-      } else {
+        result.notes.push("You ran out of AI image credits, so the remaining posts use your own photos.");
+      } else if (error instanceof RateLimitError) {
+        result.aiStopped = true;
+      } else if (!(error instanceof DesignError)) {
         await logError(error, { source: "autopilot.image.ai", userId: ctx.userId, businessId: ctx.businessId });
       }
     }
   }
-  if (aiDone) return result;
 
-  // Free template, with the photo when it can be drawn (JPG or PNG), else on the brand backdrop.
-  const draw = async (aspect: Aspect, photoPath: string | null) =>
-    createTemplateDesign({
-      ...owner,
-      template,
-      aspectRatio: aspect,
-      headline: text.headline,
-      subline: text.subline,
-      chip: text.chip,
-      kicker: text.kicker,
-      photoPath,
-    });
+  // The owner's own photo, as it is.
+  if (!cover) return result;
   for (const aspect of aspects) {
     try {
-      const made = await draw(aspect, cover?.path ?? null).catch(async (error) => {
-        if (!(error instanceof DesignError) || !cover) throw error;
-        return draw(aspect, null);
-      });
+      const made = await createPhotoDesign({ ...owner, photoPath: cover.path, aspectRatio: aspect });
       result.designs[aspect] = made.path;
-      await markPhoto(made.id, cover?.path);
+      await markPhoto(made.id, cover.path);
     } catch (error) {
       if (!(error instanceof DesignError) && !(error instanceof RateLimitError)) {
-        await logError(error, { source: "autopilot.image.template", userId: ctx.userId, businessId: ctx.businessId });
+        await logError(error, { source: "autopilot.image.photo", userId: ctx.userId, businessId: ctx.businessId });
       }
     }
   }

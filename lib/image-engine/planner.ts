@@ -66,8 +66,8 @@ async function claudeWrite(owner: Owner, input: PlannerInput, route: "api" | "su
  * One concept per slot, in order. With two writers, Claude takes the first half (the Pro pictures come first) and
  * Gemini the rest, both told the whole batch's slots are theirs to keep apart; a writer's gaps go to the other one.
  */
-export async function writeConcepts(owner: Owner, input: PlannerInput): Promise<PlannedConcept[]> {
-  const route = await claudeRoute();
+export async function writeConcepts(owner: Owner, input: PlannerInput, options: { only?: "gemini" } = {}): Promise<PlannedConcept[]> {
+  const route = options.only === "gemini" ? null : await claudeRoute();
   const n = input.slots.length;
   const split = route ? Math.ceil(n / 2) : 0;
   const part = (from: number, to: number): PlannerInput => ({ ...input, slots: input.slots.slice(from, to) });

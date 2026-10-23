@@ -392,6 +392,29 @@ export async function createEngineDesign(input: Owner & {
   return { id, path, mimeType: image.mimeType, bytes: image.data };
 }
 
+/**
+ * The owner's own photo as a post picture, as it is (owner decision, 23 October 2026: no templates): used when no AI
+ * picture can be made (the plan has none, the credits ran out, the AI failed). Stored as a design so the post, the
+ * calendar and publishing treat it like any other picture. Free.
+ */
+export async function createPhotoDesign(input: Owner & { photoPath: string; aspectRatio: AspectRatio }): Promise<CreatedDesign> {
+  const owned = await requireOwned(input);
+  const dataUrl = await loadPhoto(input.userId, input.photoPath, AI_TYPES, input.service);
+  const match = /^data:([^;]+);base64,([\s\S]*)$/.exec(dataUrl ?? "");
+  if (!match) throw new DesignError("That photo could not be loaded. Please pick it again.");
+  const bytes = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0));
+  const id = globalThis.crypto.randomUUID();
+  const path = await store(input.userId, id, bytes, match[1]);
+  const { width, height } = imageSize(bytes, input.aspectRatio);
+  try {
+    await prisma.design.create({ data: { id, businessId: owned.business.id, ...owned.subject, kind: "TEMPLATE", aspectRatio: input.aspectRatio, path, width, height } });
+  } catch (error) {
+    await removeFile(path, true);
+    throw error;
+  }
+  return { id, path };
+}
+
 async function ownDesign(userId: string, designId: string) {
   const design = await prisma.design.findFirst({ where: { id: designId, business: { userId } } });
   if (!design || !isOwnDesignPath(userId, design.path)) return null;
