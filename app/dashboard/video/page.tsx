@@ -7,6 +7,8 @@ import { can } from "@/lib/team/roles";
 import { listLibraryVideos, markStudioVideosSeen } from "@/lib/video-library/service";
 import { UniqueReels } from "@/components/video/unique-reels";
 import { reelEngineOn } from "@/lib/reel-engine/engine";
+import { CLIP_SECONDS } from "@/lib/reel-engine/story";
+import { veoClipUsd, veoModel } from "@/lib/video-engine/veo";
 import { subjectOptions } from "@/lib/knowledge/service";
 
 export const metadata = { title: "Videos" };
@@ -36,7 +38,7 @@ export default async function VideosPage({ searchParams }: PageProps<"/dashboard
   return (
     <>
       <PageHeader title="Videos" description="Every video BuPulse made for you, from the Video Studio and your daily posts. Make new ones in the Video Studio; they appear here when they are ready." />
-      {reelsOn && <UniqueReels products={reelProducts} brand={{ name: business.name, color: business.brandColors.find((c) => /^#[0-9a-f]{6}$/i.test(c)) ?? "#1B5E20" }} />}
+      {reelsOn && <UniqueReels products={reelProducts} brand={{ name: business.name, color: business.brandColors.find((c) => /^#[0-9a-f]{6}$/i.test(c)) ?? "#1B5E20" }} clipUsd={veoClipUsd(CLIP_SECONDS, veoModel())} />}
       <VideoLibrary
         initialVideos={videos}
         studio={studio}

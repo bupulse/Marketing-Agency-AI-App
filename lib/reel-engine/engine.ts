@@ -22,7 +22,8 @@ import { realismBlock } from "@/lib/image-engine/realism";
 import { musicUrl, trackForVideo } from "@/lib/music/service";
 import { createSignedUploadUrl } from "@/lib/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { downloadVeo, getVeoOperation, submitVeo, VEO_MODELS, veoClipUsd, veoLedgerUsage } from "@/lib/video-engine/veo";
+import * as veo from "@/lib/video-engine/veo";
+import { downloadVeo, getVeoOperation, submitVeo, veoClipUsd, veoLedgerUsage, veoModel } from "@/lib/video-engine/veo";
 import { CLIP_SECONDS, directReel, reelCostUsd, variantOf, veoClipPrompt, type ReelClip, type ReelLanguage, type ReelPlan, type ReelTier } from "./story";
 import { readReel, reelPrompt, REEL_SCHEMA, REEL_SYSTEM, ruleReel, type ReelInput } from "./writer";
 
@@ -108,7 +109,7 @@ async function writeReel(owner: Owner, input: ReelInput): Promise<ReelPlan> {
 export async function startReel(owner: Owner, request: { subjectId?: string | null; brief?: string | null; language: ReelLanguage; tier: ReelTier }): Promise<string> {
   if (!(await reelEngineOn(owner.businessId))) throw new ReelError("AI reels are being tested and are not on for your business yet.");
   const spent = await reelTestSpentUsd();
-  if (spent + reelCostUsd(request.tier) > reelTestCapUsd()) throw new ReelError(`The test budget is used: $${spent.toFixed(2)} of $${reelTestCapUsd()}. Ask to raise it before the next reel.`);
+  if (spent + reelCostUsd(veoClipUsd(CLIP_SECONDS, veoModel())) > reelTestCapUsd()) throw new ReelError(`The test budget is used: $${spent.toFixed(2)} of $${reelTestCapUsd()}. Ask to raise it before the next reel.`);
   const loaded = await loadFacts(owner, request.subjectId);
   const job = await prisma.reelJob.create({ data: { businessId: owner.businessId, subjectId: request.subjectId ?? null, language: request.language, tier: request.tier, status: "filming", plan: json({ clips: [] }), stepUntil: new Date(Date.now() + STEP_LEASE_MS) } });
   try {
@@ -165,7 +166,9 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
   const plan = job.plan as unknown as ReelPlan;
   const save = (data: Prisma.ReelJobUpdateInput = {}) => prisma.reelJob.update({ where: { id: jobId }, data: { plan: json(plan), stepUntil: null, ...data } });
   const apiKey = process.env.GEMINI_API_KEY ?? "";
-  const model = VEO_MODELS[job.tier === "fast" ? "fast" : "lite"].id;
+  // Google's video model in lib/video-engine/veo.ts (Veo 3.1 Lite was retired on 23 October 2026; the shared client
+  // moves to Gemini Omni Flash). One model for now: the tier is kept for when there are two again.
+  const model = veoModel();
   try {
     // 1. The next start frame.
     const toFrame = plan.clips.find((c) => !c.framePath);
@@ -190,12 +193,14 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
       if (clip.status !== "filming" || !clip.operation) continue;
       const op = await getVeoOperation(clip.operation, { apiKey });
       if (!op.done) continue;
-      if (op.error || !op.videoUri) {
+      if (op.error || (!op.videoUri && !(op as { videoBytes?: Buffer | null }).videoBytes)) {
         clip.status = "failed";
         clip.error = op.error?.message ?? "Veo could not make this clip.";
         continue;
       }
-      const bytes = await withLedger({ ...owner, feature: "reelEngine" }, { provider: "veo", model }, () => downloadVeo(op.videoUri!, { apiKey }), () => veoLedgerUsage(model, CLIP_SECONDS));
+      // The clip comes back as a link (Veo) or inline (Omni: veoClipBytes); both are read the same way.
+      const clipBytes = (veo as { veoClipBytes?: (o: typeof op, opts: { apiKey: string }) => Promise<Buffer> }).veoClipBytes;
+      const bytes = await withLedger({ ...owner, feature: "reelEngine" }, { provider: "veo", model }, () => (clipBytes ? clipBytes(op, { apiKey }) : downloadVeo(op.videoUri!, { apiKey })), () => veoLedgerUsage(model, CLIP_SECONDS));
       const path = `${owner.userId}/clips/reels/${job.id}-${i}.mp4`;
       const { error } = await createAdminClient().storage.from(CLIPS_BUCKET).upload(path, bytes, { contentType: "video/mp4", upsert: true });
       if (error) throw new ReelError("A clip could not be saved. Please try again.");

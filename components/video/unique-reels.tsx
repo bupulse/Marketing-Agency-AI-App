@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Badge, Button, Chip, GlassCard, Select, Textarea, useToast } from "@/components/ui";
 import { finishReelAction, reelUploadAction, startReelAction, stepReelAction } from "@/app/dashboard/video/reel-actions";
 import type { ReelView } from "@/lib/reel-engine/engine";
-import { buildReelSpec, reelCostUsd, REEL_LANGUAGES, type ReelLanguage, type ReelPlan, type ReelTier } from "@/lib/reel-engine/story";
+import { buildReelSpec, reelCostUsd, REEL_LANGUAGES, type ReelLanguage, type ReelPlan } from "@/lib/reel-engine/story";
 import { createClient } from "@/lib/supabase/client";
 
 const STEP_EVERY_MS = 6000;
@@ -16,12 +16,11 @@ const BEAT_LABEL: Record<string, string> = { hook: "1. Hook", use: "2. In use", 
  * 30-second reel from 4 Google Veo clips with the company's own AI presenter, in Kinyarwanda or English. Test only:
  * every reel counts against the owner's test budget.
  */
-export function UniqueReels({ products, brand }: { products: { id: string; name: string }[]; brand: { name: string; color: string } }) {
+export function UniqueReels({ products, brand, clipUsd }: { products: { id: string; name: string }[]; brand: { name: string; color: string }; clipUsd: number }) {
   const { toast } = useToast();
   const [subjectId, setSubjectId] = useState(products[0]?.id ?? "");
   const [brief, setBrief] = useState("");
   const [language, setLanguage] = useState<ReelLanguage>("Kinyarwanda");
-  const [tier, setTier] = useState<ReelTier>("lite");
   const [reel, setReel] = useState<ReelView | null>(null);
   const [budget, setBudget] = useState<{ spent: number; cap: number } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -48,14 +47,14 @@ export function UniqueReels({ products, brand }: { products: { id: string; name:
     setError(null);
     setReel(null);
     setBusy("Planning the story and your presenter…");
-    const res = await startReelAction({ subjectId: subjectId || null, brief, language, tier });
+    const res = await startReelAction({ subjectId: subjectId || null, brief, language, tier: "lite" });
     if (!res.ok) {
       setBusy(null);
       setError(res.error);
       return;
     }
     job.current = res.id;
-    setBusy("Filming: start frames first, then Veo films each clip (a few minutes)…");
+    setBusy("Filming: start frames first, then each clip is filmed (a few minutes)…");
     void step(res.id);
   }
 
@@ -98,7 +97,7 @@ export function UniqueReels({ products, brand }: { products: { id: string; name:
           <h2 id="unique-reels" className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-[-0.02em]">
             Unique AI reels <Badge tone="violet">Test</Badge>
           </h2>
-          <p className="text-[15px] text-muted">A 30-second reel with your own AI presenter: a hook, your product in use, the result and a call to action, filmed by Google Veo. A different story every time.</p>
+          <p className="text-[15px] text-muted">A 30-second reel with your own AI presenter: a hook, your product in use, the result and a call to action, filmed by Google&rsquo;s AI video model. A different story every time.</p>
         </div>
       </div>
 
@@ -132,17 +131,7 @@ export function UniqueReels({ products, brand }: { products: { id: string; name:
         </span>
         <Textarea rows={2} maxLength={800} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="For example: a farmer shows how much more she harvests since she has the tower" disabled={!!busy} />
       </label>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 text-[15px] font-semibold">Quality</legend>
-        <div className="flex flex-wrap gap-2">
-          <Chip selected={tier === "lite"} onClick={() => setTier("lite")} disabled={!!busy}>
-            Veo Lite · about ${reelCostUsd("lite").toFixed(2)}
-          </Chip>
-          <Chip selected={tier === "fast"} onClick={() => setTier("fast")} disabled={!!busy}>
-            Veo Fast (Pro) · about ${reelCostUsd("fast").toFixed(2)}
-          </Chip>
-        </div>
-      </fieldset>
+      <p className="text-[13px] text-muted">One reel costs about ${reelCostUsd(clipUsd).toFixed(2)} in AI (4 start frames and 4 clips of 8 seconds by Google&rsquo;s video model).</p>
 
       <div className="flex flex-col gap-3 rounded-2xl bg-soft p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-[14px]">{busy ?? (budget ? `Test budget used: $${budget.spent.toFixed(2)} of $${budget.cap}.` : "Test only: each reel counts against the test budget.")}</p>

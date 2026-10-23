@@ -39,7 +39,7 @@ describe("the reel's story", () => {
     expect(spec.scenes[0].layers[0]).toMatchObject({ kind: "video", url: "a.mp4", sound: true });
     expect(spec.scenes[0].layers[1]).toMatchObject({ kind: "text", text: "Line 0" });
     expect(spec.scenes[3].layers.some((l) => l.kind === "text" && l.text === "LEAF")).toBe(true);
-    expect(reelCostUsd("lite")).toBeLessThan(reelCostUsd("fast"));
+    expect(reelCostUsd(0.8)).toBeCloseTo(3.49, 2);
   });
 });
 

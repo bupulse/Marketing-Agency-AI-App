@@ -46,9 +46,10 @@ vi.mock("@/lib/image-engine/engine", () => ({
 vi.mock("@/lib/music/service", () => ({ musicUrl: (p: string) => p, trackForVideo: async () => null }));
 vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => ({ download: async () => ({ data: new Blob([new Uint8Array([0x89, 1, 2])]), error: null }), upload: h.upload, createSignedUrls: async () => ({ data: [] }) }) } }) }));
-vi.mock("@/lib/video-engine/veo", async (orig) => ({ ...(await orig<typeof import("@/lib/video-engine/veo")>()), submitVeo: h.submit, getVeoOperation: h.poll, downloadVeo: async () => Buffer.from([0, 0, 0, 24]) }));
+vi.mock("@/lib/video-engine/veo", async (orig) => ({ ...(await orig<typeof import("@/lib/video-engine/veo")>()), submitVeo: h.submit, getVeoOperation: h.poll, veoClipBytes: undefined, downloadVeo: async () => Buffer.from([0, 0, 0, 24]) }));
 
 import { reelEngineOn, startReel, stepReel } from "@/lib/reel-engine/engine";
+import { veoClipUsd, veoModel } from "@/lib/video-engine/veo";
 
 const owner = { userId: "u1", businessId: "b1" };
 
@@ -73,7 +74,7 @@ describe("the reel engine (test only)", () => {
   });
 
   it("refuses a reel that would pass the test budget", async () => {
-    h.spent.value = 9.5;
+    h.spent.value = 9;
     await expect(startReel(owner, { language: "Kinyarwanda", tier: "lite" })).rejects.toThrow(/test budget is used/);
   });
 
@@ -89,7 +90,7 @@ describe("the reel engine (test only)", () => {
     const job = h.jobs.get(id)!;
     expect(job.status).toBe("assembling");
     expect(h.upload).toHaveBeenCalledTimes(4);
-    expect(job.costUsd).toBeCloseTo(4 * 0.067 + 4 * 0.4, 2);
+    expect(job.costUsd).toBeCloseTo(4 * 0.067 + 4 * veoClipUsd(8, veoModel()), 2);
   });
 
   it("a clip Veo declines fails the reel with the reason", async () => {

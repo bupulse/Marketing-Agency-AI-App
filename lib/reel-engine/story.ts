@@ -121,7 +121,7 @@ export function veoClipPrompt(clip: Pick<ReelClip, "motion" | "line" | "camera" 
       : `A warm voice-over says in ${language}: "${clip.line}"`
     : "Only natural sound of the place.";
   return [
-    `${clip.motion} Camera: ${clip.camera}.`,
+    `A vertical 9:16 video clip of about ${CLIP_SECONDS} seconds. ${clip.motion} Camera: ${clip.camera}.`,
     speech,
     "Real documentary footage shot on a phone or a cinema camera: natural light, true-to-life colour, real skin texture, natural movement and hands. No text, captions or subtitles on screen, no music, no logos added.",
   ].join("\n");
@@ -154,8 +154,7 @@ export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name:
   return { version: 1, title: plan.title, ratio: "9:16", fps: 30, palette: { background: "#000000", primary: brand.color, accent: brand.color, text: "#FFFFFF" }, scenes, music: plan.music, caption: plan.caption, hashtags: plan.hashtags };
 }
 
-/** About what one reel costs the providers: 4 start frames (Nano Banana 2) and 4 Veo clips of 8 s. */
-export function reelCostUsd(tier: ReelTier): number {
-  const veoPerSecond = tier === "fast" ? 0.1 : 0.05;
-  return Math.round((4 * 0.067 + 4 * CLIP_SECONDS * veoPerSecond + 0.02) * 100) / 100;
+/** About what one reel costs the providers: 4 start frames (Nano Banana 2) and 4 clips of 8 s at the video model's rate. */
+export function reelCostUsd(clipUsd: number): number {
+  return Math.round((4 * 0.067 + 4 * clipUsd + 0.02) * 100) / 100;
 }
