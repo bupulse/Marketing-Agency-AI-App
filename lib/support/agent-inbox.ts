@@ -15,6 +15,7 @@ import { ALERT_AFTER_MS, SUPPORT_LIMITS } from "./limits";
 import { anonymousName } from "./live";
 import { broadcast } from "./realtime";
 import { priorityOf } from "./rules";
+import { pageSources } from "./sources";
 import { firstReplyTimes } from "./stats";
 import { newId, sha256Hex, topicSecret } from "./tokens";
 import { messageSelect, originalOf, shortName, toMessageViews } from "./views";
@@ -290,7 +291,7 @@ export async function assist(agent: AgentSession, id: string): Promise<Assist> {
     await logError(error, { source: "support.assist", level: "warn" });
     throw new SupportError(503, "assist_failed", "Suggestions are not available just now. Try again in a minute.");
   }
-  const result: Assist = { summary: raw.summary, suggestions: raw.suggestions, sources: raw.sources.map((n) => guide[n - 1]).map((g) => ({ title: `${g.title}: ${g.heading}`, href: g.page })) };
+  const result: Assist = { summary: raw.summary, suggestions: raw.suggestions, sources: pageSources(raw.sources.map((n) => guide[n - 1])) };
   await prisma.supportConversation.update({ where: { id }, data: { assist: result as unknown as Prisma.InputJsonValue, assistMessageId: lastId, summary: raw.summary, summaryAt: new Date() } });
   return result;
 }

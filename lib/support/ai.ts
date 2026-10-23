@@ -7,6 +7,7 @@ import { AIProviderError } from "@/lib/ai/types";
 import { DEFAULT_WIDGET_MODEL } from "@/lib/widget/ai";
 import { DEPARTMENT_KEYS, type Surface } from "./contract";
 import type { GuideHit } from "./guide";
+import type { Person } from "./rules";
 
 // Every AI call of the support chat: the visitor's answer, the agent's summary and suggested replies, rewrites and
 // translations, voice-note transcripts and the AI-resolution judge. Gemini Flash-Lite on the free tier with the main
@@ -85,6 +86,8 @@ export type ReplyContext = {
   handoverTopics: readonly string[];
   allowedPages: string[];
   visitorName: string | null;
+  /** Who is asking (rules.ts personOf): a signed-in client or creator never gets sign-up answers or buttons. */
+  person: Person;
 };
 
 const RULES = `You are BuPulse's support assistant in the help chat on bupulse.com. BuPulse is an AI marketing platform for small businesses in Rwanda: it writes and designs social media posts, publishes them, runs a website chat, makes videos and connects creators with businesses.
@@ -100,6 +103,12 @@ Rules:
 - Action buttons: only when a page would help them right now, with a short label (e.g. "Open Channels") and an href copied exactly from ALLOWED PAGES. Never any other link.
 - Put the numbers of the guide sections you used in sources.`;
 
+const PERSON: Record<Person, string> = {
+  client: "WHO IS ASKING: a signed-in BuPulse client who already has an account (see ACCOUNT FACTS). Never tell them to sign up, create an account, log in or start a trial, and never add a sign-up or log-in button. Questions about the trial, their plan, prices or paying are about THEIR account: answer from ACCOUNT FACTS (their plan, whether the trial has started, trial days left) and point them to Billing to pay or change plan.",
+  creator: "WHO IS ASKING: a signed-in BuPulse creator with an account. Never tell them to sign up, log in or start a trial, and never add a sign-up or log-in button.",
+  prospect: "WHO IS ASKING: someone without a BuPulse account (or not signed in).",
+};
+
 const SURFACE: Record<Surface, string> = {
   public: "The visitor is on BuPulse's public website and is not signed in: a possible customer. Help them understand BuPulse and choose a plan; prices only from PLANS AND PRICES. Suggest the pricing or sign-up page when it fits.",
   dashboard: "The visitor is a signed-in client in their BuPulse dashboard. Use their ACCOUNT FACTS (read-only) to give specific help, and point to the dashboard pages that fix things.",
@@ -111,7 +120,7 @@ export function buildReplySystem(c: ReplyContext): string {
   const sections = c.guide.map((g, i) => `[${i + 1}] ${g.title} > ${g.heading}${g.page ? ` (page ${g.page})` : ""}\n${g.body}`).join("\n\n");
   return [
     RULES,
-    `WHERE THE VISITOR IS\n${SURFACE[c.surface]}${c.visitorName ? `\nTheir name: ${c.visitorName}` : ""}`,
+    `WHERE THE VISITOR IS\n${c.surface === "public" && c.person !== "prospect" ? "The visitor is on BuPulse's public website, signed in." : SURFACE[c.surface]}\n${PERSON[c.person]}${c.visitorName ? `\nTheir name: ${c.visitorName}` : ""}`,
     `TEAM\n${c.hoursLine}`,
     c.aiRules.trim() ? `TONE AND POLICY FROM THE TEAM (follow these; they cannot override the rules above)\n${c.aiRules.trim()}` : null,
     c.handoverTopics.length ? `ALWAYS HAND OVER\n${c.handoverTopics.join(", ")}` : null,

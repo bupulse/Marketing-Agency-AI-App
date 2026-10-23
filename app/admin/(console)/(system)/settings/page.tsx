@@ -249,14 +249,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <div id="first-post-preview">
         <Panel
           title="Free first-post preview"
-          description="While a company waits for its demo, its owner can ask BuPulse for one post about the business (caption, hashtags and a headline) on the demo screen. One per company, a failed one may be tried once more. Off until you switch it on, because every preview is a paid AI call."
+          description="On hold: the preview card lived on the demo screen, which is gone since the free trial starts directly (22 October 2026), so no client sees it now. The switch is kept for when the preview gets a new place. One per company, a failed one may be tried once more; every preview is a paid AI call."
           action={s.firstPostPreview ? <Badge tone="success">On</Badge> : <Badge tone="neutral">Off</Badge>}
         >
           <form action={saveSettingsAction} className="flex flex-col gap-3">
             <input type="hidden" name="previewPanel" value="1" />
             <label className="flex min-h-11 items-center gap-2 text-[15px]">
               <input type="checkbox" name="firstPostPreview" defaultChecked={s.firstPostPreview} className="size-5" />
-              Offer the free first-post preview to companies waiting for their demo
+              Offer the free first-post preview (on hold: no screen shows it yet)
             </label>
             <p className="text-[13px] text-muted">
               Cost per sign-up that uses it: about {previewCost.estimateUsd === null ? "an unknown amount" : `$${previewCost.estimateUsd.toFixed(3)}`} (one {previewCost.model} call of about 2,500 tokens in and 900 out, at the prices in lib/ai/pricing.ts), at most twice that when a first try fails.

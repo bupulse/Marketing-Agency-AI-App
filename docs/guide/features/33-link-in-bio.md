@@ -44,7 +44,7 @@ A light page made for phones that opens fast on a slow connection (about 8 KB of
 on **Chat on WhatsApp** or **Ask on WhatsApp** open a WhatsApp chat with you; **Call** opens the phone's dialler;
 **Open in Google Maps** opens the map. At the bottom: "Made with BuPulse".
 
-A page that is switched off, or whose account is read-only (waiting for the demo, trial over, payment failed, plan
+A page that is switched off, or whose account is read-only (trial not started, trial over, payment failed, plan
 ended), says only "This page is not available." It never says whose page it was.
 
 ## What your page brought

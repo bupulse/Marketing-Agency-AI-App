@@ -5,12 +5,12 @@ owner (what you see, how to use it, limits) and ends with **For developers** (fi
 routes, cron jobs and tests) and **If something goes wrong** (symptom → where to look → usual fix).
 
 Screenshots come from the test business "Nova Phones Kigali", a phone shop on the Business plan, plus Urugo Homes on a
-trial and Inzu Fashion waiting for its demo. All names and numbers in them are made up.
+trial and Inzu Fashion, which has not started its trial yet. All names and numbers in them are made up.
 
 | # | Feature | Page URL | File |
 |---|---|---|---|
 | 1 | Dashboard home | `/dashboard` | [01-dashboard-home.md](01-dashboard-home.md) |
-| 2 | Sign-up, onboarding and account states | `/signup`, `/login`, `/welcome`, `/onboarding`, `/book-demo`, `/account/waiting`, `/suspended`, `/invite/[token]` | [02-sign-up-onboarding-and-account-states.md](02-sign-up-onboarding-and-account-states.md) |
+| 2 | Sign-up, onboarding and account states | `/signup`, `/login`, `/welcome`, `/onboarding`, `/start-trial`, `/account/waiting`, `/suspended`, `/invite/[token]` | [02-sign-up-onboarding-and-account-states.md](02-sign-up-onboarding-and-account-states.md) |
 | 3 | Knowledge base | `/dashboard/knowledge` (profile, products, campaigns, locations, audience, competitors, faqs, reviews, interview) | [03-knowledge-base.md](03-knowledge-base.md) |
 | 4 | Projects and content | `/dashboard/content`, `/dashboard/content/products/[id]`, `/dashboard/content/campaigns/[id]`, `/dashboard/content/general`, `/dashboard/content/settings` (old `/dashboard/projects*` links redirect) | [04-projects-and-content.md](04-projects-and-content.md) |
 | 5 | Designs | `/dashboard/designs` | [05-designs.md](05-designs.md) |
@@ -39,7 +39,7 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 28 | Automations (coming soon) | `/dashboard/automations`, `/dashboard/automations/[id]` | [28-automations.md](28-automations.md) |
 | 29 | The Video Studio, for clients (open it, credits per action, where videos go) | studio.bupulse.com; BuPulse Videos | [29-video-studio-for-clients.md](29-video-studio-for-clients.md) |
 | 30 | The Video Studio, for the owner (switches, costs, viral library, checks) | Admin → Services, Plans, Usage; studio `/viral` | [30-video-studio-for-the-owner.md](30-video-studio-for-the-owner.md) |
-| 31 | Free first-post preview (before the demo) | the demo screen, Admin → Settings → Free first-post preview | [31-first-post-preview.md](31-first-post-preview.md) |
+| 31 | Free first-post preview (on hold) | Admin → Settings → Free first-post preview (shown nowhere since the demo screen went) | [31-first-post-preview.md](31-first-post-preview.md) |
 | 32 | BuPulse on the phone (install it like an app) and Share to WhatsApp (posts and videos to Status or a chat) | the dashboard on a phone; Share to WhatsApp on posts and in Videos | [32-phone-app-and-whatsapp-share.md](32-phone-app-and-whatsapp-share.md) |
 | 33 | Link in bio (a free public page for the Instagram or TikTok bio) | `/dashboard/bio`, `/b/[slug]` | [33-link-in-bio.md](33-link-in-bio.md) |
 | 34 | Testimonials on the website (Admin) | `/admin/testimonials`, shown on `/` and `/pricing` | [34-testimonials.md](34-testimonials.md) |
@@ -59,7 +59,7 @@ What a company may use is decided only by its plan's feature list (`PlanDefiniti
 |---|---|---|---|
 | Starter | 15,000 RWF a month | AI content, branded designs, calendar and scheduling, media gallery | 60 AI texts, 30 AI images (unused without AI photos), 1 user |
 | Business | 50,000 RWF a month (500,000 RWF a year) | Starter + AI photos, website chat and leads, videos, voiceover | 200 AI texts, 100 AI images, 500 chat replies, 120 videos (4 a day, up to 30 s), 3 users |
-| Free trial | free, after the demo | the features of the plan the client chose | the TRIAL plan's limits (10 texts, 5 images, 1 sample video, 50 chat replies) |
+| Free trial | free, started by the client on `/start-trial` (no demo, no card; 3 days by default, Admin → Settings) | the features of the plan the client chose | the TRIAL plan's limits (10 texts, 5 images, 1 sample video, 50 chat replies) |
 | Custom plan | agreed per client | any built features and extra blocks | set in the offer |
 
 **Link in bio** (a free page for the Instagram or TikTok bio) is on every plan and the trial.

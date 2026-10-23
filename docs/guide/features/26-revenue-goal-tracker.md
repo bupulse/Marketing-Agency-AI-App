@@ -33,7 +33,7 @@ month paid sales really started.
 Nothing new was needed here; for reference:
 
 - Trial-end emails a day before and on the last day, then the trial ends and the account is read-only
-  (`lib/demo/trial-reminders.ts`, hourly cron; `docs/REGIONS.md`, "The demo-first trial").
+  (`lib/demo/trial-reminders.ts`, hourly cron; `docs/REGIONS.md`, "Trial first").
 - Mobile Money renewal reminders 5 days and 1 day before the end, 3 days of grace (`docs/MOMO.md`).
 - Who is on a trial and whose trial ends soon: Admin → Clients → **Client health**; per agent: Admin → Sales →
   **My clients**; per month and plan: the rest of Revenue and profit; visit to sign-up to paying: Content → **Funnels**.

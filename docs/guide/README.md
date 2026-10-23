@@ -5,7 +5,7 @@ and, for each feature, where its code is and where to look first when something 
 plain steps for the owner first, then **For developers** with the files, functions and database tables behind it.
 
 Screenshots and clips come from the real app on the test site (TEST database, the test business "Nova Phones Kigali"
-on the Business plan, plus Urugo Homes on a trial and Inzu Fashion waiting for its demo). All businesses, people and
+on the Business plan, plus Urugo Homes on a trial and Inzu Fashion, which has not started its trial yet). All businesses, people and
 numbers in them are made up.
 
 **On this page**

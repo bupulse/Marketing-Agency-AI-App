@@ -7,8 +7,8 @@ apps that need no approval).
 **Where:** Posts (Today: needs review), Posts → Settings → **Daily posts made for you**. **Plans:** every paid plan (owner
 decision, 23 October 2026): Starter makes **one post a day on one app**, with free designs (the plan limit "Daily posts:
 apps a day", `dailyPostApps`, 0 = every app); Standard, Business, Pro and custom plans make posts for every app chosen.
-A free trial of one of them has them too (within the trial's limits). Not while a company waits for its demo
-or an invoice, after the trial ended unpaid, or when the account is suspended or being deleted.
+A free trial of one of them has them too (within the trial's limits). Not before a company starts its free trial (or
+pays its invoice), after the trial ended unpaid, or when the account is suspended or being deleted.
 
 ## What you see in the morning
 
