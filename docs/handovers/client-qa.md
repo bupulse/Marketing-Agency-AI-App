@@ -13,7 +13,11 @@ test.bupulse.com like a small Rwandan business owner, and fixes what it finds.
 
 Format: where (URL) · steps · what happened / what should happen · severity (blocker / annoying / polish) · screenshot.
 
-_None yet._
+1. **Every dashboard page takes 6-15 s to answer on test.bupulse.com** · annoying (test site; testers feel it).
+   - Where: any /dashboard page, e.g. /dashboard/content/settings (server wait 14.5 s), /dashboard/usage 6-9 s, /dashboard/gallery 7-8.6 s (fetch timings, 23 Oct).
+   - Why: the test site runs on the owner's Mac in Rwanda; the TEST database is in AWS us-east-1, 240 ms away per query (measured: `select 1` 220-300 ms). A page makes about 25-35 queries one after another (the dashboard layout awaits about 8 lookups in a row, getAppContext several more, then the page). On bupulse.com (Netlify, US) a query is about 10 ms, so production is not hit the same way.
+   - Should: fewer queries in a row on every page (Promise.all in app/dashboard/layout.tsx and components/app/context.ts), and/or run the test site near the database. Not changed yet.
+2. **Quiz round pills were cut off with no hint of more** · polish · /dashboard/knowledge/quiz. Fixed: they scroll to the current round and fade at the edges (a2a0232d).
 
 ## Fixed
 
