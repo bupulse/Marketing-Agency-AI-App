@@ -3232,6 +3232,11 @@ model SupportConversation {
   ratingComment     String?
   transcriptSentAt  DateTime?
   alertSentAt       DateTime? // the "no reply after 2 minutes" email
+  ticketSentAt      DateTime? // the outside-hours "we will reply by email" email to the visitor
+  visitorDraft      String? // what the visitor is typing (sneak peek for agents), only once the chat is open
+  visitorDraftAt    DateTime?
+  assist            Json? // cached /assist answer: { summary, suggestions, sources }
+  assistMessageId   String? // the last message the cached assist was made for
   topicTokenHash    String                    @unique // sha256 of the visitor's private realtime topic secret
   createdAt         DateTime                  @default(now())
   updatedAt         DateTime                  @updatedAt
@@ -3289,13 +3294,17 @@ model SupportAttachment {
   @@index([expiresAt])
 }
 
-// Owner guide sections the AI searches (rebuilt from docs/guide/features/*.md).
+// Owner guide sections the AI searches (rebuilt from docs/guide/features/*.md). The migration also adds "tsv", a
+// generated tsvector over heading and body with a GIN index, outside Prisma: searches use $queryRaw (lib/support/guide.ts).
 model SupportGuideChunk {
-  id      String @id @default(cuid())
+  id      String  @id @default(cuid())
   file    String
+  title   String  @default("") // the file's "# " title, e.g. "Social connections (Channels)"
+  page    String? // the dashboard page the file is about ("**Page:** `/dashboard/connections`"), for action buttons
   heading String
   anchor  String
   body    String
+  sort    Int     @default(0)
   hash    String
 
   @@unique([file, anchor])
