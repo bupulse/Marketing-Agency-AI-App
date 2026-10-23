@@ -62,7 +62,7 @@ export function presenterDescription(seed: string, audience: string | null): str
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   const woman = /\b(women|woman|ladies|mothers|female)\b/i.test(audience ?? "") || h % 2 === 0;
   const age = ["late twenties", "early thirties", "mid thirties", "early forties"][h % 4];
-  const hair = woman ? ["short natural hair", "neat braids", "a low bun", "short twists"][(h >> 3) % 4] : ["a short fade", "close-cropped hair", "a neat short beard", "short twists"][(h >> 3) % 4];
+  const hair = woman ? ["short natural hair", "neat braids", "a low bun", "short twists"][(h >>> 3) % 4] : ["a short fade", "close-cropped hair", "a neat short beard", "short twists"][(h >>> 3) % 4];
   return `a Black Rwandan ${woman ? "woman" : "man"} in ${woman ? "her" : "his"} ${age}, ${hair}, a warm confident smile, smart-casual clothes in the brand's colour`;
 }
 
@@ -266,6 +266,12 @@ export async function reelView(owner: Owner, jobId: string): Promise<ReelView | 
     musicUrl: music ? musicUrl(music.path) : null,
     reelUrl: job.path ? (files.get(job.path) ?? null) : null,
   };
+}
+
+/** The company's latest reel of the last week (the screen shows it and carries on with it when it is not finished). */
+export async function latestReel(owner: Owner, now: Date = new Date()): Promise<ReelView | null> {
+  const job = await prisma.reelJob.findFirst({ where: { businessId: owner.businessId, createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } }, orderBy: { createdAt: "desc" }, select: { id: true } });
+  return job ? reelView(owner, job.id) : null;
 }
 
 /** Where the browser uploads the finished reel. */
