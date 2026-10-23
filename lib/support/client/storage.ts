@@ -42,6 +42,7 @@ export const KEYS = {
   landing: "bp-sc-landing",
   greetingSeen: "bp-sc-greeting",
   outbox: "bp-sc-outbox",
+  visitToken: "bp-sc-visit",
 } as const;
 
 const KEY_SHAPE = /^[A-Za-z0-9_-]{16,64}$/;

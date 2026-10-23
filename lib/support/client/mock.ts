@@ -1,5 +1,5 @@
-// A pretend support server for building and testing the widget before sc-core's API exists. Only used when
-// NODE_ENV is not production and NEXT_PUBLIC_SUPPORT_CHAT_MOCK=1 (components/support-chat/load.ts), so it never ships.
+// A pretend support server for the widget's tests (tests/support-widget). Nothing in the app imports it, so it never
+// ships.
 // The AI answers a few topics, "Talk to a person" brings in "Jean M.", uploads become object URLs. In memory only.
 import type { ConversationView, MessageView, RealtimeEvent, Surface } from "../contract";
 import type { Me, MessagesResponse, RealtimeStatus, SupportClient, Visit } from "./api";

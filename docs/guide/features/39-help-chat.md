@@ -72,9 +72,9 @@ the whole chat by email. **Start a new chat** begins a fresh one.
 | Spec | `docs/SUPPORT_CHAT.md` (section 10 is the visitor chat) |
 | Mount | `components/support-chat/mount.tsx` in `app/layout.tsx`; where it shows: `lib/support/client/mount.ts` `chatSurface` |
 | Chat | `components/support-chat/widget.tsx` (button, greeting, panel), `use-support-chat.ts` (visit, messages, outbox, real time, polling, heartbeats), `messages.tsx`, `composer.tsx`, `prechat-form.tsx`, `end-screen.tsx`, `media.ts` (photo shrink, voice recorder, Turnstile) |
-| Logic | `lib/support/client/`: `api.ts` (client for `/api/support/v1`), `greeting.ts`, `outbox.ts`, `uploads.ts`, `paths.ts`, `prechat.ts`, `storage.ts`, `copy.ts` (every word), `mock.ts` (development only) |
+| Logic | `lib/support/client/`: `api.ts` (client for `/api/support/v1`), `greeting.ts`, `outbox.ts`, `uploads.ts`, `paths.ts`, `prechat.ts`, `storage.ts`, `copy.ts` (every word), `mock.ts` (tests only) |
 | Bio link | `lib/bio/page.ts` (`.made` corner link) → `app/help-chat/page.tsx` |
-| Try it without the API | `NEXT_PUBLIC_SUPPORT_CHAT_MOCK=1 npx next dev -p 3012` (never in production builds); `localStorage.setItem("bp-sc-mock-socket","down")` tests the 5 s polling |
+| API | `/api/support/v1` (`docs/api/support-v1.md`); an email link to `/?help=open` opens the chat |
 | Tests | `tests/support-widget/` |
 
 ## If something goes wrong

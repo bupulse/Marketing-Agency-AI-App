@@ -170,6 +170,12 @@ export function createOutbox(o: OutboxOptions) {
       emit();
       void pump();
     },
+    /** Everything that failed, again (the visitor just filled the form the server asked for). */
+    retryFailed() {
+      items = items.map((i) => (i.status === "failed" ? { ...i, status: "waiting" as const, error: undefined } : i));
+      emit();
+      void pump();
+    },
     /** Back online, or the panel opened again: try now instead of waiting for the timer. */
     flush() {
       if (timer !== null) timers.clear(timer);

@@ -143,6 +143,26 @@ describe("the outbox", () => {
     expect(box.list()).toEqual([]);
   });
 
+  it("sends what the server held back for the form once it is filled", async () => {
+    let formDone = false;
+    const sent: string[] = [];
+    const box = createOutbox({
+      onChange: () => {},
+      deliver: async (i) => {
+        if (!formDone) throw { status: 403, code: "form_required" };
+        sent.push(i.text!);
+      },
+    });
+    box.add({ text: "Hello" });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(box.list()[0].status).toBe("failed");
+    formDone = true;
+    box.retryFailed();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toEqual(["Hello"]);
+    expect(box.list()).toEqual([]);
+  });
+
   it("uses the sender swapped in later", async () => {
     const box = createOutbox({ onChange: () => {} });
     const sent: string[] = [];

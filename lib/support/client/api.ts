@@ -2,6 +2,7 @@
 // one over fetch, and the mock (./mock.ts, development and tests only) so the widget can be built before the server.
 import {
   HEARTBEAT_RPC,
+  type HeartbeatResult,
   REALTIME_EVENT,
   SUPPORT_API,
   type ConversationView,
@@ -12,13 +13,9 @@ import {
 } from "../contract";
 import type { z } from "zod";
 import type { prechatBody, ratingBody, sendMessageBody, visitBody } from "../contract";
+import { KEYS, read, write } from "./storage";
 
-/**
- * What /visit answers, with the fields the widget also reads when the server sends them (asked of sc-core: the
- * visitor topic before any conversation, the WhatsApp number and the Turnstile key). All optional, so an older server
- * still works.
- */
-export type Visit = VisitResponse & { topic?: string | null; whatsapp?: string | null; turnstileSiteKey?: string | null };
+export type Visit = VisitResponse;
 
 export type MessagesResponse = { messages: MessageView[]; status: ConversationView["status"]; aiActive: boolean; agent: ConversationView["agent"] };
 
@@ -48,19 +45,22 @@ export interface SupportClient {
   upload(conversationId: string, file: Blob, meta: { mime: string; fileName?: string; durationSec?: number }): Promise<{ attachmentId: string }>;
   rate(conversationId: string, body: z.input<typeof ratingBody>): Promise<void>;
   end(conversationId: string): Promise<void>;
-  /** Straight to Supabase (HEARTBEAT_RPC). May answer { unread } so the closed button can show a dot. */
-  heartbeat(path: string, title?: string): Promise<{ unread?: number } | null>;
+  /** Straight to Supabase (HEARTBEAT_RPC): { ok, unread } or { ok: false, error: "expired" | "unknown" }; null when it could not ask. */
+  heartbeat(path: string, title?: string): Promise<HeartbeatResult | null>;
   /** Listens on the visitor's public topic; returns the way to stop. */
   subscribe(topic: string, onEvent: (e: RealtimeEvent) => void, onStatus: (s: RealtimeStatus) => void): () => void;
 }
 
 type Fetch = typeof fetch;
 
-/** The real client. The visit token is kept in memory: a reload makes a new /visit, which the server ties together. */
+/**
+ * The real client. The visit token lives in sessionStorage: every page load sends it to POST /visit, which continues
+ * the same visit (or answers a new token once it expired).
+ */
 export function createHttpClient(opts: { base?: string; fetch?: Fetch } = {}): SupportClient {
   const base = opts.base ?? SUPPORT_API;
   const f: Fetch = opts.fetch ?? ((...a) => fetch(...a));
-  let token: string | null = null;
+  let token: string | null = read("session", KEYS.visitToken);
   let rt: { url: string; anonKey: string } | null = null;
   let lastVisit: z.input<typeof visitBody> | null = null;
 
@@ -77,7 +77,7 @@ export function createHttpClient(opts: { base?: string; fetch?: Fetch } = {}): S
       throw new SupportApiError(0, "network", "No connection");
     }
     // An expired or unknown visit token: open the visit again once, then repeat the call.
-    if (res.status === 401 && !retried && lastVisit && path !== "/visit") {
+    if ((res.status === 401 || res.status === 404) && !retried && lastVisit && path !== "/visit") {
       await visit(lastVisit);
       return call<T>(method, path, body, true);
     }
@@ -94,6 +94,7 @@ export function createHttpClient(opts: { base?: string; fetch?: Fetch } = {}): S
     lastVisit = body;
     const v = await call<Visit>("POST", "/visit", body);
     token = v.visitToken;
+    write("session", KEYS.visitToken, token);
     rt = v.realtime;
     return v;
   }
@@ -134,8 +135,8 @@ export function createHttpClient(opts: { base?: string; fetch?: Fetch } = {}): S
         body: JSON.stringify({ p_token: token, p_path: path, p_title: title ?? null }),
       }).catch(() => null);
       if (!res?.ok) return null;
-      const data = (await res.json().catch(() => null)) as { unread?: unknown } | null;
-      return data && typeof data === "object" && typeof data.unread === "number" ? { unread: data.unread } : {};
+      const data = (await res.json().catch(() => null)) as HeartbeatResult | null;
+      return data && typeof data === "object" && typeof data.ok === "boolean" ? data : null;
     },
     subscribe(topic, onEvent, onStatus) {
       if (!rt) {

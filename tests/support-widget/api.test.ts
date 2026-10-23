@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHttpClient, SupportApiError } from "@/lib/support/client/api";
 import { createMockClient } from "@/lib/support/client/mock";
+import { KEYS, write } from "@/lib/support/client/storage";
 import { renderBioPage } from "@/lib/bio/page";
 import { buildBioView, type BioSettings, type BioSource } from "@/lib/bio/view";
 
@@ -23,6 +24,8 @@ const VISIT = { visitToken: "tok-1", me: { name: null, email: null, signedIn: fa
 const visitBody = { visitorKey: "k".repeat(32), surface: "public" as const, path: "/" };
 
 describe("the API client", () => {
+  beforeEach(() => write("session", KEYS.visitToken, null));
+
   it("sends the visit token on every call after /visit", async () => {
     const { f, calls } = fakeFetch([json(200, VISIT), json(200, { me: { ...VISIT.me, needsForm: false } })]);
     const c = createHttpClient({ fetch: f });
@@ -32,6 +35,18 @@ describe("the API client", () => {
     expect((calls[0].init.headers as Record<string, string>)["X-Support-Visit"]).toBeUndefined();
     expect(calls[1].url).toBe("/api/support/v1/prechat");
     expect((calls[1].init.headers as Record<string, string>)["X-Support-Visit"]).toBe("tok-1");
+  });
+
+  it("sends the visit token it has to POST /visit on the next page load, and keeps the one that comes back", async () => {
+    const first = fakeFetch([json(200, VISIT)]);
+    await createHttpClient({ fetch: first.f }).visit(visitBody);
+    const next = fakeFetch([json(200, { ...VISIT, visitToken: "tok-2" }), json(200, { messages: [], status: "AI", aiActive: true, agent: null })]);
+    const c = createHttpClient({ fetch: next.f });
+    await c.visit(visitBody);
+    expect((next.calls[0].init.headers as Record<string, string>)["X-Support-Visit"]).toBe("tok-1");
+    await c.messages("c1");
+    expect(next.calls[1].url).toBe("/api/support/v1/conversations/c1/messages");
+    expect((next.calls[1].init.headers as Record<string, string>)["X-Support-Visit"]).toBe("tok-2");
   });
 
   it("turns { error } answers and lost connections into SupportApiError", async () => {
@@ -46,8 +61,8 @@ describe("the API client", () => {
     expect(lost.status).toBe(0);
   });
 
-  it("opens the visit again once when the token expired", async () => {
-    const { f, calls } = fakeFetch([json(200, VISIT), json(401, { error: { code: "visit_expired", message: "" } }), json(200, { ...VISIT, visitToken: "tok-2" }), json(200, { messages: [], status: "AI", aiActive: true, agent: null })]);
+  it.each([401, 404])("opens the visit again once on a %i for the visit token", async (status) => {
+    const { f, calls } = fakeFetch([json(200, VISIT), json(status, { error: { code: "visit_expired", message: "" } }), json(200, { ...VISIT, visitToken: "tok-2" }), json(200, { messages: [], status: "AI", aiActive: true, agent: null })]);
     const c = createHttpClient({ fetch: f });
     await c.visit(visitBody);
     await c.messages("c1", "m9");
@@ -68,16 +83,18 @@ describe("the API client", () => {
   });
 
   it("sends heartbeats straight to Supabase's RPC with the public key only", async () => {
-    const { f, calls } = fakeFetch([json(200, VISIT), json(200, { unread: 2 })]);
+    const { f, calls } = fakeFetch([json(200, VISIT), json(200, { ok: true, unread: 2 }), json(200, { ok: false, error: "expired" }), json(200, "nonsense")]);
     const c = createHttpClient({ fetch: f });
     expect(await c.heartbeat("/")).toBeNull(); // no visit yet: nothing sent
     await c.visit(visitBody);
-    expect(await c.heartbeat("/pricing", "Pricing")).toEqual({ unread: 2 });
+    expect(await c.heartbeat("/pricing", "Pricing")).toEqual({ ok: true, unread: 2 });
     expect(calls[1].url).toBe("https://x.supabase.co/rest/v1/rpc/support_heartbeat");
     const h = calls[1].init.headers as Record<string, string>;
     expect(h.apikey).toBe("pk");
     expect(h.Authorization).toBeUndefined();
     expect(JSON.parse(String(calls[1].init.body))).toEqual({ p_token: "tok-1", p_path: "/pricing", p_title: "Pricing" });
+    expect(await c.heartbeat("/")).toEqual({ ok: false, error: "expired" });
+    expect(await c.heartbeat("/")).toBeNull();
   });
 });
 

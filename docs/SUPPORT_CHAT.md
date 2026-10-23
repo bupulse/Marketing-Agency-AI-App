@@ -234,7 +234,7 @@ Link-in-bio pages (`lib/bio/page.ts`) get only the "Made with BuPulse" corner pi
 - the greeting moves up by `--bp-fab-stack`, so it covers neither button;
 - on phones (≤ 480 px) the page gets bottom padding, so its end scrolls clear of both buttons. Both stay at least 44 px. There is no cookie bar (only essential cookies); the buttons already sit above the dashboard and creator phone bars (`--bp-bottom-bar`).
 
-**Loading.** At first only the gradient button is drawn. The chat code (`components/support-chat/widget.tsx`) loads when the browser is idle, or on hover or the first tap. supabase-js loads only when the panel opens (real time). The mock server (`lib/support/client/mock.ts`) is used only with `NODE_ENV !== "production"` and `NEXT_PUBLIC_SUPPORT_CHAT_MOCK=1`, so it never ships.
+**Loading.** At first only the gradient button is drawn. The chat code (`components/support-chat/widget.tsx`) loads when the browser is idle, or on hover or the first tap. supabase-js loads only when the panel opens (real time). The widget always talks to the real `/api/support/v1`; the pretend server in `lib/support/client/mock.ts` is for tests only.
 
 **Greeting** (`lib/support/client/greeting.ts` `greetingMode`). It shows after `greeting.delaySec` from `/visit`, once per visit (sessionStorage `bp-sc-greeting`). It never shows:
 - within 7 days of the visitor's last chat message (localStorage `bp-sc-last-chat`);
@@ -273,10 +273,14 @@ Phones (≤ 480 px) only get a red dot on the button. Closing the greeting keeps
 - Heartbeats go to Supabase's RPC endpoint (`/rest/v1/rpc/support_heartbeat`, public key only) every 45 s while the tab is visible. Page changes are sent the same way, 1.5 s after the visitor settles on a page, never twice for the same path, path only (no query).
 - The typing draft goes at most once a second, only with the panel open and a conversation.
 
-**What the widget expects from the API** (asked of sc-core):
-- `VisitResponse` also has `topic` (before any conversation), `whatsapp` (E.164 or null) and `turnstileSiteKey`. All are optional in the widget's type (`Visit` in `lib/support/client/api.ts`).
-- 401 on a visit token: the widget calls `/visit` again once.
-- The heartbeat RPC may answer `{ unread }`; then the closed button shows a dot.
+**How it uses the API** (`docs/api/support-v1.md`):
+- `POST /visit` on every page load, with the `X-Support-Visit` token kept in sessionStorage (`bp-sc-visit`): the same visit continues, or a new token comes back after 20 idle minutes. `optOut` is sent when the browser has Global Privacy Control.
+- A 401 or 404 on the visit token: `/visit` again once, then the call again.
+- Heartbeat `{ ok: false, error: "expired" | "unknown" }`: `/visit` again. `{ ok: true, unread }` going up while the panel is closed: `/visit` again if no chat is known (an agent's invite), then the panel opens on a computer; a phone gets the red dot only, so a full-screen chat never pops up by surprise.
+- `form_required` on a send: the form shows, and the held message goes once it is sent (`retryFailed`).
+- Opening the panel fetches the newest 60 messages (no `after`), which also marks the agent's messages seen, so `unread` drops to 0.
+- The AI's answer comes back in the send response; the typing line shows while waiting.
+- Alert and transcript emails link to `/?help=open` (and `&c=<id>`): the chat opens on arrival, and the parameters are taken off the address. The chat itself comes back through `/visit`.
 
 **Tests:** `tests/support-widget/` covers:
 - greeting rules, mount exclusions, phone width;

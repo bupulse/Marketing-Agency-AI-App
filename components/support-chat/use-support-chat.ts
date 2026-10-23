@@ -37,13 +37,15 @@ function savedOutbox(): { clientMsgId: string; text: string; createdAt: string }
  * The visitor chat's state: the visit, the conversation and its messages, the outbox, real time while the panel is
  * open (polling every 5 s while the socket is down), heartbeats while the tab is visible, and page changes.
  */
-export function useSupportChat({ client, surface, pathname, open, challenge }: {
+export function useSupportChat({ client, surface, pathname, open, challenge, onUnread }: {
   client: SupportClient | null;
   surface: Surface;
   pathname: string;
   open: boolean;
   /** Turnstile, when the server asks for it; null when there is no key or no answer. */
   challenge: (siteKey: string) => Promise<string | null>;
+  /** The heartbeat found new agent messages (a reply, or an agent started a chat) while the panel was closed. */
+  onUnread?: () => void;
 }) {
   const [visit, setVisit] = useState<Visit | null>(null);
   const [failed, setFailed] = useState(false);
@@ -113,7 +115,18 @@ export function useSupportChat({ client, surface, pathname, open, challenge }: {
         write("session", KEYS.outbox, JSON.stringify(items.filter((i) => i.text && !i.attachment).map((i) => ({ clientMsgId: i.clientMsgId, text: i.text, createdAt: i.createdAt }))));
       },
       isOnline: () => typeof navigator === "undefined" || navigator.onLine !== false,
-      describe: (err) => (err instanceof SupportApiError ? (err.status === 413 ? COPY.tooBig : err.status === 415 ? COPY.badType : undefined) : undefined),
+      describe: (err) =>
+        err instanceof SupportApiError
+          ? err.status === 413
+            ? COPY.tooBig
+            : err.status === 415
+              ? COPY.badType
+              : err.code === "challenge_required" || err.code === "challenge_failed"
+                ? COPY.challenge
+                : err.status === 403 || err.status === 409
+                  ? err.message || undefined
+                  : undefined
+          : undefined,
     }),
   );
   useEffect(() => {
@@ -150,41 +163,73 @@ export function useSupportChat({ client, surface, pathname, open, challenge }: {
         box.uploaded(item.clientMsgId, attachmentId);
       }
       const body = { text: item.text || undefined, attachmentId, clientMsgId: item.clientMsgId };
-      const res = await withChallenge((turnstileToken) => (c ? client.send(c.id, { ...body, turnstileToken }) : client.start({ ...body, turnstileToken })));
+      // The AI's answer comes back in this very response: show it is on it meanwhile.
+      if (!c || c.aiActive) showTyping({ who: "ai" }, AI_WAIT_MS);
+      let res;
+      try {
+        res = await withChallenge((turnstileToken) => (c ? client.send(c.id, { ...body, turnstileToken }) : client.start({ ...body, turnstileToken })));
+      } catch (err) {
+        showTyping(null, 0);
+        // The server wants the form first (public and bio pages): show it; the message goes once it is sent.
+        if (err instanceof SupportApiError && err.code === "form_required") setMe((m) => (m ? { ...m, needsForm: true } : m));
+        throw err;
+      }
       applyConversation(res.conversation);
       markChatted();
-      // The AI answers in a moment: show it is on it (real time or the next poll brings the answer).
+      // Still no answer in the response (the AI is slow, or a person answers): real time or the next poll brings it.
       const last = res.conversation.messages[res.conversation.messages.length - 1];
-      if (res.conversation.aiActive && (!last || last.author === "VISITOR")) showTyping({ who: "ai" }, AI_WAIT_MS);
+      if (!res.conversation.aiActive || (last && last.author !== "VISITOR")) showTyping(null, 0);
     });
     box.flush();
   }, [client, box, applyConversation, withChallenge, showTyping]);
 
-  // ---- the visit ----
+  // ---- the visit: POST /visit on every page load (with the token we have), and again when the server lost it ----
+  const applyVisit = useCallback(
+    (v: Visit) => {
+      visitRef.current = v;
+      setVisit(v);
+      setMe(v.me);
+      // A chat the visitor did not know about yet (an agent's invite), or the one open in another tab.
+      if (v.conversation && (!convRef.current || convRef.current.id !== v.conversation.id)) {
+        convRef.current = meta(v.conversation);
+        setConv(convRef.current);
+        messagesRef.current = mergeMessages([], v.conversation.messages);
+        setMessages(messagesRef.current);
+        setEnded(v.conversation.status === "CLOSED");
+      }
+    },
+    [],
+  );
+  const visitBodyNow = useCallback(
+    () => ({
+      visitorKey: visitorKey(),
+      surface,
+      path: reportablePath(pathRef.current),
+      title: document.title.slice(0, 300) || undefined,
+      referrer: reportableReferrer(document.referrer),
+      screenW: window.screen?.width || undefined,
+      // Global Privacy Control: the server stores no IP, city or page list, and shows no greeting.
+      optOut: (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true || undefined,
+    }),
+    [surface],
+  );
+  const revisit = useCallback(async () => {
+    if (!client) return;
+    try {
+      applyVisit(await client.visit(visitBodyNow()));
+    } catch {
+      // the next heartbeat tries again
+    }
+  }, [client, applyVisit, visitBodyNow]);
+
   useEffect(() => {
     if (!client) return;
     let gone = false;
     client
-      .visit({
-        visitorKey: visitorKey(),
-        surface,
-        path: reportablePath(window.location.pathname),
-        title: document.title.slice(0, 300) || undefined,
-        referrer: reportableReferrer(document.referrer),
-        screenW: window.screen?.width || undefined,
-      })
+      .visit(visitBodyNow())
       .then((v) => {
         if (gone) return;
-        visitRef.current = v;
-        setVisit(v);
-        setMe(v.me);
-        if (v.conversation) {
-          convRef.current = meta(v.conversation);
-          setConv(convRef.current);
-          messagesRef.current = mergeMessages([], v.conversation.messages);
-          setMessages(messagesRef.current);
-          if (v.conversation.status === "CLOSED") setEnded(true);
-        }
+        applyVisit(v);
         // Messages typed before a reload go out again with the same clientMsgId (the server ignores repeats).
         for (const s of savedOutbox()) box.add(s);
       })
@@ -194,13 +239,16 @@ export function useSupportChat({ client, surface, pathname, open, challenge }: {
     return () => {
       gone = true;
     };
-  }, [client, surface, box]);
+  }, [client, box, applyVisit, visitBodyNow]);
 
   // ---- fetching new messages ----
   const inflight = useRef<Promise<void> | null>(null);
   const again = useRef(false);
-  const refresh = useCallback(async (): Promise<void> => {
+  const full = useRef(false);
+  /** New messages since the last one we have; `all` fetches the newest 60 again (which also marks them seen). */
+  const refresh = useCallback(async (all = false): Promise<void> => {
     if (!client || !convRef.current) return;
+    if (all) full.current = true;
     if (inflight.current) {
       again.current = true;
       return inflight.current;
@@ -211,7 +259,9 @@ export function useSupportChat({ client, surface, pathname, open, challenge }: {
         const c = convRef.current;
         if (!c) break;
         try {
-          const r = await client.messages(c.id, lastMessageId(messagesRef.current));
+          const everything = full.current;
+          full.current = false;
+          const r = await client.messages(c.id, everything ? undefined : lastMessageId(messagesRef.current));
           take(r.messages, { status: r.status, aiActive: r.aiActive, agent: r.agent });
           box.settle(messagesRef.current);
           setPollFailing(false);
@@ -264,10 +314,11 @@ export function useSupportChat({ client, surface, pathname, open, challenge }: {
     return () => clearInterval(t);
   }, [open, conv, rt, refresh]);
 
-  // Opening the panel: catch up at once and try any waiting message.
+  // Opening the panel: catch up at once (all of it, so the server marks the agent's messages seen) and try any waiting
+  // message.
   useEffect(() => {
     if (!open) return;
-    void refresh();
+    void refresh(true);
     box.flush();
   }, [open, refresh, box]);
 
@@ -289,17 +340,34 @@ export function useSupportChat({ client, surface, pathname, open, challenge }: {
 
   // ---- heartbeats and page changes ----
   const ready = !!visit;
+  const lastUnread = useRef(0);
+  const onUnreadRef = useRef(onUnread);
+  useEffect(() => {
+    onUnreadRef.current = onUnread;
+  }, [onUnread]);
   const beat = useCallback(
     (path: string, title?: string) => {
       if (!client) return;
       void client
         .heartbeat(path, title)
-        .then((r) => {
-          if (r?.unread && !openRef.current) setUnread(true);
+        .then(async (r) => {
+          if (!r) return;
+          if (!r.ok) {
+            if (r.error === "expired" || r.error === "unknown") await revisit();
+            return;
+          }
+          const n = r.unread ?? lastUnread.current;
+          const more = n > lastUnread.current;
+          lastUnread.current = n;
+          if (!more || openRef.current) return;
+          // An agent wrote: make sure the chat is known (an invite opens a new one), then show it.
+          if (!convRef.current) await revisit();
+          setUnread(true);
+          onUnreadRef.current?.();
         })
         .catch(() => {});
     },
-    [client],
+    [client, revisit],
   );
   const reporter = useRef<ReturnType<typeof createPathReporter> | null>(null);
   useEffect(() => {
@@ -364,6 +432,8 @@ export function useSupportChat({ client, surface, pathname, open, challenge }: {
         if (!client) throw new SupportApiError(0, "network", "No client");
         const r = await withChallenge((turnstileToken) => client.prechat({ ...body, turnstileToken }));
         setMe(r.me);
+        // Messages the server held back for the form go now.
+        box.retryFailed();
       },
       async human() {
         if (!client) return;

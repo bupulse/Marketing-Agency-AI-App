@@ -44,6 +44,11 @@ const ICON_BTN = "inline-flex size-9 flex-none cursor-pointer items-center justi
 
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([tabindex="-1"]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
+function helpLink() {
+  const q = new URLSearchParams(window.location.search);
+  return q.get("help") === "open" || q.has("c");
+}
+
 function initials(name: string) {
   return name
     .replace(/\./g, "")
@@ -65,10 +70,18 @@ export function Widget({ surface, pathname, mode, initialOpen = false, onLeave }
   }, []);
 
   const page = mode === "page";
-  const [open, setOpen] = useState(page || initialOpen);
+  // Alert and transcript emails link to /?help=open (and &c=<chat>): the chat opens on arrival.
+  const [open, setOpen] = useState(() => page || initialOpen || helpLink());
+  const [greeting, setGreeting] = useState<"bubble" | "dot" | null>(null);
   const isPhone = useSyncExternalStore(onResize, () => isPhoneWidth(window.innerWidth), () => false);
   const { box: tsBox, visible: tsVisible, token: tsToken } = useTurnstile();
-  const chat = useSupportChat({ client, surface, pathname, open, challenge: tsToken });
+  // An agent wrote while the panel was closed: open it on a computer; a phone only gets the dot (no full-screen surprise).
+  const onUnread = useCallback(() => {
+    if (page || isPhoneWidth(window.innerWidth)) return;
+    setOpen(true);
+    setGreeting(null);
+  }, [page]);
+  const chat = useSupportChat({ client, surface, pathname, open, challenge: tsToken, onUnread });
   const { visit, me, conv, actions } = chat;
 
   const launcher = useRef<HTMLButtonElement | null>(null);
@@ -94,8 +107,17 @@ export function Widget({ surface, pathname, mode, initialOpen = false, onLeave }
     pageIndex.current = n;
   }, [pathname]);
 
+  // The email link's ?help=open&c=… has done its job: take it off the address so a reload does not open it again.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (!q.has("help") && !q.has("c")) return;
+    q.delete("help");
+    q.delete("c");
+    const rest = q.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
+  }, []);
+
   // ---- the greeting: once per visit, after the page's delay ----
-  const [greeting, setGreeting] = useState<"bubble" | "dot" | null>(null);
   const chatting = !!conv && conv.status !== "CLOSED";
   useEffect(() => {
     if (page || !visit?.greeting) return;
@@ -128,8 +150,9 @@ export function Widget({ surface, pathname, mode, initialOpen = false, onLeave }
   const closePanel = useCallback(() => {
     if (page) return onLeave?.();
     setOpen(false);
+    actions.seen();
     requestAnimationFrame(() => launcher.current?.focus());
-  }, [page, onLeave]);
+  }, [page, onLeave, actions]);
 
   // ---- phones: the panel is a full-screen sheet; Back closes it, and the page behind does not scroll ----
   const sheet = open && isPhone && !page;
