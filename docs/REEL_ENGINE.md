@@ -66,3 +66,12 @@ Kinyarwanda speech is untested by Google; if it is poor, the fallback stays an E
   matching the subtitles, the voice clear over the music, the brand at the end. Its fixes, made after: the main
   WhatsApp number (else the phone) of Business info is shown under the brand on the last scene, and each clip is asked
   to be one continuous shot (Omni put small jump cuts inside 3 clips). Hands touching plants still warp a little.
+- **Second reel** (English, 30.07 s; Gemini's review 7.5/10): all 4 clips filmed at the first try, lines matching the
+  subtitles, the brand and the +250 WhatsApp number on the last scene. Weak spots: hands and faces of people in the
+  background, and the "scale" result variant (many towers in a big place) makes the model invent surreal tower shapes.
+  Ideas from the review: show the price as text on the last scene (it can be written, only not spoken), and Kinyarwanda
+  subtitles on an English reel.
+- **Joining needs the tab in front**: the browser encoder slowed to a crawl (13% after minutes) while the tab was
+  behind another window, as timers do. Open: say so on the screen, or join the reel on the server.
+- **Test total: $8.22 of the $10** (docs/AI_COSTS.md, "Reel engine test reels"). The "veo" switch was turned on in the
+  TEST database for the test (owner's OK; TEST has no admin login) and turned off after the second reel.
