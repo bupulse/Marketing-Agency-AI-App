@@ -38,6 +38,7 @@ Format: where (URL) · steps · what happened / what should happen · severity (
 4. **Import on "All photos" is greyed out until a folder or product is picked** · question for the owner ·
    /dashboard/gallery, Import menu. It is the documented rule (lib/media/destinations.ts: every upload names its
    destination), but it is one more decision for a busy owner. Option: let "Not in a folder" be a destination.
+   Owner decision (23 Oct): keep it as it is.
    Google Drive and Dropbox show "Coming soon" on the test site (no keys).
 5. **First page after a test-site restart takes about 22 s** · annoying (test site) · any page right after a deploy.
    Warm pages after each restart (main session's deploy step).
