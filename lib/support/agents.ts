@@ -218,7 +218,10 @@ export async function updateAgent(ctx: AdminContext, actor: AdminIdentity, id: s
   return { id };
 }
 
-/** Locked: signed out everywhere now, and refused from the next click. Unlocked: back to active (or invited, if never signed in). */
+/**
+ * Locked: signed out everywhere now, refused from the next click, and their open chats go back to Waiting for the team.
+ * Unlocked: back to active (or invited, if never signed in).
+ */
 export async function setAgentLocked(ctx: AdminContext, actor: AdminIdentity, id: string, locked: boolean): Promise<{ id: string; status: string }> {
   assertLiveChat(actor);
   const agent = await agentById(id);
@@ -226,7 +229,8 @@ export async function setAgentLocked(ctx: AdminContext, actor: AdminIdentity, id
   if (agent.status === status) return { id, status };
   await prisma.$transaction(async (tx) => {
     await tx.supportAgent.update({ where: { id }, data: locked ? { status, lockedAt: new Date(), availability: "offline" } : { status, lockedAt: null } });
-    await writeAudit(tx, ctx, locked ? "support_agent_lock" : "support_agent_unlock", `support_agent:${id}`, { status: agent.status }, { status });
+    const released = locked ? (await tx.supportConversation.updateMany({ where: { assigneeId: id, status: { in: ["OPEN", "WAITING"] } }, data: { status: "WAITING", assigneeId: null, waitingSince: new Date() } })).count : 0;
+    await writeAudit(tx, ctx, locked ? "support_agent_lock" : "support_agent_unlock", `support_agent:${id}`, { status: agent.status }, { status, ...(locked ? { chatsBackToWaiting: released } : {}) });
   });
   if (locked) {
     if (agent.userId) await signOutEverywhere(agent.userId);

@@ -25,6 +25,20 @@ type SupportApp = {
 
 const Context = createContext<SupportApp | null>(null);
 
+/**
+ * Where a refused call sends the agent (the API's answers, docs/api/support-v1.md): signed out → sign in; locked or not
+ * an agent → sign in with a note; below AAL2 → the code step (which sends on to adding an app when there is none).
+ * Any other refusal (a supervisor-only call, a closed chat) stays on the page as a message.
+ */
+export function sessionEnded(e: AgentApiError): string | null {
+  if (e.status === 401) return "/sign-in?error=signed_out";
+  if (e.status !== 403) return null;
+  if (e.code === "locked") return "/sign-in?error=locked";
+  if (e.code === "not_agent") return "/sign-in?error=no_access";
+  if (e.code === "mfa_required") return "/verify";
+  return null;
+}
+
 export function SupportAppProvider({ me: initial, preview = false, pushKey = null, children }: { me: AgentMe; preview?: boolean; pushKey?: string | null; children: ReactNode }) {
   const [me, setMe] = useState(initial);
   const href = useSupportHref();
@@ -44,7 +58,8 @@ export function SupportAppProvider({ me: initial, preview = false, pushKey = nul
       preview,
       pushKey,
       fail: (e) => {
-        if (e instanceof AgentApiError && e.status === 401 && !preview) window.location.assign(href("/sign-in?error=signed_out"));
+        const to = e instanceof AgentApiError && !preview ? sessionEnded(e) : null;
+        if (to) window.location.assign(href(to));
         return e instanceof Error && e.message ? e.message : "Something went wrong. Please try again.";
       },
     }),
