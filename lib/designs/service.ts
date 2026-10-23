@@ -355,6 +355,8 @@ export async function createEngineDesign(input: Owner & {
   usePhotoPath?: string | null;
   useLogo?: boolean;
   editOf?: string | null;
+  /** More of the owner's own pictures to give the model (designs or gallery photos), e.g. the reel presenter's portrait. */
+  references?: string[];
   /** An owner's own "change this" edit counts against the AI image limit; a batch's pictures were limited when planned. */
   limited?: boolean;
 }): Promise<CreatedDesign & { mimeType: string; bytes: Uint8Array }> {
@@ -363,12 +365,14 @@ export async function createEngineDesign(input: Owner & {
   const { business } = owned;
   if (input.usePhotoPath && !isOwnPhotoPath(input.userId, input.usePhotoPath) && !isOwnDesignPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
   if (input.editOf && !isOwnDesignPath(input.userId, input.editOf)) throw new DesignError("That picture could not be changed.");
-  const [base, photo, logo] = await Promise.all([
+  for (const extra of input.references ?? []) if (!isOwnPhotoPath(input.userId, extra) && !isOwnDesignPath(input.userId, extra)) throw new DesignError("That picture could not be used.");
+  const [base, photo, logo, ...extras] = await Promise.all([
     input.editOf ? loadPhoto(input.userId, input.editOf, AI_TYPES, input.service) : null,
     input.editOf ? null : loadPhoto(input.userId, input.usePhotoPath, AI_TYPES, input.service),
     input.editOf || !input.useLogo ? null : loadLogo(input.userId, business.logoUrl, AI_TYPES, input.service),
+    ...(input.references ?? []).slice(0, 3).map((path) => loadPhoto(input.userId, path, AI_TYPES, input.service)),
   ]);
-  const references = [base, photo, logo].filter((r): r is string => !!r);
+  const references = [base, ...extras, photo, logo].filter((r): r is string => !!r);
   const provider = getImageProvider(input.model);
   const image = await withLedger(
     { userId: input.userId, businessId: business.id, feature: IMAGE_FEATURE },
