@@ -17,7 +17,7 @@ const BEAT_LABEL: Record<string, string> = { hook: "1. Hook", use: "2. In use", 
  * 30-second reel from 4 Google Veo clips with the company's own AI presenter, in Kinyarwanda or English. Test only:
  * every reel counts against the owner's test budget.
  */
-export function UniqueReels({ products, brand, clipUsd, initialReel }: { products: { id: string; name: string }[]; brand: { name: string; color: string }; clipUsd: number; initialReel: ReelView | null }) {
+export function UniqueReels({ products, brand, clipUsd, initialReel }: { products: { id: string; name: string }[]; brand: { name: string; color: string; contact: string | null }; clipUsd: number; initialReel: ReelView | null }) {
   const { toast } = useToast();
   const [subjectId, setSubjectId] = useState(products[0]?.id ?? "");
   const [brief, setBrief] = useState("");

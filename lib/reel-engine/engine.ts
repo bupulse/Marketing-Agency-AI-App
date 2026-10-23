@@ -22,6 +22,8 @@ import { realismBlock } from "@/lib/image-engine/realism";
 import { musicUrl, trackForVideo } from "@/lib/music/service";
 import { createSignedUploadUrl } from "@/lib/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readKnowledge } from "@/lib/brand/schemas";
+import { canCall, canWhatsApp, contactDisplay } from "@/lib/business-info/contacts";
 import * as veo from "@/lib/video-engine/veo";
 import { downloadVeo, getVeoOperation, submitVeo, veoClipUsd, veoLedgerUsage, veoModel } from "@/lib/video-engine/veo";
 import { CLIP_SECONDS, directReel, reelCostUsd, variantOf, veoClipPrompt, type ReelClip, type ReelLanguage, type ReelPlan, type ReelTier } from "./story";
@@ -290,6 +292,16 @@ export async function retryReel(owner: Owner, jobId: string): Promise<void> {
     clip.tries = 0;
   }
   await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json(plan), status: "filming", error: null, stepUntil: null } });
+}
+
+/** How to reach the business, shown at the end of a reel: the main WhatsApp number of Business info, else the phone. */
+export async function reelContact(businessId: string): Promise<string | null> {
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { knowledge: true } });
+  const contacts = [...readKnowledge(business?.knowledge).contacts].sort((a, b) => Number(!!b.primary) - Number(!!a.primary));
+  const whatsapp = contacts.find((c) => canWhatsApp(c.type));
+  if (whatsapp) return `WhatsApp ${contactDisplay(whatsapp)}`;
+  const phone = contacts.find((c) => canCall(c.type));
+  return phone ? `Call ${contactDisplay(phone)}` : null;
 }
 
 /** The company's latest reel of the last week (the screen shows it and carries on with it when it is not finished). */

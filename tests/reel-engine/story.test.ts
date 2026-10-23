@@ -28,6 +28,7 @@ describe("the reel's story", () => {
     const p = veoClipPrompt({ motion, line: "Muraho! Reba uko umusaruro wiyongera.", camera: "slow push-in on a gimbal", presenter: true }, "Kinyarwanda");
     expect(p).toContain('speaks to the camera in Kinyarwanda, clearly and warmly, lips in sync: "Muraho! Reba uko umusaruro wiyongera."');
     expect(p).toContain("No text, captions or subtitles on screen");
+    expect(p).toContain("One continuous shot");
     expect(veoClipPrompt({ motion, line: "", camera: "static tripod", presenter: false }, "English")).toContain("Only natural sound of the place.");
   });
 
@@ -39,6 +40,10 @@ describe("the reel's story", () => {
     expect(spec.scenes[0].layers[0]).toMatchObject({ kind: "video", url: "a.mp4", sound: true });
     expect(spec.scenes[0].layers[1]).toMatchObject({ kind: "text", text: "Line 0" });
     expect(spec.scenes[3].layers.some((l) => l.kind === "text" && l.text === "LEAF")).toBe(true);
+    expect(spec.scenes[3].layers.some((l) => l.kind === "text" && l.text.startsWith("WhatsApp"))).toBe(false);
+    const withContact = buildReelSpec(plan, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" });
+    expect(withContact.scenes[3].layers.some((l) => l.kind === "text" && l.text === "WhatsApp 0788 000 000")).toBe(true);
+    expect(withContact.scenes[0].layers.some((l) => l.kind === "text" && l.text === "WhatsApp 0788 000 000")).toBe(false);
     expect(reelCostUsd(0.8)).toBeCloseTo(3.49, 2);
   });
 });

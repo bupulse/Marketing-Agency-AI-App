@@ -62,3 +62,7 @@ Kinyarwanda speech is untested by Google; if it is poor, the fallback stays an E
   had accepted it was still refused, without "WhatsApp" still refused, without the price sentence it was filmed at once.
   So `spokenLine` leaves every sentence about money out of the speech and the subtitle, and the writer is told the
   price goes in the caption only. "Try the failed clips again" re-sends with the new rule.
+- **First finished reel** (Kinyarwanda, 30.07 s, 720x1280; Gemini's review 7.5/10): the 4 lines spoken correctly and
+  matching the subtitles, the voice clear over the music, the brand at the end. Its fixes, made after: the main
+  WhatsApp number (else the phone) of Business info is shown under the brand on the last scene, and each clip is asked
+  to be one continuous shot (Omni put small jump cuts inside 3 clips). Hands touching plants still warp a little.
