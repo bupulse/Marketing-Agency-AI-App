@@ -6,7 +6,7 @@ import { ensureAccount } from "@/lib/account";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { companyEntitlements } from "@/lib/entitlements";
 import { getUsageSummary } from "@/lib/usage";
-import { createSignedDownloadUrl } from "@/lib/storage";
+import { signedLogoUrl } from "@/lib/storage";
 import { getVoice } from "@/lib/brand/voices";
 import { resolveCompany } from "@/lib/team/company";
 import { can, type Role } from "@/lib/team/roles";
@@ -24,15 +24,19 @@ export const getAppContext = cache(async () => {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  // Safety net only: sessions are normally created after email confirmation,
-  // and ensureAccount never starts a trial for an unconfirmed address.
-  if (!(await ensureAccount(user))) redirect("/login?error=confirm");
-  // The company comes through Membership. `ownerId` (Business.userId) is the company account that owns the plan,
-  // the credits and the Storage folder, so a teammate sees and spends the company's, not their own.
-  const company = await resolveCompany(user.id);
+  // ensureAccount is a safety net only: sessions are normally created after email confirmation, and it never starts a
+  // trial for an unconfirmed address. The company comes through Membership. `ownerId` (Business.userId) is the company account that owns the plan,
+  // the credits and the Storage folder, so a teammate sees and spends the company's, not their own. Both lookups run
+  // together; a first visit (ensureAccount creates the account and its company) finds nothing yet and looks again.
+  const [confirmed, member] = await Promise.all([ensureAccount(user), resolveCompany(user.id)]);
+  if (!confirmed) redirect("/login?error=confirm");
+  const company = member ?? (await resolveCompany(user.id));
   // A creator (docs/CREATOR_CAMPAIGNS.md) has no company: their side of BuPulse is /creator.
   if (!company && (await isCreatorOnly(user.id))) redirect("/creator");
   const ownerId = company?.ownerId ?? user.id;
+  // What the plan unlocks starts loading now when the company is known (cached per request, so the read below reuses
+  // it); a failure here is handled where it is read.
+  if (company) companyEntitlements(company.businessId).catch(() => null);
   // Loaded together: each database round trip is felt on every page (about 240 ms from the test site's Mac).
   const [business, usage, account] = await Promise.all([
     prisma.business.findUnique({ where: { userId: ownerId } }),
@@ -58,7 +62,7 @@ export const getAppContext = cache(async () => {
   const [pendingInvoice, entitlements, logoUrl] = await Promise.all([
     pendingDemo ? openInvoiceOf(business.id).catch(() => null) : null,
     companyEntitlements(business.id),
-    business.logoUrl ? createSignedDownloadUrl("brand", business.logoUrl).catch(() => null) : null,
+    business.logoUrl ? signedLogoUrl(business.logoUrl).catch(() => null) : null,
   ]);
   if (pendingDemo && !pendingInvoice) redirect("/start-trial");
 

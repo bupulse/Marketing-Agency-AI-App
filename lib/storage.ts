@@ -52,3 +52,23 @@ export async function createSignedDownloadUrl(
   if (error) throw error;
   return data.signedUrl;
 }
+
+/** How long a cached logo link is reused: well inside its hour, so a page never gets a link about to expire. */
+const LOGO_REUSE_MS = 50 * 60 * 1000;
+const LOGO_CACHE_MAX = 1000;
+const logoLinks = new Map<string, { url: string; until: number }>();
+
+/**
+ * The company logo's signed link for the app shell, which every dashboard page shows. One link is reused for 50
+ * minutes, so a page skips a Storage round trip and the browser keeps the image instead of downloading it again with a
+ * new token. Only for the logo of the viewer's own company (getAppContext): the first link is still made with the
+ * viewer's session, so the Storage policies decide who gets one.
+ */
+export async function signedLogoUrl(path: string, now: number = Date.now()): Promise<string> {
+  const hit = logoLinks.get(path);
+  if (hit && hit.until > now) return hit.url;
+  const url = await createSignedDownloadUrl("brand", path);
+  if (logoLinks.size >= LOGO_CACHE_MAX) logoLinks.delete(logoLinks.keys().next().value!);
+  logoLinks.set(path, { url, until: now + LOGO_REUSE_MS });
+  return url;
+}
