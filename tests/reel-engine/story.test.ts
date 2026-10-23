@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BEATS, buildReelSpec, directReel, REEL_CAMERAS, reelCostUsd, reelCuts, snapToBeat, spokenLine, subtitleOf, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
+import { BEATS, buildMontageSpec, buildReelSpec, directMontage, directReel, REEL_CAMERAS, reelCostUsd, reelCuts, snapToBeat, spokenLine, subtitleOf, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
 import { totalMs } from "@/lib/video-engine/spec";
 import { readReel, REEL_SYSTEM, reelPrompt, ruleReel, type ReelInput } from "@/lib/reel-engine/writer";
 import { viralRecipe } from "@/lib/video-engine/brain/viral";
@@ -76,7 +76,8 @@ describe("the reel's story", () => {
     expect(texts(10)).not.toContain("WhatsApp 0788 000 000");
     expect(texts(11)).toEqual(expect.arrayContaining(["LEAF", "WhatsApp 0788 000 000"]));
     expect(end.scenes.slice(0, 10).some((s) => s.layers.some((l) => l.kind === "text" && ["LEAF", "250,000 RWF", "WhatsApp 0788 000 000"].includes(l.text)))).toBe(false);
-    expect(reelCostUsd(0.8)).toBeCloseTo(3.5, 2);
+    // 7 start frames, 3 talking clips of 8 s and 4 product shots of 4 s.
+    expect(reelCostUsd(0.8)).toBeCloseTo(4.5, 2);
   });
 
   it("puts every cut on the music's beat when it is known, and keeps 30 seconds and the clips' 8 seconds", () => {
@@ -151,5 +152,64 @@ describe("the writer for any business", () => {
     expect(plan.setting).toBe("a home greenhouse in Kigali");
     expect(plan.clips[0].stress).toEqual(["fresh greens"]);
     expect(readReel({ title: "T", caption: "C", hashtags: [], music: "afro", hook: "Only 250,000 RWF today for you all", clips }, input)!.hook).toBeNull();
+  });
+});
+
+describe("the viral montage (the owner's example: a seller's reel cut on the beat)", () => {
+  const clips = directMontage([], "job-9");
+  const plan: ReelPlan = {
+    ...ruleReel({ ...input, beats: clips }),
+    hook: "POV: no land",
+    tag: "LEAF Tower",
+    price: "250,000 RWF",
+    clips: clips.map((c, i) => ({ ...c, frame: "f", motion: "m", status: "done" as const, line: c.kind === "broll" ? "" : `Talking line ${i} with some more words here`, stress: [] })),
+  };
+  const urls = clips.map((_, i) => `c${i}.mp4`);
+  const beat = { period: 0.47, offset: 0.12 };
+  const spec = buildReelSpec(plan, urls, { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" }, beat);
+  const videos = (i: number) => spec.scenes[i].layers.filter((l) => l.kind === "video") as { url: string; start: number; sound?: boolean }[];
+
+  it("is 3 talking clips and 4 product shots of 4 seconds, in story order", () => {
+    expect(clips.map((c) => c.kind)).toEqual(["talk", "broll", "broll", "talk", "broll", "broll", "talk"]);
+    expect(clips.map((c) => c.beat)).toEqual(["hook", "broll", "broll", "use", "broll", "broll", "cta"]);
+    expect(clips.filter((c) => c.kind === "broll").every((c) => c.seconds === 4)).toBe(true);
+    expect(veoClipPrompt({ ...plan.clips[1], line: "Do not say this" }, "English")).toContain("about 4 seconds");
+    expect(veoClipPrompt({ ...plan.clips[1], line: "Do not say this" }, "English")).toContain("No talking.");
+  });
+
+  it("is a fast cut: 30 seconds, many short shots, a montage on the beat with spins and flashes", () => {
+    expect(spec).toBe(buildMontageSpec(plan, urls, { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" }, beat) && spec);
+    expect(totalMs(spec)).toBe(30_000);
+    expect(spec.scenes.length).toBeGreaterThanOrEqual(16);
+    expect(spec.scenes.every((s) => s.seconds >= 0.4 && s.seconds <= 3.2)).toBe(true);
+    const transitions = spec.scenes.map((s) => s.transition);
+    expect(transitions).toEqual(expect.arrayContaining(["flash", "whip", "spin"]));
+    // Product shots are never played past their 4 seconds.
+    for (let i = 0; i < spec.scenes.length; i++) for (const v of videos(i)) if (/c[1245]\.mp4/.test(v.url)) expect(v.start + spec.scenes[i].seconds).toBeLessThanOrEqual(4.001);
+  });
+
+  it("keeps the voice running under a cutaway: the talking clip's sound plays while a product shot is the picture", () => {
+    const cutaway = spec.scenes.findIndex((s, i) => i > 0 && videos(i).length === 2);
+    expect(cutaway).toBeGreaterThan(0);
+    const [talk, shot] = videos(cutaway);
+    expect(talk).toMatchObject({ url: "c0.mp4", sound: true });
+    expect(shot).toMatchObject({ sound: false });
+    // The voice carries on from where the shot before stopped.
+    const before = videos(cutaway - 1)[0];
+    expect(talk.start).toBeCloseTo(before.start + spec.scenes[cutaway - 1].seconds, 2);
+    // The montage has no talking: the music carries it.
+    const montage = spec.scenes.filter((_, i) => videos(i).every((v) => !v.sound));
+    expect(montage.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("shows the product's name and the price as big 3D stickers, then the brand and how to reach it at the end", () => {
+    const texts = spec.scenes.flatMap((s) => s.layers).filter((l) => l.kind === "text") as { text: string; text3d?: unknown }[];
+    expect(texts.find((t) => t.text === "LEAF Tower")?.text3d).toBeTruthy();
+    expect(texts.find((t) => t.text === "+250,000 RWF")?.text3d).toBeTruthy();
+    expect(texts.some((t) => t.text === "POV: no land")).toBe(true);
+    const last = spec.scenes[spec.scenes.length - 1].layers.filter((l) => l.kind === "text").map((l) => (l as { text: string }).text);
+    expect(last).toEqual(expect.arrayContaining(["LEAF", "WhatsApp 0788 000 000"]));
+    const captions = texts.filter((t) => /Talking line/.test(t.text) || /with|some|more|words|here/.test(t.text));
+    expect(captions.length).toBeGreaterThan(3);
   });
 });

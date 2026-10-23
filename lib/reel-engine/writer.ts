@@ -16,7 +16,7 @@ export type ReelInput = {
   brief: string | null;
   language: ReelLanguage;
   presenter: string;
-  beats: Pick<ReelClip, "beat" | "variant" | "camera" | "presenter">[];
+  beats: (Pick<ReelClip, "beat" | "variant" | "camera" | "presenter"> & Partial<Pick<ReelClip, "kind" | "seconds">>)[];
   recent: string[];
   /** The business's sector (lib/video-engine/brain/select.ts), for where its product is really used. */
   sector: SectorId;
@@ -61,10 +61,12 @@ export const REEL_SYSTEM = [
   "You are the creative director of a top social-media agency in Kigali making a 30-second vertical reel (Instagram Reels, TikTok) for a small Rwandan business. The reel is 4 clips of 8 seconds, filmed by an AI video model, then edited with quick punch-in cuts on the music's beat, bold captions and stickers.",
   "Make it feel human, fun and interactive, like a real creator's reel and not an ad: a hook that stops the scroll in the first second, real energy, a little humour or a relatable moment, the presenter talking to the viewer like a friend, a clear payoff, and a last line that invites the viewer to comment or message. Never generic, never corporate.",
   "Every clip happens where the product is really used (the SETTING), never somewhere it would not belong.",
+  "The style is a creator's viral seller reel (like a Kigali car seller's reel that went viral): the presenter is full of energy, walks up to the phone, grooves or does a small dance on the beat, smiles big, jokes; the talking clips are cut with fast product shots on the music's beat; the product's name and the price come up as big stickers.",
+  "B-ROLL clips are product shots of 4 seconds with no talking: write only their frame and motion (one bold camera move: a fast spin around the product, a low-angle reveal, a detail push-in, a whip pan into its real place), and leave their line empty. The product stays whole and still; no hands on small parts.",
   "Keep every action simple and physically real: one clear action per clip, hands that really touch what they hold, at most two people in the frame, no crowds, never many copies of the product. The video model breaks physics on complicated actions.",
   "People are Black Rwandan adults, realistic, in everyday Kigali or Rwandan settings, caught in real moments. The business's presenter appears exactly as described in every clip they are in.",
   "For each clip write: frame, the very first frame as a photograph (who, where, what they hold, the product, the light, the camera; 40 to 90 words, no words or text in the picture); motion, what happens over the 8 seconds and the camera move (30 to 70 words); line, what is said in the reel's language, at most 16 words, natural spoken language, not a slogan list; stress, the one or two words of the line to colour in the caption.",
-  "Also write: hook, a sticker for the first second, at most 4 words in the reel's language; setting, where the product is used in this reel (one short phrase, from the SETTING).",
+  "Also write: hook, a sticker for the first second, at most 4 words in the reel's language; tag, the product's name as a big sticker, at most 3 words; setting, where the product is used in this reel (one short phrase, from the SETTING).",
   "Write the lines in correct, natural Kinyarwanda when the language is Kinyarwanda, the way people in Kigali speak, not word-for-word English.",
   "Never invent numbers, prices, discounts, guarantees, awards or reviews: use only numbers written in the FACTS. Never use hype words such as stunning, vibrant, cinematic, perfect.",
   "Never say a price or an amount of money in a spoken line (the video model refuses it): the price, when there is one, goes in the caption only (it is also shown as text at the end).",
@@ -80,6 +82,7 @@ export const REEL_SCHEMA = {
     hashtags: { type: "array", items: { type: "string" } },
     music: { type: "string", enum: [...MOODS] },
     hook: { type: "string" },
+    tag: { type: "string" },
     setting: { type: "string" },
     clips: {
       type: "array",
@@ -104,7 +107,8 @@ export function reelPrompt(input: ReelInput): string {
   ].filter(Boolean);
   const clips = input.beats.map((b, i) => {
     const v = variantOf(b.variant);
-    return `CLIP ${i} (${b.beat}): ${v?.idea ?? ""} Camera: ${b.camera}.${b.presenter ? " The presenter is in it and speaks to the camera." : " The line is a voice-over."}`;
+    if (b.kind === "broll") return `CLIP ${i} (B-ROLL, ${b.seconds ?? 4} s, no talking): ${v?.idea ?? ""}`;
+    return `CLIP ${i} (${b.beat}, ${b.seconds ?? 8} s): ${v?.idea ?? ""} Camera: ${b.camera}.${b.presenter ? " The presenter is in it and speaks to the camera." : " The line is a voice-over."}`;
   });
   return [
     `<<<DATA\n${facts.join("\n")}${input.brief?.trim() ? `\nOWNER'S BRIEF: ${input.brief.trim().slice(0, 800)}` : ""}\nDATA>>>`,
@@ -114,7 +118,7 @@ export function reelPrompt(input: ReelInput): string {
     `Language of the lines, the title and the caption: ${input.language}.`,
     input.recent.length ? `RECENT reels (do not repeat these ideas): ${input.recent.slice(0, 10).join(" | ")}` : null,
     clips.join("\n"),
-    'Answer as JSON {"title","caption","hashtags","music","hook","setting","clips":[{"index","frame","motion","line","stress"}]} with the 4 clips in order. Music: prefer upbeat, afro or energetic unless the business is calm by nature.',
+    `Answer as JSON {"title","caption","hashtags","music","hook","tag","setting","clips":[{"index","frame","motion","line","stress"}]} with the ${input.beats.length} clips in order. Music: upbeat, afro or energetic (the edit cuts on its beat) unless the business is calm by nature.`,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -132,7 +136,7 @@ export function readReel(raw: unknown, input: ReelInput): ReelPlan | null {
     const c = list.find((x) => Number(x?.index) === i) ?? list[i];
     const frame = stripSlop(clip(c?.frame, 900).replace(/["“”«»]/g, ""));
     const motion = stripSlop(clip(c?.motion, 700).replace(/["“”«»]/g, ""));
-    let line = clip(c?.line, 160).replace(/["“”«»]/g, "");
+    let line = input.beats[i].kind === "broll" ? "" : clip(c?.line, 160).replace(/["“”«»]/g, "");
     if (line.split(" ").length > 16 || hasInventedNumber(line, allowed)) line = "";
     if (frame.split(" ").length < 15 || motion.split(" ").length < 8) return null;
     const stress = (Array.isArray(c?.stress) ? c.stress : []).filter((w): w is string => typeof w === "string" && line.toLowerCase().includes(w.toLowerCase().trim())).map((w) => w.trim().slice(0, 30)).slice(0, 2);
@@ -147,6 +151,10 @@ export function readReel(raw: unknown, input: ReelInput): ReelPlan | null {
     music: (MOODS as readonly string[]).includes(String(r.music)) ? String(r.music) : "afro",
     clips,
     presenter: input.presenter,
+    tag: (() => {
+      const t = clip(r.tag, 40).replace(/["“”«»#]/g, "");
+      return t && t.split(" ").length <= 3 && !hasInventedNumber(t, allowed) ? t : (input.subject?.name.split(/[\s–-]+/).slice(0, 3).join(" ") ?? null);
+    })(),
     hook: (() => {
       const h = clip(r.hook, 60).replace(/["“”«»]/g, "");
       return h && h.split(" ").length <= 5 && !hasInventedNumber(h, allowed) ? h : null;

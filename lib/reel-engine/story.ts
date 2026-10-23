@@ -16,7 +16,7 @@ export const CLIP_SECONDS = 8;
 export const SCENE_SECONDS = 7.5;
 export const REEL_SECONDS = 30;
 
-export type BeatId = "hook" | "use" | "result" | "cta";
+export type BeatId = "hook" | "use" | "result" | "cta" | "broll";
 export type Beat = { id: BeatId; label: string; variants: { id: string; idea: string; presenter: boolean }[] };
 
 /**
@@ -67,6 +67,19 @@ export const BEATS: readonly Beat[] = [
   },
 ];
 
+/**
+ * The product shots (B-roll) a viral reel cuts to: 4-second clips with no talking, a bold camera move and a whoosh,
+ * learned from the owner's example (a car seller's reel: fast spins round the car, low-angle reveals, details, the
+ * presenter talking in between). Never hands on small parts, never the product changing.
+ */
+export const BROLL_SHOTS = [
+  { id: "spin", idea: "The camera circles fast around the product on a tilted (dutch) angle and settles square on it; the product stays still and whole." },
+  { id: "low-reveal", idea: "From the ground, the camera tilts up the whole product to the sky behind it, slow then fast." },
+  { id: "detail", idea: "A slow push-in on the product's best detail (its texture, what it holds, what it makes), no hands." },
+  { id: "in-place", idea: "A whip pan lands on the product in its real place, working, the presenter or a customer smiling beside it." },
+  { id: "result", idea: "A close look at what the product gives (the fresh result, the finished look), lit by the sun, a little movement." },
+] as const;
+
 export const REEL_CAMERAS = [
   "handheld phone camera walking backwards in front of the subject",
   "handheld phone camera at eye level, gentle natural shake",
@@ -90,6 +103,10 @@ export type ReelClip = {
   line: string;
   /** One or two words of the line painted in the brand colour in the caption. */
   stress?: string[];
+  /** A talking clip (8 s, the presenter or a voice speaks) or a product shot (4 s, no talking). Old reels: talking. */
+  kind?: "talk" | "broll";
+  /** How long the clip is filmed (4 or 8 s; old reels: 8). */
+  seconds?: number;
   framePath?: string | null;
   operation?: string | null;
   clipPath?: string | null;
@@ -120,6 +137,8 @@ export type ReelPlan = {
   refilms?: number;
   /** The viral videos the reel borrowed its techniques from (ids of docs/research/viral). */
   sources?: string[];
+  /** The product's name as a big sticker in the montage, at most 3 words ("LEAF TOWER"). */
+  tag?: string | null;
 };
 
 /** Least used first, ties broken by the seed; never twice in a reel. */
@@ -144,10 +163,29 @@ export function directReel(recent: readonly { variant: string; camera: string }[
   });
 }
 
-export const variantOf = (key: string) => {
+export const variantOf = (key: string): { id: string; idea: string; presenter: boolean } | null => {
   const [beatId, id] = key.split(":");
+  if (beatId === "broll") {
+    const shot = BROLL_SHOTS.find((b) => b.id === id);
+    return shot ? { id: shot.id, idea: shot.idea, presenter: false } : null;
+  }
   return BEATS.find((b) => b.id === beatId)?.variants.find((v) => v.id === id) ?? null;
 };
+
+export const BROLL_SECONDS = 4;
+
+/**
+ * The montage Director (the owner's viral example): 3 talking clips (the hook, how it works, the call to action) and
+ * 4 product shots between them, each the variant and camera the company had least. Clip order is story order: hook, 2
+ * shots, how it works, 2 shots, call to action.
+ */
+export function directMontage(recent: readonly { variant: string; camera: string }[], seed: string): Pick<ReelClip, "beat" | "variant" | "camera" | "presenter" | "kind" | "seconds">[] {
+  const talk = directReel(recent, seed).filter((b) => b.beat !== "result").map((b) => ({ ...b, kind: "talk" as const, seconds: CLIP_SECONDS }));
+  const used = (v: string) => recent.reduce((s, r, i) => s + (r.variant === v ? Math.pow(0.9, i) : 0), 0);
+  const shots = [...BROLL_SHOTS].sort((a, b) => used(`broll:${a.id}`) - used(`broll:${b.id}`) || hash(`${seed}:b:${a.id}`) - hash(`${seed}:b:${b.id}`)).slice(0, 4);
+  const broll = shots.map((s) => ({ beat: "broll" as const, variant: `broll:${s.id}`, camera: "a bold, smooth move as described", presenter: false, kind: "broll" as const, seconds: BROLL_SECONDS }));
+  return [talk[0], broll[0], broll[1], talk[1], broll[2], broll[3], talk[2]];
+}
 
 const MONEY = /amafaranga|igiciro|ibihumbi|miliyoni|\b(rwf|frw|francs?|price|prices|priced|cost|costs|usd|dollars?)\b|\$|€|£/i;
 
@@ -177,15 +215,17 @@ export const CLIP_RULES = [
 ];
 
 /** The video model's prompt for one clip: the place, the action and camera, the line spoken, the rules, what to avoid. */
-export function veoClipPrompt(clip: Pick<ReelClip, "motion" | "line" | "camera" | "presenter" | "avoid">, language: ReelLanguage, setting?: string | null): string {
-  const line = spokenLine(clip.line);
-  const speech = line
+export function veoClipPrompt(clip: Pick<ReelClip, "motion" | "line" | "camera" | "presenter" | "avoid" | "kind" | "seconds">, language: ReelLanguage, setting?: string | null): string {
+  const line = clip.kind === "broll" ? "" : spokenLine(clip.line);
+  const speech = clip.kind === "broll"
+    ? "No talking. Only the natural sound of the place and a quick whoosh on the fast camera move."
+    : line
     ? clip.presenter
       ? `The presenter speaks to the camera in ${language}, clearly, warmly and with energy, lips in sync: "${line}"`
       : `A warm, lively voice-over says in ${language}: "${line}"`
     : "Only the natural sound of the place.";
   return [
-    `A vertical 9:16 video clip of about ${CLIP_SECONDS} seconds${setting ? `, in ${setting}` : ""}. ${clip.motion} Camera: ${clip.camera}.`,
+    `A vertical 9:16 video clip of about ${clip.seconds ?? CLIP_SECONDS} seconds${setting ? `, in ${setting}` : ""}. ${clip.motion} Camera: ${clip.camera}.`,
     speech,
     ...CLIP_RULES,
     clip.avoid?.length ? `The last take went wrong, so avoid exactly this: ${clip.avoid.slice(0, 4).join("; ")}.` : null,
@@ -241,6 +281,7 @@ const BETWEEN: Transition[] = ["flash", "whip", "zoom"];
  * after the other so they do not compete.
  */
 export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name: string; color: string; contact?: string | null }, beat: MusicBeat = null): MotionSpec {
+  if (plan.clips.some((c) => c.kind === "broll")) return buildMontageSpec(plan, clipUrls, brand, beat);
   const text = (over: Partial<TextLayer> & Pick<TextLayer, "text" | "size" | "y" | "h">): TextLayer => ({
     kind: "text",
     font: "inter",
@@ -289,7 +330,127 @@ export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name:
   return { version: 1, title: plan.title, ratio: "9:16", fps: 30, palette: { background: "#000000", primary: brand.color, accent: brand.color, text: "#FFFFFF" }, scenes, music: plan.music, caption: plan.caption, hashtags: plan.hashtags };
 }
 
-/** About what one reel costs the providers: 4 start frames (Nano Banana 2), 4 clips of 8 s, and the clip checks. */
+/**
+ * About what one reel costs the providers, from the price of an 8-second clip: 7 start frames (Nano Banana 2), 3
+ * talking clips of 8 s and 4 product shots of 4 s (40 s of video), and the clip checks.
+ */
 export function reelCostUsd(clipUsd: number): number {
-  return Math.round((4 * 0.067 + 4 * clipUsd + 0.03) * 100) / 100;
+  return Math.round((7 * 0.067 + clipUsd * ((3 * CLIP_SECONDS + 4 * BROLL_SECONDS) / CLIP_SECONDS) + 0.03) * 100) / 100;
+}
+
+// ---- The montage edit (the owner's viral example) ----------------------------------------------------------------------
+
+type Shot = { seconds: number; talk: { url: string; at: number } | null; show: { url: string; at: number; broll: boolean }; zoom: [number, number]; rotate?: number; words: string; stress: string[]; transition?: Transition };
+
+/**
+ * The montage as a motion spec: the hook (the presenter talking, with a product shot cut in on the beat while her voice
+ * runs on), a product montage on the music (a cut every beat or two, spins and flashes, the product's name and the price
+ * as big 3D stickers), how it works (talking, cutaways), then the call to action with the brand and how to reach it.
+ * Talking clips play their sound under every shot of their section, so a cutaway never cuts the voice.
+ */
+export function buildMontageSpec(plan: ReelPlan, clipUrls: string[], brand: { name: string; color: string; contact?: string | null }, beat: MusicBeat = null): MotionSpec {
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const talks = plan.clips.map((c, i) => ({ c, url: clipUrls[i] })).filter((x) => x.c.kind !== "broll");
+  const rolls = plan.clips.map((c, i) => ({ c, url: clipUrls[i] })).filter((x) => x.c.kind === "broll");
+  const step = beat && beat.period > 0.2 && beat.period < 2 ? (beat.period < 0.6 ? beat.period * 2 : beat.period) : 0.9;
+  let rollAt = 0;
+  const nextRoll = (len: number) => {
+    const r = rolls[rollAt % Math.max(1, rolls.length)];
+    // Each product shot is cut from a different moment of its 4 seconds, never past its end.
+    const at = r2(((Math.floor(rollAt / Math.max(1, rolls.length)) * 1.3) % Math.max(0.1, BROLL_SECONDS - len - 0.2)) + 0.05);
+    rollAt++;
+    return { url: r?.url ?? clipUrls[0], at: Math.max(0, at), broll: true };
+  };
+  // Sections on the beat: hook 7.5 s, montage 7, how it works 7.5, call to action the rest (8 s at most).
+  const b1 = snapToBeat(7.5, 6.8, 8, beat);
+  const b2 = snapToBeat(b1 + 7, b1 + 6, b1 + 7.8, beat);
+  const b3 = snapToBeat(b2 + 7.5, Math.max(b2 + 6.8, REEL_SECONDS - CLIP_SECONDS), b2 + 8, beat);
+  const sections = [
+    { kind: "talk" as const, from: 0, to: b1, talk: talks[0] },
+    { kind: "montage" as const, from: b1, to: b2, talk: null },
+    { kind: "talk" as const, from: b2, to: b3, talk: talks[1] },
+    { kind: "talk" as const, from: b3, to: REEL_SECONDS, talk: talks[2] },
+  ];
+  const shots: Shot[] = [];
+  sections.forEach((sec, si) => {
+    const len = sec.to - sec.from;
+    const first = shots.length;
+    if (sec.kind === "montage" || !sec.talk) {
+      // A cut every beat or two, each a different product shot, alternately spun and punched in.
+      let t = 0;
+      let n = 0;
+      while (t < len - 0.01) {
+        const d = len - t < step * 1.6 ? len - t : step;
+        // Spun shots are zoomed enough that the tilt never shows the frame's edge.
+        shots.push({ seconds: r2(d), talk: null, show: nextRoll(d), zoom: n % 2 ? [1.25, 1.15] : [1.24, 1.32], rotate: n % 2 ? 0 : n % 4 ? 5 : -5, words: "", stress: [], transition: n === 0 ? undefined : (["cut", "whip", "cut", "flash", "cut", "spin"] as Transition[])[n % 6] });
+        t += d;
+        n++;
+      }
+    } else {
+      const talk = sec.talk;
+      // Talking, with one or two product shots cut in on the beat while the voice runs on.
+      // The presenter, a product shot (about a second), the presenter punched in, another product shot, the presenter:
+      // each cut on the beat, every shot at most about 2.8 s (the call to action has one cutaway, then its end card).
+      const plan = si === 0 ? [1.8, 0.95, 1.9, 0.95] : si === 3 ? [2.0, 0.95] : [2.0, 0.95, 1.9, 0.95];
+      const marks = [0];
+      for (const [k, gap] of plan.entries()) {
+        const prev = marks[marks.length - 1];
+        const t = snapToBeat(prev + gap, prev + (k % 2 ? 0.75 : 1.2), len - 1.2, beat);
+        if (t <= prev + 0.5 || t >= len - 1.0) break;
+        marks.push(t);
+      }
+      // A long last piece is split on the beat with a punch-in, so the presenter is never on screen 3 s without a cut.
+      while (len - marks[marks.length - 1] > 2.8) {
+        const prev = marks[marks.length - 1];
+        marks.push(snapToBeat(prev + Math.min(2.4, (len - prev) / 2), prev + 1.2, len - 1.2, beat));
+      }
+      marks.push(len);
+      for (let k = 0; k + 1 < marks.length; k++) {
+        const d = marks[k + 1] - marks[k];
+        const insert = k % 2 === 1 && k < plan.length;
+        const punched = !insert && (k % 4 === 2 || (k >= plan.length && k % 2 === 1));
+        shots.push({ seconds: r2(d), talk: { url: talk.url, at: r2(marks[k]) }, show: insert ? nextRoll(d) : { url: talk.url, at: r2(marks[k]), broll: false }, zoom: insert ? [1.12, 1.2] : punched ? [1.28, 1.32] : [1, 1.06], words: "", stress: talk.c.stress ?? [] });
+      }
+      // The caption runs over the section's shots, a few words a shot.
+      const words = subtitleOf(talk.c.line).split(" ").filter(Boolean);
+      const mine = shots.slice(first);
+      let w = 0;
+      mine.forEach((s, k) => {
+        const take = k === mine.length - 1 ? words.length - w : Math.max(1, Math.round((words.length * s.seconds) / len));
+        s.words = words.slice(w, w + take).join(" ");
+        w += take;
+      });
+    }
+    if (si > 0) shots[first].transition = (["flash", "whip", "zoom"] as Transition[])[si - 1];
+  });
+
+  const text = (over: Partial<TextLayer> & Pick<TextLayer, "text" | "size" | "y" | "h">): TextLayer => ({ kind: "text", font: "inter", weight: 900, color: "#FFFFFF", align: "center", x: 0.5, w: 0.86, shadow: true, ...over });
+  const montage = { from: shots.findIndex((s) => !s.talk), to: shots.length - 1 - [...shots].reverse().findIndex((s) => !s.talk) };
+  const ctaFrom = shots.length - shots.filter((s) => s.talk?.url === talks[2]?.url).length;
+  const scenes: Scene[] = shots.map((s, i) => {
+    const layers: Layer[] = [];
+    // The talking clip's sound under the whole shot; drawn only when it is the picture.
+    if (s.talk) layers.push({ kind: "video", url: s.talk.url, fit: "cover", start: s.talk.at, sound: true, x: 0.5, y: 0.5, w: 1, h: 1, keyframes: [{ at: 0, scale: s.zoom[0] }, { at: 1, scale: s.zoom[1] }] });
+    if (!s.talk || s.show.broll) layers.push({ kind: "video", url: s.show.url, fit: "cover", start: s.show.at, sound: false, x: 0.5, y: 0.5, w: 1, h: 1, keyframes: [{ at: 0, scale: s.zoom[0], rotate: s.rotate ?? 0 }, { at: 1, scale: s.zoom[1], rotate: 0 }] });
+    if (s.words) layers.push(text({ text: s.words, size: 0.078, y: 0.66, h: 0.16, animate: "wordsPop", animateFor: Math.min(0.8, s.seconds * 0.4), box: { color: "rgba(0,0,0,0.28)", padding: 0.015, radius: 0.02 }, highlight: s.stress.length ? { words: s.stress.slice(0, 2), color: "#FFE14D" } : null }));
+    if (i === 0 && plan.hook?.trim()) layers.push(text({ text: plan.hook.trim().slice(0, 40), size: 0.07, y: 0.18, h: 0.11, w: 0.82, uppercase: true, animate: "pop", animateFor: 0.35, box: { color: brand.color, padding: 0.025, radius: 0.03 }, keyframes: [{ at: 0, rotate: -3 }, { at: 1, rotate: -3 }] }));
+    // The montage's big 3D stickers: the product's name, then the price (written, never spoken).
+    if (i >= montage.from && i <= montage.to && montage.from >= 0) {
+      const half = montage.from + Math.ceil((montage.to - montage.from + 1) / 2);
+      const tag = (plan.tag ?? "").trim().slice(0, 28);
+      if (tag && i < half) layers.push(text({ text: tag, size: 0.1, y: 0.2, h: 0.14, w: 0.9, uppercase: true, color: "#FFD23F", animate: i === montage.from ? "zoom" : "none", text3d: { depth: 0.7, side: "#B3261E", bevel: true, spin: i === montage.from } }));
+      if (plan.price?.trim() && i >= half) layers.push(text({ text: `+${plan.price.trim().slice(0, 30)}`, size: 0.085, y: 0.22, h: 0.12, w: 0.9, uppercase: true, color: "#39FF6A", animate: i === half ? "pop" : "none", text3d: { depth: 0.6, side: "#0B5D1E", bevel: true } }));
+    }
+    // The call to action: the brand, then how to reach the business on its own.
+    if (i >= ctaFrom && talks[2]) {
+      const late = i >= ctaFrom + Math.max(1, Math.floor((shots.length - ctaFrom) / 2));
+      layers.push(text({ text: brand.name, size: 0.06, y: 0.11, h: 0.09, w: 0.8, animate: i === ctaFrom ? "rise" : "none", box: { color: brand.color, padding: 0.025, radius: 0.04 } }));
+      if (brand.contact && late) layers.push(text({ text: brand.contact, size: 0.05, y: 0.22, h: 0.08, w: 0.84, animate: "pop", box: { color: brand.contact.startsWith("WhatsApp") ? "#1DA851" : "rgba(0,0,0,0.7)", padding: 0.022, radius: 0.04 } }));
+    }
+    return { seconds: s.seconds, background: { kind: "solid", colors: ["#000000"] }, layers, ...(i > 0 ? { transition: s.transition ?? "cut" } : {}) };
+  });
+  // Rounding never changes the length: the last shot takes what is left of the 30 seconds.
+  const before = scenes.slice(0, -1).reduce((t, s) => t + s.seconds, 0);
+  scenes[scenes.length - 1].seconds = r2(REEL_SECONDS - before);
+  return { version: 1, title: plan.title, ratio: "9:16", fps: 30, palette: { background: "#000000", primary: brand.color, accent: brand.color, text: "#FFFFFF" }, scenes, music: plan.music, caption: plan.caption, hashtags: plan.hashtags, look: { grade: "vivid", glow: 0.12 } };
 }

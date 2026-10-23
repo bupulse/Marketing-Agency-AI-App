@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 const STEP_EVERY_MS = 6000;
 const FILMING = "Filming: start frames first, then each clip is filmed (a few minutes). Keep this tab open.";
 const JOINING = "Putting your reel together. Keep this tab in front until it is done…";
-const BEAT_LABEL: Record<string, string> = { hook: "1. Hook", use: "2. In use", result: "3. Result", cta: "4. Call to action" };
+const BEAT_LABEL: Record<string, string> = { hook: "Hook", use: "How it works", result: "Result", cta: "Call to action", broll: "Product shot" };
 
 /**
  * "Unique AI reels" (docs/REEL_ENGINE.md), a temporary engine until the Video Studio's Seedance engine is ready: a
@@ -125,7 +125,7 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
     try {
       setBusy(JOINING);
       const [{ encodeSpecMp4, loadSpecFonts }, { beatOfTrack }] = await Promise.all([import("@/lib/video-engine/encode"), import("@/lib/reel-engine/beats")]);
-      const plan: ReelPlan = { title: view.title, caption: view.caption, hashtags: view.hashtags, music: null, presenter: view.presenter ?? "", price: view.price, hook: view.hook, clips: view.clips.map((c) => ({ beat: c.beat as ReelPlan["clips"][number]["beat"], variant: "", camera: "", presenter: false, frame: "", motion: "", line: c.line, stress: c.stress, status: "done" })) };
+      const plan: ReelPlan = { title: view.title, caption: view.caption, hashtags: view.hashtags, music: null, presenter: view.presenter ?? "", price: view.price, hook: view.hook, tag: view.tag, clips: view.clips.map((c) => ({ beat: c.beat as ReelPlan["clips"][number]["beat"], kind: c.kind, seconds: c.seconds, variant: "", camera: "", presenter: false, frame: "", motion: "", line: c.line, stress: c.stress, status: "done" })) };
       // The cuts land on the music's beat, found from the track itself (the library has no tempo).
       const spec = buildReelSpec(plan, view.clips.map((c) => c.clipUrl ?? ""), brand, await beatOfTrack(view.musicUrl));
       await loadSpecFonts(spec).catch(() => undefined);
@@ -190,7 +190,7 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
         </span>
         <Textarea rows={2} maxLength={800} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="For example: a farmer shows how much more she harvests since she has the tower" disabled={!!busy} />
       </label>
-      <p className="text-[13px] text-muted">One reel costs about ${reelCostUsd(clipUsd).toFixed(2)} in AI (4 start frames and 4 clips of 8 seconds by Google&rsquo;s video model).</p>
+      <p className="text-[13px] text-muted">One reel costs about ${reelCostUsd(clipUsd).toFixed(2)} in AI (7 start frames, 3 talking clips and 4 product shots by Google&rsquo;s video model).</p>
 
       <div className="flex flex-col gap-3 rounded-2xl bg-soft p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-[14px]">{busy ?? (budget ? `Test budget used: $${budget.spent.toFixed(2)} of $${budget.cap}.` : "Test only: each reel counts against the test budget.")}</p>
