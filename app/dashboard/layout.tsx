@@ -68,14 +68,25 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const status = usage.subscription.status;
   // A Mobile Money (or custom) plan whose period ended still works for its grace days: say until when.
   const grace = !isTrial && !entitlements.block && status === "ACTIVE" ? manualGrace(usage.subscription) : null;
-  // A failing lookup must never break the dashboard.
-  const announcements = await getActiveAnnouncements({ id: business.userId, plan: usage.subscription.plan }).catch(() => []);
-  // A custom plan offer waiting for the owner (docs/OFFERS.md): only those who can pay see it.
-  const offer = can(role, "billing") ? await clientOffer(business.id).catch(() => null) : null;
+  // The lookups below are independent, so they run together (each database round trip is felt on every page: about
+  // 240 ms from the test site's Mac). A failing lookup must never break the dashboard.
+  const [announcements, offer, missing, dailyWaiting, newVideos, studioOn, inboxUnread] = await Promise.all([
+    getActiveAnnouncements({ id: business.userId, plan: usage.subscription.plan }).catch(() => []),
+    // A custom plan offer waiting for the owner (docs/OFFERS.md): only those who can pay see it.
+    can(role, "billing") ? clientOffer(business.id).catch(() => null) : null,
+    // Apps posts are made for that are not connected (docs/CONTENT.md): under the bell until they are.
+    entitlements.usable.has("content") ? missingApps(business.id).catch(() => []) : [],
+    // Daily posts made for you that still wait for approval today (docs/CONTENT.md "Daily posts").
+    entitlements.usable.has("dailyPosts") && can(role, "content") ? dailyPostsWaiting(business.id, business.timezone || "UTC").catch(() => 0) : 0,
+    // Studio videos that finished and were not opened in the Videos library yet (docs/VIDEO_STUDIO_SPLIT.md).
+    unseenStudioVideos(business.id).catch(() => 0),
+    // The Video Studio link in the sidebar: shown once the studio is switched on, to those who may make content.
+    can(role, "content") ? isServiceEnabled("studio").catch(() => false) : false,
+    // The badge on Inbox: one indexed count, only when the plan has the inbox.
+    entitlements.inPlan.has("inbox") ? unreadCount(business.id).catch(() => 0) : 0,
+  ]);
   // A Mobile Money payment of that offer reported and being checked: the banner says so instead of "Pay now".
   const offerPayment = offer?.status === "accepted" ? await currentManualPayment(business.userId).catch(() => null) : null;
-  // Apps posts are made for that are not connected (docs/CONTENT.md): under the bell until they are.
-  const missing = entitlements.usable.has("content") ? await missingApps(business.id).catch(() => []) : [];
   const notices: ShellNotice[] = missing.length
     ? [
         {
@@ -87,8 +98,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         },
       ]
     : [];
-  // Daily posts made for you that still wait for approval today (docs/CONTENT.md "Daily posts").
-  const dailyWaiting = entitlements.usable.has("dailyPosts") && can(role, "content") ? await dailyPostsWaiting(business.id, business.timezone || "UTC").catch(() => 0) : 0;
   if (dailyWaiting > 0) {
     notices.unshift({
       id: "daily-posts",
@@ -98,8 +107,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       action: "Approve them",
     });
   }
-  // Studio videos that finished and were not opened in the Videos library yet (docs/VIDEO_STUDIO_SPLIT.md).
-  const newVideos = await unseenStudioVideos(business.id).catch(() => 0);
   if (newVideos > 0) {
     notices.push({
       id: "videos-ready",
@@ -109,11 +116,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       action: newVideos === 1 ? "View video" : "View videos",
     });
   }
-  // The Video Studio link in the sidebar: shown once the studio is switched on, to those who may make content.
-  const studioOn = can(role, "content") && (await isServiceEnabled("studio").catch(() => false));
   const studio = studioOn ? ((usage.limits.videoCredits ?? 0) > 0 ? "open" : "upgrade") : null;
-  // The badge on Inbox: one indexed count, only when the plan has the inbox.
-  const inboxUnread = entitlements.inPlan.has("inbox") ? await unreadCount(business.id).catch(() => 0) : 0;
 
   return (
     <>

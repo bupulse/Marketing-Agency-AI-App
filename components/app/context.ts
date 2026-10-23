@@ -33,13 +33,14 @@ export const getAppContext = cache(async () => {
   // A creator (docs/CREATOR_CAMPAIGNS.md) has no company: their side of BuPulse is /creator.
   if (!company && (await isCreatorOnly(user.id))) redirect("/creator");
   const ownerId = company?.ownerId ?? user.id;
-  const [business, usage] = await Promise.all([
+  // Loaded together: each database round trip is felt on every page (about 240 ms from the test site's Mac).
+  const [business, usage, account] = await Promise.all([
     prisma.business.findUnique({ where: { userId: ownerId } }),
     getUsageSummary(ownerId),
+    prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true, name: true } }),
   ]);
   // Order matters: a pending deletion locks the account, Google sign-ups give their
   // organisation details first, then everyone completes the brand onboarding.
-  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true, name: true } });
   if (account?.suspendedAt || company?.ownerSuspended) redirect("/suspended");
   heartbeat(user.id); // "active now" on the sales room TV: throttled, after the response, never fails the page
   if (account?.deletionScheduledFor || company?.ownerDeleting) redirect("/account/deletion");
@@ -52,10 +53,14 @@ export const getAppContext = cache(async () => {
   // screen, for teammates too (they see who starts it). If an admin sent an invoice instead, the dashboard layout shows
   // only that invoice (components/app/invoice-lock.tsx). A failed invoice lookup counts as none.
   const pendingDemo = usage.subscription.status === "PENDING_DEMO";
-  const pendingInvoice = pendingDemo ? await openInvoiceOf(business.id).catch(() => null) : null;
-  if (pendingDemo && !pendingInvoice) redirect("/start-trial");
   // What the plan unlocks (lib/entitlements.ts): the sidebar and featureGate read it; actions and routes check again.
-  const entitlements = await companyEntitlements(business.id);
+  // The logo lives in the private brand bucket; a failed signing just means no logo. All three at once.
+  const [pendingInvoice, entitlements, logoUrl] = await Promise.all([
+    pendingDemo ? openInvoiceOf(business.id).catch(() => null) : null,
+    companyEntitlements(business.id),
+    business.logoUrl ? createSignedDownloadUrl("brand", business.logoUrl).catch(() => null) : null,
+  ]);
+  if (pendingDemo && !pendingInvoice) redirect("/start-trial");
 
   const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
   // The name saved in Settings wins; Google sign-ups start with their Google name.
@@ -69,16 +74,6 @@ export const getAppContext = cache(async () => {
     isTrial && subscription.trialEndsAt
       ? Math.max(0, Math.ceil((subscription.trialEndsAt.getTime() - Date.now()) / DAY_MS))
       : null;
-
-  // The logo lives in the private brand bucket; a failed signing just means no logo.
-  let logoUrl: string | null = null;
-  if (business.logoUrl) {
-    try {
-      logoUrl = await createSignedDownloadUrl("brand", business.logoUrl);
-    } catch {
-      logoUrl = null;
-    }
-  }
 
   return {
     // `user.id` is the company account (see SessionUser in lib/auth/require-user.ts); `actorId` is the signed-in person.

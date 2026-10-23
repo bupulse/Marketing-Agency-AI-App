@@ -16,7 +16,13 @@ Format: where (URL) · steps · what happened / what should happen · severity (
 1. **Every dashboard page takes 6-15 s to answer on test.bupulse.com** · annoying (test site; testers feel it).
    - Where: any /dashboard page, e.g. /dashboard/content/settings (server wait 14.5 s), /dashboard/usage 6-9 s, /dashboard/gallery 7-8.6 s (fetch timings, 23 Oct).
    - Why: the test site runs on the owner's Mac in Rwanda; the TEST database is in AWS us-east-1, 240 ms away per query (measured: `select 1` 220-300 ms). A page makes about 25-35 queries one after another (the dashboard layout awaits about 8 lookups in a row, getAppContext several more, then the page). On bupulse.com (Netlify, US) a query is about 10 ms, so production is not hit the same way.
-   - Should: fewer queries in a row on every page (Promise.all in app/dashboard/layout.tsx and components/app/context.ts), and/or run the test site near the database. Not changed yet.
+   - Should: fewer queries in a row on every page, and/or run the test site near the database.
+   - Owner chose: cut the round trips. Done in the shared part (every page): getAppContext loads the business, usage
+     and person together, then the plan and the logo together (was 5 trips in a row, now 2); the dashboard layout's 7
+     lookups (announcements, offer, apps to connect, daily posts waiting, new videos, studio switch, inbox) run together
+     (was 7 in a row, now 1, plus the offer's payment only when an offer was accepted). Test: tests/app/context-speed.test.ts.
+     About 10 round trips fewer per page, roughly 2 s on the test site. To measure after deploy: fetch timings of
+     /dashboard/usage and /dashboard/gallery (before: 6.2-9.3 s and 6.9 s to first byte).
 2. **Quiz round pills were cut off with no hint of more** · polish · /dashboard/knowledge/quiz. Fixed: they scroll to the current round and fade at the edges (a2a0232d).
 
 ## Fixed
