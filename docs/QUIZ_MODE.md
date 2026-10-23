@@ -78,6 +78,21 @@ audience, products, and website. A template answers when the AI is not available
 The finish screen shows the score ring with the overall Business info %, what got better ("Your posts now know your
 prices, your customers and your voice"), and two buttons: "Make my first posts" and "Back to Business info".
 
+#### On every page (owner request, 23 October 2026)
+
+Until Business info is complete, every dashboard page shows a slim banner at the top: "Finish your Business info: a
+5-minute quiz" ("Tell BuPulse about your business…" at 0%), the score as a ring around 🎯, "BuPulse knows your business
+46%. Next: 📸 Photos." and the Start / Continue button (the same round as the big card). "Not now" (the ✕) hides it until
+the viewer's next day (localStorage). It is left out on Home and Business info (they have the big card, restyled with
+the same ring and a "Next" chip) and in the quiz itself, at 100%, and for people who can play no round. The layout
+streams it (`QuizNudge` in app/dashboard/layout.tsx, in Suspense), so the score's queries never hold up a page.
+Files: components/knowledge/quiz-banner.tsx, quiz-ring.tsx, lib/knowledge/quiz-banner.ts (where it shows, its line),
+`quizEntry(...).nextRound`. Tests: tests/quiz/quiz-banner.test.ts, quiz-entry.test.ts.
+
+**The round pills follow the quiz.** On a phone only a few pills fit. When the quiz moves to another round, the pill
+row slides so the current round sits in the middle (`pillScrollLeft` in components/quiz/frame.tsx, smooth unless
+reduced motion is on), and a new question whose card starts above the screen scrolls into view.
+
 #### What was built (Business info quiz)
 
 | Part | File |

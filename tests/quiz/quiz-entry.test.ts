@@ -20,6 +20,7 @@ describe("where the Business info quiz starts (Business info page and dashboard 
   it("starts from the top when nothing is filled in", async () => {
     const e = await quizEntry(business, "OWNER", all);
     expect(e).toMatchObject({ overall: 0, playable: true, href: "/dashboard/knowledge/quiz", label: "Start the quiz" });
+    expect(e.nextRound).toEqual({ emoji: "🏠", title: "You" });
   });
 
   it("continues at the first round whose section is not complete", async () => {
@@ -27,6 +28,7 @@ describe("where the Business info quiz starts (Business info page and dashboard 
     const e = await quizEntry(business, "OWNER", all);
     expect(e.label).toBe("Continue");
     expect(e.href).toBe("/dashboard/knowledge/quiz?round=sell");
+    expect(e.nextRound).toEqual({ emoji: "🛍️", title: "What you sell" });
     expect(e.overall).toBeGreaterThan(0);
   });
 
@@ -45,7 +47,7 @@ describe("where the Business info quiz starts (Business info page and dashboard 
   it("says play again when everything is complete", async () => {
     progress = { profile: p(100) };
     const e = await quizEntry(business, "OWNER", all);
-    expect(e).toMatchObject({ overall: 100, label: "Play again", href: "/dashboard/knowledge/quiz" });
+    expect(e).toMatchObject({ overall: 100, label: "Play again", href: "/dashboard/knowledge/quiz", nextRound: null });
   });
 
   it("is not playable for a member on a plan without content who may not edit the company settings", async () => {

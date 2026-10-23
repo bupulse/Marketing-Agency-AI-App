@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ArrowRight, Check, LoaderCircle, Sparkles, Zap } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, GlassCard } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { percentDone, type QuizRound, type QuizStep } from "@/lib/quiz/flow";
@@ -33,6 +33,16 @@ export function enterMeansNext(e: KeyboardEvent): boolean {
   if (!typingInField(e)) return true;
   const el = e.target as HTMLElement;
   return el.tagName === "INPUT" && ["text", "number", "tel", "email", "url", "search", "date"].includes((el as HTMLInputElement).type);
+}
+
+/**
+ * Where the round pills should scroll so the current pill sits in the middle (or as near as the row allows): the row's
+ * width, its full scroll width, and the pill's left edge and width measured from the row's start.
+ */
+export function pillScrollLeft(row: { width: number; scrollWidth: number }, pill: { left: number; width: number }): number {
+  const max = Math.max(0, row.scrollWidth - row.width);
+  const centred = pill.left + pill.width / 2 - row.width / 2;
+  return Math.round(Math.min(max, Math.max(0, centred)));
 }
 
 type Primary = { label?: string; onClick: () => void; disabled?: boolean; busy?: boolean };
@@ -71,12 +81,34 @@ export function QuizFrame({
     return () => window.removeEventListener("keydown", onKey);
   }, [primary]);
 
+  // The round pills follow the quiz: the current round slides into view when the quiz moves on (a phone shows only a
+  // few pills), and a new question that starts above the screen scrolls into view.
+  const pillsRef = useRef<HTMLElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const stepKey = `${quiz.index}:${quiz.roundDone ?? ""}:${quiz.finished}`;
+  const firstStep = useRef(true);
+  useEffect(() => {
+    const row = pillsRef.current;
+    const pill = row?.querySelector<HTMLElement>('[aria-current="step"]');
+    if (row && pill) {
+      const left = pill.getBoundingClientRect().left - row.getBoundingClientRect().left + row.scrollLeft;
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      row.scrollTo({ left: pillScrollLeft({ width: row.clientWidth, scrollWidth: row.scrollWidth }, { left, width: pill.offsetWidth }), behavior: reduce ? "auto" : "smooth" });
+    }
+    if (firstStep.current) {
+      firstStep.current = false;
+      return;
+    }
+    const card = cardRef.current;
+    if (card && card.getBoundingClientRect().top < 0) card.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [quiz.round, stepKey]);
+
   const pct = percentDone(steps, quiz.index);
   const doneRounds = new Set(quiz.progress.doneRounds);
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+    <div ref={cardRef} className="mx-auto flex w-full max-w-2xl scroll-mt-4 flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <nav aria-label="Rounds" className="-mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
+        <nav ref={pillsRef} aria-label="Rounds" className="-mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
           {rounds.map((r) => {
             const here = r.id === quiz.round && !quiz.finished;
             const done = doneRounds.has(r.id);

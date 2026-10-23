@@ -16,6 +16,8 @@ export type QuizEntry = {
   playable: boolean;
   href: string;
   label: "Start the quiz" | "Continue" | "Play again";
+  /** The round Start or Continue opens (the first round the person can play when nothing is filled in yet). */
+  nextRound: { emoji: string; title: string } | null;
 };
 
 export async function quizEntry(business: Parameters<typeof knowledgeProgress>[0] & { timezone: string | null }, role: Role, usable: ReadonlySet<FeatureKey>): Promise<QuizEntry> {
@@ -33,11 +35,13 @@ export async function quizEntry(business: Parameters<typeof knowledgeProgress>[0
   const first = overall > 0 && overall < 100 ? rounds.find((r) => (progress[r.section]?.percent ?? 0) < 100) : undefined;
   const nextId = first ? roundForSection(first.section, progress[first.section], ids) : null;
   const next = nextId ? { id: nextId } : undefined;
+  const opens = next ? rounds.find((r) => r.id === next.id) : overall < 100 ? rounds[0] : undefined;
   return {
     progress,
     overall,
     playable: rounds.length > 0,
     href: `/dashboard/knowledge/quiz${next ? `?round=${next.id}` : ""}`,
     label: overall === 0 ? "Start the quiz" : overall >= 100 ? "Play again" : "Continue",
+    nextRound: opens ? { emoji: opens.emoji, title: opens.title } : null,
   };
 }

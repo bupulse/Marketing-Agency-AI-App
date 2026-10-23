@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { BackgroundBlobs } from "@/components/motion";
 import { AppShell, type ShellNotice } from "@/components/app/app-shell";
@@ -24,6 +24,8 @@ import { isServiceEnabled } from "@/lib/admin/switch";
 import { unseenStudioVideos } from "@/lib/video-library/service";
 import { unreadCount } from "@/lib/inbox/service";
 import { dailyPostsWaiting } from "@/lib/daily-posts/service";
+import { QuizBanner } from "@/components/knowledge/quiz-banner";
+import { quizEntry } from "@/lib/knowledge/quiz-entry";
 
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
@@ -149,10 +151,23 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           endsOn={endingNotice(usage.subscription)}
           grace={grace ? { ended: formatDate(grace.ended) ?? "", until: formatDate(grace.until) ?? "" } : null}
         />
+        <Suspense fallback={null}>
+          <QuizNudge business={business} role={role} usable={entitlements.usable} />
+        </Suspense>
         <InstallPrompt />
         {children}
         {can(role, "settings") && <AutoTimezone current={business.timezone} />}
       </AppShell>
     </>
   );
+}
+
+/**
+ * "Finish your Business info: a 5-minute quiz" on every page until Business info is complete (docs/QUIZ_MODE.md "On
+ * every page"). Streamed, so the score's queries never hold up the page; a failing lookup shows nothing.
+ */
+async function QuizNudge({ business, role, usable }: { business: Parameters<typeof quizEntry>[0]; role: Parameters<typeof quizEntry>[1]; usable: Parameters<typeof quizEntry>[2] }) {
+  const entry = await quizEntry(business, role, usable).catch(() => null);
+  if (!entry || !entry.playable || entry.overall >= 100) return null;
+  return <QuizBanner overall={entry.overall} href={entry.href} label={entry.label} nextRound={entry.nextRound} />;
 }
