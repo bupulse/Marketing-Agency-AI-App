@@ -50,6 +50,9 @@ Format: where (URL) · steps · what happened / what should happen · severity (
        layout's banner and the home card share one score.
      - clientOffer (the layout asks on every page): one read; the expire-and-audit step only when the latest open
        offer is past its date (was a findMany before every read).
+   - After batch 5 (live 23 Oct, warm, signed in, time to first byte): /dashboard 3.1-4.6 s (was 9.7),
+     /content 2.4 (4.2), /gallery 1.7 (3.8), /leads 2.0 (3.8), /calendar 1.4 (4.7), /billing 2.2 (4.7), /usage 5.3
+     (one sample, check again). No page errors with relationJoins.
 2. **Quiz round pills were cut off with no hint of more** · polish · /dashboard/knowledge/quiz. Fixed: they scroll to the current round and fade at the edges (a2a0232d).
 3. **A post whose time has passed still says only "Needs approval", with no hint what Approve does** · annoying ·
    /dashboard/calendar (week of 19 Oct: LinkedIn post Tue 20 Oct 09:00, opened on Fri 23 Oct).
