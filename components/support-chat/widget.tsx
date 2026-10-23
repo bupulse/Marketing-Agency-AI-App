@@ -35,8 +35,11 @@ const onResize = (cb: () => void) => {
   return () => window.removeEventListener("resize", cb);
 };
 
-/** Above the button, on the same corner (the greeting and the desktop panel). */
+/** Above the button, on the same corner (the desktop panel). */
 const ABOVE = "fixed right-4 bottom-[calc(var(--bp-bottom-bar,0px)+5.5rem)] sm:right-6 sm:bottom-[calc(var(--bp-bottom-bar,0px)+6.25rem)]";
+/** The greeting: also above the WhatsApp button when the page has one (--bp-fab-stack, app/globals.css). */
+const ABOVE_ALL =
+  "fixed right-4 bottom-[calc(var(--bp-bottom-bar,0px)+var(--bp-fab-stack,0px)+5.5rem)] sm:right-6 sm:bottom-[calc(var(--bp-bottom-bar,0px)+var(--bp-fab-stack,0px)+6.25rem)]";
 const ICON_BTN = "inline-flex size-9 flex-none cursor-pointer items-center justify-center rounded-full border-0 bg-bg text-muted hover:text-text";
 
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([tabindex="-1"]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -161,6 +164,18 @@ export function Widget({ surface, pathname, mode, initialOpen = false, onLeave }
     }, 30);
     return () => clearTimeout(t);
   }, [open, needsForm, isPhone]);
+
+  // The page's own WhatsApp button hides while the panel is open, and takes the corner when the chat could not start.
+  useEffect(() => {
+    if (page || !open) return;
+    document.documentElement.setAttribute("data-support-chat-open", "");
+    return () => document.documentElement.removeAttribute("data-support-chat-open");
+  }, [page, open]);
+  useEffect(() => {
+    if (page || !chat.failed) return;
+    document.documentElement.setAttribute("data-support-chat-off", "");
+    return () => document.documentElement.removeAttribute("data-support-chat-off");
+  }, [page, chat.failed]);
 
   // Esc closes from anywhere (focus can drop to the page when a part of the panel goes away).
   useEffect(() => {
@@ -325,7 +340,7 @@ export function Widget({ surface, pathname, mode, initialOpen = false, onLeave }
   return (
     <>
       {!page && greeting === "bubble" && !open && visit?.greeting && (
-        <section aria-label={COPY.greetingLabel} className={cn(ABOVE, "z-50 flex w-[320px] max-w-[calc(100vw-2rem)] animate-pop flex-col gap-3 rounded-[20px] border border-line bg-[var(--bp-dialog)] p-4 shadow-glass print:hidden")}>
+        <section aria-label={COPY.greetingLabel} className={cn(ABOVE_ALL, "z-50 flex w-[320px] max-w-[calc(100vw-2rem)] animate-pop flex-col gap-3 rounded-[20px] border border-line bg-[var(--bp-dialog)] p-4 shadow-glass print:hidden")}>
           <div className="flex items-center gap-2.5">
             <span className="inline-flex size-9 flex-none items-center justify-center rounded-full bg-brand-gradient text-white" aria-hidden>
               <PulseIcon size={18} />

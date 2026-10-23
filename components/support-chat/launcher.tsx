@@ -27,6 +27,7 @@ export function Launcher({
     <button
       ref={buttonRef}
       type="button"
+      data-support-launcher
       onClick={onClick}
       onPointerEnter={onIntent}
       onFocus={onIntent}

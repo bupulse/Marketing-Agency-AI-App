@@ -97,7 +97,13 @@ The chat visitors, clients and creators see. Guide page for owners: `docs/guide/
 - `/dashboard/**` → `dashboard`, `/creator/**` → `creator`, every other page → `public`;
 - never on `/admin`, `/support`, `/help-chat`, `/b/`, `/widget/`, `/screen/`, `/api/`, or any `support.` host.
 
-Link-in-bio pages (`lib/bio/page.ts`) get only the "Made with BuPulse" corner pill. It links to `/help-chat?from=bio`, the chat on a page of its own (`app/help-chat/page.tsx`), surface `bio`: sales mode, no greeting. The bio page keeps its strict CSP and loads no extra script. The public pages' floating WhatsApp button was removed: the chat has "Continue on WhatsApp".
+Link-in-bio pages (`lib/bio/page.ts`) get only the "Made with BuPulse" corner pill. It links to `/help-chat?from=bio`, the chat on a page of its own (`app/help-chat/page.tsx`), surface `bio`: sales mode, no greeting. The bio page keeps its strict CSP and loads no extra script.
+
+**Two corner buttons on the public pages** (owner, 23 Oct). The green WhatsApp button (`components/marketing/whatsapp-button.tsx`, 48 px, only when `NEXT_PUBLIC_WHATSAPP_NUMBER` is set) stays, 12 px above the chat button (60 px), on the same right edge. The rules are `.bp-whatsapp-fab` in `app/globals.css`:
+- it hides while the panel is open (`html[data-support-chat-open]`); the chat keeps its own "Continue on WhatsApp";
+- it takes the corner when the chat could not start (`html[data-support-chat-off]`);
+- the greeting moves up by `--bp-fab-stack`, so it covers neither button;
+- on phones (≤ 480 px) the page gets bottom padding, so its end scrolls clear of both buttons. Both stay at least 44 px. There is no cookie bar (only essential cookies); the buttons already sit above the dashboard and creator phone bars (`--bp-bottom-bar`).
 
 **Loading.** At first only the gradient button is drawn. The chat code (`components/support-chat/widget.tsx`) loads when the browser is idle, or on hover or the first tap. supabase-js loads only when the panel opens (real time). The mock server (`lib/support/client/mock.ts`) is used only with `NODE_ENV !== "production"` and `NEXT_PUBLIC_SUPPORT_CHAT_MOCK=1`, so it never ships.
 
@@ -148,4 +154,5 @@ Phones (≤ 480 px) only get a red dot on the button. Closing the greeting keeps
 - outbox order, retry, idempotency and offline;
 - path and typing throttles;
 - upload checks, shrink sizes, voice types, the pre-chat form;
-- the HTTP client with a fake fetch, the mock, and the bio corner link.
+- the HTTP client with a fake fetch, the mock, and the bio corner link;
+- the two corner buttons' sizes and stacking rules (`buttons.test.ts`).

@@ -465,6 +465,41 @@ dialog.bp-dialog[open] {
   }
 }
 
+/* The help chat button (components/support-chat/launcher.tsx: 60 px, 1rem from the corner, 1.5rem from 40rem) and the
+   public pages' WhatsApp button (components/marketing/whatsapp-button.tsx: 48 px) stacked on the same right edge,
+   12 px apart. The WhatsApp button hides while the chat panel is open, and takes the corner when the chat could not
+   start. The greeting bubble moves up by --bp-fab-stack so it covers neither. */
+.bp-whatsapp-fab {
+  right: 1rem;
+  bottom: calc(var(--bp-bottom-bar, 0px) + 1rem + 60px + 12px);
+}
+@media (width >= 40rem) {
+  .bp-whatsapp-fab {
+    right: 1.5rem;
+    bottom: calc(var(--bp-bottom-bar, 0px) + 1.5rem + 60px + 12px);
+  }
+}
+html[data-support-chat-off] .bp-whatsapp-fab {
+  bottom: calc(var(--bp-bottom-bar, 0px) + 1rem);
+}
+@media (width >= 40rem) {
+  html[data-support-chat-off] .bp-whatsapp-fab {
+    bottom: calc(var(--bp-bottom-bar, 0px) + 1.5rem);
+  }
+}
+html[data-support-chat-open] .bp-whatsapp-fab {
+  display: none;
+}
+html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
+  --bp-fab-stack: calc(48px + 12px);
+}
+/* Phones: the end of the page scrolls clear of the two buttons. */
+@media (width <= 480px) {
+  html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
+    padding-bottom: calc(1rem + 60px + 12px + 48px + 1rem);
+  }
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   *,

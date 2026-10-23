@@ -8,7 +8,8 @@ This is not the **Website chat** you put on *your* website for *your* customers
 ([11-website-chat.md](11-website-chat.md)). The help chat is BuPulse talking to you.
 
 **Where:** on every page of bupulse.com, the dashboard and the creator portal. On a phone it sits just above the bar at
-the bottom. **Who:** everybody, every plan, the free trial included. It costs nothing.
+the bottom. On the public pages a smaller green **WhatsApp** button sits just above it; it hides while the chat is
+open. **Who:** everybody, every plan, the free trial included. It costs nothing.
 
 ## Start a chat
 
