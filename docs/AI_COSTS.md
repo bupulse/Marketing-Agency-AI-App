@@ -147,6 +147,7 @@ Tower, TEST database, Gemini Omni Flash at about $0.10 a second; refused clips c
 | 2 | 23 Oct 2026 | Finding the cause by hand: the refused script with a filmed clip's start frame (refused, free), without "WhatsApp" (refused, free), without the price sentence (filmed, not used) | 0.80 | 3.80 |
 | 3 | 23 Oct 2026 | Gemini transcript of the 3 filmed clips (what is said, which language) | < 0.01 | 3.80 |
 | 4 | 23 Oct 2026 | Reel 1's call to action filmed again without the price ("Try the failed clips again"); the reel joined in the browser, 30.07 s; Gemini's review of it | 0.81 | 4.61 |
+| 5 | 23 Oct 2026 | Reel `cmvldpn6s0003ug45xymta9pk`, English: 4 start frames, 4 clips of 8 s all filmed at the first try (no price spoken), joined, 30.07 s; Gemini's review of it. Veo switched off after it | 3.61 | 8.22 |
 
 **What the margins say:**
 - **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to
