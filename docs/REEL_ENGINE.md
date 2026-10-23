@@ -137,3 +137,7 @@ flames, "+25M RWF" in green), flashes, all on the song's beat.
   this clip", so they were counted as refusals and failed). Now at most `VEO_PARALLEL` (3) clips film at once, and a
   clip Google is too busy for (a quota error, or a submit answered 429) waits a minute and goes again without counting
   as a try. The video-engine session was asked to map `RESOURCE_EXHAUSTED` to the "quota" kind in veo.ts.
+- **Google's quota for the project** (24 October 2026, 01:45 CAT): after about 20 Omni clips in a day (the reels and
+  the video engine's tests), even a single clip sent alone is answered `RESOURCE_EXHAUSTED`. That is the project's
+  quota for Gemini Omni video, not clips sent at the same time. Google resets daily quotas at midnight Pacific time
+  (about 09:00 in Kigali); a higher quota is asked for in Google AI Studio (paid tier limits). Until then a reel waits.
