@@ -4,6 +4,7 @@ import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { DesignStudio } from "@/components/designs/design-studio";
+import { UniqueAds } from "@/components/designs/unique-ads";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { recommendPack } from "@/lib/designs/packs";
 import { DesignsFilter, DesignsPager } from "@/components/designs/designs-paging";
@@ -48,6 +49,15 @@ export default async function DesignsPage({ searchParams }: { searchParams: Prom
         none="Nothing in particular"
         options={[...options.products.map((p) => ({ id: p.id, name: p.name, group: "Products & services" as const })), ...options.campaigns.map((c) => ({ id: c.id, name: c.name, group: "Campaigns" as const }))]}
       />
+      {/* The image engine (docs/IMAGE_ENGINE.md): unique finished ads, for plans with AI pictures. */}
+      {entitlements.usable.has("aiPhotos") && (
+        <UniqueAds
+          key={subject?.id ?? "none"}
+          subjectId={subject?.kind === "product" ? subject.id : null}
+          subjectName={subject?.kind === "product" ? (about?.title ?? null) : null}
+          credits={{ used: usage.used.image, limit: usage.limits.image }}
+        />
+      )}
       {/* Not keyed by the product: choosing one keeps the template chosen so far (DesignStudio fills in its details). */}
       <DesignStudio
         subjectId={subject?.id}

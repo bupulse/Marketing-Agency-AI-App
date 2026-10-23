@@ -7,6 +7,7 @@ export type RateLimitRule = { limit: number; windowSeconds: number };
 export const RATE_LIMITS = {
   templateDesign: { limit: 60, windowSeconds: 60 * 60 }, // 60 template designs an hour
   aiImage: { limit: 10, windowSeconds: 60 * 60 }, // paid Gemini images (describe an image, AI photo): 10 an hour
+  imageBatch: { limit: 6, windowSeconds: 60 * 60 }, // image engine batches (lib/image-engine): each paid by its reserved credits
   designPreview: { limit: 400, windowSeconds: 60 * 60 },
   photoUpload: { limit: 60, windowSeconds: 60 * 60 },
   projectCreate: { limit: 30, windowSeconds: 60 * 60 }, // new products and campaigns (and the legacy /api/generate), together

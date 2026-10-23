@@ -342,6 +342,56 @@ export async function createAiPhotoDesign(input: Owner & {
   }
 }
 
+/**
+ * The image engine's Painter and Editor (lib/image-engine, docs/IMAGE_ENGINE.md): one finished advert from a complete
+ * prompt (words included) on the given model, from the product photo and the logo. No credit is taken here: the
+ * engine reserved the batch's credits when it planned it, and gives a failed picture's credits back. `editOf` makes a
+ * changed copy of an existing design instead (the design is the reference, the prompt says what to change).
+ */
+export async function createEngineDesign(input: Owner & {
+  prompt: string;
+  model: string;
+  aspectRatio: AspectRatio;
+  usePhotoPath?: string | null;
+  useLogo?: boolean;
+  editOf?: string | null;
+  /** An owner's own "change this" edit counts against the AI image limit; a batch's pictures were limited when planned. */
+  limited?: boolean;
+}): Promise<CreatedDesign & { mimeType: string; bytes: Uint8Array }> {
+  if (input.limited) await rateLimit(`aiimage:${input.userId}`, RATE_LIMITS.aiImage);
+  const owned = await requireOwned(input);
+  const { business } = owned;
+  if (input.usePhotoPath && !isOwnPhotoPath(input.userId, input.usePhotoPath) && !isOwnDesignPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
+  if (input.editOf && !isOwnDesignPath(input.userId, input.editOf)) throw new DesignError("That picture could not be changed.");
+  const [base, photo, logo] = await Promise.all([
+    input.editOf ? loadPhoto(input.userId, input.editOf, AI_TYPES, input.service) : null,
+    input.editOf ? null : loadPhoto(input.userId, input.usePhotoPath, AI_TYPES, input.service),
+    input.editOf || !input.useLogo ? null : loadLogo(input.userId, business.logoUrl, AI_TYPES, input.service),
+  ]);
+  const references = [base, photo, logo].filter((r): r is string => !!r);
+  const provider = getImageProvider(input.model);
+  const image = await withLedger(
+    { userId: input.userId, businessId: business.id, feature: IMAGE_FEATURE },
+    { provider: provider.name, model: input.model },
+    () => provider.generate({ prompt: input.prompt, aspectRatio: input.aspectRatio, referenceImageUrls: references }),
+    (r) => ({ provider: r.provider, model: r.model, usage: r.usage, images: 1 }),
+  );
+  const id = globalThis.crypto.randomUUID();
+  const path = await store(input.userId, id, image.data, image.mimeType);
+  const { width, height } = imageSize(image.data, input.aspectRatio);
+  try {
+    await prisma.design.create({
+      data: { id, businessId: business.id, ...owned.subject, kind: "AI", prompt: input.prompt.slice(0, 4000), aspectRatio: input.aspectRatio, path, width, height },
+    });
+  } catch (error) {
+    await removeFile(path, true);
+    throw error;
+  }
+  await trackEvent(EVENT_NAMES.designCreated, { userId: input.userId, businessId: business.id, props: { kind: "AI" } });
+  await trackEvent(EVENT_NAMES.imageGenerated, { userId: input.userId, businessId: business.id });
+  return { id, path, mimeType: image.mimeType, bytes: image.data };
+}
+
 async function ownDesign(userId: string, designId: string) {
   const design = await prisma.design.findFirst({ where: { id: designId, business: { userId } } });
   if (!design || !isOwnDesignPath(userId, design.path)) return null;
