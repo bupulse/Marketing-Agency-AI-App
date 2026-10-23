@@ -59,6 +59,17 @@ builder like any feature (an offer on the Business plan has it as a base feature
 have it until an admin ticks it. Its use is metered by the plan's existing allowances (one text per post, AI images,
 videos), spread over the month so a company never uses them up early; no new limit.
 
+## Daily posts on every paid plan (owner decision, 23 October 2026)
+
+Migration `20261030200000_daily_posts_every_plan` (audited as `migration:20261030200000_daily_posts_every_plan`) adds
+`dailyPosts` to STARTER, STANDARD and PRO (rows with the prerequisites only) and sets STARTER's new limit
+`limits.dailyPostApps` to 1: one post a day on one app, with free designs (Starter has no AI photos). The limit is in
+the plan builder ("Daily posts: apps a day", 0 = every app, up to 10) and Jarvis `update_plan_limits`; missing means
+every app. `dailyApps()` keeps the first apps in the app list's order; Content -> Settings lets the owner pick which one
+and the save refuses more than the plan's number. Cost to BuPulse per company a day, at about $0.02 a written post:
+Starter about $0.02 (about 900 RWF a month); two apps with free designs about $0.04, with AI photos about $0.12, with a
+voiced video about $0.30. The pricing cards do not mention daily posts yet (an owner decision).
+
 ## Regions and the demo-first trial
 
 Full description in `docs/REGIONS.md`. In short: `lib/region.ts` says which region a visitor or a company is in; `lib/region-prices.ts` lists the plans a region offers with that region's prices (`getRegionPlans`, `companyPlans`); checkout uses `regionPriceIdFor` (GLOBAL = the plan's own Paddle ids, other regions wait for the Paddle sync). `lib/entitlements.ts` grants nothing while a company waits for its demo and the chosen plan's features during the trial. The migrations are `20261010100000_subscription_pending_demo` and `20261010100100_regions_and_demos` (deploy before the code).

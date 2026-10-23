@@ -5,9 +5,9 @@ import { writeAudit } from "@/lib/admin/audit";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { getUsageSummary } from "@/lib/usage";
-import { postsPerAppLimit } from "@/lib/plans";
+import { dailyPostAppsLimit, postsPerAppLimit } from "@/lib/plans";
 import { can, ForbiddenError, type Role } from "@/lib/team/roles";
-import { dailySettingsSchema, readDailySettings, type DailyPostSettings, type DailySettingsInput } from "./settings";
+import { appsText, dailySettingsSchema, readDailySettings, type DailyPostSettings, type DailySettingsInput } from "./settings";
 
 export class DailySettingsError extends Error {}
 
@@ -18,14 +18,18 @@ export async function getDailySettings(businessId: string): Promise<DailyPostSet
 
 /**
  * Saves the daily posts choices. Only Owners and Admins (`contentSettings`, checked here, not only on the page); posts
- * per app may not pass the plan's posts per app per day. Changes apply from the next day's posts.
+ * per app may not pass the plan's posts per app per day, nor the chosen apps the plan's apps a day (Starter: 1). Changes
+ * apply from the next day's posts.
  */
 export async function saveDailySettings(actor: { actorId: string; role: Role; businessId: string; ownerId: string }, input: DailySettingsInput): Promise<DailyPostSettings> {
   if (!can(actor.role, "contentSettings")) throw new ForbiddenError("contentSettings");
   const parsed = dailySettingsSchema.safeParse(input);
   if (!parsed.success) throw new DailySettingsError(parsed.error.issues[0]?.message ?? "Check the settings and try again.");
-  const limit = postsPerAppLimit((await getUsageSummary(actor.ownerId).catch(() => null))?.limits);
+  const limits = (await getUsageSummary(actor.ownerId).catch(() => null))?.limits;
+  const limit = postsPerAppLimit(limits);
   if (parsed.data.perApp > limit) throw new DailySettingsError(`Your plan allows ${limit} ${limit === 1 ? "post" : "posts"} per app a day.`);
+  const maxApps = dailyPostAppsLimit(limits);
+  if (maxApps && parsed.data.apps && parsed.data.apps.length > maxApps) throw new DailySettingsError(`Your plan makes daily posts for ${appsText(maxApps)} a day. Choose ${maxApps === 1 ? "one app" : `up to ${maxApps}`}.`);
   const next = readDailySettings(parsed.data);
   await prisma.$transaction(async (tx) => {
     const row = await tx.business.findUnique({ where: { id: actor.businessId }, select: { dailyPostSettings: true } });

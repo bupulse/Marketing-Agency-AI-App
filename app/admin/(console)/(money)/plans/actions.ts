@@ -48,6 +48,7 @@ function readForm(f: FormData, isTrial: boolean, priced = true): Partial<PlanInp
       // Creator campaigns (docs/CREATOR_CAMPAIGNS.md): only when the form sends them.
       ...(text(f, "limit_liveCampaigns") ? { liveCampaigns: numberOf(f, "limit_liveCampaigns", "Live creator campaigns") } : {}),
       ...(text(f, "limit_creatorsPerCampaign") ? { creatorsPerCampaign: numberOf(f, "limit_creatorsPerCampaign", "Creators per campaign") } : {}),
+      ...(text(f, "limit_dailyPostApps") ? { dailyPostApps: numberOf(f, "limit_dailyPostApps", "Daily posts: apps a day") } : {}),
     },
     highlights: String(f.get("highlights") ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
     // The checklist; the service validates prerequisites and refuses "coming soon" keys (the form only guides).

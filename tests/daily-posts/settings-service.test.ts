@@ -41,4 +41,13 @@ describe("daily posts settings on the server", () => {
     await expect(saveDailySettings(admin, { ...input, apps: [] })).rejects.toBeInstanceOf(DailySettingsError);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  it("keeps a plan's apps a day (Starter: one app) and saves within it", async () => {
+    usage.getUsageSummary.mockResolvedValue({ limits: { postsPerAppPerDay: 1, dailyPostApps: 1 } });
+    await expect(saveDailySettings(admin, { ...input, perApp: 1, apps: ["facebook", "instagram"] })).rejects.toThrow("Your plan makes daily posts for 1 app a day. Choose one app.");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect((await saveDailySettings(admin, { ...input, perApp: 1, apps: ["instagram"] })).apps).toEqual(["instagram"]);
+    usage.getUsageSummary.mockResolvedValue({ limits: { postsPerAppPerDay: 1, dailyPostApps: 0 } });
+    expect((await saveDailySettings(admin, { ...input, perApp: 1, apps: ["facebook", "instagram"] })).apps).toEqual(["instagram", "facebook"]);
+  });
 });

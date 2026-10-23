@@ -45,12 +45,18 @@ export function readDailySettings(value: unknown): DailyPostSettings {
   return { enabled: field("enabled"), perApp: field("perApp"), apps: apps ? NETWORKS.filter((n) => apps.includes(n)) : null, design: field("design") };
 }
 
-/** The apps a day's run makes posts for: the chosen ones, else the connected ones, else Instagram and Facebook. */
-export function dailyApps(settings: Pick<DailyPostSettings, "apps">, connected: readonly Network[]): Network[] {
-  if (settings.apps?.length) return [...settings.apps];
+/**
+ * The apps a day's run makes posts for: the chosen ones, else the connected ones, else Instagram and Facebook. A plan
+ * that limits the apps (PlanLimits.dailyPostApps, e.g. Starter: 1) keeps the first ones, in the app list's order.
+ */
+export function dailyApps(settings: Pick<DailyPostSettings, "apps">, connected: readonly Network[], maxApps: number | null = null): Network[] {
   const usable = NETWORKS.filter((n) => connected.includes(n));
-  return usable.length ? usable : [...DEFAULT_DAILY_APPS];
+  const apps = settings.apps?.length ? [...settings.apps] : usable.length ? usable : [...DEFAULT_DAILY_APPS];
+  return maxApps && maxApps > 0 ? apps.slice(0, maxApps) : apps;
 }
+
+/** "1 app" / "3 apps". */
+export const appsText = (n: number) => `${n} ${n === 1 ? "app" : "apps"}`;
 
 /** What the post card says about a daily post: "Made for you this morning" on its day, "Made for you" after. */
 export function dailyPostLabel(createdAt: string, zone: string, now: Date = new Date()): string {

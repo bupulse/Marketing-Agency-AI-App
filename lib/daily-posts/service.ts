@@ -16,7 +16,7 @@ import { featureStatus } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { hasShortRequestLimit, timeBudget } from "@/lib/platform/limits";
-import { postsPerAppLimit, videosLeftNow } from "@/lib/plans";
+import { dailyPostAppsLimit, postsPerAppLimit, videosLeftNow } from "@/lib/plans";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { addDays, dayKey } from "@/lib/publishing/time";
 import { pushToLeadWatchers } from "@/lib/push/service";
@@ -139,7 +139,8 @@ export async function runDailyPosts(businessId: string, now = new Date()): Promi
       effectiveBudgetUsd(),
       spentThisMonthUsd(now),
     ]);
-    const apps = dailyApps(settings, choices.filter((c) => c.connected).map((c) => c.network));
+    // A plan may limit the apps (Starter: one app a day, free designs).
+    const apps = dailyApps(settings, choices.filter((c) => c.connected).map((c) => c.network), dailyPostAppsLimit(usage.limits));
     // Every post the company has on each app today counts (by hand, Autopilot, "Create today's content"), so a day
     // Autopilot already filled gets nothing more on that app.
     const bounds = dayBounds(day, zone);

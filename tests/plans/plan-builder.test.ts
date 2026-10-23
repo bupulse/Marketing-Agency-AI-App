@@ -910,6 +910,22 @@ describe("old prices in the admin", () => {
   });
 });
 
+describe("daily posts: apps a day", () => {
+  it("is 0 (every app) or 1 to 10, read leniently and validated on save", async () => {
+    const { cleanLimits } = await import("@/lib/plan-catalog");
+    const { dailyPostAppsLimit } = await import("@/lib/plans");
+    expect(cleanLimits({ dailyPostApps: 1 }).dailyPostApps).toBe(1);
+    expect(cleanLimits({ dailyPostApps: 40 }).dailyPostApps).toBe(10);
+    expect(cleanLimits({ dailyPostApps: -1 }).dailyPostApps).toBeUndefined();
+    expect(dailyPostAppsLimit({ dailyPostApps: 0 })).toBeNull();
+    expect(dailyPostAppsLimit({})).toBeNull();
+    expect(dailyPostAppsLimit({ dailyPostApps: 1 })).toBe(1);
+    await updatePlan(CONSOLE, "STANDARD", { limits: { dailyPostApps: 2 } });
+    expect(plan("STANDARD").limits.dailyPostApps).toBe(2);
+    expect(await code(updatePlan(CONSOLE, "STANDARD", { limits: { dailyPostApps: 11 } }))).toBe("invalid");
+  });
+});
+
 describe("team seats", () => {
   it("are part of the plan: seeded 1 / 3 / 10, defaulted for rows saved before seats existed, clamped 1..1000", async () => {
     const { cleanLimits } = await import("@/lib/plan-catalog");

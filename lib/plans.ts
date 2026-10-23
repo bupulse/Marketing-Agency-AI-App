@@ -43,6 +43,8 @@ export type PlanLimits = Record<UsageMetric, number> & {
   liveCampaigns?: number;
   /** Creators picked (SELECTED or JOINED) in one creator campaign, CREATORS_PER_CAMPAIGN when missing. */
   creatorsPerCampaign?: number;
+  /** Apps "Daily posts made for you" makes posts for each day (docs/CONTENT.md "Daily posts"); 0 or missing: every app. */
+  dailyPostApps?: number;
 };
 export const SEATS_MIN = 1;
 export const SEATS_MAX = 1000;
@@ -53,6 +55,14 @@ export const POSTS_PER_APP_MAX = 10;
 export function postsPerAppLimit(limits: Pick<PlanLimits, "postsPerAppPerDay"> | null | undefined): number {
   const v = limits?.postsPerAppPerDay;
   return typeof v === "number" && Number.isInteger(v) ? Math.min(Math.max(v, POSTS_PER_APP_MIN), POSTS_PER_APP_MAX) : POSTS_PER_APP_MIN;
+}
+
+export const DAILY_POST_APPS_MAX = 10;
+
+/** Apps daily posts are made for each day: a number from 1 to 10, or null for every app the owner picked (0 or missing). */
+export function dailyPostAppsLimit(limits: Pick<PlanLimits, "dailyPostApps"> | null | undefined): number | null {
+  const v = limits?.dailyPostApps;
+  return typeof v === "number" && Number.isInteger(v) && v > 0 ? Math.min(v, DAILY_POST_APPS_MAX) : null;
 }
 
 /** Creator campaigns (docs/CREATOR_CAMPAIGNS.md, "Limits"): the defaults of a plan that does not set its own. */

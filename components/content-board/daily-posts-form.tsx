@@ -7,7 +7,7 @@ import { Switch } from "@/components/autopilot/switch";
 import { NetworkIcon } from "@/components/publishing/network-icon";
 import { saveDailySettingsAction } from "@/app/dashboard/content/actions";
 import { networkLabel } from "@/lib/content-board/labels";
-import { dailyApps, type DailyPostSettings } from "@/lib/daily-posts/settings";
+import { appsText, dailyApps, type DailyPostSettings } from "@/lib/daily-posts/settings";
 import type { Network } from "@/lib/social/types";
 
 /** "Daily posts made for you": on/off, posts per app, which apps and the design style. Read-only for Members. */
@@ -16,6 +16,7 @@ export function DailyPostsForm({
   apps,
   connected,
   perAppLimit,
+  appsLimit = null,
   aiPhotos,
   canEdit,
   askText,
@@ -24,6 +25,8 @@ export function DailyPostsForm({
   apps: readonly Network[];
   connected: Network[];
   perAppLimit: number;
+  /** The plan's apps a day (Starter: 1); null: every app. */
+  appsLimit?: number | null;
   aiPhotos: boolean;
   canEdit: boolean;
   askText: string;
@@ -33,11 +36,14 @@ export function DailyPostsForm({
   const [settings, setSettings] = useState(initial);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const chosen = dailyApps(settings, connected);
+  const chosen = dailyApps(settings, connected, appsLimit);
   const changed = JSON.stringify(settings) !== JSON.stringify(initial);
   const locked = !canEdit || pending;
 
   function toggleApp(app: Network, on: boolean) {
+    // With one app a day, turning another app on moves the daily post there.
+    if (on && appsLimit === 1) return setSettings((s) => ({ ...s, apps: [app] }));
+    if (on && appsLimit && chosen.length >= appsLimit) return toast(`Your plan makes daily posts for ${appsText(appsLimit)} a day. Turn one off first.`, "error");
     const next = on ? [...new Set([...chosen, app])] : chosen.filter((a) => a !== app);
     if (next.length === 0) return toast("Keep at least one app, or switch daily posts off.", "error");
     setSettings((s) => ({ ...s, apps: apps.filter((a) => next.includes(a)) }));
@@ -91,7 +97,10 @@ export function DailyPostsForm({
 
           <fieldset className="flex flex-col gap-2 border-t border-line pt-5">
             <legend className="text-[15px] font-semibold">Apps</legend>
-            <p className="text-[13px] text-muted">{settings.apps ? "The apps you chose." : "Your connected apps (Instagram and Facebook while none is connected)."} Apps that are not connected get a reminder to post it yourself.</p>
+            <p className="text-[13px] text-muted">
+              {appsLimit ? `Your plan makes daily posts for ${appsText(appsLimit)} a day${appsLimit === 1 ? ": pick the one you use most" : ""}. ` : ""}
+              {settings.apps ? "The apps you chose." : "Your connected apps (Instagram and Facebook while none is connected)."} Apps that are not connected get a reminder to post it yourself.
+            </p>
             <ul className="flex flex-col divide-y divide-line">
               {apps.map((app) => (
                 <li key={app} className="flex items-center gap-3 py-2.5">

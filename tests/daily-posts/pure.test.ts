@@ -137,6 +137,14 @@ describe("daily posts settings", () => {
     expect(dailyApps({ apps: null }, [])).toEqual(["instagram", "facebook"]);
   });
 
+  it("keep only the apps a plan allows a day (Starter: one), the first in the app list", () => {
+    expect(dailyApps({ apps: null }, ["tiktok", "instagram"], 1)).toEqual(["instagram"]);
+    expect(dailyApps({ apps: ["facebook", "linkedin"] }, [], 1)).toEqual(["facebook"]);
+    expect(dailyApps({ apps: null }, [], 1)).toEqual(["instagram"]);
+    expect(dailyApps({ apps: null }, ["tiktok", "instagram"], null)).toEqual(["instagram", "tiktok"]);
+    expect(dailyApps({ apps: null }, ["tiktok", "instagram"], 0)).toEqual(["instagram", "tiktok"]);
+  });
+
   it("label a daily post 'Made for you this morning' on its own day", () => {
     const now = new Date("2026-10-20T08:00:00Z");
     expect(dailyPostLabel("2026-10-19T22:30:00Z", "Africa/Kigali", now)).toBe("Made for you this morning");

@@ -13,7 +13,7 @@ import { askMessage, can } from "@/lib/team/roles";
 import { DailyPostsForm } from "@/components/content-board/daily-posts-form";
 import { getDailySettings } from "@/lib/daily-posts/settings-service";
 import { hasFeature } from "@/lib/entitlements";
-import { postsPerAppLimit } from "@/lib/plans";
+import { dailyPostAppsLimit, postsPerAppLimit } from "@/lib/plans";
 import { aiPhotosAvailable } from "@/lib/visuals/service";
 
 export const metadata = { title: "Post settings" };
@@ -42,6 +42,7 @@ export default async function ContentSettingsPage() {
           apps={NETWORKS}
           connected={[...new Set(connections.filter(accountUsable).map((c) => c.provider).filter(isNetwork))] as Network[]}
           perAppLimit={postsPerAppLimit(usage.limits)}
+          appsLimit={dailyPostAppsLimit(usage.limits)}
           aiPhotos={daily.aiPhotos}
           canEdit={can(role, "contentSettings")}
           askText={askMessage("contentSettings")}
