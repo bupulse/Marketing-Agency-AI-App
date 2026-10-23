@@ -110,9 +110,10 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
     joining.current = true;
     try {
       setBusy(JOINING);
-      const { encodeSpecMp4, loadSpecFonts } = await import("@/lib/video-engine/encode");
-      const plan: ReelPlan = { title: view.title, caption: view.caption, hashtags: view.hashtags, music: null, presenter: view.presenter ?? "", price: view.price, clips: view.clips.map((c) => ({ beat: c.beat as ReelPlan["clips"][number]["beat"], variant: "", camera: "", presenter: false, frame: "", motion: "", line: c.line, status: "done" })) };
-      const spec = buildReelSpec(plan, view.clips.map((c) => c.clipUrl ?? ""), brand);
+      const [{ encodeSpecMp4, loadSpecFonts }, { beatOfTrack }] = await Promise.all([import("@/lib/video-engine/encode"), import("@/lib/reel-engine/beats")]);
+      const plan: ReelPlan = { title: view.title, caption: view.caption, hashtags: view.hashtags, music: null, presenter: view.presenter ?? "", price: view.price, hook: view.hook, clips: view.clips.map((c) => ({ beat: c.beat as ReelPlan["clips"][number]["beat"], variant: "", camera: "", presenter: false, frame: "", motion: "", line: c.line, stress: c.stress, status: "done" })) };
+      // The cuts land on the music's beat, found from the track itself (the library has no tempo).
+      const spec = buildReelSpec(plan, view.clips.map((c) => c.clipUrl ?? ""), brand, await beatOfTrack(view.musicUrl));
       await loadSpecFonts(spec).catch(() => undefined);
       const blob = await encodeSpecMp4(spec, new Map(), { musicUrl: view.musicUrl, quality: "720p", onProgress: (f) => setBusy(`${JOINING} ${Math.round(f * 100)}%`) });
       const target = await reelUploadAction(view.id);
@@ -228,7 +229,7 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
                 )}
               </div>
               <p className="text-[13px] font-semibold">{BEAT_LABEL[c.beat] ?? c.beat}</p>
-              <p className="text-[12px] text-muted">{c.status === "done" ? "Filmed" : c.status === "filming" ? "Filming…" : c.status === "framed" ? "Start frame ready" : c.status === "failed" ? "Failed" : "Waiting"}</p>
+              <p className="text-[12px] text-muted">{c.status === "done" ? "Filmed and checked" : c.status === "filming" ? "Filming…" : c.status === "framed" ? (c.problems.length ? "Filming again: the check found a problem" : "Start frame ready") : c.status === "failed" ? "Failed" : "Waiting"}</p>
               {c.line && <p className="text-[12px] italic">“{c.line}”</p>}
             </li>
           ))}

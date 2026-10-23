@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { BEATS, buildReelSpec, directReel, reelCostUsd, SCENE_SECONDS, spokenLine, subtitleOf, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
+import { BEATS, buildReelSpec, directReel, reelCostUsd, reelCuts, snapToBeat, spokenLine, subtitleOf, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
 import { totalMs } from "@/lib/video-engine/spec";
-import { readReel, reelPrompt, ruleReel, type ReelInput } from "@/lib/reel-engine/writer";
+import { readReel, REEL_SYSTEM, reelPrompt, ruleReel, type ReelInput } from "@/lib/reel-engine/writer";
+import { viralRecipe } from "@/lib/video-engine/brain/viral";
 
 const beats = directReel([], "job-1");
 const input: ReelInput = {
@@ -12,6 +13,7 @@ const input: ReelInput = {
   presenter: "a Black Rwandan woman in her early thirties",
   beats,
   recent: [],
+  sector: "agriculture",
 };
 const longFrame = "The presenter stands in a plastic-covered greenhouse outside Kigali holding a crate of lettuce next to the white LEAF tower, soft morning light through the dusty roof, crates and a hose on the wet floor.";
 const motion = "She lifts the crate towards the camera and smiles as the camera slowly pushes in.";
@@ -29,32 +31,61 @@ describe("the reel's story", () => {
     expect(next.map((b) => b.variant)).not.toEqual(beats.map((b) => b.variant));
   });
 
-  it("asks Veo for real footage with the line spoken in the reel's language and no words on screen", () => {
-    const p = veoClipPrompt({ motion, line: "Muraho! Reba uko umusaruro wiyongera.", camera: "slow push-in on a gimbal", presenter: true }, "Kinyarwanda");
-    expect(p).toContain('speaks to the camera in Kinyarwanda, clearly and warmly, lips in sync: "Muraho! Reba uko umusaruro wiyongera."');
-    expect(p).toContain("No text, captions or subtitles on screen");
-    expect(p).toContain("One continuous shot");
-    expect(p).toContain("no close-ups of fingers");
-    expect(veoClipPrompt({ motion, line: "", camera: "static tripod", presenter: false }, "English")).toContain("Only natural sound of the place.");
+  it("asks the video model for a human phone video in the right place, real physics, real sounds, and no words on screen", () => {
+    const p = veoClipPrompt({ motion, line: "Muraho! Reba uko umusaruro wiyongera.", camera: "slow push-in", presenter: true }, "Kinyarwanda", "a greenhouse");
+    expect(p).toContain("about 8 seconds, in a greenhouse.");
+    expect(p).toContain('speaks to the camera in Kinyarwanda, clearly, warmly and with energy, lips in sync: "Muraho! Reba uko umusaruro wiyongera."');
+    expect(p).toContain("Filmed on a phone by a friend");
+    expect(p).toMatch(/every touch makes contact/);
+    expect(p).toMatch(/never through them/);
+    expect(p).toMatch(/At most two people/);
+    expect(p).toMatch(/crisp real sounds/);
+    expect(p).toContain("No text, captions, subtitles or logos added.");
+    expect(veoClipPrompt({ motion, line: "", camera: "static", presenter: false }, "English")).toContain("Only the natural sound of the place.");
+    // A take the checker sent back is filmed again with what went wrong.
+    expect(veoClipPrompt({ motion, line: "", camera: "static", presenter: false, avoid: ["2 s: her hand passes through the leaves"] }, "English")).toContain("avoid exactly this: 2 s: her hand passes through the leaves.");
   });
 
-  it("joins 4 clips into exactly 30 seconds with their sound, a subtitle each and the brand on the last", () => {
-    const plan: ReelPlan = { ...ruleReel(input), clips: ruleReel(input).clips.map((c, i) => ({ ...c, line: `Line ${i}` })) };
+  it("edits like a viral reel: 30 seconds, a punch-in inside every clip, flash and whip cuts, captions popping in, the hook sticker", () => {
+    const plan: ReelPlan = { ...ruleReel(input), hook: "No land? No problem.", clips: ruleReel(input).clips.map((c, i) => ({ ...c, line: `Line ${i} has a few more words`, stress: ["words"] })) };
     const spec = buildReelSpec(plan, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20" });
     expect(totalMs(spec)).toBe(30_000);
-    expect(spec.scenes.every((s) => s.seconds === SCENE_SECONDS)).toBe(true);
-    expect(spec.scenes[0].layers[0]).toMatchObject({ kind: "video", url: "a.mp4", sound: true });
-    expect(spec.scenes[0].layers[1]).toMatchObject({ kind: "text", text: "Line 0" });
-    expect(spec.scenes[3].layers.some((l) => l.kind === "text" && l.text === "LEAF")).toBe(true);
-    expect(spec.scenes[3].layers.some((l) => l.kind === "text" && l.text.startsWith("WhatsApp"))).toBe(false);
-    const withContact = buildReelSpec(plan, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" });
-    expect(withContact.scenes[3].layers.some((l) => l.kind === "text" && l.text === "WhatsApp 0788 000 000")).toBe(true);
-    expect(withContact.scenes[0].layers.some((l) => l.kind === "text" && l.text === "WhatsApp 0788 000 000")).toBe(false);
-    // The price is written on the last scene (only speaking it is refused), never on the others.
-    const priced = buildReelSpec({ ...plan, price: "250,000 RWF" }, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" });
-    expect(priced.scenes[3].layers.some((l) => l.kind === "text" && l.text === "250,000 RWF")).toBe(true);
-    expect(priced.scenes.slice(0, 3).some((s) => s.layers.some((l) => l.kind === "text" && l.text === "250,000 RWF"))).toBe(false);
-    expect(reelCostUsd(0.8)).toBeCloseTo(3.49, 2);
+    expect(spec.scenes).toHaveLength(8);
+    // Two shots per clip: the same clip, its sound straight through, the second zoomed in.
+    expect(spec.scenes[0].layers[0]).toMatchObject({ kind: "video", url: "a.mp4", start: 0, sound: true });
+    expect(spec.scenes[1].layers[0]).toMatchObject({ kind: "video", url: "a.mp4", start: spec.scenes[0].seconds });
+    expect((spec.scenes[1].layers[0] as { keyframes: { scale: number }[] }).keyframes[0].scale).toBeGreaterThan(1.1);
+    expect(spec.scenes[1].transition).toBe("cut");
+    expect(spec.scenes.filter((_, i) => i % 2 === 0 && i > 0).map((s) => s.transition)).toEqual(["flash", "whip", "zoom"]);
+    // The hook's first punch comes fast.
+    expect(spec.scenes[0].seconds).toBeLessThan(2.5);
+    const captions = spec.scenes.flatMap((s) => s.layers).filter((l) => l.kind === "text" && l.animate === "wordsPop");
+    expect(captions.map((l) => (l as { text: string }).text).join(" ")).toContain("Line 0 has a");
+    expect(captions[0]).toMatchObject({ highlight: { words: ["words"], color: "#1B5E20" } });
+    expect(spec.scenes[0].layers.some((l) => l.kind === "text" && l.text === "No land? No problem." && l.uppercase)).toBe(true);
+    expect(spec.scenes[7].layers.some((l) => l.kind === "text" && l.text === "LEAF")).toBe(true);
+    const withContact = buildReelSpec({ ...plan, price: "250,000 RWF" }, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" });
+    expect(withContact.scenes[7].layers.some((l) => l.kind === "text" && l.text === "WhatsApp 0788 000 000")).toBe(true);
+    // The price is a sticker on the last shot (only speaking it is refused), never before.
+    expect(withContact.scenes[7].layers.some((l) => l.kind === "text" && l.text === "250,000 RWF")).toBe(true);
+    expect(withContact.scenes.slice(0, 7).some((s) => s.layers.some((l) => l.kind === "text" && (l.text === "250,000 RWF" || l.text.startsWith("WhatsApp"))))).toBe(false);
+    expect(reelCostUsd(0.8)).toBeCloseTo(3.5, 2);
+  });
+
+  it("puts every cut on the music's beat when it is known, and keeps 30 seconds and the clips' 8 seconds", () => {
+    const beat = { period: 0.5, offset: 0.1 };
+    const { lengths, punches } = reelCuts(beat);
+    expect(lengths.reduce((a, b) => a + b, 0)).toBeCloseTo(30, 5);
+    expect(lengths.every((l) => l >= 6.8 && l <= 8)).toBe(true);
+    let t = 0;
+    for (let i = 0; i < 4; i++) {
+      const onBeat = (x: number) => Math.abs(((x - 0.1) / 0.5) - Math.round((x - 0.1) / 0.5)) < 1e-6;
+      if (i > 0) expect(onBeat(t)).toBe(true);
+      expect(onBeat(t + punches[i])).toBe(true);
+      t += lengths[i];
+    }
+    expect(reelCuts(null)).toEqual({ lengths: [7.5, 7.5, 7.5, 7.5], punches: [1.8, 3.75, 3.75, 3.75] });
+    expect(snapToBeat(3.6, 1, 5, null)).toBe(3.6);
   });
 });
 
@@ -88,6 +119,29 @@ describe("what is spoken", () => {
     expect(p).toContain('"Twandikire kuri WhatsApp uyu munsi!"');
   });
   it("a line that is only a price leaves the clip with its natural sound", () => {
-    expect(veoClipPrompt({ motion, line: "Only 250,000 RWF.", camera: "handheld", presenter: true }, "English")).toContain("Only natural sound of the place.");
+    expect(veoClipPrompt({ motion, line: "Only 250,000 RWF.", camera: "handheld", presenter: true }, "English")).toContain("Only the natural sound of the place.");
+  });
+});
+
+describe("the writer for any business", () => {
+  it("puts the product where it is really used, from the business's sector", () => {
+    expect(reelPrompt(input)).toMatch(/SETTING: a greenhouse, a farm field.*never a market/);
+    expect(reelPrompt({ ...input, sector: "salon" })).toContain("SETTING: the salon chair");
+    expect(REEL_SYSTEM).toMatch(/human, fun and interactive/);
+    expect(REEL_SYSTEM).toMatch(/at most two people/);
+  });
+  it("follows a viral recipe's techniques when there is one", () => {
+    const recipe = viralRecipe({ sector: "agriculture", product: "LEAF Hydro Tower", platform: "instagram", country: "Rwanda", purpose: "ad", seconds: 30, hasPrice: true, hasPhone: true, footage: { generated: true }, seed: "job-1" });
+    const p = reelPrompt({ ...input, recipe });
+    expect(p).toContain("VIRAL RECIPE");
+    expect(p).toContain(`- Opening: ${recipe.opening.idea.slice(0, 40)}`);
+  });
+  it("reads the hook sticker, the setting and the stressed words, and drops what does not fit", () => {
+    const clips = beats.map((_, i) => ({ index: i, frame: longFrame, motion, line: "Grow fresh greens at home today", stress: i === 0 ? ["fresh greens", "nowhere"] : [] }));
+    const plan = readReel({ title: "T", caption: "C", hashtags: [], music: "afro", hook: "No land? No problem.", setting: "a home greenhouse in Kigali", clips }, input)!;
+    expect(plan.hook).toBe("No land? No problem.");
+    expect(plan.setting).toBe("a home greenhouse in Kigali");
+    expect(plan.clips[0].stress).toEqual(["fresh greens"]);
+    expect(readReel({ title: "T", caption: "C", hashtags: [], music: "afro", hook: "Only 250,000 RWF today for you all", clips }, input)!.hook).toBeNull();
   });
 });

@@ -28,6 +28,9 @@ import * as veo from "@/lib/video-engine/veo";
 import { downloadVeo, getVeoOperation, submitVeo, veoClipUsd, veoLedgerUsage, veoModel } from "@/lib/video-engine/veo";
 import { CLIP_SECONDS, directReel, reelCostUsd, variantOf, veoClipPrompt, type ReelClip, type ReelLanguage, type ReelPlan, type ReelTier } from "./story";
 import { readReel, reelPrompt, REEL_SCHEMA, REEL_SYSTEM, ruleReel, type ReelInput } from "./writer";
+import { checkClip } from "./checker";
+import { sectorFromText } from "@/lib/video-engine/brain/select";
+import { viralRecipe, type ViralRecipe } from "@/lib/video-engine/brain/viral";
 
 export class ReelError extends Error {}
 
@@ -39,6 +42,8 @@ const FRAME_USD = 0.067;
 const PORTRAIT_USD = 0.134;
 const STEP_LEASE_MS = 3 * 60 * 1000;
 const CLIP_RETRIES = 2;
+/** Clips the checker may send back to be filmed again in one reel (each costs a clip). */
+export const MAX_REFILMS = 2;
 const CLIPS_BUCKET = "gallery-videos";
 
 /** The owner's test cap in USD for all reels together. */
@@ -120,8 +125,16 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     const recentJobs = await prisma.reelJob.findMany({ where: { businessId: owner.businessId, id: { not: job.id } }, orderBy: { createdAt: "desc" }, take: 10, select: { plan: true } });
     const recentClips = recentJobs.flatMap((j) => ((j.plan as unknown as ReelPlan).clips ?? []).map((c) => ({ variant: c.variant, camera: c.camera })));
     const beats = directReel(recentClips, job.id);
-    const plan = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean) });
-    await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null }), stepUntil: null } });
+    // What kind of business it is decides where the product is filmed, and which viral videos the reel learns from.
+    const sector = sectorFromText([loaded.facts.industry, loaded.facts.description, loaded.subject?.name, loaded.subject?.description].filter(Boolean).join(" "));
+    let recipe: ViralRecipe | null = null;
+    try {
+      recipe = viralRecipe({ sector, product: loaded.subject?.name ?? loaded.facts.name, platform: "instagram", country: "Rwanda", language: request.language, purpose: "ad", seconds: 30, hasPrice: !!loaded.subject?.price, hasPhone: true, footage: { generated: true }, seed: job.id });
+    } catch {
+      recipe = null;
+    }
+    const plan = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean), sector, recipe });
+    await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null, refilms: 0, sources: recipe?.sources.map((s) => s.id) ?? [] }), stepUntil: null } });
     return job.id;
   } catch (error) {
     await prisma.reelJob.update({ where: { id: job.id }, data: { status: "failed", stepUntil: null, error: "The reel could not be planned. Please try again." } });
@@ -145,9 +158,11 @@ function base64(bytes: Uint8Array): string {
 async function frameFor(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhoto: string | null): Promise<string> {
   const prompt = [
     `A tall vertical (9:16) photograph, the first frame of a video clip. ${clip.frame}`,
-    clip.presenter ? `The presenter is ${plan.presenter}: the same person as in the first attached portrait.` : null,
-    productPhoto ? "The product is exactly the one in the last attached photo." : null,
-    realismBlock("a 35mm documentary photo (Canon EOS R6, 35mm f/2 lens, available light, photojournalism style)"),
+    plan.setting ? `The place: ${plan.setting}. Nowhere else.` : null,
+    clip.presenter ? `The presenter is ${plan.presenter}: the same person as in the first attached portrait (take only the face, hair and clothes from it, never its place or background).` : null,
+    productPhoto ? "The product is exactly the one in the last attached photo: one of it, its real shape and size." : null,
+    "At most two people, no crowd behind them; hands rest naturally or hold things firmly.",
+    realismBlock("a photo taken on a modern phone (main camera, natural light, handheld at eye level), like a friend took it"),
     "No words, letters, captions or logos anywhere in the picture.",
   ].filter(Boolean).join("\n");
   const paint = () => createEngineDesign({ userId: owner.userId, businessId: owner.businessId, subjectId: job.subjectId, service: true, model: FRAME_MODEL(), aspectRatio: "9:16", prompt, references: clip.presenter ? [presenterPath] : [], usePhotoPath: productPhoto });
@@ -188,7 +203,7 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
     for (const clip of plan.clips.filter((c) => c.status === "framed")) {
       const frame = await bytesOf("designs", clip.framePath!);
       const mimeType = frame[0] === 0x89 ? "image/png" : "image/jpeg";
-      clip.operation = await submitVeo({ model, prompt: veoClipPrompt(clip, job.language as ReelLanguage), image: { base64: base64(frame), mimeType }, ratio: "9:16", seconds: CLIP_SECONDS, resolution: "720p" }, { apiKey });
+      clip.operation = await submitVeo({ model, prompt: veoClipPrompt(clip, job.language as ReelLanguage, plan.setting), image: { base64: base64(frame), mimeType }, ratio: "9:16", seconds: CLIP_SECONDS, resolution: "720p" }, { apiKey });
       clip.status = "filming";
     }
     // 3. The clips being filmed: done ones are downloaded, through the cost ledger.
@@ -213,6 +228,19 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
       clip.clipPath = path;
       clip.status = "done";
       await addCost(job.id, veoClipUsd(CLIP_SECONDS, model));
+      // The Checker watches the clip for broken physics and AI slop; a bad one is filmed again with what went wrong,
+      // while the reel's refilms and the test budget allow.
+      const verdict = await checkClip(owner, bytes, plan.setting ?? null);
+      clip.problems = verdict.problems;
+      if (!verdict.ok) {
+        const room = (await reelTestSpentUsd()) + veoClipUsd(CLIP_SECONDS, model) <= reelTestCapUsd();
+        if ((plan.refilms ?? 0) < MAX_REFILMS && room) {
+          plan.refilms = (plan.refilms ?? 0) + 1;
+          clip.avoid = verdict.problems;
+          clip.status = "framed";
+          clip.operation = null;
+        }
+      }
     }
     const failed = plan.clips.find((c) => c.status === "failed");
     if (failed) return void (await save({ status: "failed", error: `A clip could not be made: ${failed.error}` }));
@@ -235,7 +263,10 @@ export type ReelView = {
   error: string | null;
   presenter: string | null;
   price: string | null;
-  clips: { beat: string; label: string; line: string; status: string; frameUrl: string | null; clipUrl: string | null }[];
+  hook: string | null;
+  setting: string | null;
+  refilms: number;
+  clips: { beat: string; label: string; line: string; stress: string[]; status: string; problems: string[]; frameUrl: string | null; clipUrl: string | null }[];
   musicUrl: string | null;
   reelUrl: string | null;
 };
@@ -270,7 +301,10 @@ export async function reelView(owner: Owner, jobId: string): Promise<ReelView | 
     error: job.error,
     presenter: plan.presenter ?? null,
     price: plan.price ?? null,
-    clips: clips.map((c) => ({ beat: c.beat, label: variantOf(c.variant)?.idea ?? c.beat, line: c.line, status: c.status, frameUrl: c.framePath ? (frames.get(c.framePath) ?? null) : null, clipUrl: c.clipPath ? (files.get(c.clipPath) ?? null) : null })),
+    hook: plan.hook ?? null,
+    setting: plan.setting ?? null,
+    refilms: plan.refilms ?? 0,
+    clips: clips.map((c) => ({ beat: c.beat, label: variantOf(c.variant)?.idea ?? c.beat, line: c.line, stress: c.stress ?? [], status: c.status, problems: c.problems ?? [], frameUrl: c.framePath ? (frames.get(c.framePath) ?? null) : null, clipUrl: c.clipPath ? (files.get(c.clipPath) ?? null) : null })),
     musicUrl: music ? musicUrl(music.path) : null,
     reelUrl: job.path ? (files.get(job.path) ?? null) : null,
   };
