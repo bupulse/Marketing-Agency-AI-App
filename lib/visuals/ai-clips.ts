@@ -25,9 +25,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import { veoClipCredits } from "@/lib/video-engine/credits";
 import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
-import { defaultClipPlan, downloadVeo, getVeoOperation, submitVeo, veoLedgerUsage, veoModel, veoPrompt, VeoError, type ClipFacts, type VeoSeconds } from "@/lib/video-engine/veo";
+import { defaultClipPlan, getVeoOperation, submitVeo, veoClipBytes, veoLedgerUsage, veoModel, veoPrompt, VeoError, type ClipFacts, type VeoSeconds } from "@/lib/video-engine/veo";
 import { firstFrame } from "@/lib/video-engine/veo-frame";
 import { CLIP_NOTES, clipPathsOf, clipStoragePath, isOwnClipPath, pickClipScenes, withClips, withoutClips, type ClipJob } from "./clip-scenes";
+import { videoDurationMs } from "./duration";
 import { readVideoPlan } from "./video-plan";
 import { AI_CLIP_SECONDS, AI_CLIPS_PER_VIDEO } from "./video-quality";
 import type { VideoPlan } from "./types";
@@ -66,7 +67,7 @@ export function readClipJobs(value: unknown): ClipJob[] {
     if (!j || typeof j !== "object") return [];
     const c = j as Partial<ClipJob>;
     if (typeof c.scene !== "number" || typeof c.photoPath !== "string" || !["submitted", "made", "failed"].includes(String(c.status))) return [];
-    return [{ scene: c.scene, photoPath: c.photoPath, operation: typeof c.operation === "string" ? c.operation : null, status: c.status!, path: c.path ?? null, bytes: c.bytes ?? 0, error: c.error ?? null }];
+    return [{ scene: c.scene, photoPath: c.photoPath, operation: typeof c.operation === "string" ? c.operation : null, status: c.status!, path: c.path ?? null, bytes: c.bytes ?? 0, ...(typeof c.ms === "number" ? { ms: c.ms } : {}), error: c.error ?? null }];
   });
 }
 
@@ -211,11 +212,12 @@ async function checkClips(id: string, now: Date, deps: ClipDeps, result: AiClips
     try {
       const op = await getVeoOperation(job.operation, veoOpts(deps));
       if (!op.done) continue;
-      if (op.error || !op.videoUri) {
+      if (op.error || (!op.videoUri && !op.videoBytes)) {
         Object.assign(job, { status: "failed", error: op.error?.kind ?? "failed" });
         continue;
       }
-      const bytes = await downloadVeo(op.videoUri, veoOpts(deps));
+      // Gemini Omni returns the clip inline; Veo gave an address to download.
+      const bytes = await veoClipBytes(op, veoOpts(deps));
       if (bytes.length > MAX_CLIP_BYTES) {
         Object.assign(job, { status: "failed", error: "too_large" });
         continue;
@@ -223,10 +225,12 @@ async function checkClips(id: string, now: Date, deps: ClipDeps, result: AiClips
       const path = clipStoragePath(row.business.userId, id, job.scene);
       const up = await createAdminClient().storage.from("media").upload(path, new Blob([new Uint8Array(bytes)], { type: "video/mp4" }), { contentType: "video/mp4", upsert: true });
       if (up.error) throw new Error("The clip could not be saved.");
-      Object.assign(job, { status: "made", path, bytes: bytes.length, error: null });
+      // Gemini Omni has no length setting (the prompt asks for AI_CLIP_SECONDS): the real length is read from the file.
+      const ms = videoDurationMs(new Uint8Array(bytes), "video/mp4") ?? AI_CLIP_SECONDS * 1000;
+      Object.assign(job, { status: "made", path, bytes: bytes.length, ms, error: null });
       result.made += 1;
       // Google bills a made clip: its seconds go into the ledger (lib/ai/pricing.ts prices them).
-      await recordAiCall({ userId: row.business.userId, businessId: row.businessId, feature: VIDEO_LEDGER_FEATURES.veo }, { ...veoLedgerUsage(model, AI_CLIP_SECONDS), success: true, durationMs: 0 });
+      await recordAiCall({ userId: row.business.userId, businessId: row.businessId, feature: VIDEO_LEDGER_FEATURES.veo }, { ...veoLedgerUsage(model, Math.max(1, Math.round(ms / 1000))), success: true, durationMs: 0 });
     } catch (error) {
       // Google busy, the network, a save that failed: asked again next sweep, until the clips are given up.
       if (error instanceof VeoError && !error.temporary) Object.assign(job, { status: "failed", error: error.kind });
@@ -257,7 +261,7 @@ async function settle(id: string, now: Date, note: string | null, result: AiClip
   const plan = readVideoPlan(row.plan);
   let next: VideoPlan | null = plan;
   if (plan) {
-    if (made.length) next = withClips(plan, made.map((j) => ({ scene: j.scene, path: j.path!, ms: AI_CLIP_SECONDS * 1000 })), made.length < jobs.length ? CLIP_NOTES.partial : null);
+    if (made.length) next = withClips(plan, made.map((j) => ({ scene: j.scene, path: j.path!, ms: j.ms ?? AI_CLIP_SECONDS * 1000 })), made.length < jobs.length ? CLIP_NOTES.partial : null);
     else next = withoutClips(plan, note ?? (jobs.some((j) => j.error === "blocked") ? CLIP_NOTES.blocked : jobs.some((j) => j.error === "timeout") ? CLIP_NOTES.timeout : CLIP_NOTES.failed));
   }
   const { count } = await prisma.contentVisual.updateMany({

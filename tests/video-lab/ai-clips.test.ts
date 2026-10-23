@@ -4,7 +4,9 @@ import path from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Every Veo call is mocked (no spend): the fetch below answers as Google does.
+// Every Veo call is mocked (no spend): the fetch below answers as Google does. The studio's runs, charges, retries and
+// refunds do not depend on the model, so these tests pin Veo 3.1 Lite's request shape and prices (the default is
+// Gemini Omni Flash since 23 October 2026; tests/video-engine/veo.test.ts covers both).
 const m = vi.hoisted(() => ({
   charge: vi.fn(),
   refund: vi.fn(async () => undefined),
@@ -83,6 +85,7 @@ const settle = async (runId: string) => {
 };
 
 beforeEach(() => {
+  vi.stubEnv("VEO_MODEL", "veo-3.1-lite-generate-preview");
   vi.clearAllMocks();
   m.charge.mockResolvedValue(PAYER);
   m.enabled.mockResolvedValue(true);

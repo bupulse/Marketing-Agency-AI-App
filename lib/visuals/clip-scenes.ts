@@ -16,6 +16,8 @@ export type ClipJob = {
   /** The clip in the media bucket (`<userId>/aiclips/<visualId>-<scene>.mp4`) once made. */
   path?: string | null;
   bytes?: number;
+  /** The clip's real length, read from the file (Gemini Omni has no length setting). */
+  ms?: number;
   /** Why it failed: a VeoError kind ("blocked", "failed", "timeout"...), never Google's own words. */
   error?: string | null;
 };

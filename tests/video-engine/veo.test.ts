@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { VEO_MODELS, VeoError, checkVeoConnection, defaultClipPlan, downloadVeo, getVeoOperation, makeVeoClip, submitVeo, veoBody, veoClipUsd, veoLedgerUsage, veoPrompt, veoUsdPerSecond, type VeoRequest } from "@/lib/video-engine/veo";
+import { VEO_MODELS, VeoError, checkVeoConnection, defaultClipPlan, downloadVeo, getVeoOperation, isOmniModel, makeVeoClip, omniBody, submitVeo, veoBody, veoClipBytes, veoClipUsd, veoLedgerUsage, veoModel, veoPrompt, veoTierOf, veoUsdPerSecond, type VeoRequest } from "@/lib/video-engine/veo";
 import { creditsForUsd, veoClipCredits } from "@/lib/video-engine/credits";
 import { estimateCostUsd } from "@/lib/ai/pricing";
 import { clipSoundCues, isAiClipUrl, videoClips } from "@/lib/video-engine/video-frames";
@@ -12,7 +12,9 @@ const mp4 = () => {
   b.write("ftypisom", 4, "latin1");
   return new Response(new Uint8Array(b), { status: 200, headers: { "content-type": "video/mp4" } });
 };
-const req: VeoRequest = { prompt: "A hand lifts the tower.", image: { base64: "AAAA", mimeType: "image/jpeg" }, ratio: "9:16", seconds: 4, resolution: "720p" };
+// The Veo request shape (predictLongRunning); the Gemini Omni tests below use `omniReq`.
+const req: VeoRequest = { model: VEO_MODELS.lite.id, prompt: "A hand lifts the tower.", image: { base64: "AAAA", mimeType: "image/jpeg" }, ratio: "9:16", seconds: 4, resolution: "720p" };
+const omniReq: VeoRequest = { ...req, model: VEO_MODELS.omni.id };
 const o = (fetchImpl: typeof fetch) => ({ apiKey: "test-key", fetchImpl });
 
 describe("veo request", () => {
@@ -171,3 +173,85 @@ describe("AI clips in the mix", () => {
     expect(clipSoundCues(spec).map((c) => c.url)).toEqual(["/api/clip/um-0123456789ab"]);
   });
 });
+
+describe("Gemini Omni Flash (the default since the Veo 3.1 previews shut down, 22 October 2026)", () => {
+  const MP4 = (() => {
+    const b = Buffer.alloc(4096);
+    b.write("ftypisom", 4, "latin1");
+    return b;
+  })();
+
+  it("is the default model, priced at about $0.10 a second (190 credits for 6 s, 380 for an AI video of 2 clips)", () => {
+    expect(veoModel({})).toBe("gemini-omni-1.1-flash");
+    expect(veoModel({ VEO_MODEL: "veo-3.1-lite-generate-preview" })).toBe("veo-3.1-lite-generate-preview");
+    expect(isOmniModel(veoModel({}))).toBe(true);
+    expect(veoTierOf("gemini-omni-1.1-flash")).toBe("omni");
+    expect(veoTierOf("veo-3.1-lite-generate-001")).toBe("lite");
+    expect(veoUsdPerSecond(VEO_MODELS.omni.id, "720p", {})).toBe(0.1);
+    expect(veoClipCredits(4, VEO_MODELS.omni.id, "720p", {})).toBe(130);
+    expect(veoClipCredits(6, VEO_MODELS.omni.id, "720p", {})).toBe(190);
+    expect(veoClipCredits(8, VEO_MODELS.omni.id, "720p", {})).toBe(255);
+    // The ledger prices Omni seconds as video, not as a Gemini text model.
+    expect(estimateCostUsd("gemini-omni-1.1-flash", veoLedgerUsage("gemini-omni-1.1-flash", 6).usage)).toBeCloseTo(0.6);
+  });
+
+  it("builds the Interactions request: the photo then the prompt, image to video, 9:16, in the background", () => {
+    expect(omniBody(omniReq)).toEqual({
+      model: "gemini-omni-1.1-flash",
+      input: [{ type: "image", data: "AAAA", mime_type: "image/jpeg" }, { type: "text", text: req.prompt }],
+      response_format: { type: "video", aspect_ratio: "9:16", resolution: "720p", delivery: "uri" },
+      generation_config: { video_config: { task: "image_to_video" } },
+      background: true,
+    });
+    expect(omniBody({ ...omniReq, image: null })).toMatchObject({ input: req.prompt, generation_config: { video_config: { task: "text_to_video" } } });
+  });
+
+  it("submits to /interactions and names the operation interactions/<id>", async () => {
+    const f = vi.fn(async () => ok({ id: "v1_abc", status: "in_progress" }));
+    expect(await submitVeo(omniReq, o(f as unknown as typeof fetch))).toBe("interactions/v1_abc");
+    const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/interactions");
+    expect(JSON.parse(String(init.body)).model).toBe("gemini-omni-1.1-flash");
+    // Omni's errors ({ error: { code, message } }) are explained in plain English too.
+    const e = await submitVeo(omniReq, o((async () => ok({ error: { code: "invalid_request", message: "bad thing in project 99" } }, 400)) as unknown as typeof fetch)).then(() => null, (x: unknown) => x as VeoError);
+    expect(e).toBeInstanceOf(VeoError);
+    expect(e?.message).not.toMatch(/99/);
+  });
+
+  it("reads an interaction: working, the clip inline or as a link, a safety block, a failure", async () => {
+    const read = (body: unknown) => getVeoOperation("interactions/v1_abc", o((async () => ok(body)) as unknown as typeof fetch));
+    expect(await read({ id: "v1_abc", status: "in_progress" })).toMatchObject({ done: false, error: null });
+    const inline = await read({ status: "completed", steps: [{ type: "thought" }, { type: "model_output", content: [{ type: "video", mime_type: "video/mp4", data: MP4.toString("base64") }] }] });
+    expect(inline.done).toBe(true);
+    expect((await veoClipBytes(inline, o((async () => mp4()) as unknown as typeof fetch))).length).toBe(4096);
+    const linked = await read({ status: "completed", steps: [{ type: "model_output", content: [{ type: "video", uri: "files/xyz" }] }] });
+    expect(linked.videoUri).toBe("https://generativelanguage.googleapis.com/v1beta/files/xyz");
+    const blocked = await read({ status: "failed", error: { code: "invalid_request", message: "The input violates our usage policies." } });
+    expect(blocked.error?.kind).toBe("blocked");
+    expect((await read({ status: "failed", error: { code: "internal", message: "Something broke" } })).error?.kind).toBe("failed");
+    expect((await read({ status: "completed", steps: [{ type: "model_output", content: [{ type: "text", text: "I can't make that." }] }] })).error?.kind).toBe("failed");
+    await expect(veoClipBytes({ videoUri: null, videoBytes: Buffer.from("not a video at all, far too short") }, o((async () => mp4()) as unknown as typeof fetch))).rejects.toThrow(/not an MP4/);
+  });
+
+  it("downloads a Files API link through its download form", async () => {
+    const f = vi.fn(async () => mp4());
+    await downloadVeo("https://generativelanguage.googleapis.com/v1beta/files/xyz", o(f as unknown as typeof fetch));
+    expect((f.mock.calls[0] as unknown as [string])[0]).toBe("https://generativelanguage.googleapis.com/v1beta/files/xyz:download?alt=media");
+  });
+
+  it("makes a clip end to end: submit, poll, the inline video, its cost", async () => {
+    let polls = 0;
+    const f = vi.fn(async (url: string) => {
+      if (url.endsWith("/interactions")) return ok({ id: "v1_x", status: "in_progress" });
+      return ok(++polls < 2 ? { status: "in_progress" } : { status: "completed", steps: [{ type: "model_output", content: [{ type: "video", data: MP4.toString("base64") }] }] });
+    });
+    const clip = await makeVeoClip({ ...omniReq, seconds: 6 }, { ...o(f as unknown as typeof fetch), sleep: async () => {} });
+    expect(clip).toMatchObject({ operation: "interactions/v1_x", model: "gemini-omni-1.1-flash", seconds: 6 });
+    expect(clip.costUsd).toBeCloseTo(0.6);
+  });
+
+  it("asks for the clip's length in the prompt (Omni has no length setting)", () => {
+    expect(veoPrompt({ shot: "Hands lift it.", seconds: 6 }, { productName: "LEAF Hydro Tower" })).toMatch(/Length: about 6 seconds/);
+  });
+});
+

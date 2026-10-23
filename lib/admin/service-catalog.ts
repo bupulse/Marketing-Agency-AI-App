@@ -287,7 +287,7 @@ export const SERVICES: ServiceInfo[] = [
   {
     id: "veo",
     name: "Google Veo AI clips",
-    purpose: "Google's AI video model (Veo 3.1 Lite through the Gemini API): short real moving clips of the client's product, mixed into Video Studio videos when the client picks \"AI makes the clips\" (docs/VIDEO_ENGINE.md, \"Veo AI clips\"). It uses the Gemini key (GEMINI_API_KEY, billing must be on: Veo has no free tier) and is billed per second of video ($0.05 at 720p). VEO_MODEL changes the model (default veo-3.1-lite-generate-preview); VEO_USD_PER_SECOND overrides the price used for credits and costs.",
+    purpose: "Google's AI video model (Gemini Omni Flash through the Gemini API, since Google shut the Veo 3.1 previews down on 22 October 2026): short real moving clips of the client's product, mixed into Video Studio videos when the client picks \"AI makes the clips\" and into Autopilot / Daily posts videos set to AI videos (docs/VIDEO_ENGINE.md, \"Veo AI clips\"; docs/CONTENT_VISUALS.md, \"Video quality\"). It uses the Gemini key (GEMINI_API_KEY, billing must be on: there is no free tier) and is billed per second of video (about $0.10 at 720p). VEO_MODEL changes the model (default gemini-omni-1.1-flash); VEO_USD_PER_SECOND overrides the price used for credits and costs.",
     env: ["GEMINI_API_KEY"],
     optionalEnv: ["VEO_MODEL", "VEO_USD_PER_SECOND"],
     features: ["AI clips in Video Studio videos (\"AI makes the clips\")"],

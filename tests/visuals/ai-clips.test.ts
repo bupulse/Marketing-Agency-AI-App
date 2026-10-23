@@ -119,26 +119,33 @@ function addVisual(id: string, extra: Record<string, unknown> = {}) {
   db.rows.set(id, { id, businessId: "biz-1", contentId: "content-1", groupId: null, kind: "video", status: "pending", plan: plan(), clipState: "waiting", clipJobs: [], clipCredits: 0, clipPeriodStart: null, clipUntil: null, clipLeaseUntil: null, createdAt: T0, updatedAt: T0, ...extra });
 }
 
-/** Google Veo as a fetch: each submit answers an operation; each operation answers from `ops` (by its number). */
+/**
+ * Google as a fetch, through Gemini Omni's Interactions API (the default model): each submit answers an interaction;
+ * each check answers from `ops` (by its number), the clip inline. Old Veo operation names (models/.../operations/opN)
+ * are answered the Veo way, for clips submitted before the switch.
+ */
 function veo(ops: Record<number, "running" | "done" | "blocked" | "failed"> = {}, submit: number[] = []) {
   let n = 0;
   const calls: string[] = [];
+  const data = Buffer.from(MP4).toString("base64");
   const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url);
     calls.push(`${init?.method ?? "GET"} ${u}`);
-    if (u.endsWith(":predictLongRunning")) {
+    if (u.endsWith("/interactions") && init?.method === "POST") {
       n += 1;
-      if (submit.includes(n)) return new Response(JSON.stringify({ error: { status: "INVALID_ARGUMENT", message: "bad" } }), { status: 400 });
-      return Response.json({ name: `models/veo-3.1-lite-generate-preview/operations/op${n}` });
+      if (submit.includes(n)) return new Response(JSON.stringify({ error: { code: "invalid_request", message: "bad" } }), { status: 400 });
+      return Response.json({ id: `v1_op${n}`, status: "in_progress" });
+    }
+    const it = u.match(/interactions\/v1_op(\d+)$/);
+    if (it) {
+      const state = ops[Number(it[1])] ?? "done";
+      if (state === "running") return Response.json({ id: `v1_op${it[1]}`, status: "in_progress" });
+      if (state === "blocked") return Response.json({ id: `v1_op${it[1]}`, status: "failed", error: { code: "invalid_request", message: "The input image violates our usage policies (recognizable person)." } });
+      if (state === "failed") return Response.json({ id: `v1_op${it[1]}`, status: "failed", error: { code: "internal", message: "internal" } });
+      return Response.json({ id: `v1_op${it[1]}`, status: "completed", steps: [{ type: "user_input" }, { type: "model_output", content: [{ type: "video", mime_type: "video/mp4", data }] }] });
     }
     const op = u.match(/operations\/op(\d+)$/);
-    if (op) {
-      const state = ops[Number(op[1])] ?? "done";
-      if (state === "running") return Response.json({ name: `op${op[1]}`, done: false });
-      if (state === "blocked") return Response.json({ name: `op${op[1]}`, done: true, response: { generateVideoResponse: { raiMediaFilteredCount: 1, raiMediaFilteredReasons: ["celebrity"] } } });
-      if (state === "failed") return Response.json({ name: `op${op[1]}`, done: true, error: { code: 13, message: "internal" } });
-      return Response.json({ name: `op${op[1]}`, done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: `https://generativelanguage.googleapis.com/v1beta/files/clip${op[1]}:download` } }] } } });
-    }
+    if (op) return Response.json({ name: `op${op[1]}`, done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: `https://generativelanguage.googleapis.com/v1beta/files/clip${op[1]}:download` } }] } } });
     if (u.includes("/files/")) return new Response(MP4, { status: 200 });
     return new Response("not found", { status: 404 });
   }) as unknown as typeof fetch;
@@ -225,14 +232,15 @@ describe("AI clips: falling back before anything is paid", () => {
 });
 
 describe("AI clips: made overnight", () => {
-  it("takes 190 credits, submits 2 clips, then saves them into the plan's scenes", async () => {
+  it("takes 380 credits (2 Gemini Omni clips of 6 s), submits them, then saves them into the plan's scenes", async () => {
     addVisual("v1");
     const g = veo();
     const first = await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
     expect(first.started).toBe(1);
-    expect(usage.consumeUsage).toHaveBeenCalledWith("company-1", "videoCredits", 190);
+    expect(usage.consumeUsage).toHaveBeenCalledWith("company-1", "videoCredits", 380);
+    expect(g.calls.filter((c) => c.startsWith("POST") && c.endsWith("/v1beta/interactions"))).toHaveLength(2);
     expect(row("v1").clipState).toBe("making");
-    expect(row("v1").clipCredits).toBe(190);
+    expect(row("v1").clipCredits).toBe(380);
     expect(readClipJobs(row("v1").clipJobs).map((j) => j.status)).toEqual(["submitted", "submitted"]);
     expect(ledger.submits).toBe(2);
 
@@ -262,10 +270,10 @@ describe("AI clips: made overnight", () => {
     await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
     await runAiClips(later(4 * 60_000), { env, fetchImpl: g.fetchImpl });
     expect(row("v1").clipState).toBe("making");
-    expect(row("v1").clipCredits).toBe(190);
+    expect(row("v1").clipCredits).toBe(380);
   });
 
-  it("one clip blocked: keeps the good one, gives back its 95 credits, says why", async () => {
+  it("one clip blocked: keeps the good one, gives back its 190 credits, says why", async () => {
     addVisual("v1");
     const g = veo({ 2: "blocked" });
     await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
@@ -274,10 +282,10 @@ describe("AI clips: made overnight", () => {
     expect(rowPlan("v1").scenes.filter((s) => s.clipPath)).toHaveLength(1);
     expect(rowPlan("v1").aiNote).toBe(CLIP_NOTES.partial);
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
-    expect(usage.refundUsage).toHaveBeenCalledWith("company-1", "videoCredits", new Date("2026-10-01T00:00:00Z"), 95);
+    expect(usage.refundUsage).toHaveBeenCalledWith("company-1", "videoCredits", new Date("2026-10-01T00:00:00Z"), 190);
   });
 
-  it("both clips blocked: a simple video, all 190 back exactly once", async () => {
+  it("both clips blocked: a simple video, all 380 back exactly once", async () => {
     addVisual("v1");
     const g = veo({ 1: "blocked", 2: "blocked" });
     await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
@@ -287,7 +295,7 @@ describe("AI clips: made overnight", () => {
     expect(rowPlan("v1").quality).toBe("simple");
     expect(rowPlan("v1").aiNote).toBe(CLIP_NOTES.blocked);
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
-    expect(usage.refundUsage.mock.calls[0][3]).toBe(190);
+    expect(usage.refundUsage.mock.calls[0][3]).toBe(380);
   });
 
   it("Google refuses both submissions: a simple video, credits back once", async () => {
@@ -296,7 +304,7 @@ describe("AI clips: made overnight", () => {
     expect(row("v1").clipState).toBe("fallback");
     expect(rowPlan("v1").aiNote).toBe(CLIP_NOTES.failed);
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
-    expect(usage.refundUsage.mock.calls[0][3]).toBe(190);
+    expect(usage.refundUsage.mock.calls[0][3]).toBe(380);
   });
 
   it("too slow: given up after the limit, credits back, simple video", async () => {
@@ -329,7 +337,7 @@ describe("AI clips: made overnight", () => {
   });
 
   it("a start that died after taking the credits (nothing at Google): the credits go back once", async () => {
-    addVisual("v1", { clipCredits: 190, clipPeriodStart: new Date("2026-10-01T00:00:00Z") });
+    addVisual("v1", { clipCredits: 380, clipPeriodStart: new Date("2026-10-01T00:00:00Z") });
     await runAiClips(T0, { env, fetchImpl: veo().fetchImpl });
     await runAiClips(later(4 * 60_000), { env, fetchImpl: veo().fetchImpl });
     expect(row("v1").clipState).toBe("fallback");
@@ -338,7 +346,7 @@ describe("AI clips: made overnight", () => {
   });
 
   it("a start that died after submitting: the clips at Google are followed up, not paid twice", async () => {
-    addVisual("v1", { clipCredits: 190, clipPeriodStart: new Date("2026-10-01T00:00:00Z"), clipJobs: [{ scene: 0, photoPath: "company-1/projects/p1.jpg", operation: "models/veo-3.1-lite-generate-preview/operations/op1", status: "submitted" }] });
+    addVisual("v1", { clipCredits: 380, clipPeriodStart: new Date("2026-10-01T00:00:00Z"), clipJobs: [{ scene: 0, photoPath: "company-1/projects/p1.jpg", operation: "models/veo-3.1-lite-generate-preview/operations/op1", status: "submitted" }] });
     const g = veo();
     await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
     expect(row("v1").clipState).toBe("making");
@@ -354,7 +362,7 @@ describe("releaseClips", () => {
     const p = plan();
     p.scenes[0].clipPath = "company-1/aiclips/v1-0.mp4";
     p.scenes[1].clipPath = "other-user/aiclips/v9-0.mp4";
-    addVisual("v1", { plan: p, clipState: "making", clipCredits: 190, clipPeriodStart: new Date("2026-10-01T00:00:00Z") });
+    addVisual("v1", { plan: p, clipState: "making", clipCredits: 380, clipPeriodStart: new Date("2026-10-01T00:00:00Z") });
     await releaseClips("v1");
     await releaseClips("v1");
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);

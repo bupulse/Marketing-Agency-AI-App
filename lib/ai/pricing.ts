@@ -46,6 +46,9 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   // Gemini API list price at 720p, 19 October 2026 (Lite $0.05 a second, Fast $0.10, Veo 3.1 $0.40;
   // lib/video-engine/veo.ts VEO_USD_PER_SECOND, docs/AI_COSTS.md "Veo AI clips"). Only clips Google makes are billed.
   "veo-3.1-lite-generate": { input: 50_000, output: 0 },
+  // Gemini Omni Flash, the AI clips' model since the Veo previews shut down (22 October 2026), priced the same way (seconds
+  // as input tokens): $17.50 per million output tokens at 5,792 tokens a second of 720p, about $0.10 a second.
+  "gemini-omni-1.1-flash": { input: 100_000, output: 0 },
   "veo-3.1-fast-generate": { input: 100_000, output: 0 },
   "veo-3.1-generate": { input: 400_000, output: 0 },
 };
@@ -70,6 +73,7 @@ export function normalizeModel(model: string): string {
 const FAMILIES: [RegExp, string][] = [
   [/pro.*image|image.*pro/, "gemini-3-pro-image"],
   [/gemini.*image|imagen/, "gemini-3.1-flash-image"],
+  [/gemini-omni/, "gemini-omni-1.1-flash"],
   [/gemini.*flash-lite/, "gemini-3.1-flash-lite"],
   [/gemini.*flash/, "gemini-3.5-flash"],
   [/gemini.*pro/, "gemini-3.1-pro"],
