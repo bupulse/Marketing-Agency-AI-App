@@ -3,8 +3,8 @@
 The public pricing page (`/pricing`) shows the plans and prices of the visitor's region. Two parts help a visitor
 decide and pay without talking to anyone first:
 
-- **Pick your plan in 30 seconds**: three questions, then one suggested plan with its price, and **Book a free demo**
-  or **Sign up and pay now**.
+- **Pick your plan in 30 seconds**: three questions, then one suggested plan with its price, and **Start your free
+  trial** or **Sign up and pay now**.
 - **Pay with MTN MoMo or Airtel Money**: the five steps of a Mobile Money payment, with the region's own prices.
   Shown only in regions that take Mobile Money (Rwanda today).
 
@@ -21,8 +21,10 @@ region's (`docs/REGIONS.md`).
    - *Who will use BuPulse?* Just me · 2 or 3 people · 4 or more.
 3. **Our suggestion**: the plan's name and monthly price, why it fits ("Up to 60 AI texts and 30 designs a month:
    enough for about 12 posts"), and the buttons:
-   - a plan: **Book a free demo** and **Sign up and pay now** (both open sign-up; the plan is remembered, see below);
-   - "Someone to do it all for me": **Done for you: Managed by BuPulse**, with **Book a free demo** and **See
+   - a plan: **Start your free trial** and **Sign up and pay now** (both open sign-up; the plan is remembered, see
+     below), and a line: "Paying now? After signing up, start your trial on (plan), then pay from the Billing page
+     whenever you are ready.";
+   - "Someone to do it all for me": **Done for you: Managed by BuPulse**, with **Start your free trial** and **See
      done-for-you**;
    - nothing on sale fits (for example 4 or more users when the biggest plan has 3): **A custom plan**, with **Request a
      custom plan**.
@@ -35,7 +37,7 @@ region's (`docs/REGIONS.md`).
 
 ## How the suggestion is chosen
 
-- **Someone to do it all** → Managed by BuPulse (agreed in the demo).
+- **Someone to do it all** → Managed by BuPulse ("We agree what you need on a short call").
 - Otherwise the **cheapest plan on sale in the region** that has:
   - the feature the first answer needs (videos → the Videos feature; answering customers → Website chat);
   - at least as many AI texts **and** designs a month as posts (1 to 3 a week = 12, 4 to 7 = 30, more than one a day = 60);
@@ -49,11 +51,11 @@ team of 2 to 3 → **Business**; 4 or more people → **custom plan**.
 
 ## After the quiz: the remembered plan
 
-Pressing **Book a free demo** or **Sign up and pay now** on a suggested plan keeps its key in a small cookie
-(`bp-plan-pick`, 30 days, only the plan key). After sign-up and onboarding, **Book your demo → Choose the plan** starts
-on that plan with the badge **Suggested by your quiz** (only if the company's region offers it; otherwise the most
-popular plan, as before). The owner can still pick another one. From the demo screen the owner can pay at once
-("Pay for <plan>"), so "Sign up and pay now" needs no demo first.
+Pressing **Start your free trial** or **Sign up and pay now** on a suggested plan keeps its key in a small cookie
+(`bp-plan-pick`, 30 days, only the plan key). After sign-up and onboarding, **Choose the plan you want to try**
+(`/start-trial`) starts on that plan with the badge **Suggested by your quiz** (only if the company's region offers
+it; otherwise the most popular plan). The owner can still pick another one, then taps **Start my free trial**. There is
+no demo and no payment before the trial: someone who wants to pay now starts the trial and pays from **Billing**.
 
 ## For developers
 
@@ -63,7 +65,7 @@ popular plan, as before). The owner can still pick another one. From the demo sc
 | Quiz (client) | `app/(marketing)/pricing/plan-quiz.tsx` (`PlanQuiz`): radio questions, the result, the cookie written on click |
 | Mobile Money steps (server) | `app/(marketing)/pricing/momo-steps.tsx` (`MomoSteps`): hidden unless the region's `paymentMethods` has `momo` |
 | Page | `app/(marketing)/pricing/page.tsx`: passes `getRegionPlans(region.key)` (the same list as the cards) to both |
-| Remembered pick | `app/book-demo/page.tsx` reads `bp-plan-pick` with `cookies()`, keeps it only when `companyPlans()` offers it, and passes `suggested` to `components/demo/plan-choice.tsx` |
+| Remembered pick | `app/start-trial/page.tsx` reads `bp-plan-pick` with `cookies()`, keeps it only when `companyPlans()` offers it, and passes `suggested` to `components/trial/plan-choice.tsx` |
 | Tests | `tests/pricing/plan-quiz.test.ts` (recommendations, trial never suggested, catalog-driven, cookie value check, both components rendered, no price typed in the source) |
 
 No database table, no server action and no outgoing message: the quiz runs in the browser on the plans the page
@@ -76,4 +78,4 @@ already has.
 | The quiz suggests a plan that is not on the cards | It cannot: both read the same `plans` prop. Check the plan's region price in Admin → Regions and prices | Clear the price or the plan's status |
 | Always "A custom plan" | The region's plans lack the feature (Videos, Website chat) or enough designs or users | Admin → Plans: features and limits |
 | The Mobile Money steps are missing | The region's payment methods (Admin → Regions) do not list Mobile Money | Tick Mobile Money for the region |
-| Book your demo does not start on the quiz's plan | Cookies blocked, a plan the company's region does not offer, or more than 30 days since the quiz | Expected; the owner picks the plan |
+| Start your free trial does not start on the quiz's plan | Cookies blocked, a plan the company's region does not offer, or more than 30 days since the quiz | Expected; the owner picks the plan |

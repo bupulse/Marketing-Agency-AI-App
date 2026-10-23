@@ -34,7 +34,7 @@ ask the owner; Members see neither.
   offer from the BuPulse team (with Accept and pay), an invoice to pay, or a Mobile Money payment in progress.
 - **Current plan**: name, Monthly/Yearly, price, and when it renews or is paid until ("Renews automatically on …" for a
   card plan; "Your plan is paid until … You can renew from …" for Mobile Money). A badge says Active, Cancels soon, Free trial,
-  Waiting for demo, Payment failed, Cancelled or Ended. Buttons: **Renew with Mobile Money** / **Renew with card** (last 7 days only), **Cancel plan** or
+  Trial not started, Payment failed, Cancelled or Ended. Buttons: **Renew with Mobile Money** / **Renew with card** (last 7 days only), **Cancel plan** or
   **Resume** for card plans.
 - **Usage**: bars for text generations, brand designs, videos and voice characters (only the ones the plan has), and
   the date they reset.
@@ -103,7 +103,7 @@ locked), an optional budget and phone. After sending, an existing client can boo
    renewal date does not move.
 
 **Custom plan**
-1. Press **Request a custom plan** (Billing, the pricing page, the demo screen or Add to your plan), fill in the form, send.
+1. Press **Request a custom plan** (Billing, the pricing page or Add to your plan), fill in the form, send.
 2. Optional: book a short call about it.
 3. The BuPulse team sends an offer. It appears at the top of Billing (and by email), open for 7 days. Accept and pay it
    by Mobile Money, invoice or card. Paying switches the custom plan on.
@@ -139,7 +139,7 @@ locked), an optional budget and phone. After sending, an existing client can boo
 |---|---|
 | Pages | `app/dashboard/billing/page.tsx` (`pageGate("billing")`), `app/dashboard/usage/page.tsx`, `app/dashboard/upgrade/page.tsx`, `app/custom-plan/page.tsx`, `app/custom-plan/call/page.tsx` |
 | Server actions | `app/dashboard/billing/actions.ts`: `startCheckout`, `changePlan`, `cancelSubscription`, `resumeSubscription`, `openPortal`, `getInvoices`, `getInvoiceUrl`, `checkoutActivated`, `startMomoPayment`, `startMomoProofUpload`, `submitMomoProof`, `cancelMomoPayment`, `momoPaymentStatus`, `acceptOfferAction`, `addFeaturesAction`, `removeCardFeatureAction`, `payOfferByCardAction`; `app/custom-plan/actions.ts` (`requestCustomPlanAction`); `app/custom-plan/call/actions.ts` (`bookPlanCallAction`, `cancelPlanCallAction`) |
-| Components | `components/billing/plan-picker.tsx`, `pay-choice.tsx`, `plan-actions.tsx`, `momo-payment.tsx`, `add-features.tsx`, `offer-card.tsx`, `offer-actions.tsx`, `invoice-pay.tsx`, `client-invoices.tsx`, `invoice-list.tsx`, `checkout/index.tsx`, `checkout-return.tsx`, `upgrade-dialog.tsx`; `components/app/add-to-plan.tsx`, `trial-banner.tsx`, `offer-banner.tsx`, `demo-lock.tsx`, `demo-pay.tsx`, `invoice-lock.tsx`; `components/offers/custom-plan-form.tsx` |
+| Components | `components/billing/plan-picker.tsx`, `pay-choice.tsx`, `plan-actions.tsx`, `momo-payment.tsx`, `add-features.tsx`, `offer-card.tsx`, `offer-actions.tsx`, `invoice-pay.tsx`, `client-invoices.tsx`, `invoice-list.tsx`, `checkout/index.tsx`, `checkout-return.tsx`, `upgrade-dialog.tsx`; `components/app/add-to-plan.tsx`, `trial-banner.tsx`, `offer-banner.tsx`, `invoice-lock.tsx`; `components/offers/custom-plan-form.tsx` |
 | Logic | Plans: `lib/plans.ts`, `lib/plan-catalog.ts`, `lib/features.ts`, `lib/entitlements.ts`, `lib/region-prices.ts`, `lib/region.ts`, `lib/region-format.ts`. Usage: `lib/usage.ts`, `lib/billing/period.ts`. Card: `lib/billing/paddle.ts`, `paddle-events.ts`, `paddle-config.ts`, `apply.ts`, `card-ready.ts`, `carry-over.ts`, `signing.ts`, `index.ts`, `types.ts`. Mobile Money: `lib/billing/momo.ts`, `momo-shared.ts`, `momo-settings.ts`, `momo-proofs.ts`, `momo-emails.ts`, `momo-renewals.ts`, `methods/`. Shared: `lib/billing/renewal.ts`, `pay-methods.ts`. Offers: `lib/offers/{shared,service,addon-prices,activate,card,card-plan,card-plan-items,requests,reminders,emails}.ts`. Invoices: `lib/invoices/{service,pdf,shared,settings,storage,emails}.ts`. Calls: `lib/demo/plan-calls.ts` |
 | Database | `PlanDefinition`, `PricingRegion`, `PlanRegionPrice`, `Subscription`, `BillingEvent`, `ManualPayment`, `RenewalNotice`, `CardCarryOver`, `UsageRecord`, `VideoDayUsage`, `AddonPrice`, `PlanOffer`, `CustomPlanRequest`, `Invoice`, `DemoBooking` (plan calls) |
 | API routes | `app/api/billing/webhooks/paddle/route.ts` (Paddle), `app/api/billing/webhooks/[provider]/route.ts` (future automatic Mobile Money providers; 404 today), `app/api/invoices/[id]/pdf/route.ts` (client's own invoice PDF) |
@@ -182,7 +182,7 @@ Environment variables (names only; Paddle values are optional once saved in Admi
 2. **Card**: `startCheckout` returns the Paddle.js config (signed user id) → Paddle checkout → Paddle POSTs to
    `/api/billing/webhooks/paddle` → signature check, `BillingEvent` stored once → `processPaddleEvent` →
    `applyProviderSubscription`. The browser waits with `checkoutActivated`.
-3. **Every AI action** calls `consumeUsage(userId, metric)`: it checks suspension, demo, `periodState`, status, then
+3. **Every AI action** calls `consumeUsage(userId, metric)`: it checks suspension, whether the trial has started, `periodState`, status, then
    increments `UsageRecord` only while under the plan limit.
 4. **Daily**: `processMomoRenewals` sends 5-day and 1-day reminders (claimed in `RenewalNotice`), turns plans 3 days past
    their end into `PAST_DUE`, and handles offer/invoice reminders and carry-over retries.

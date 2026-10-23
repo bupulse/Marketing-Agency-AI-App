@@ -5,8 +5,8 @@ you open BuPulse and find them under **Posts**, in **Today: needs review**, read
 apps that need no approval).
 
 **Where:** Posts (Today: needs review), Posts → Settings → **Daily posts made for you**. **Plans:** the Business plan
-and custom plans, and a free trial of one of them (within the trial's limits). Not while a company waits for its demo
-or an invoice, after the trial ended unpaid, or when the account is suspended or being deleted.
+and custom plans, and a free trial of one of them (within the trial's limits). Not before a company starts its free trial
+(or pays its invoice), after the trial ended unpaid, or when the account is suspended or being deleted.
 
 ## What you see in the morning
 

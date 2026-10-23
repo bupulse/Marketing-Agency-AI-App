@@ -65,7 +65,7 @@ On a phone the same page stacks into one column:
   owner gets an email.
 - Instagram only takes JPEG pictures between 4:5 and 1.91:1, under 8 MB. BuPulse converts and pads them; a picture
   that is still too big fails with a clear message.
-- Posts of an account that is waiting for its demo, has an expired trial or an unpaid plan are kept, not lost: they
+- Posts of an account whose trial has not started, has an expired trial or an unpaid plan are kept, not lost: they
   stay scheduled and go out once the account is active again (late ones first).
 - What the admin can change: the plans (Admin → Plans), the email service switch (Admin → Services, "Resend": while it
   is off, reminders wait instead of failing), social network switches (Admin → Services), and force-disconnecting a

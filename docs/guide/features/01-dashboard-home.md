@@ -69,8 +69,8 @@ Around the page (on every dashboard page):
 - Which menu items and checklist steps appear depends on the plan (Admin → Plans, `PlanDefinition.featureKeys`) and on
   the person's role (Owner, Admin, Member: see [Team, settings and brand](18-team-settings-and-brand.md)).
 - Announcements are sent from **Admin → Announcements** and can target a plan.
-- While a new company is waiting for its demo, every dashboard page shows only the demo screen; see
-  [Sign-up, onboarding and account states](02-sign-up-onboarding-and-account-states.md).
+- Until a new company starts its free trial, every dashboard link opens **Start your free trial** (`/start-trial`)
+  instead; see [Sign-up, onboarding and account states](02-sign-up-onboarding-and-account-states.md).
 
 ## For developers
 
@@ -81,21 +81,21 @@ Around the page (on every dashboard page):
 | Page | `app/dashboard/page.tsx` (`DashboardPage`) |
 | Frame for every dashboard page | `app/dashboard/layout.tsx` (`DashboardLayout`), `app/dashboard/loading.tsx`, `app/dashboard/error.tsx` |
 | Server actions | none on this page (it only reads) |
-| Components | `components/app/app-shell.tsx` (`AppShell`, `NoticesBell`), `components/app/nav.ts` (`NAV_ITEMS`, `FEATURE_ICONS`), `components/app/trial-banner.tsx` (`TrialBanner`), `components/app/announcement-banner.tsx`, `components/app/offer-banner.tsx`, `components/app/demo-lock.tsx`, `components/app/invoice-lock.tsx`, `components/business-info/essentials-banner.tsx` (`EssentialsBanner`), `components/publishing/auto-timezone.tsx` |
+| Components | `components/app/app-shell.tsx` (`AppShell`, `NoticesBell`), `components/app/nav.ts` (`NAV_ITEMS`, `FEATURE_ICONS`), `components/app/trial-banner.tsx` (`TrialBanner`), `components/app/announcement-banner.tsx`, `components/app/offer-banner.tsx`, `components/app/invoice-lock.tsx`, `components/business-info/essentials-banner.tsx` (`EssentialsBanner`), `components/publishing/auto-timezone.tsx` |
 | Logic | `components/app/context.ts` (`getAppContext`), `lib/home-checklist.ts` (`homeChecklist`), `lib/widget/seen.ts` (`widgetInstalled`), `lib/usage.ts` (`getUsageSummary`), `lib/entitlements.ts` (`companyEntitlements`), `lib/team/roles.ts` (`can`, `askMessage`), `lib/team/company.ts` (`resolveCompany`), `lib/billing/period.ts` (`manualGrace`), `lib/content-board/queries.ts` (`missingApps`), `lib/admin/service.ts` (`getActiveAnnouncements`), `lib/offers/service.ts` (`clientOffer`), `lib/business-info/facts.ts` (`hasEssentials`) |
 | Database | `Business`, `Subscription`, `UsageRecord`, `Membership`, `Product`, `GeneratedContent`, `Lead`, `Connection`, `Design`, `ChatWidget`, `CloudflareInstall`, `Announcement` |
 | API routes | none |
 | Cron jobs | none |
 | Tests | `tests/team/home-checklist.test.ts`, `tests/business-info/essentials.test.ts`, `tests/widget/install.test.ts`, `tests/team/require-user.test.ts`, `e2e/app.spec.ts` (signed-out redirects) |
-| Docs | [docs/PLANS.md](../../PLANS.md) (features and entitlements), [docs/REGIONS.md](../../REGIONS.md) (demo first) |
+| Docs | [docs/PLANS.md](../../PLANS.md) (features and entitlements), [docs/REGIONS.md](../../REGIONS.md) ("Trial first") |
 
 ### Key functions
 
 - `getAppContext` (components/app/context.ts) — loads the signed-in user, their company (through `Membership`), plan
   usage and entitlements once per request; also sends people to `/login`, `/suspended`, `/account/deletion`,
-  `/account/waiting`, `/welcome`, `/onboarding` or `/book-demo` when they are not ready for the dashboard.
-- `DashboardLayout` (app/dashboard/layout.tsx) — shows `DemoLock` or `InvoiceLock` while the status is `PENDING_DEMO`;
-  otherwise builds the shell, the bell notices, the banners and the trial label.
+  `/account/waiting`, `/welcome`, `/onboarding` or `/start-trial` when they are not ready for the dashboard.
+- `DashboardLayout` (app/dashboard/layout.tsx) — while the trial has not started (`PENDING_DEMO`) it sends the company
+  to `/start-trial`, or shows `InvoiceLock` when an invoice is open; otherwise builds the shell, the bell notices, the banners and the trial label.
 - `DashboardPage` (app/dashboard/page.tsx) — counts products, content, leads, connections and designs, and builds the
   stats, checklist and usage meters.
 - `homeChecklist` (lib/home-checklist.ts) — the "Get started" steps; pure, tested for plan and role rules.
@@ -103,7 +103,7 @@ Around the page (on every dashboard page):
   installed through Cloudflare.
 - `getUsageSummary` (lib/usage.ts) — used and allowed amounts for text, image, videos, voice characters and chat.
 - `companyEntitlements` (lib/entitlements.ts) — `inPlan` (plan features), `usable` (plan features whose services are
-  on) and `block` (pending demo, trial ended, past due, inactive).
+  on) and `block` (trial not started, trial ended, past due, inactive).
 - `featureForRoute` (lib/features.ts) — maps a menu link to its feature, so the sidebar can hide or move it.
 - `navFor`, `createActions`, `bottomBarItems` (components/app/nav.ts) — the grouped menu, + Create and the phone bar
   for a role and plan ([35-finding-your-way.md](35-finding-your-way.md)).
@@ -117,8 +117,8 @@ Around the page (on every dashboard page):
 1. The browser opens `/dashboard`. `DashboardLayout` and `DashboardPage` both call `getAppContext` (deduplicated by
    React `cache`).
 2. `getAppContext` reads the Supabase session (`getCurrentUser`), finds the company with `resolveCompany`, loads
-   `Business` and `getUsageSummary`, and redirects if the account is suspended, being deleted, not set up or waiting
-   for a demo.
+   `Business` and `getUsageSummary`, and redirects if the account is suspended, being deleted, not set up or has not
+   started its trial.
 3. The layout reads `companyEntitlements(business.id)`; `AppShell` uses `inPlan` to hide or move menu items.
 4. The page runs a set of `prisma.*.count` and `findMany` queries in parallel and renders the cards.
 5. `homeChecklist` turns the counts, the plan and the role into the step list.
@@ -128,7 +128,7 @@ Around the page (on every dashboard page):
 | Symptom | First place to look | Usual fix |
 |---|---|---|
 | Client is sent to `/welcome` or `/onboarding` every time | Admin → Companies (the company's set-up dates); `getAppContext` in `components/app/context.ts` (`detailsCompletedAt`, `onboardedAt`) | Let the owner finish the organisation details and brand steps. |
-| Dashboard only shows the demo screen | Admin → Demos; `DashboardLayout` (`pendingDemo`) | Start the trial or activate a plan for the company in the admin console. |
+| Every dashboard link opens Start your free trial | `DashboardLayout` (`pendingDemo`); `components/app/context.ts` | The owner or an admin taps **Start my free trial**, or the admin starts the trial or sends an invoice from the company's page. |
 | A menu item is missing | Admin → Plans (the plan's features); `featureForRoute` in `lib/features.ts`, `NAV_ITEMS` in `components/app/nav.ts`; the role in `lib/team/roles.ts` | Add the feature to the plan, or give the person the right role. |
 | "Install the chat widget" never gets ticked | Website chat page check; `widgetInstalled` in `lib/widget/seen.ts` | Check the website is in the allowed domains and the widget code is on the page. |
 | Usage bars look wrong | Admin → Usage; `getUsageSummary` in `lib/usage.ts` | Check the period dates on the subscription; limits come from the plan in Admin → Plans. |
