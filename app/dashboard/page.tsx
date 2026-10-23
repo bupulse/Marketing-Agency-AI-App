@@ -30,6 +30,10 @@ export default async function DashboardPage() {
 
   const businessId = business?.id;
   const chatInPlan = entitlements.inPlan.has("websiteChat");
+  // Business info not finished: the quiz is the shortcut to finish it (docs/QUIZ_MODE.md). Worked out alongside the
+  // counts below (one round of database trips, not two), and shared with the layout's banner (cached per request). A
+  // failing score hides the card instead of breaking Home.
+  const quizP = business ? quizEntry(business, role, entitlements.usable).catch(() => null) : null;
   const [productCount, contentCount, leadCount, connectionCount, designCount, recentProducts, recentLeads, widget, cloudflareInstalls] = businessId
     ? await Promise.all([
         prisma.product.count({ where: { businessId, status: { not: "ARCHIVED" } } }),
@@ -44,8 +48,7 @@ export default async function DashboardPage() {
       ])
     : [0, 0, 0, 0, 0, [], [], null, 0];
 
-  // Business info not finished: the quiz is the shortcut to finish it (docs/QUIZ_MODE.md).
-  const quiz = business ? await quizEntry(business, role, entitlements.usable) : null;
+  const quiz = await quizP;
   const showQuiz = !!quiz && quiz.playable && quiz.overall < 100;
 
   const { used, limits } = usage;

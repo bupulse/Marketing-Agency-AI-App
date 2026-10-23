@@ -1,6 +1,7 @@
 // Where the Business info quiz starts for one person (docs/QUIZ_MODE.md): how complete Business info is, the rounds
 // their role and plan let them play, and the round "Continue" opens. Business info and the dashboard home share it.
 import "server-only";
+import { cache } from "react";
 import { localParts, safeZone } from "@/lib/autopilot/timezone";
 import type { FeatureKey } from "@/lib/features";
 import { can, type Role } from "@/lib/team/roles";
@@ -20,7 +21,11 @@ export type QuizEntry = {
   nextRound: { emoji: string; title: string } | null;
 };
 
-export async function quizEntry(business: Parameters<typeof knowledgeProgress>[0] & { timezone: string | null }, role: Role, usable: ReadonlySet<FeatureKey>): Promise<QuizEntry> {
+/**
+ * Cached for the request (React cache, by argument identity): the dashboard layout's banner and the home page's card
+ * pass the same getAppContext objects, so the score is worked out once per page.
+ */
+export const quizEntry = cache(async function quizEntry(business: Parameters<typeof knowledgeProgress>[0] & { timezone: string | null }, role: Role, usable: ReadonlySet<FeatureKey>): Promise<QuizEntry> {
   const p = localParts(new Date(), safeZone(business.timezone));
   const today = `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
   const progress = await knowledgeProgress(business, today);
@@ -44,4 +49,4 @@ export async function quizEntry(business: Parameters<typeof knowledgeProgress>[0
     label: overall === 0 ? "Start the quiz" : overall >= 100 ? "Play again" : "Continue",
     nextRound: opens ? { emoji: opens.emoji, title: opens.title } : null,
   };
-}
+});

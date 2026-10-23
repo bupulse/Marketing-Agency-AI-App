@@ -46,6 +46,8 @@ Format: where (URL) · steps · what happened / what should happen · severity (
        as soon as the company is known.
      - The logo link is reused for 50 minutes (signedLogoUrl, lib/storage.ts): no Storage call on most pages, and the
        browser keeps the image.
+     - Home: the quiz score runs alongside the counts (was after them), and quizEntry is cached per request, so the
+       layout's banner and the home card share one score.
      - clientOffer (the layout asks on every page): one read; the expire-and-audit step only when the latest open
        offer is past its date (was a findMany before every read).
 2. **Quiz round pills were cut off with no hint of more** · polish · /dashboard/knowledge/quiz. Fixed: they scroll to the current round and fade at the edges (a2a0232d).
