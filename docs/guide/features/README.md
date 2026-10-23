@@ -48,6 +48,7 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 37 | Creator campaigns (campaigns, tasks, applicants, creators, posts, payouts) | `/dashboard/creators`, `/dashboard/creators/[id]/…` | [37-creator-campaigns.md](37-creator-campaigns.md) |
 | 38 | For creators: applying to a campaign, the creator login, handing in posts, views and pay | /c/&lt;campaign&gt;, /creator (Campaigns, Earnings, Connections) | [38-for-creators.md](38-for-creators.md) |
 | 39 | Help chat: asking BuPulse for help (AI first, a person on request, photos, voice notes, WhatsApp) | the chat button on every page except Admin; /help-chat from bio pages | [39-help-chat.md](39-help-chat.md) |
+| 40 | The support team: agents, roles, team hours, greetings, AI rules, and the support app on phone and PC | Admin → Live chat; support.bupulse.com | [40-support-team.md](40-support-team.md) |
 
 ## Which plan has what
 

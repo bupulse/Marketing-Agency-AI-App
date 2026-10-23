@@ -15,6 +15,7 @@ import {
   Funnel,
   Gauge,
   Globe,
+  Headset,
   HeartPulse,
   Inbox,
   Layers,
@@ -107,6 +108,14 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     ],
   },
   {
+    id: "livechat",
+    title: "Live chat",
+    icon: Headset,
+    items: [
+      { href: "/admin/live-chat", perm: "liveChat", label: "Live chat", icon: Headset, description: "Support agents, departments, team hours, greetings and the AI rules of BuPulse's own help chat.", keywords: "support agents chat helpdesk tawk" },
+    ],
+  },
+  {
     id: "content",
     title: "Content",
     icon: Palette,
@@ -177,7 +186,8 @@ export function breadcrumbsFor(pathname: string): Crumb[] {
   if (!item) return [{ label: "Admin", href: "/admin" }];
   const crumbs: Crumb[] = [{ label: "Admin", href: "/admin" }];
   if (item.href === "/admin") return [{ label: "Overview" }];
-  if (item.group.title) crumbs.push({ label: item.group.title });
+  // A one-page folder named like its page (Live chat) is not repeated.
+  if (item.group.title && item.group.title !== item.label) crumbs.push({ label: item.group.title });
   const deeper = pathname !== item.href;
   crumbs.push({ label: item.label, href: deeper ? item.href : undefined });
   if (deeper) {

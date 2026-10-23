@@ -41,7 +41,7 @@ describe("admin map", () => {
   });
 
   it("has the folders the owner asked for", () => {
-    expect(ADMIN_NAV.map((g) => g.title)).toEqual([null, "Sales", "Clients", "Money", "Content", "AI and usage", "System", "Organisation"]);
+    expect(ADMIN_NAV.map((g) => g.title)).toEqual([null, "Sales", "Clients", "Money", "Live chat", "Content", "AI and usage", "System", "Organisation"]);
   });
 
   it("matches the most specific page and builds breadcrumbs", () => {
