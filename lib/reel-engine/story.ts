@@ -140,6 +140,7 @@ export function veoClipPrompt(clip: Pick<ReelClip, "motion" | "line" | "camera" 
   return [
     `A vertical 9:16 video clip of about ${CLIP_SECONDS} seconds. ${clip.motion} Camera: ${clip.camera}.`,
     speech,
+    "One continuous shot from the first frame to the last: no cuts, no jumps, the same people and the same product all through.",
     "Real documentary footage shot on a phone or a cinema camera: natural light, true-to-life colour, real skin texture, natural movement and hands. No text, captions or subtitles on screen, no music, no logos added.",
   ].join("\n");
 }
@@ -151,7 +152,7 @@ export const subtitleOf = (line: string) => spokenLine(line).replace(/\s+/g, " "
  * The finished reel as a motion spec for the browser encoder: 4 scenes of 7.5 s, each one clip with its own sound and
  * its line as a subtitle near the bottom; the business name and the call to action over the last scene.
  */
-export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name: string; color: string }): MotionSpec {
+export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name: string; color: string; contact?: string | null }): MotionSpec {
   const text = (over: Partial<TextLayer> & Pick<TextLayer, "text" | "size" | "y" | "h">): TextLayer => ({
     kind: "text",
     font: "inter",
@@ -165,7 +166,11 @@ export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name:
   const scenes: Scene[] = plan.clips.map((clip, i) => {
     const layers: Layer[] = [{ kind: "video", url: clipUrls[i], fit: "cover", start: 0, sound: true, x: 0.5, y: 0.5, w: 1, h: 1 }];
     if (subtitleOf(clip.line)) layers.push(text({ text: subtitleOf(clip.line), size: 0.045, y: 0.82, h: 0.12, box: { color: "rgba(0,0,0,0.55)", padding: 0.02, radius: 0.02 }, from: 0.04, to: 0.98 }));
-    if (i === plan.clips.length - 1) layers.push(text({ text: brand.name, size: 0.06, y: 0.12, h: 0.09, w: 0.8, box: { color: brand.color, padding: 0.025, radius: 0.04 }, from: 0.35 }));
+    if (i === plan.clips.length - 1) {
+      layers.push(text({ text: brand.name, size: 0.06, y: 0.12, h: 0.09, w: 0.8, box: { color: brand.color, padding: 0.025, radius: 0.04 }, from: 0.35 }));
+      // How to reach the business, so the call to action can be acted on (the first reel said "message us" with no number).
+      if (brand.contact) layers.push(text({ text: brand.contact, size: 0.042, y: 0.22, h: 0.07, w: 0.8, weight: 700, box: { color: "rgba(0,0,0,0.6)", padding: 0.02, radius: 0.03 }, from: 0.4 }));
+    }
     return { seconds: SCENE_SECONDS, background: { kind: "solid", colors: ["#000000"] }, layers, ...(i > 0 ? { transition: "cut" as const } : {}) };
   });
   return { version: 1, title: plan.title, ratio: "9:16", fps: 30, palette: { background: "#000000", primary: brand.color, accent: brand.color, text: "#FFFFFF" }, scenes, music: plan.music, caption: plan.caption, hashtags: plan.hashtags };
