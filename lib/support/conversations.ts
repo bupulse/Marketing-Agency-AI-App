@@ -188,7 +188,7 @@ export async function endConversation(session: VisitorSession, id: string) {
   const now = new Date();
   await prisma.supportConversation.update({ where: { id }, data: { status: "CLOSED", closedAt: now, closedBy: "visitor", waitingSince: null, visitorDraft: null } });
   await prisma.$transaction([
-    prisma.supportMessage.create({ data: { conversationId: id, author: "SYSTEM", kind: "EVENT", body: "The visitor ended the chat." } }),
+    prisma.supportMessage.create({ data: { conversationId: id, author: "SYSTEM", kind: "EVENT", body: "Chat ended" } }),
     prisma.supportEvent.create({ data: { name: "closed", conversationId: id, at: now } }),
   ]);
   await scheduleJob({ kind: JOB_JUDGE, runAt: now, payload: { conversationId: id }, dedupeKey: `${JOB_JUDGE}:${id}` });

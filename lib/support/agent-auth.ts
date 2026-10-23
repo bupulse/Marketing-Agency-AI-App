@@ -2,13 +2,14 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import type { AgentMe, DepartmentKey } from "./contract";
+import { agentAccess } from "./app-access";
 import { SupportError, limit } from "./http";
 import { SUPPORT_LIMITS } from "./limits";
 
-// The support app's sign-in check (docs/SUPPORT_CHAT.md section 3) for every /agent route: a Supabase access token as
-// Authorization: Bearer, verified with Supabase Auth (a revoked session fails), at aal2 (email + password + the
-// authenticator code), for an active, unlocked SupportAgent. Agents are never admin accounts; the admin console's own
-// check is separate (lib/admin/auth.ts). An invited agent's first full sign-in links the account and activates them.
+// The support API's sign-in check (docs/SUPPORT_CHAT.md section 3) for every /agent route: a Supabase access token as
+// Authorization: Bearer, verified with Supabase Auth (a revoked session fails), then the support app's own rules
+// (app-access.ts, shared with its pages): a SupportAgent that is not locked, at aal2 with an authenticator app. Agents
+// are never admin accounts; the admin console's check is separate (lib/admin/auth.ts).
 
 export type AgentSession = {
   id: string;
@@ -21,7 +22,16 @@ export type AgentSession = {
   departments: { id: string; key: DepartmentKey }[];
 };
 
-export type VerifiedToken = { userId: string; email: string | null; emailConfirmed: boolean; aal: string | null };
+export type VerifiedToken = {
+  userId: string;
+  email: string | null;
+  emailConfirmed: boolean;
+  /** The token's aal claim, and what the account could reach (aal2 once it has a verified authenticator). */
+  aal: { currentLevel: string | null; nextLevel: string | null };
+  /** How the session signed in: the token's amr claim ([{ method, timestamp }]). */
+  methods: unknown;
+  hasVerifiedTotp: boolean;
+};
 
 /** Claims of a JWT the Auth server has just accepted. Not a signature check on its own. */
 export function jwtClaims(token: string): Record<string, unknown> | null {
@@ -43,30 +53,58 @@ export async function verifyAccessToken(token: string): Promise<VerifiedToken | 
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) return null;
   const claims = jwtClaims(token);
-  return { userId: data.user.id, email: data.user.email?.toLowerCase() ?? null, emailConfirmed: !!data.user.email_confirmed_at, aal: typeof claims?.aal === "string" ? claims.aal : null };
+  const hasVerifiedTotp = !!data.user.factors?.some((f) => f.factor_type === "totp" && f.status === "verified");
+  return {
+    userId: data.user.id,
+    email: data.user.email?.toLowerCase() ?? null,
+    emailConfirmed: !!data.user.email_confirmed_at,
+    aal: { currentLevel: typeof claims?.aal === "string" ? claims.aal : null, nextLevel: hasVerifiedTotp ? "aal2" : "aal1" },
+    methods: claims?.amr ?? null,
+    hasVerifiedTotp,
+  };
 }
 
 const agentSelect = { id: true, userId: true, name: true, email: true, role: true, status: true, availability: true, maxChats: true, lockedAt: true, lastSeenAt: true, departments: { select: { department: { select: { id: true, key: true } } } } } as const;
 
+const REFUSED: Record<string, { status: number; code: string; message: string }> = {
+  "sign-in": { status: 401, code: "unauthorized", message: "Sign in to the support app again." },
+  locked: { status: 403, code: "locked", message: "Your support account is locked. Ask the owner." },
+  no_access: { status: 403, code: "not_agent", message: "This account is not a support agent. Ask the owner to invite you in Admin, Live chat." },
+  verify: { status: 403, code: "mfa_required", message: "Enter the 6-digit code from your authenticator app first." },
+  setup: { status: 403, code: "mfa_required", message: "Add an authenticator app to your support account first." },
+};
+
+/**
+ * The same rules as the support app's pages (lib/support/app-access.ts agentAccess): an agent who is not locked, at
+ * aal2 with a verified authenticator app, linked to this sign-in (an invited agent is linked and activated here).
+ */
 export async function requireSupportAgent(request: Request, verify: (token: string) => Promise<VerifiedToken | null> = verifyAccessToken): Promise<AgentSession> {
   const match = /^Bearer\s+(\S{20,4096})$/i.exec(request.headers.get("authorization") ?? "");
   if (!match) throw new SupportError(401, "unauthorized", "Sign in to the support app again.", { "www-authenticate": "Bearer" });
   const token = await verify(match[1]).catch(() => null);
   if (!token) throw new SupportError(401, "unauthorized", "Your sign-in has ended. Sign in again.", { "www-authenticate": "Bearer" });
-  if (token.aal !== "aal2") throw new SupportError(403, "mfa_required", "Enter the 6-digit code from your authenticator app first.");
+  if (token.aal.currentLevel !== "aal2") throw new SupportError(403, "mfa_required", REFUSED.verify.message);
 
-  let agent = await prisma.supportAgent.findUnique({ where: { userId: token.userId }, select: agentSelect });
-  if (!agent && token.email && token.emailConfirmed) {
-    // First full sign-in after the invitation: link this account to the invited agent with the same address.
-    const invited = await prisma.supportAgent.findUnique({ where: { email: token.email }, select: { id: true, userId: true, status: true } });
-    if (invited && !invited.userId && invited.status === "invited") {
-      await prisma.supportAgent.updateMany({ where: { id: invited.id, userId: null, status: "invited" }, data: { userId: token.userId, status: "active" } });
-      agent = await prisma.supportAgent.findUnique({ where: { userId: token.userId }, select: agentSelect });
-    }
+  // The row for this sign-in: linked to it, else not linked yet and with the same address (app-auth.ts agentFor).
+  const found = await prisma.supportAgent.findFirst({ where: { OR: [{ userId: token.userId }, ...(token.email ? [{ email: token.email, userId: null }] : [])] }, select: agentSelect });
+  const access = agentAccess({
+    user: { id: token.userId, email: token.email, emailConfirmed: token.emailConfirmed },
+    agent: found ? { id: found.id, email: found.email, userId: found.userId, status: found.lockedAt ? "locked" : found.status } : null,
+    methods: token.methods,
+    aal: token.aal,
+    hasVerifiedTotp: token.hasVerifiedTotp,
+  });
+  if (!access.ok) {
+    const refused = REFUSED[access.to === "sign-in" ? (access.note ?? "sign-in") : access.to];
+    throw new SupportError(refused.status, refused.code, refused.message);
   }
-  if (!agent) throw new SupportError(403, "not_agent", "This account is not a support agent. Ask the owner to invite you in Admin, Live chat.");
-  if (agent.status === "locked" || agent.lockedAt) throw new SupportError(403, "locked", "Your support account is locked. Ask the owner.");
-  if (agent.status !== "active") throw new SupportError(403, "not_active", "Your support account is not active yet. Open the invitation email first.");
+  let agent = found!;
+  if (access.activate) {
+    // First full sign-in after the invitation: link this sign-in and mark the agent active.
+    await prisma.supportAgent.updateMany({ where: { id: agent.id, status: { not: "locked" }, OR: [{ userId: null }, { userId: token.userId }] }, data: { userId: token.userId, status: "active" } });
+    agent = (await prisma.supportAgent.findUnique({ where: { id: agent.id }, select: agentSelect })) ?? agent;
+    if (agent.userId !== token.userId || agent.status !== "active") throw new SupportError(403, "not_agent", REFUSED.no_access.message);
+  }
   await limit(`support:agent:${agent.id}`, SUPPORT_LIMITS.agent);
   if (!agent.lastSeenAt || Date.now() - agent.lastSeenAt.getTime() > 60_000) {
     await prisma.supportAgent.update({ where: { id: agent.id }, data: { lastSeenAt: new Date() } }).catch(() => {});

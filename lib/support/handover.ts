@@ -56,7 +56,8 @@ export async function handOver(conversationId: string, reason: HandoverReason, o
   });
   if (!count) return false;
   await prisma.$transaction([
-    prisma.supportMessage.create({ data: { conversationId, author: "SYSTEM", kind: "EVENT", body: hours.open ? `Handed over to the team (${REASON_TEXT[reason]}).` : `Ticket for the team (${REASON_TEXT[reason]}); ${hours.label}.` } }),
+    // EVENT bodies are shown to the visitor as they are (a divider line); the reason stays in handoverReason for agents.
+    prisma.supportMessage.create({ data: { conversationId, author: "SYSTEM", kind: "EVENT", body: hours.open ? "Waiting for a person from the BuPulse team" : `Sent to the BuPulse team · ${hours.label}` } }),
     prisma.supportEvent.create({ data: { name: "handover", conversationId, at: now } }),
   ]);
   if (hours.open) {

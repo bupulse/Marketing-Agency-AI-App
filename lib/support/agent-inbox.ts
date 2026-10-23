@@ -139,6 +139,7 @@ export async function conversationDetail(agent: AgentSession, id: string): Promi
   };
 }
 
+/** A divider line in the chat, shown to the visitor as it is: keep it short and visitor-ready. */
 async function event(conversationId: string, body: string) {
   return prisma.supportMessage.create({ data: { conversationId, author: "SYSTEM", kind: "EVENT", body }, select: { id: true } });
 }
@@ -153,7 +154,7 @@ async function take(agent: AgentSession, c: Awaited<ReturnType<typeof loadFor>>,
   if (c.status === "OPEN" && !c.aiActive && c.assigneeId === agent.id) return null;
   if (c.assigneeId && c.assigneeId !== agent.id && agent.role !== "SUPERVISOR") throw new SupportError(403, "not_yours", "This chat belongs to another agent.");
   await prisma.supportConversation.update({ where: { id: c.id }, data: { status: "OPEN", aiActive: false, assigneeId: agent.id, closedAt: null, closedBy: null, ...(c.handoverAt ? {} : { handoverAt: now, handoverReason: "agent" }) } });
-  return event(c.id, `${shortName(agent.name)} joined the chat.`);
+  return event(c.id, c.aiActive ? `${shortName(agent.name)} joined · the AI stepped back` : `${shortName(agent.name)} joined the chat`);
 }
 
 /** POST /agent/conversations/:id/messages. A TEXT reply takes the chat over; a NOTE stays internal. */
@@ -219,7 +220,7 @@ export async function release(agent: AgentSession, id: string) {
   if (c.status === "CLOSED") throw new SupportError(409, "closed", "This chat is closed. Reopen it first.");
   if (c.aiActive && c.status === "AI") return conversationDetail(agent, id);
   await prisma.supportConversation.update({ where: { id }, data: { status: "AI", aiActive: true, assigneeId: null, waitingSince: null } });
-  const m = await event(id, "Handed back to the BuPulse assistant.");
+  const m = await event(id, "The BuPulse assistant is back");
   await changed(id, ["status", "assignee", "aiActive"], m.id);
   return conversationDetail(agent, id);
 }
@@ -249,7 +250,7 @@ export async function closeConversation(agent: AgentSession, id: string) {
     const now = new Date();
     await prisma.supportConversation.update({ where: { id }, data: { status: "CLOSED", closedAt: now, closedBy: agent.id, waitingSince: null } });
     await prisma.supportEvent.create({ data: { name: "closed", conversationId: id, agentId: agent.id, at: now } });
-    const m = await event(id, `${shortName(agent.name)} closed the chat.`);
+    const m = await event(id, `${shortName(agent.name)} closed the chat`);
     await changed(id, ["status"], m.id);
   }
   return conversationDetail(agent, id);
@@ -259,7 +260,7 @@ export async function reopenConversation(agent: AgentSession, id: string) {
   const c = await loadFor(agent, id);
   if (c.status === "CLOSED") {
     await prisma.supportConversation.update({ where: { id }, data: { status: c.aiActive ? "AI" : "OPEN", assigneeId: c.aiActive ? null : (c.assigneeId ?? agent.id), closedAt: null, closedBy: null } });
-    const m = await event(id, `${shortName(agent.name)} reopened the chat.`);
+    const m = await event(id, "Chat reopened");
     await changed(id, ["status"], m.id);
   }
   return conversationDetail(agent, id);
@@ -319,6 +320,6 @@ export async function inviteVisitor(agent: AgentSession, visitorId: string, text
   });
   const m = await prisma.supportMessage.create({ data: { conversationId: id, author: "AGENT", agentId: agent.id, kind: "TEXT", body: text }, select: { id: true } });
   await prisma.supportEvent.create({ data: { name: "conversation_started", conversationId: id, agentId: agent.id } });
-  await broadcast({ type: "message.created", conversationId: id, messageId: m.id }, { inbox: true, conversation: id });
+  await broadcast({ type: "message.created", conversationId: id, messageId: m.id }, { inbox: true, conversation: id, visitorId });
   return { conversationId: id };
 }

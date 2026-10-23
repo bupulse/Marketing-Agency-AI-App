@@ -1,8 +1,9 @@
 // Secrets of the support chat. Web Crypto only, so it runs on Cloudflare Workers and Node alike.
 // - The visit token (sent as X-Support-Visit and to the heartbeat RPC): 256 random bits; only its SHA-256 is stored.
-// - The visitor's real-time topic `sv:<secret>`: 128 bits, derived from the conversation id with an HMAC key that is
-//   itself derived from ENCRYPTION_KEY, so the server can always broadcast to it without storing it. Only its hash is
-//   kept (SupportConversation.topicTokenHash).
+// - The visitor's real-time topic `sv:<secret>`: 128 bits, derived from the visitor id with an HMAC key that is itself
+//   derived from ENCRYPTION_KEY, so the server can always broadcast to it without storing it. One topic per visitor, so
+//   a chat an agent starts reaches a panel that is already open. Each conversation also keeps the hash of its own
+//   derived secret (SupportConversation.topicTokenHash, unique).
 
 const encoder = new TextEncoder();
 const TOPIC_CONTEXT = "bupulse:support-topic:v1";
@@ -45,8 +46,13 @@ function topicSigningKey(): Promise<CryptoKey> {
   return topicKey.key;
 }
 
-/** The secret part of a conversation's public visitor topic (contract.ts visitorTopic). */
-export async function topicSecret(conversationId: string): Promise<string> {
-  const sig = await globalThis.crypto.subtle.sign("HMAC", await topicSigningKey(), encoder.encode(conversationId));
+/** A derived 128-bit secret for `id` (a conversation id: its topicTokenHash). */
+export async function topicSecret(id: string): Promise<string> {
+  const sig = await globalThis.crypto.subtle.sign("HMAC", await topicSigningKey(), encoder.encode(id));
   return toBase64Url(new Uint8Array(sig).slice(0, 16));
+}
+
+/** The secret part of a visitor's public topic (contract.ts visitorTopic). */
+export function visitorTopicSecret(visitorId: string): Promise<string> {
+  return topicSecret(`visitor:${visitorId}`);
 }

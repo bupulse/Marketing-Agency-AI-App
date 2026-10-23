@@ -3,7 +3,7 @@ import type { z } from "zod";
 import { prisma } from "@/lib/db";
 import { allowedEndpoint } from "@/lib/push/service";
 import { agentMe, type AgentSession } from "./agent-auth";
-import { STAFF_TOPICS, agentTopic, type AgentMe, type deviceBody } from "./contract";
+import { STAFF_TOPICS, agentTopic, type AgentMe, type DepartmentKey, type TeamMember, type deviceBody } from "./contract";
 import { SupportError } from "./http";
 import { realtimeConnection } from "./realtime";
 
@@ -40,4 +40,22 @@ export function realtimeFor(agent: AgentSession) {
   const conn = realtimeConnection();
   if (!conn) throw new SupportError(503, "realtime_unavailable", "Live updates are not set up. The app refreshes every few seconds instead.");
   return { ...conn, topics: [STAFF_TOPICS.inbox, STAFF_TOPICS.visitors, STAFF_TOPICS.presence, agentTopic(agent.id)] };
+}
+
+/** GET /agent/team: active agents who can take a chat, with how many they hold now (the Transfer dialog). */
+export async function team(): Promise<{ agents: TeamMember[] }> {
+  const [rows, open] = await Promise.all([
+    prisma.supportAgent.findMany({ where: { status: "active", lockedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true, availability: true, maxChats: true, departments: { select: { department: { select: { key: true } } } } } }),
+    prisma.supportConversation.groupBy({ by: ["assigneeId"], where: { status: { in: ["OPEN", "WAITING", "PENDING"] }, assigneeId: { not: null } }, _count: { _all: true } }),
+  ]);
+  return {
+    agents: rows.map((a) => ({
+      id: a.id,
+      name: a.name,
+      availability: a.availability === "online" || a.availability === "away" ? a.availability : "offline",
+      departments: a.departments.map((d) => d.department.key as DepartmentKey),
+      openChats: open.find((o) => o.assigneeId === a.id)?._count._all ?? 0,
+      maxChats: a.maxChats,
+    })),
+  };
 }

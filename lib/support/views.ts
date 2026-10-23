@@ -2,7 +2,7 @@ import "server-only";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import type { ConversationStatus, ConversationView, MessageView } from "./contract";
 import { signedDownloadUrls } from "./storage";
-import { topicSecret } from "./tokens";
+import { visitorTopicSecret } from "./tokens";
 import { visitorTopic } from "./contract";
 
 // Database rows -> the contract's shapes. Visitors never see internal notes; attachment links are short-lived signed
@@ -74,6 +74,7 @@ export async function toMessageViews(rows: MessageRow[], now = new Date()): Prom
 
 export type ConversationRow = {
   id: string;
+  visitorId: string;
   number: number;
   status: ConversationStatus;
   aiActive: boolean;
@@ -84,6 +85,7 @@ export type ConversationRow = {
 
 export const conversationSelect = {
   id: true,
+  visitorId: true,
   number: true,
   status: true,
   aiActive: true,
@@ -104,7 +106,7 @@ export async function toConversationView(c: ConversationRow, messages: MessageRo
     status: c.status,
     aiActive: c.aiActive,
     agent: agentOf(c),
-    topic: visitorTopic(await topicSecret(c.id)),
+    topic: visitorTopic(await visitorTopicSecret(c.visitorId)),
     rating: c.rating,
     messages: await toMessageViews(messages.filter((m) => m.kind !== "NOTE")),
   };

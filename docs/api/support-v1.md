@@ -44,12 +44,13 @@ Notes:
 - **`POST /visit`:** call it on every page load, with the `X-Support-Visit` header you already have. Same visit: the same token comes back. Expired (20 minutes without a heartbeat): a new token.
   - `me.needsForm` is true on public pages and the bio link until the form is sent. `POST /conversations` refuses with `form_required` until then.
   - `greeting` is null on phones, on the bio link, with a chat open, or within 7 days of a chat.
+  - `topic` is the visitor's own real-time topic, the same as every `conversation.topic`. `whatsapp` (E.164) shows "Continue on WhatsApp"; `turnstileSiteKey` is set when the bot check is on.
 - **Heartbeat:** straight to Supabase, never to this API: `supabase.rpc("support_heartbeat", { p_token, p_path, p_title })` every 30–60 s while the tab is visible.
   - It answers `{ ok: true, unread }`. If `unread` is above 0, open the panel.
   - It may answer `{ ok: false, error: "expired" | "unknown" }`: call `/visit` again.
 - **Sending:** the AI's answer comes back in the same response, with sources and buttons (`MessageView.sources`, `MessageView.actions`). Show a typing indicator while you wait (a few seconds).
 - **Turnstile:** when the site's keys are set, a new chat, every 10th message, a message faster than 1.2 s after the previous one, and the form all need `turnstileToken`. Without one they answer `challenge_required`.
-- **Real time:** join the public channel `conversation.topic` (`sv:<secret>`) while the panel is open, with `realtime.url` and `realtime.anonKey`. Events arrive as broadcast event `support` with a `RealtimeEvent` payload. On `message.created`, call `GET …/messages?after=<last id>`. If the socket is down, poll every 5 s.
+- **Real time:** join the public channel `topic` (`sv:<secret>`) while the panel is open, with `realtime.url` and `realtime.anonKey`. Events arrive as broadcast event `support` with a `RealtimeEvent` payload. On `message.created`, call `GET …/messages?after=<last id>`. If the socket is down, poll every 5 s.
 - **Uploads:**
   1. `POST …/uploads` returns `uploadUrl` and `token`. PUT the file to `uploadUrl` with its `Content-Type`; supabase-js can use `uploadToSignedUrl(path, token, file)` instead.
   2. Call `…/done`.
@@ -57,6 +58,8 @@ Notes:
 
   A voice note's `…/done` takes a few seconds because the transcript is made there. Limits are in `UPLOAD_LIMITS`.
 - **Coming back from an email:** links open the site at `/?help=open`, and the widget should open the chat then.
+- **EVENT messages** are visitor-ready one-liners ("Jean M. joined · the AI stepped back"): show `body` as it is.
+- **A 401 or 404 on the visit token:** call `POST /visit` again once.
 
 ## Agent routes
 
@@ -79,6 +82,7 @@ Send `Authorization: Bearer <Supabase access token>` from a session signed in wi
 | `POST /agent/conversations/:id/typing` | — | 204 |
 | `GET /agent/conversations/:id/assist` | — | `Assist` (cached per last message) |
 | `POST /agent/assist/rewrite` | `rewriteBody` (`text`, `style`, `lang?`) | `{ text }` |
+| `GET /agent/team` | — | `{ agents: TeamMember[] }` (active agents and their open chats) |
 | `GET /agent/visitors/live` | — | `{ items: LiveVisitor[], counts }` |
 | `POST /agent/visitors/:visitorId/invite` | `inviteVisitorBody` (`text`) | 201 `{ conversationId }` |
 | `GET /agent/stats?from=&to=` | — | `Stats` (supervisors; default the last 7 days, at most a year) |
@@ -96,16 +100,12 @@ Notes:
   4. On `agent.force_logout` for your id, sign out.
   5. If the socket is down, re-query every 15 s.
 - **Push:** register the browser's subscription with `POST /agent/devices`. Alerts go to the agents on duty (online or away), members of the chat's department first.
-- **Invitations:** the invitation email links to the support app's `/setup?token_hash=…&type=recovery`. That page verifies the one-time token (`verifyOtp({ type: "recovery", token_hash })`), sets the password and enrols the authenticator.
+- **Sign-in rules:** the same as the support app's pages (`agentAccess`, `lib/support/app-access.ts`). Invitations and new passwords are the support app's (sc-app).
 
 ## Admin (server functions, not HTTP)
 
-Admin → Live chat calls these from server actions, after `requirePermission`:
-- in `lib/support/agents.ts`:
-  - `listSupportAgents`, `inviteSupportAgent`, `resendSupportInvite`, `updateSupportAgent`;
-  - `setSupportAgentLocked`, `removeSupportAgent`;
-  - `listSupportDepartments`, `renameSupportDepartment`;
-  - `saveSupportSettings`;
-- in `lib/support/settings.ts`: `getSupportSettings`.
-
-Each takes an `AdminContext` and writes the audit log.
+Admin → Live chat calls these from server actions:
+- agents, departments and invites: `lib/support/agents.ts` (sc-app);
+- settings: `getSupportSettings` and `saveSupportSettings` in `lib/support/settings.ts`;
+- chat leads: `listSupportLeads({ after, limit })` in `lib/support/leads.ts`;
+- after locking an agent: `forceLogout(agentId)` in `lib/support/realtime.ts`.

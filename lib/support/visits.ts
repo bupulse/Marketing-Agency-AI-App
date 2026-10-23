@@ -3,13 +3,14 @@ import type { z } from "zod";
 import { prisma } from "@/lib/db";
 import { scheduleSweep } from "./jobs";
 import { geoFrom, deviceFrom, referrerHost, requestIp } from "./client-info";
-import type { Surface, VisitResponse, visitBody } from "./contract";
+import { visitorTopic, type Surface, type VisitResponse, type visitBody } from "./contract";
 import { signedInPerson, type SignedInPerson } from "./identity";
 import { SupportError, limit } from "./http";
 import { GREETING_QUIET_MS, RESUME_WINDOW_MS, SUPPORT_LIMITS, VIEW_MESSAGES, VISIT_IDLE_MS } from "./limits";
 import { broadcast, realtimeConnection } from "./realtime";
 import { getSupportSettings, greetingFor, teamHours } from "./settings";
-import { randomToken, sha256Hex } from "./tokens";
+import { randomToken, sha256Hex, visitorTopicSecret } from "./tokens";
+import { turnstileSiteKey } from "@/lib/widget/turnstile";
 import { conversationSelect, messageSelect, toConversationView } from "./views";
 
 // A visit: one person on the site, from the first page until 20 minutes without a heartbeat. POST /visit starts it (or
@@ -150,6 +151,9 @@ export async function startVisit(body: z.infer<typeof visitBody>, req: VisitRequ
     greeting,
     conversation,
     realtime: realtimeConnection(),
+    topic: visitorTopic(await visitorTopicSecret(visitor.id)),
+    whatsapp: settings.whatsapp || null,
+    turnstileSiteKey: turnstileSiteKey(),
   };
 }
 

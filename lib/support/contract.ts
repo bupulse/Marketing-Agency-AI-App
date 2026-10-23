@@ -55,7 +55,7 @@ export type ConversationView = {
   status: ConversationStatus;
   aiActive: boolean;
   agent: { name: string; department: string | null } | null;
-  /** Private real-time topic for this visitor (only returned to the visitor who owns the conversation). */
+  /** The visitor's real-time topic, the same for all their chats as VisitResponse.topic (only ever sent to that visitor). */
   topic: string;
   rating: number | null;
   messages: MessageView[];
@@ -86,6 +86,12 @@ export type VisitResponse = {
   conversation: ConversationView | null;
   /** Supabase Realtime connection details for the public visitor topic (no secrets beyond the anon key). */
   realtime: { url: string; anonKey: string } | null;
+  /** This visitor's public topic `sv:<secret>` (content-free pings), known before any chat: an agent's invite reaches an open panel. */
+  topic: string;
+  /** Support WhatsApp number (E.164) for "Continue on WhatsApp", or null to hide it. */
+  whatsapp: string | null;
+  /** Cloudflare Turnstile site key when the bot check is on, else null. */
+  turnstileSiteKey: string | null;
 };
 
 /**
@@ -210,7 +216,12 @@ export type LiveVisitor = {
   device: string | null;
   browser: string | null;
   leadScore: number | null;
+  /** Where they are: public site, dashboard, creator portal or a bio page. */
+  surface?: Surface;
 };
+
+/** GET /agent/team: who can take a chat (the Transfer dialog). */
+export type TeamMember = { id: string; name: string; availability: "online" | "away" | "offline"; departments: DepartmentKey[]; openChats: number; maxChats: number };
 
 export const availabilityBody = z.object({ availability: z.enum(["online", "away", "offline"]) });
 /** POST /agent/devices: a Web Push subscription (PushSubscription.toJSON()), or later a desktop or phone app's token. */
@@ -258,6 +269,7 @@ export type Stats = {
 //   POST  /agent/conversations/:id/typing               → 204
 //   GET   /agent/conversations/:id/assist               → Assist  (cached per last message)
 //   POST  /agent/assist/rewrite                         → { text }  (body: rewriteBody)
+//   GET   /agent/team                                   → { agents: TeamMember[] }  (active agents)
 //   GET   /agent/visitors/live                          → { items: LiveVisitor[], counts: Record<LiveVisitor["group"], number> }
 //   POST  /agent/visitors/:visitorId/invite             → { conversationId }  (body: inviteVisitorBody)
 //   GET   /agent/stats?from=&to=                        → Stats  (supervisors)

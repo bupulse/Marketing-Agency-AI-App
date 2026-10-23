@@ -112,7 +112,7 @@ How the back end works. Code: `lib/support/**`, routes `app/api/support/v1/**`, 
    - answers `expired` after 20 minutes without a heartbeat. The widget then calls `/visit` again.
 3. The visit token is sent as `X-Support-Visit` on every chat call and names the visitor. A visitor only ever reaches their own chats; anything else answers 404. A signed-in person also reaches their chats from another browser. A browser row linked to one account is never reused for another (shared computers).
 
-**Pre-chat form.** On public pages and the bio corner link, `POST /prechat` is needed before the first message. It saves name, email, business and WhatsApp on the visitor and makes a `ContactRequest` of kind `support_chat`, which is BuPulse's own lead. The same email within 30 days reuses its row, and the first question is copied into it. No Admin page lists these rows yet.
+**Pre-chat form.** On public pages and the bio corner link, `POST /prechat` is needed before the first message. It saves name, email, business and WhatsApp on the visitor and makes a `ContactRequest` of kind `support_chat`, which is BuPulse's own lead. The same email within 30 days reuses its row, and the first question is copied into it. Admin → Live chat lists them through `listSupportLeads({ after, limit })` (`lib/support/leads.ts`).
 
 **The AI's turn** (`lib/support/answer.ts`), only while the chat is with the AI (status `AI`):
 - The guide index is searched with the visitor's last two messages: Postgres FTS, any word matches, titles count more, top 4 sections. The prompt also gets the guide map (one line per file).
@@ -140,21 +140,18 @@ On public pages and the bio link, sales and pricing questions stay with the AI a
 - Outside team hours: status `PENDING` (a ticket), the tag "outside hours" and the ticket email to the visitor.
 
 **Agents** (`requireSupportAgent`):
-- Each call needs `Authorization: Bearer <Supabase access token>`, checked with Supabase Auth (a revoked session fails), at `aal2`, for an active, unlocked `SupportAgent`.
+- Each call needs `Authorization: Bearer <Supabase access token>`, checked with Supabase Auth (a revoked session fails). Then the support app's own rules decide (`agentAccess` in `lib/support/app-access.ts`, shared with its pages): a `SupportAgent` that is not locked, signed in with a password or an emailed link, at `aal2` with a verified authenticator app.
 - An invited agent's first full sign-in links their account and activates them.
 - Supervisors see every chat. Agents see the AI's chats, the waiting ones and their own.
 - A TEXT reply takes the chat over (the AI goes quiet). A NOTE stays internal.
 - `translateTo` sends the agent's text translated, and the original stays visible to agents.
 - `/assist` (a summary and 3 suggestions) is cached per last message.
-- Locking an agent in Admin:
-  - refuses their next call;
-  - deletes their sessions (`auth.sessions`);
-  - sends `agent.force_logout`;
-  - puts their open chats back to waiting.
+- Locking an agent (Admin → Live chat, `lib/support/agents.ts`) refuses their next call and deletes their sessions; `forceLogout(agentId)` (`lib/support/realtime.ts`) then tells their open app to sign out.
 
 **Real time.** The server sends pings with Supabase Realtime's REST broadcast and the service key; no socket is held.
 - Payloads are the `RealtimeEvent` objects. Clients fetch the details over REST.
-- The visitor's topic `sv:<secret>` is public. Its secret is an HMAC of the conversation id, made with a key derived from `ENCRYPTION_KEY`, and only its hash is stored. That topic only ever gets content-free pings, never a draft.
+- The visitor's topic `sv:<secret>` is public, one per visitor (the same for all their chats, and known from `POST /visit` before any chat, so a chat an agent starts reaches an open panel). Its secret is an HMAC of the visitor id, made with a key derived from `ENCRYPTION_KEY`; nothing secret is stored. That topic only ever gets content-free pings, never a draft.
+- EVENT messages ("Jean M. joined · the AI stepped back", "Waiting for a person from the BuPulse team") are written for the visitor, who sees them as a divider; the hand-over reason stays in `handoverReason` for agents.
 
 **Jobs** (DueJobs, run by the every-minute cron `app/api/cron/publish`; no new cron):
 
@@ -194,8 +191,8 @@ Download links are signed for an hour.
   - `RESEND_*`;
   - `VAPID_*` (optional push).
 - New, both optional:
-  - `SUPPORT_APP_URL`: links in emails. Empty means `<site>/support`.
   - `SUPPORT_MODEL`.
+  - `SUPPORT_APP_URL` (added by sc-app): the support app's address for links in emails. Empty means `<site>/support`.
 
 **Limits** (`lib/support/limits.ts`):
 
@@ -219,5 +216,4 @@ Download links are signed for an hour.
 - pgvector hybrid search;
 - cancelling an AI resolution when the visitor returns within 72 h;
 - CORS for the desktop app;
-- WhatsApp alerts (paid);
-- an Admin list of `support_chat` leads.
+- WhatsApp alerts (paid).

@@ -17,7 +17,8 @@ export function supportAppUrl(path = "/"): string {
   return path === "/" ? base : `${base}${path}`;
 }
 
-export const chatLink = (conversationId: string) => supportAppUrl(`/chats/${conversationId}`);
+/** The support app opens a chat from its list page with ?c=<id>. */
+export const chatLink = (conversationId: string) => supportAppUrl(`/?c=${encodeURIComponent(conversationId)}`);
 
 export async function agentsOnDuty(departmentId: string | null): Promise<{ id: string; email: string; name: string }[]> {
   const base: Prisma.SupportAgentWhereInput = { status: "active", lockedAt: null, availability: { in: ["online", "away"] } };

@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import type { LiveVisitor } from "./contract";
+import type { LiveVisitor, Surface } from "./contract";
 import { DRAFT_FRESH_MS, IDLE_AFTER_MS, LIVE_WINDOW_MS } from "./limits";
 
 // Who is on the site right now (docs/SUPPORT_CHAT.md section 3), from SupportVisit rows the heartbeat keeps fresh, not
@@ -21,6 +21,7 @@ export type LiveRow = {
   referrer: string | null;
   device: string | null;
   browser: string | null;
+  surface?: Surface;
   visitor: { name: string | null; businessName: string | null; email: string | null; businessId: string | null; creatorProfileId: string | null; visitCount: number };
   conversation: { id: string; status: string; lastMessageAt: Date; leadScore: number | null; visitorDraft: string | null; visitorDraftAt: Date | null } | null;
 };
@@ -61,6 +62,7 @@ export function toLiveVisitor(r: LiveRow, now: Date): LiveVisitor {
     device: r.device,
     browser: r.browser,
     leadScore: c?.leadScore ?? null,
+    surface: r.surface,
   };
 }
 
@@ -83,7 +85,7 @@ export async function liveVisitors(now = new Date()) {
     orderBy: { lastSeenAt: "desc" },
     take: 500,
     select: {
-      id: true, visitorId: true, startedAt: true, lastSeenAt: true, country: true, city: true, currentPath: true, pageCount: true, referrer: true, device: true, browser: true,
+      id: true, visitorId: true, surface: true, startedAt: true, lastSeenAt: true, country: true, city: true, currentPath: true, pageCount: true, referrer: true, device: true, browser: true,
       pages: { orderBy: { at: "desc" }, take: 1, select: { at: true } },
       visitor: { select: { name: true, businessName: true, email: true, businessId: true, creatorProfileId: true, visitCount: true, optedOut: true } },
     },
@@ -105,6 +107,7 @@ export async function liveVisitors(now = new Date()) {
     referrer: v.referrer,
     device: v.device,
     browser: v.browser,
+    surface: v.surface as Surface,
     visitor: v.visitor,
     conversation: chats.find((c) => c.visitorId === v.visitorId) ?? null,
   }));

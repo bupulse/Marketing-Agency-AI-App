@@ -1,7 +1,8 @@
 import "server-only";
+import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { REALTIME_EVENT, STAFF_TOPICS, agentTopic, conversationTopic, visitorTopic, type RealtimeEvent } from "./contract";
-import { topicSecret } from "./tokens";
+import { visitorTopicSecret } from "./tokens";
 
 // Real-time pings from the server: Supabase Realtime's REST broadcast with the service key, so no socket is held
 // (docs/research/support-chat-research.md 3.1). Payloads are the small RealtimeEvent objects; clients fetch the details
@@ -10,22 +11,31 @@ import { topicSecret } from "./tokens";
 
 type Outgoing = { topic: string; event: RealtimeEvent; private: boolean };
 
-/** Where a change goes. `visitor` is a conversation id: its visitor's topic gets the ping, never a draft or any text. */
-export async function broadcast(event: RealtimeEvent, to: { inbox?: boolean; visitors?: boolean; conversation?: string; agent?: string; visitor?: string }) {
+/**
+ * Where a change goes. `visitor` is a conversation id (or `visitorId` the visitor itself): that visitor's topic gets the
+ * ping, never a draft or any text.
+ */
+export async function broadcast(event: RealtimeEvent, to: { inbox?: boolean; visitors?: boolean; conversation?: string; agent?: string; visitor?: string; visitorId?: string }) {
   const out: Outgoing[] = [];
   if (to.inbox) out.push({ topic: STAFF_TOPICS.inbox, event, private: true });
   if (to.visitors) out.push({ topic: STAFF_TOPICS.visitors, event, private: true });
   if (to.conversation) out.push({ topic: conversationTopic(to.conversation), event, private: true });
   if (to.agent) out.push({ topic: agentTopic(to.agent), event, private: true });
-  if (to.visitor) {
+  if (to.visitor || to.visitorId) {
     try {
+      const visitorId = to.visitorId ?? (await prisma.supportConversation.findUnique({ where: { id: to.visitor }, select: { visitorId: true } }))?.visitorId;
       const safe: RealtimeEvent = event.type === "typing" ? { type: "typing", conversationId: event.conversationId, who: event.who } : event;
-      out.push({ topic: visitorTopic(await topicSecret(to.visitor)), event: safe, private: false });
+      if (visitorId) out.push({ topic: visitorTopic(await visitorTopicSecret(visitorId)), event: safe, private: false });
     } catch (error) {
       await logError(error, { source: "support.realtime", level: "warn" });
     }
   }
   await send(out);
+}
+
+/** A locked agent's open app signs out at once (Admin -> Live chat calls this after ending their sessions). */
+export async function forceLogout(agentId: string) {
+  await broadcast({ type: "agent.force_logout", agentId }, { agent: agentId });
 }
 
 async function send(messages: Outgoing[]) {
