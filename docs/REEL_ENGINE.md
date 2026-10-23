@@ -75,3 +75,8 @@ Kinyarwanda speech is untested by Google; if it is poor, the fallback stays an E
   behind another window, as timers do. Open: say so on the screen, or join the reel on the server.
 - **Test total: $8.22 of the $10** (docs/AI_COSTS.md, "Reel engine test reels"). The "veo" switch was turned on in the
   TEST database for the test (owner's OK; TEST has no admin login) and turned off after the second reel.
+- **Polish after the test (owner's choice, no new spending):** the product's price from Business info is written on
+  the last scene under the contact (only speaking it is refused); the "close shots of hands" in-use idea became a
+  medium shot of the product working, and the "many towers" result idea became a family or team enjoying the result;
+  the writer and every clip prompt ask for medium shots, no close-ups of fingers, one of the product with its shape
+  unchanged; joining says "Keep this tab in front until it is done".

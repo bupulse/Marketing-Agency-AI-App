@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReelSpec, directReel, reelCostUsd, SCENE_SECONDS, spokenLine, subtitleOf, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
+import { BEATS, buildReelSpec, directReel, reelCostUsd, SCENE_SECONDS, spokenLine, subtitleOf, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
 import { totalMs } from "@/lib/video-engine/spec";
 import { readReel, reelPrompt, ruleReel, type ReelInput } from "@/lib/reel-engine/writer";
 
@@ -17,6 +17,11 @@ const longFrame = "The presenter stands in a plastic-covered greenhouse outside 
 const motion = "She lifts the crate towards the camera and smiles as the camera slowly pushes in.";
 
 describe("the reel's story", () => {
+  it("has no idea the video model films badly (close-ups of hands, many copies of the product)", () => {
+    const ideas = BEATS.flatMap((b) => b.variants.map((v) => v.idea)).join(" ");
+    expect(ideas).not.toMatch(/Close shots of hands|Many of the product/);
+  });
+
   it("is 4 beats in order, each a variant and camera the company had least, never the same camera twice", () => {
     expect(beats.map((b) => b.beat)).toEqual(["hook", "use", "result", "cta"]);
     expect(new Set(beats.map((b) => b.camera)).size).toBe(4);
@@ -29,6 +34,7 @@ describe("the reel's story", () => {
     expect(p).toContain('speaks to the camera in Kinyarwanda, clearly and warmly, lips in sync: "Muraho! Reba uko umusaruro wiyongera."');
     expect(p).toContain("No text, captions or subtitles on screen");
     expect(p).toContain("One continuous shot");
+    expect(p).toContain("no close-ups of fingers");
     expect(veoClipPrompt({ motion, line: "", camera: "static tripod", presenter: false }, "English")).toContain("Only natural sound of the place.");
   });
 
@@ -44,6 +50,10 @@ describe("the reel's story", () => {
     const withContact = buildReelSpec(plan, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" });
     expect(withContact.scenes[3].layers.some((l) => l.kind === "text" && l.text === "WhatsApp 0788 000 000")).toBe(true);
     expect(withContact.scenes[0].layers.some((l) => l.kind === "text" && l.text === "WhatsApp 0788 000 000")).toBe(false);
+    // The price is written on the last scene (only speaking it is refused), never on the others.
+    const priced = buildReelSpec({ ...plan, price: "250,000 RWF" }, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" });
+    expect(priced.scenes[3].layers.some((l) => l.kind === "text" && l.text === "250,000 RWF")).toBe(true);
+    expect(priced.scenes.slice(0, 3).some((s) => s.layers.some((l) => l.kind === "text" && l.text === "250,000 RWF"))).toBe(false);
     expect(reelCostUsd(0.8)).toBeCloseTo(3.49, 2);
   });
 });

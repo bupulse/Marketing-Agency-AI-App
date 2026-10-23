@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const STEP_EVERY_MS = 6000;
 const FILMING = "Filming: start frames first, then each clip is filmed (a few minutes). Keep this tab open.";
+const JOINING = "Putting your reel together. Keep this tab in front until it is done…";
 const BEAT_LABEL: Record<string, string> = { hook: "1. Hook", use: "2. In use", result: "3. Result", cta: "4. Call to action" };
 
 /**
@@ -108,12 +109,12 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
     if (joining.current) return;
     joining.current = true;
     try {
-      setBusy("Putting your reel together…");
+      setBusy(JOINING);
       const { encodeSpecMp4, loadSpecFonts } = await import("@/lib/video-engine/encode");
-      const plan: ReelPlan = { title: view.title, caption: view.caption, hashtags: view.hashtags, music: null, presenter: view.presenter ?? "", clips: view.clips.map((c) => ({ beat: c.beat as ReelPlan["clips"][number]["beat"], variant: "", camera: "", presenter: false, frame: "", motion: "", line: c.line, status: "done" })) };
+      const plan: ReelPlan = { title: view.title, caption: view.caption, hashtags: view.hashtags, music: null, presenter: view.presenter ?? "", price: view.price, clips: view.clips.map((c) => ({ beat: c.beat as ReelPlan["clips"][number]["beat"], variant: "", camera: "", presenter: false, frame: "", motion: "", line: c.line, status: "done" })) };
       const spec = buildReelSpec(plan, view.clips.map((c) => c.clipUrl ?? ""), brand);
       await loadSpecFonts(spec).catch(() => undefined);
-      const blob = await encodeSpecMp4(spec, new Map(), { musicUrl: view.musicUrl, quality: "720p", onProgress: (f) => setBusy(`Putting your reel together… ${Math.round(f * 100)}%`) });
+      const blob = await encodeSpecMp4(spec, new Map(), { musicUrl: view.musicUrl, quality: "720p", onProgress: (f) => setBusy(`${JOINING} ${Math.round(f * 100)}%`) });
       const target = await reelUploadAction(view.id);
       if (!target.ok) throw new Error(target.error);
       const { error: uploadError } = await createClient().storage.from("gallery-videos").uploadToSignedUrl(target.path, target.token, blob, { contentType: "video/mp4" });

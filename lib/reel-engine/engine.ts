@@ -121,7 +121,7 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     const recentClips = recentJobs.flatMap((j) => ((j.plan as unknown as ReelPlan).clips ?? []).map((c) => ({ variant: c.variant, camera: c.camera })));
     const beats = directReel(recentClips, job.id);
     const plan = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean) });
-    await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json(plan), stepUntil: null } });
+    await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null }), stepUntil: null } });
     return job.id;
   } catch (error) {
     await prisma.reelJob.update({ where: { id: job.id }, data: { status: "failed", stepUntil: null, error: "The reel could not be planned. Please try again." } });
@@ -234,6 +234,7 @@ export type ReelView = {
   costUsd: number;
   error: string | null;
   presenter: string | null;
+  price: string | null;
   clips: { beat: string; label: string; line: string; status: string; frameUrl: string | null; clipUrl: string | null }[];
   musicUrl: string | null;
   reelUrl: string | null;
@@ -268,6 +269,7 @@ export async function reelView(owner: Owner, jobId: string): Promise<ReelView | 
     costUsd: job.costUsd,
     error: job.error,
     presenter: plan.presenter ?? null,
+    price: plan.price ?? null,
     clips: clips.map((c) => ({ beat: c.beat, label: variantOf(c.variant)?.idea ?? c.beat, line: c.line, status: c.status, frameUrl: c.framePath ? (frames.get(c.framePath) ?? null) : null, clipUrl: c.clipPath ? (files.get(c.clipPath) ?? null) : null })),
     musicUrl: music ? musicUrl(music.path) : null,
     reelUrl: job.path ? (files.get(job.path) ?? null) : null,

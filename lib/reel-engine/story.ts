@@ -31,7 +31,7 @@ export const BEATS: readonly Beat[] = [
     id: "use",
     label: "In use",
     variants: [
-      { id: "hands", idea: "Close shots of hands using the product step by step in its real place, while the presenter explains.", presenter: false },
+      { id: "working", idea: "A medium shot of the product working in its real place, people around it, while the presenter explains in a voice-over (no close-ups of fingers).", presenter: false },
       { id: "walkthrough", idea: "The presenter walks through the place showing the product working, talking as they go.", presenter: true },
       { id: "customer-try", idea: "A local customer tries the product for the first time while the presenter guides them.", presenter: true },
     ],
@@ -42,7 +42,7 @@ export const BEATS: readonly Beat[] = [
     variants: [
       { id: "happy-customer", idea: "A happy local customer enjoys the result the product gave them, natural and unposed.", presenter: false },
       { id: "before-after", idea: "The same place before and after the product: the change is clear (never bodies or health).", presenter: false },
-      { id: "scale", idea: "Many of the product at work in a bigger, busy setting with a team, showing it scales.", presenter: false },
+      { id: "family", idea: "A local family or team enjoys what the product gave them, at home or at work, natural and unposed; the product in the background as it really is.", presenter: false },
     ],
   },
   {
@@ -86,7 +86,16 @@ export type ReelClip = {
   tries?: number;
 };
 
-export type ReelPlan = { title: string; caption: string; hashtags: string[]; music: string | null; clips: ReelClip[]; presenter: string };
+export type ReelPlan = {
+  title: string;
+  caption: string;
+  hashtags: string[];
+  music: string | null;
+  clips: ReelClip[];
+  presenter: string;
+  /** The product's price from Business info, shown as text on the last scene (Google refuses it spoken). */
+  price?: string | null;
+};
 
 /** Least used first, ties broken by the seed; never twice in a reel. */
 function hash(seed: string): number {
@@ -140,7 +149,8 @@ export function veoClipPrompt(clip: Pick<ReelClip, "motion" | "line" | "camera" 
   return [
     `A vertical 9:16 video clip of about ${CLIP_SECONDS} seconds. ${clip.motion} Camera: ${clip.camera}.`,
     speech,
-    "One continuous shot from the first frame to the last: no cuts, no jumps, the same people and the same product all through.",
+    "One continuous shot from the first frame to the last: no cuts, no jumps, the same people and the same product all through, exactly one of it, its shape unchanged.",
+    "Keep hands simple and natural: no close-ups of fingers touching leaves or small parts.",
     "Real documentary footage shot on a phone or a cinema camera: natural light, true-to-life colour, real skin texture, natural movement and hands. No text, captions or subtitles on screen, no music, no logos added.",
   ].join("\n");
 }
@@ -170,6 +180,8 @@ export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name:
       layers.push(text({ text: brand.name, size: 0.06, y: 0.12, h: 0.09, w: 0.8, box: { color: brand.color, padding: 0.025, radius: 0.04 }, from: 0.35 }));
       // How to reach the business, so the call to action can be acted on (the first reel said "message us" with no number).
       if (brand.contact) layers.push(text({ text: brand.contact, size: 0.042, y: 0.22, h: 0.07, w: 0.8, weight: 700, box: { color: "rgba(0,0,0,0.6)", padding: 0.02, radius: 0.03 }, from: 0.4 }));
+      // The price as text: buyers want it before they message, and only speaking it is refused.
+      if (plan.price?.trim()) layers.push(text({ text: plan.price.trim().slice(0, 40), size: 0.05, y: brand.contact ? 0.31 : 0.22, h: 0.08, w: 0.7, weight: 800, box: { color: "#FFFFFF", padding: 0.02, radius: 0.03 }, color: brand.color, from: 0.45 }));
     }
     return { seconds: SCENE_SECONDS, background: { kind: "solid", colors: ["#000000"] }, layers, ...(i > 0 ? { transition: "cut" as const } : {}) };
   });
