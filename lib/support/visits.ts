@@ -31,15 +31,15 @@ export type VisitorSession = {
 
 const visitorSelect = { id: true, name: true, email: true, phone: true, businessName: true, userId: true, businessId: true, creatorProfileId: true, leadId: true } as const;
 
-/** The visitor behind an X-Support-Visit token. Any visit of the last week counts (an idle one still owns its chats). */
+/** The visitor behind an X-Support-Visit token. Any visit seen in the last week counts (an idle one still owns its chats). */
 export async function requireVisit(headers: Headers): Promise<VisitorSession> {
   const token = headers.get(VISIT_HEADER)?.trim();
   if (!token || token.length < 20 || token.length > 100) throw new SupportError(401, "visit_required", "Open the chat again to continue.");
   const visit = await prisma.supportVisit.findUnique({
     where: { tokenHash: await sha256Hex(token) },
-    select: { id: true, visitorId: true, surface: true, country: true, startedAt: true, visitor: { select: visitorSelect } },
+    select: { id: true, visitorId: true, surface: true, country: true, lastSeenAt: true, visitor: { select: visitorSelect } },
   });
-  if (!visit || Date.now() - visit.startedAt.getTime() > RESUME_WINDOW_MS) throw new SupportError(401, "visit_expired", "This chat session has ended. Reload the page to continue.");
+  if (!visit || Date.now() - visit.lastSeenAt.getTime() > RESUME_WINDOW_MS) throw new SupportError(401, "visit_expired", "This chat session has ended. Reload the page to continue.");
   return { visitId: visit.id, visitorId: visit.visitorId, surface: visit.surface as Surface, country: visit.country, visitor: visit.visitor };
 }
 
@@ -134,9 +134,7 @@ export async function startVisit(body: z.infer<typeof visitBody>, req: VisitRequ
   const hours = teamHours(settings, now);
   const conversation = await resumable(visitor.id, person?.userId ?? null, now);
   const lastChat = await prisma.supportConversation.findFirst({ where: { visitorId: visitor.id }, orderBy: { lastMessageAt: "desc" }, select: { lastMessageAt: true } });
-  const rule = greetingFor(settings, path);
-  const quiet = !!lastChat && now.getTime() - lastChat.lastMessageAt.getTime() < GREETING_QUIET_MS;
-  const greeting = rule && !conversation && !quiet && !visitor.optedOut && body.surface !== "bio" && device.device !== "phone" ? { text: rule.text, delaySec: rule.delaySec, quickReplies: rule.quickReplies } : null;
+  const greeting = greetingDecision({ rule: greetingFor(settings, path), surface: body.surface, device: device.device, optedOut: visitor.optedOut, openChat: !!conversation, lastChatAt: lastChat?.lastMessageAt ?? null, now });
   const signedIn = !!person;
   const formFilled = !!(visitor.name && visitor.email && visitor.businessName);
   return {
@@ -153,6 +151,16 @@ export async function startVisit(body: z.infer<typeof visitBody>, req: VisitRequ
     conversation,
     realtime: realtimeConnection(),
   };
+}
+
+/**
+ * The page's greeting bubble, or null: never on the bio corner link, on phones (it would cover the page), for a visitor
+ * who asked not to be tracked, with a chat open, or for someone who chatted in the last 7 days. Pure.
+ */
+export function greetingDecision(i: { rule: ReturnType<typeof greetingFor> | null; surface: Surface; device: string; optedOut: boolean; openChat: boolean; lastChatAt: Date | null; now: Date }): VisitResponse["greeting"] {
+  if (!i.rule || i.surface === "bio" || i.device === "phone" || i.optedOut || i.openChat) return null;
+  if (i.lastChatAt && i.now.getTime() - i.lastChatAt.getTime() < GREETING_QUIET_MS) return null;
+  return { text: i.rule.text, delaySec: i.rule.delaySec, quickReplies: i.rule.quickReplies };
 }
 
 /** The open chat to show again: this visitor's, or (signed in) any of this person's from another browser. */

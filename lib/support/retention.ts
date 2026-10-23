@@ -37,13 +37,17 @@ export async function sweepSupport(now = new Date()): Promise<SweepResult> {
     }
   }
 
+  let chatsClosed = 0;
   const idle = await prisma.supportConversation.findMany({ where: { status: "AI", lastMessageAt: { lt: cut.aiChat } }, select: { id: true }, take: 500 });
   if (idle.length) {
     const ids = idle.map((c) => c.id);
     await prisma.supportConversation.updateMany({ where: { id: { in: ids }, status: "AI" }, data: { status: "CLOSED", closedAt: now, closedBy: "system" } });
-    await prisma.supportEvent.createMany({ data: ids.map((conversationId) => ({ name: "closed", conversationId, at: now })) });
-    for (const id of ids) await scheduleJob({ kind: JOB_JUDGE, runAt: now, payload: { conversationId: id }, dedupeKey: `${JOB_JUDGE}:${id}` });
+    // Only the ones this run closed: an agent may have taken one in between.
+    const closed = (await prisma.supportConversation.findMany({ where: { id: { in: ids }, status: "CLOSED", closedBy: "system", closedAt: now }, select: { id: true } })).map((c) => c.id);
+    chatsClosed = closed.length;
+    if (closed.length) await prisma.supportEvent.createMany({ data: closed.map((conversationId) => ({ name: "closed", conversationId, at: now })) });
+    for (const id of closed) await scheduleJob({ kind: JOB_JUDGE, runAt: now, payload: { conversationId: id }, dedupeKey: `${JOB_JUDGE}:${id}` });
   }
   await prisma.supportConversation.updateMany({ where: { visitorDraftAt: { lt: cut.visitIdle } }, data: { visitorDraft: null, visitorDraftAt: null } });
-  return { visitsClosed: Number(visits), ipsCleared: ips.count, pageHitsDeleted: hits.count, filesDeleted: files, chatsClosed: idle.length };
+  return { visitsClosed: Number(visits), ipsCleared: ips.count, pageHitsDeleted: hits.count, filesDeleted: files, chatsClosed };
 }
