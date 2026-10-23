@@ -27,6 +27,11 @@ Format: where (URL) · steps · what happened / what should happen · severity (
      (/auth/v1/.well-known/jwks.json), so tokens signed with it are checked locally (the key is cached 10 minutes for
      all requests, GLOBAL_JWKS in auth-js); a legacy HS256 token falls back to getUser by itself. Before (warm, signed
      in): /robots.txt through the proxy about 500 ms. Test: tests/auth/proxy-claims.test.ts.
+   - After (live 23 Oct, warm, signed in): /robots.txt median 70 ms over 15 tries (13 of 15 under 200 ms): the proxy no
+     longer waits for Supabase Auth. Whole pages after it: /dashboard/usage 4.7-6.5 s, /gallery 3.7-5.1 s,
+     /content 5.6 s, the same as after batch 3 (3.9-4.5 s) within the noise of a Mac that also runs builds. The first
+     visit of a page not warmed after a restart: 13 s. Next big wins: fewer queries in each page itself, or a test site
+     near the database.
    - Was a proposal (sign-in security, needed the main session's OK): proxy.ts and getCurrentUser
      (lib/supabase/server.ts) each call `supabase.auth.getUser()`, a network call to Supabase Auth, so every page pays
      two Auth round trips. Supabase recommends `getClaims()` in the proxy (verifies the JWT locally when the project
