@@ -70,7 +70,11 @@ export const visitBody = z.object({
   referrer: z.string().max(500).optional(),
   /** Screen width, to tell phones from desktops when the user agent is unclear. */
   screenW: z.number().int().positive().max(10000).optional(),
+  /** The browser asks not to be tracked (Global Privacy Control): no IP, city or page list is stored, and no greeting. */
+  optOut: z.boolean().optional(),
 });
+// POST /visit with the X-Support-Visit header it got before continues that visit (another page of it) and answers the
+// same token; a new token comes back when that visit is over (20 minutes without a heartbeat). Send it on every page.
 export type VisitResponse = {
   visitToken: string;
   /** Known person: signed-in user (from the session cookie) or a visitor who filled the form before. */
@@ -84,8 +88,13 @@ export type VisitResponse = {
   realtime: { url: string; anonKey: string } | null;
 };
 
-/** Heartbeats go straight to Supabase: rpc("support_heartbeat", { p_token, p_path, p_title }), every 30–60 s while visible. */
+/**
+ * Heartbeats go straight to Supabase: rpc("support_heartbeat", { p_token, p_path, p_title }), every 30–60 s while visible.
+ * Answers HeartbeatResult: `unread` counts agent messages not seen yet (an agent started a chat or replied while the panel
+ * was closed: open it); `error: "expired"` or `"unknown"` means POST /visit again.
+ */
 export const HEARTBEAT_RPC = "support_heartbeat";
+export type HeartbeatResult = { ok: true; unread?: number; throttled?: boolean } | { ok: false; error: "invalid" | "unknown" | "expired" };
 
 export const prechatBody = z.object({
   name: z.string().trim().min(1).max(120),
@@ -103,6 +112,8 @@ export const sendMessageBody = z.object({
 }).refine((b) => !!b.text || !!b.attachmentId, { message: "Write a message or attach a file." });
 /** POST /conversations (first message) and POST /conversations/:id/messages both answer this. */
 export type SendMessageResponse = { conversation: ConversationView };
+
+export const typingBody = z.object({ draft: z.string().max(500).optional() });
 
 export const uploadBody = z.object({ mime: z.string().max(100), bytes: z.number().int().positive(), fileName: z.string().max(200).optional(), durationSec: z.number().int().min(0).max(600).optional() });
 export type UploadResponse = { attachmentId: string; uploadUrl: string; token: string };
@@ -177,7 +188,8 @@ export type ConversationDetail = ConversationListItem & {
   account: AccountFacts | null;
   visit: VisitView | null;
   past: { id: string; number: number; title: string; outcome: string; at: string }[];
-  messages: (MessageView & { seenByVisitorAt: string | null })[];
+  /** `original`: what the agent wrote before it was translated into the visitor's language (agentMessageBody.translateTo). */
+  messages: (MessageView & { seenByVisitorAt: string | null; original: string | null })[];
 };
 
 export type LiveVisitor = {
@@ -199,6 +211,15 @@ export type LiveVisitor = {
   browser: string | null;
   leadScore: number | null;
 };
+
+export const availabilityBody = z.object({ availability: z.enum(["online", "away", "offline"]) });
+/** POST /agent/devices: a Web Push subscription (PushSubscription.toJSON()), or later a desktop or phone app's token. */
+export const deviceBody = z.object({
+  endpoint: z.string().url().max(1000),
+  keys: z.object({ p256dh: z.string().min(10).max(200), auth: z.string().min(8).max(100) }),
+  label: z.string().max(80).optional(),
+  kind: z.enum(["webpush", "tauri", "fcm", "apns"]).default("webpush"),
+});
 
 export const agentMessageBody = z.object({
   text: z.string().trim().min(1).max(MESSAGE_MAX),

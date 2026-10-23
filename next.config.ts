@@ -42,6 +42,8 @@ const nextConfig: NextConfig = {
   // cannot see; Netlify's function is built from the traced files, so list them.
   outputFileTracingIncludes: {
     "/*": ["./node_modules/**/pg-cloudflare/{dist,esm}/**", "./node_modules/@jsquash/{png,jpeg,webp}/codec/**/*.wasm"],
+    // The support AI fills an empty guide index from these on first use (lib/support/guide.ts).
+    "/api/support/**": ["./docs/guide/features/*.md"],
   },
   async headers() {
     return [

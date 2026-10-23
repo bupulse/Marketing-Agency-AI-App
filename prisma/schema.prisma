@@ -3262,7 +3262,8 @@ model SupportMessage {
   translations   Json? // { "en": "...", "rw": "..." }
   attachmentId   String?             @unique
   attachment     SupportAttachment?  @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
-  aiSources      Json? // [{ file, heading, anchor }] guide sections the AI used
+  aiSources      Json? // [{ id, title, heading, href }] guide sections the AI used
+  aiActions      Json? // [{ label, href }] buttons the AI attached (checked against known pages)
   aiConfident    Boolean?
   clientMsgId    String? // idempotent retries from the widget or app
   seenByVisitorAt DateTime?

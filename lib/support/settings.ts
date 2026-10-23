@@ -5,7 +5,7 @@ import type { Hours } from "./contract";
 
 // The support chat's settings (Admin -> Live chat): team hours, page greetings, AI rules and the WhatsApp number. One
 // AdminSetting row; a missing or broken row means the defaults, so a fresh database needs no seed. Admin saves it
-// through saveSupportSettings (which audits); the API reads it through getSupportSettings (cached 30 s).
+// through saveSupportSettings (lib/support/agents.ts, which audits); the API reads it through getSupportSettings (cached 30 s).
 
 export const SUPPORT_SETTINGS_KEY = "support.settings";
 const ZONE = "Africa/Kigali";
