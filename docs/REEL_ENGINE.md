@@ -75,3 +75,28 @@ Kinyarwanda speech is untested by Google; if it is poor, the fallback stays an E
   behind another window, as timers do. Open: say so on the screen, or join the reel on the server.
 - **Test total: $8.22 of the $10** (docs/AI_COSTS.md, "Reel engine test reels"). The "veo" switch was turned on in the
   TEST database for the test (owner's OK; TEST has no admin login) and turned off after the second reel.
+- **Polish after the test (owner's choice, no new spending):** the product's price from Business info is written on
+  the last scene under the contact (only speaking it is refused); the "close shots of hands" in-use idea became a
+  medium shot of the product working, and the "many towers" result idea became a family or team enjoying the result;
+  the writer and every clip prompt ask for medium shots, no close-ups of fingers, one of the product with its shape
+  unchanged; joining says "Keep this tab in front until it is done".
+
+## Round 2: viral, human, real physics (owner, 23 October 2026)
+
+The owner after the first two reels: "it has AI slop… it doesn't obey physics at all, you don't see hands touching the
+leaf and you can see people passing through products"; follow how viral videos are made (his examples: a presenter
+walking up to a phone camera in a car showroom, quick cuts and stickers that go with the music; an AI comedy ad where
+the product is the payoff); the right place for the product ("a product for farming… has to go in green houses");
+"make it feel human and make it fun and interactive"; and learn it for every business, not only the test one. The test
+budget became **$20** and the "veo" switch stays on.
+
+| What | Where | How |
+| --- | --- | --- |
+| The right place | writer.ts `SECTOR_SETTINGS` | The business's sector (`sectorFromText`) gives where its product is really used (agriculture: a greenhouse, a farm field, a home or rooftop garden, never a market); the writer picks one `setting` for the reel; every frame and clip is told it; the presenter's portrait gives only her face, hair and clothes, never its place |
+| Viral techniques | engine.ts, writer.ts `recipeLines` | A viral recipe from the video engine's library (`viralRecipe`, docs/VIRAL_RECIPES.md, `footage.generated`) gives the opening, the story, the camera feel, the caption and the sound; its sources are kept on the reel |
+| Human and fun | story.ts `BEATS`, writer.ts | New ideas: the presenter walking up to the phone camera, a friend's funny everyday struggle, a real reaction, "comment one word"; a hook sticker of at most 4 words; one or two stressed words per line |
+| Real physics | story.ts `CLIP_RULES`, the frame prompt | Every clip: filmed on a phone by a friend, every touch makes contact, nobody passes through objects or people, objects keep shape and number, at most two people and no crowd, one continuous shot |
+| Real sounds | `CLIP_RULES` | The video model makes crisp real sounds of what happens (steps, water, leaves, a click, a whoosh on a fast move) inside each clip; the music comes on top |
+| The Checker | checker.ts | Gemini watches every clip (about $0.003) for bodies or objects passing through each other, hands without contact or with fused fingers, faces changing, the product changing, garbled text, cuts, the wrong place or a crowd; a failed clip is filmed again with what went wrong (`avoid`), at most 2 a reel (`MAX_REFILMS`) and only inside the test budget |
+| The edit | story.ts `buildReelSpec`, `reelCuts` | 8 shots: each clip is a shot and a punch-in on the same moving clip (its sound runs straight through); flash, whip and zoom cuts between clips; the first punch at about 1.8 s; captions pop in word by word with the stressed words in the brand colour; the hook sticker; the brand, the contact and a price sticker at the end |
+| On the beat | beats.ts | The music library has no tempo, so the browser finds the track's beat (onset curve, autocorrelation, phase) and every cut snaps to it |

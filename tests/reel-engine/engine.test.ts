@@ -10,6 +10,7 @@ const h = vi.hoisted(() => {
     submit: vi.fn(),
     poll: vi.fn(),
     upload: vi.fn(async () => ({ error: null })),
+    check: vi.fn(async () => ({ ok: true, problems: [] as string[], ran: true })),
     prisma: {
       reelPresenter: { findUnique: vi.fn(async () => ({ path: "u1/designs/p.png", description: "a Black Rwandan woman" })), upsert: vi.fn() },
       reelJob: {
@@ -34,6 +35,7 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
+vi.mock("@/lib/reel-engine/checker", () => ({ checkClip: h.check }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn(async () => {}) }));
 vi.mock("@/lib/admin/switch", () => ({ isServiceEnabled: async () => h.switchOn.value }));
 vi.mock("@/lib/ai", () => ({ getTextProvider: () => ({ name: "gemini", generate: async () => ({ text: "{}", provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } }) }) }));
@@ -63,6 +65,7 @@ beforeEach(() => {
   let n = 0;
   h.design.mockReset().mockImplementation(async () => ({ id: `d${++n}`, path: `u1/designs/f${n}.png`, mimeType: "image/png", bytes: new Uint8Array([1]) }));
   h.submit.mockReset().mockImplementation(async () => `models/veo/operations/op${Math.random()}`);
+  h.check.mockReset().mockResolvedValue({ ok: true, problems: [], ran: true });
   h.poll.mockReset().mockResolvedValue({ name: "op", done: true, videoUri: "https://generativelanguage.googleapis.com/v.mp4", error: null });
 });
 
@@ -140,5 +143,27 @@ describe("carrying on with a reel", () => {
     const view = await latestReel(owner);
     expect(view).toMatchObject({ id, status: "filming", language: "Kinyarwanda" });
     expect(view!.clips.map((c) => c.status)).toEqual(["framed", "planned", "planned", "planned"]);
+  });
+});
+
+describe("the clip checker in the engine", () => {
+  it("films a clip again when the checker sees broken physics, telling the model what went wrong, at most twice a reel", async () => {
+    const id = await startReel(owner, { language: "English", tier: "lite" });
+    for (let i = 0; i < 4; i++) await stepReel(owner, id);
+    h.check
+      .mockResolvedValueOnce({ ok: false, problems: ["3 s: a man walks through the tower"], ran: true })
+      .mockResolvedValueOnce({ ok: false, problems: ["5 s: her fingers melt into the leaves"], ran: true })
+      .mockResolvedValueOnce({ ok: false, problems: ["1 s: a face changes"], ran: true });
+    await stepReel(owner, id);
+    const plan = h.jobs.get(id)!.plan as { refilms: number; clips: { status: string; avoid?: string[] }[] };
+    expect(plan.refilms).toBe(2);
+    expect(plan.clips.map((c) => c.status)).toEqual(["framed", "framed", "done", "done"]);
+    expect(plan.clips[0].avoid).toEqual(["3 s: a man walks through the tower"]);
+    await stepReel(owner, id);
+    expect(h.submit).toHaveBeenCalledTimes(6);
+    expect(String(h.submit.mock.calls[4][0].prompt)).toContain("avoid exactly this: 3 s: a man walks through the tower.");
+    expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
+    // 6 clips paid: the 4 and the 2 filmed again.
+    expect(h.jobs.get(id)!.costUsd).toBeCloseTo(4 * 0.067 + 6 * veoClipUsd(8, veoModel()), 2);
   });
 });

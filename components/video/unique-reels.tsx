@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const STEP_EVERY_MS = 6000;
 const FILMING = "Filming: start frames first, then each clip is filmed (a few minutes). Keep this tab open.";
+const JOINING = "Putting your reel together. Keep this tab in front until it is done…";
 const BEAT_LABEL: Record<string, string> = { hook: "1. Hook", use: "2. In use", result: "3. Result", cta: "4. Call to action" };
 
 /**
@@ -108,12 +109,13 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
     if (joining.current) return;
     joining.current = true;
     try {
-      setBusy("Putting your reel together…");
-      const { encodeSpecMp4, loadSpecFonts } = await import("@/lib/video-engine/encode");
-      const plan: ReelPlan = { title: view.title, caption: view.caption, hashtags: view.hashtags, music: null, presenter: view.presenter ?? "", clips: view.clips.map((c) => ({ beat: c.beat as ReelPlan["clips"][number]["beat"], variant: "", camera: "", presenter: false, frame: "", motion: "", line: c.line, status: "done" })) };
-      const spec = buildReelSpec(plan, view.clips.map((c) => c.clipUrl ?? ""), brand);
+      setBusy(JOINING);
+      const [{ encodeSpecMp4, loadSpecFonts }, { beatOfTrack }] = await Promise.all([import("@/lib/video-engine/encode"), import("@/lib/reel-engine/beats")]);
+      const plan: ReelPlan = { title: view.title, caption: view.caption, hashtags: view.hashtags, music: null, presenter: view.presenter ?? "", price: view.price, hook: view.hook, clips: view.clips.map((c) => ({ beat: c.beat as ReelPlan["clips"][number]["beat"], variant: "", camera: "", presenter: false, frame: "", motion: "", line: c.line, stress: c.stress, status: "done" })) };
+      // The cuts land on the music's beat, found from the track itself (the library has no tempo).
+      const spec = buildReelSpec(plan, view.clips.map((c) => c.clipUrl ?? ""), brand, await beatOfTrack(view.musicUrl));
       await loadSpecFonts(spec).catch(() => undefined);
-      const blob = await encodeSpecMp4(spec, new Map(), { musicUrl: view.musicUrl, quality: "720p", onProgress: (f) => setBusy(`Putting your reel together… ${Math.round(f * 100)}%`) });
+      const blob = await encodeSpecMp4(spec, new Map(), { musicUrl: view.musicUrl, quality: "720p", onProgress: (f) => setBusy(`${JOINING} ${Math.round(f * 100)}%`) });
       const target = await reelUploadAction(view.id);
       if (!target.ok) throw new Error(target.error);
       const { error: uploadError } = await createClient().storage.from("gallery-videos").uploadToSignedUrl(target.path, target.token, blob, { contentType: "video/mp4" });
@@ -227,7 +229,7 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
                 )}
               </div>
               <p className="text-[13px] font-semibold">{BEAT_LABEL[c.beat] ?? c.beat}</p>
-              <p className="text-[12px] text-muted">{c.status === "done" ? "Filmed" : c.status === "filming" ? "Filming…" : c.status === "framed" ? "Start frame ready" : c.status === "failed" ? "Failed" : "Waiting"}</p>
+              <p className="text-[12px] text-muted">{c.status === "done" ? "Filmed and checked" : c.status === "filming" ? "Filming…" : c.status === "framed" ? (c.problems.length ? "Filming again: the check found a problem" : "Start frame ready") : c.status === "failed" ? "Failed" : "Waiting"}</p>
               {c.line && <p className="text-[12px] italic">“{c.line}”</p>}
             </li>
           ))}
