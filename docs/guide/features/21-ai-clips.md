@@ -46,6 +46,9 @@ default).
 
 - The product as it is in the photo: same shape, colours and details.
 - No text, letters, logos or brand names in the clip (BuPulse writes the price and the phone number on top).
+- No prices or money words in what Google is asked: Gemini Omni refuses such a request at once (unbilled), so
+  BuPulse drops any sentence of the product description that mentions money, and the amount in a product name
+  (`withoutMoney` in `lib/video-engine/veo.ts`). The price is always BuPulse's own text on top.
 - People only as adults, East African, ordinary people, never a famous person. Mostly hands and the product.
 - No speech: the video's own voice-over and music are what you hear.
 - Every clip carries Google's invisible SynthID watermark (it marks the clip as made by AI).

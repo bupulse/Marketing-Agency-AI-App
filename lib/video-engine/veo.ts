@@ -394,6 +394,20 @@ const clean = (s: string | null | undefined, max: number) =>
     .trim()
     .slice(0, max);
 
+/**
+ * Money in a clip prompt: a price, an amount with a currency, a discount. Gemini Omni refuses a request whose words
+ * carry a price at once (400 INVALID_ARGUMENT, not billed; found by client-qa's reel test, 23 October 2026), and the
+ * price is BuPulse's own overlay anyway.
+ */
+const MONEY = /\d[\d.,\s]*\s*(?:rwf|frw|usd|kes|ksh|ugx|tzs|eur|€|\$|£|%|k\b)|(?:rwf|frw|usd|kes|ksh|ugx|tzs|eur|€|\$|£)\s*\d|\b(?:price[ds]?|prix|igiciro|cost[s]?|cheap(?:er|est)?|discount(?:ed)?|sale|promo(?:tion)?|offer|deal|free|amafaranga|francs?|dollars?|shillings?)\b/i;
+
+/** The facts without money: sentences that mention it are dropped (a name keeps its words without the amount). */
+export function withoutMoney(text: string): string {
+  const kept = text.split(/(?<=[.!?;])\s+/).filter((s) => !MONEY.test(s));
+  return kept.join(" ").trim();
+}
+const nameWithoutMoney = (name: string) => name.replace(/[-–—,:(]?\s*(?:\d[\d.,\s]*\s*(?:rwf|frw|usd|kes|ksh|ugx|tzs|eur|€|\$|£)|(?:rwf|frw|usd|kes|ksh|ugx|tzs|eur|€|\$|£)\s*\d[\d.,]*)\)?/gi, "").trim();
+
 /** The default setting: an ordinary, bright place in the business's city (Kigali for the Rwanda launch). */
 export const defaultSetting = (f: Pick<ClipFacts, "city" | "country">) => {
   const city = clean(f.city, 40) || (!f.country || /rwanda|^rw$/i.test(f.country) ? "Kigali" : "");
@@ -403,7 +417,7 @@ export const defaultSetting = (f: Pick<ClipFacts, "city" | "country">) => {
 
 /** The default plan for 2 or 3 clips: the product in use, the product in everyday Kigali life, a close detail. */
 export function defaultClipPlan(f: ClipFacts, count = 3, seconds: VeoSeconds = 4): ClipNeed[] {
-  const name = clean(f.productName, 80) || "the product";
+  const name = clean(nameWithoutMoney(f.productName), 80) || "the product";
   const city = clean(f.city, 40) || "Kigali";
   const plan: ClipNeed[] = [
     { shot: `A customer's hands pick up and use the ${name} the way a real customer would, in one smooth, natural action.`, setting: defaultSetting(f), camera: "slow handheld push-in, eye level", people: true, seconds },
@@ -419,8 +433,8 @@ export function defaultClipPlan(f: ClipFacts, count = 3, seconds: VeoSeconds = 4
  * people appear, no famous people, no speech (the clip's audio is dropped; BuPulse adds music and the voice-over).
  */
 export function veoPrompt(need: ClipNeed, facts: ClipFacts, opts: { withImage?: boolean; ratio?: VeoRatio } = {}): string {
-  const name = clean(facts.productName, 80) || "the product";
-  const summary = clean(facts.summary, 200);
+  const name = clean(nameWithoutMoney(facts.productName), 80) || "the product";
+  const summary = clean(withoutMoney(facts.summary ?? ""), 200);
   const vertical = (opts.ratio ?? "9:16") === "9:16";
   const lines = [
     `${vertical ? "Vertical 9:16" : "Horizontal 16:9"} short video for a social media ad, realistic filmed look, smooth natural motion.`,
