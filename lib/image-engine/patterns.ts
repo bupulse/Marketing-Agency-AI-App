@@ -39,7 +39,8 @@ export const PATTERNS: readonly Pattern[] = [
 ];
 
 export const SHOTS = ["close-up", "medium shot", "wide establishing shot", "overhead top-down", "low angle hero", "over-the-shoulder", "eye-level portrait"] as const;
-export const LIGHTS = ["golden hour sun", "soft morning daylight", "bright clean studio light", "warm evening glow", "cool overcast daylight", "dramatic side light", "colourful neon accents"] as const;
+/** Light with a real source (anti-slop, docs/IMAGE_ANTI_SLOP.md: no neon haze, no "cinematic" glow). */
+export const LIGHTS = ["low late-afternoon sun", "soft morning daylight through a window", "plain daylight in an open shop or workshop", "warm tungsten bulbs in the evening", "flat overcast daylight", "low side light through an open door", "midday sun with hard shadows"] as const;
 /** Where the words sit: every picture lays them out differently, no template. */
 export const LAYOUTS = [
   "big headline across the top, button at the bottom left",

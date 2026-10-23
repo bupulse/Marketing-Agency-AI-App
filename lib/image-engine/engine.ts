@@ -102,7 +102,7 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
   const { periodStart } = await consumeUsage(owner.userId, "image", credits);
   const batchId = globalThis.crypto.randomUUID();
   try {
-    const recent = await prisma.imageConcept.findMany({ where: { businessId: owner.businessId }, orderBy: { createdAt: "desc" }, take: 60, select: { pattern: true, shot: true, light: true, layout: true, title: true, scene: true } });
+    const recent = await prisma.imageConcept.findMany({ where: { businessId: owner.businessId }, orderBy: { createdAt: "desc" }, take: 60, select: { pattern: true, shot: true, light: true, layout: true, camera: true, title: true, scene: true } });
     const slots = directBatch({ tiers, recent, photoCount: loaded.photos.length, facts: { reviews: loaded.reviews.length > 0, price: loaded.hasPrice }, seed: batchId, prefer: patternsFromBrief(request.brief) });
     const input: PlannerInput = { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, reviews: loaded.reviews, slots, recent: recent.slice(0, 30).map((r) => `${r.title}: ${r.scene}`.slice(0, 200)) };
     const concepts = await writeConcepts(owner, input);
@@ -123,6 +123,7 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
         shot: slot.shot,
         light: slot.light,
         layout: slot.layout,
+        camera: slot.camera,
         treatment: slot.treatment,
         title: concepts[i].title,
         scene: concepts[i].scene,
@@ -172,6 +173,7 @@ export async function paintNext(owner: Owner, batchId: string, now: Date = new D
       aspectRatio,
       concept: row,
       layout: row.layout,
+      camera: row.camera || "a 35mm documentary photo (available light)",
       treatment: row.treatment as Treatment,
       hasPhoto: !!row.photoPath,
       hasLogo: !!loaded.business.logoUrl,

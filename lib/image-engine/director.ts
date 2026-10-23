@@ -3,6 +3,7 @@
 // Painter makes it on Pro or Lite. It reads the company's recent pictures (ImageConcept rows) and picks what was used
 // least, so a batch never repeats itself and a company never gets the same idea twice in a row. Pure, so it is tested.
 import { LAYOUTS, LIGHTS, PATTERNS, SHOTS, type Pattern, type Treatment } from "./patterns";
+import { CAMERAS } from "./realism";
 
 export type Tier = "lite" | "pro";
 /**
@@ -14,8 +15,8 @@ export const TIER_CREDITS: Record<Tier, number> = { lite: 2, pro: 4 };
 export const PRO_EVERY = 4;
 
 export type Quality = "auto" | "pro" | "lite";
-export type RecentConcept = { pattern: string; shot: string; light: string; layout: string };
-export type Slot = { pattern: string; shot: string; light: string; layout: string; treatment: Treatment; photoIndex: number | null; tier: Tier };
+export type RecentConcept = { pattern: string; shot: string; light: string; layout: string; camera?: string };
+export type Slot = { pattern: string; shot: string; light: string; layout: string; camera: string; treatment: Treatment; photoIndex: number | null; tier: Tier };
 
 /** A small stable hash (FNV-1a), for tie-breaks that are the same for the same seed. */
 function hash(seed: string): number {
@@ -30,7 +31,10 @@ function hash(seed: string): number {
 /** How much each value was used lately: the newest picture counts 1, older ones less (0.92 per picture back). */
 function usage(recent: readonly RecentConcept[], key: keyof RecentConcept): Map<string, number> {
   const out = new Map<string, number>();
-  recent.forEach((r, i) => out.set(r[key], (out.get(r[key]) ?? 0) + Math.pow(0.92, i)));
+  recent.forEach((r, i) => {
+    const v = r[key];
+    if (v) out.set(v, (out.get(v) ?? 0) + Math.pow(0.92, i));
+  });
   return out;
 }
 
@@ -72,8 +76,9 @@ export function directBatch(input: {
     shot: usage(input.recent, "shot"),
     light: usage(input.recent, "light"),
     layout: usage(input.recent, "layout"),
+    camera: usage(input.recent, "camera"),
   };
-  const batch = { pattern: new Map<string, number>(), shot: new Map<string, number>(), light: new Map<string, number>(), layout: new Map<string, number>() };
+  const batch = { pattern: new Map<string, number>(), shot: new Map<string, number>(), light: new Map<string, number>(), layout: new Map<string, number>(), camera: new Map<string, number>() };
   const bump = (m: Map<string, number>, v: string) => m.set(v, (m.get(v) ?? 0) + 1);
   const preferred = (input.prefer ?? []).filter((id) => allowed.some((p) => p.id === id));
   // Photos rotate from where the last pictures left off.
@@ -87,11 +92,13 @@ export function directBatch(input: {
     const shot = pick(pattern.people === "no" ? SHOTS.filter((s) => s !== "over-the-shoulder" && s !== "eye-level portrait") : SHOTS, used.shot, batch.shot, seed);
     const light = pick(LIGHTS, used.light, batch.light, seed);
     const layout = pick(LAYOUTS, used.layout, batch.layout, seed);
+    const camera = pick(CAMERAS, used.camera, batch.camera, seed);
     bump(batch.pattern, pattern.id);
     bump(batch.shot, shot);
     bump(batch.light, light);
     bump(batch.layout, layout);
-    return { pattern: pattern.id, shot, light, layout, treatment: pattern.treatment, photoIndex: input.photoCount > 0 ? (photoStart + i) % input.photoCount : null, tier };
+    bump(batch.camera, camera);
+    return { pattern: pattern.id, shot, light, layout, camera, treatment: pattern.treatment, photoIndex: input.photoCount > 0 ? (photoStart + i) % input.photoCount : null, tier };
   });
 }
 
