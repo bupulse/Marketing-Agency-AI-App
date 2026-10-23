@@ -159,7 +159,12 @@ export function Widget({ surface, pathname, mode, initialOpen = false, onLeave }
   useEffect(() => {
     if (!sheet) return;
     const path = window.location.pathname;
-    window.history.pushState({ ...(window.history.state ?? {}), bpSupportChat: true }, "");
+    // Pushed a moment later, so a mount that is undone at once (React's double run in development) leaves no entry.
+    let pushed = false;
+    const t = setTimeout(() => {
+      window.history.pushState({ ...(window.history.state ?? {}), bpSupportChat: true }, "");
+      pushed = true;
+    }, 0);
     let popped = false;
     const onPop = () => {
       popped = true;
@@ -169,10 +174,11 @@ export function Widget({ surface, pathname, mode, initialOpen = false, onLeave }
     const overflow = document.documentElement.style.overflow;
     document.documentElement.style.overflow = "hidden";
     return () => {
+      clearTimeout(t);
       window.removeEventListener("popstate", onPop);
       document.documentElement.style.overflow = overflow;
       // Closed with the X: take our history entry back off (unless the visitor already moved to another page).
-      if (!popped && window.location.pathname === path && window.history.state?.bpSupportChat) window.history.back();
+      if (pushed && !popped && window.location.pathname === path && window.history.state?.bpSupportChat) window.history.back();
     };
   }, [sheet]);
 

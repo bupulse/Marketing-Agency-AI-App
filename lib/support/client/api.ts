@@ -151,7 +151,7 @@ export function createHttpClient(opts: { base?: string; fetch?: Fetch } = {}): S
       void import("@supabase/supabase-js")
         .then(({ createClient }) => {
           if (cancelled) return;
-          const sb = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+          const sb = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "bp-sc-realtime" } });
           const channel = sb
             .channel(topic, { config: { broadcast: { self: false } } })
             .on("broadcast", { event: REALTIME_EVENT }, (msg) => onEvent(msg.payload as RealtimeEvent))
