@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { VEO_MODELS, VeoError, checkVeoConnection, defaultClipPlan, downloadVeo, getVeoOperation, isOmniModel, makeVeoClip, omniBody, submitVeo, veoBody, veoClipBytes, veoClipUsd, veoLedgerUsage, veoModel, veoPrompt, veoTierOf, veoUsdPerSecond, type VeoRequest } from "@/lib/video-engine/veo";
+import { VEO_MODELS, VeoError, withoutMoney, checkVeoConnection, defaultClipPlan, downloadVeo, getVeoOperation, isOmniModel, makeVeoClip, omniBody, submitVeo, veoBody, veoClipBytes, veoClipUsd, veoLedgerUsage, veoModel, veoPrompt, veoTierOf, veoUsdPerSecond, type VeoRequest } from "@/lib/video-engine/veo";
 import { creditsForUsd, veoClipCredits } from "@/lib/video-engine/credits";
 import { estimateCostUsd } from "@/lib/ai/pricing";
 import { clipSoundCues, isAiClipUrl, videoClips } from "@/lib/video-engine/video-frames";
@@ -252,6 +252,19 @@ describe("Gemini Omni Flash (the default since the Veo 3.1 previews shut down, 2
 
   it("asks for the clip's length in the prompt (Omni has no length setting)", () => {
     expect(veoPrompt({ shot: "Hands lift it.", seconds: 6 }, { productName: "LEAF Hydro Tower" })).toMatch(/Length: about 6 seconds/);
+  });
+});
+
+describe("no money in clip prompts (Gemini Omni refuses a request that says a price)", () => {
+  it("drops the sentences of the product's summary that mention money, and the amount in its name", () => {
+    expect(withoutMoney("Grow greens at home. Only 45,000 RWF this week! Fits any balcony.")).toBe("Grow greens at home. Fits any balcony.");
+    expect(withoutMoney("A tower for $120. Big discount for schools.")).toBe("");
+    expect(withoutMoney("Igiciro: 30.000 Frw. Ibihingwa bishya buri munsi.")).toBe("Ibihingwa bishya buri munsi.");
+    expect(withoutMoney("Grows 30 plants in a metre of space.")).toBe("Grows 30 plants in a metre of space.");
+    const p = veoPrompt({ shot: "Hands lift it." }, { productName: "LEAF Hydro Tower - 45,000 RWF", summary: "Grow greens at home. Now 20% off!" });
+    expect(p).toMatch(/LEAF Hydro Tower/);
+    expect(p).not.toMatch(/45,000|RWF|20%|off!/);
+    expect(defaultClipPlan({ productName: "LEAF Hydro Tower (45,000 RWF)" }, 2).map((n) => n.shot).join(" ")).not.toMatch(/45,000|RWF/);
   });
 });
 
