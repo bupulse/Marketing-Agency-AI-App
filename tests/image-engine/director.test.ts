@@ -5,17 +5,17 @@ import { PATTERNS } from "@/lib/image-engine/patterns";
 const facts = { reviews: false, price: true };
 
 describe("the Director: Pro or Lite within the credits", () => {
-  it("auto makes the first picture Pro, then one in four, while the credits allow", () => {
+  it("auto makes the first picture Pro, then one in four, while the credits allow (Lite 2, Pro 4)", () => {
     expect(chooseTiers(4, 100, "auto")).toEqual(["pro", "lite", "lite", "lite"]);
     expect(chooseTiers(10, 100, "auto")).toEqual(["pro", "pro", "pro", "lite", "lite", "lite", "lite", "lite", "lite", "lite"]);
-    expect(creditsOf(chooseTiers(4, 100, "auto"))).toBe(7);
+    expect(creditsOf(chooseTiers(4, 100, "auto"))).toBe(10);
   });
   it("never spends more than the budget: fewer Pro pictures, then fewer pictures", () => {
-    expect(chooseTiers(4, 6, "pro")).toEqual(["lite", "lite", "lite", "lite"]);
-    expect(chooseTiers(4, 7, "pro")).toEqual(["pro", "lite", "lite", "lite"]);
+    expect(chooseTiers(4, 9, "pro")).toEqual(["lite", "lite", "lite", "lite"]);
+    expect(chooseTiers(4, 10, "pro")).toEqual(["pro", "lite", "lite", "lite"]);
     expect(chooseTiers(4, 16, "pro")).toEqual(["pro", "pro", "pro", "pro"]);
-    expect(chooseTiers(4, 3, "auto")).toEqual(["lite", "lite", "lite"]);
-    expect(chooseTiers(4, 0, "auto")).toEqual([]);
+    expect(chooseTiers(4, 5, "auto")).toEqual(["lite", "lite"]);
+    expect(chooseTiers(4, 1, "auto")).toEqual([]);
     expect(chooseTiers(4, 100, "lite")).toEqual(["lite", "lite", "lite", "lite"]);
     for (const q of ["auto", "pro", "lite"] as const) for (let b = 0; b < 30; b++) expect(creditsOf(chooseTiers(5, b, q))).toBeLessThanOrEqual(b);
   });

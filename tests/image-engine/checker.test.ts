@@ -17,6 +17,19 @@ describe("the Checker", () => {
     expect(v.fix).toContain('Write the headline exactly as: "Bigger harvests. Happier farmers."');
     expect(v.fix).toContain("Keep everything else exactly the same.");
   });
+  it("trusts the letter-by-letter comparison over a reading that silently corrected a typo", () => {
+    const corrected = { texts: ["Bigger harvests. Happier farmers.", "Grow more greens, right inside your greenhouse.", "Grow with LEAF"], productVisible: true };
+    const lines = [
+      { expected: expected.headline, written: expected.headline, same: true },
+      { expected: expected.subline, written: "Grow more greens, right inside your grenhouse.", same: false },
+      { expected: expected.cta, written: expected.cta, same: true },
+    ];
+    expect(judge(expected, { ...corrected, lines }).problems).toEqual(["The small line is not written correctly."]);
+    // A "same" answer whose copy still differs by a letter is not trusted either.
+    expect(judge(expected, { ...corrected, lines: [{ ...lines[1], same: true }] }).problems).toEqual(["The small line is not written correctly."]);
+    expect(judge(expected, { ...corrected, lines: lines.map((l) => ({ ...l, written: l.expected, same: true })) }).ok).toBe(true);
+  });
+
   it("allows the numbers that are in the words", () => {
     expect(judge({ ...expected, headline: "Only 250,000 RWF", productShown: false }, { texts: ["Only 250,000 RWF", expected.subline, expected.cta], productVisible: false }).ok).toBe(true);
   });

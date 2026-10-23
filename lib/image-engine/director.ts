@@ -5,8 +5,11 @@
 import { LAYOUTS, LIGHTS, PATTERNS, SHOTS, type Pattern, type Treatment } from "./patterns";
 
 export type Tier = "lite" | "pro";
-/** Image credits per picture (owner decision, 23 October 2026): Nano Banana (Lite) 1, Nano Banana Pro 4. */
-export const TIER_CREDITS: Record<Tier, number> = { lite: 1, pro: 4 };
+/**
+ * Image credits per picture (owner decisions, 23 October 2026): Lite is Nano Banana 2 (about $0.067, it writes words
+ * far better than Nano Banana) at 2 credits, Nano Banana Pro (about $0.134) at 4, so a credit is about $0.034.
+ */
+export const TIER_CREDITS: Record<Tier, number> = { lite: 2, pro: 4 };
 /** Auto quality: the batch's first picture is Pro, then one in PRO_EVERY, while the credits allow. */
 export const PRO_EVERY = 4;
 
@@ -39,10 +42,10 @@ function pick<T extends string>(values: readonly T[], used: Map<string, number>,
 
 /** Which tiers a batch gets within its credits: fewer pictures when the credits do not reach one Lite picture each. */
 export function chooseTiers(count: number, budget: number, quality: Quality): Tier[] {
-  const n = Math.max(0, Math.min(Math.floor(count), Math.floor(budget)));
+  const n = Math.max(0, Math.min(Math.floor(count), Math.floor(budget / TIER_CREDITS.lite)));
   if (n === 0) return [];
   // Turning a Lite picture into a Pro one costs the difference.
-  const upgrades = Math.floor((budget - n) / (TIER_CREDITS.pro - TIER_CREDITS.lite));
+  const upgrades = Math.floor((budget - n * TIER_CREDITS.lite) / (TIER_CREDITS.pro - TIER_CREDITS.lite));
   const wanted = quality === "lite" ? 0 : quality === "pro" ? n : 1 + Math.floor((n - 1) / PRO_EVERY);
   const pro = Math.max(0, Math.min(wanted, upgrades, n));
   return Array.from({ length: n }, (_, i): Tier => (i < pro ? "pro" : "lite"));

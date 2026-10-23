@@ -16,7 +16,6 @@ import { getVoice } from "@/lib/brand/voices";
 import { colorName } from "@/lib/designs/prompt";
 import { createEngineDesign, deleteDesign, DesignError } from "@/lib/designs/service";
 import type { AspectRatio } from "@/lib/designs/layout";
-import { DEFAULT_GEMINI_IMAGE_MODEL } from "@/lib/ai/gemini-image";
 import { formatPrice } from "@/lib/knowledge/products";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { consumeUsage, getUsageSummary, refundUsage } from "@/lib/usage";
@@ -41,7 +40,7 @@ export const MAX_BATCH = 20;
 
 /** The Painter's model for each tier (env to change them). */
 export function tierModel(tier: Tier): string {
-  return tier === "pro" ? (process.env.GEMINI_IMAGE_PRO_MODEL ?? "gemini-3-pro-image") : (process.env.GEMINI_IMAGE_MODEL ?? DEFAULT_GEMINI_IMAGE_MODEL);
+  return tier === "pro" ? (process.env.GEMINI_IMAGE_PRO_MODEL || "gemini-3-pro-image") : (process.env.GEMINI_IMAGE_LITE_MODEL || "gemini-3.1-flash-image");
 }
 
 /** The AI image credits the company has left this period. */

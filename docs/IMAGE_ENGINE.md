@@ -10,9 +10,11 @@ Creatify does: docs/IMAGE_ENGINE_TEARDOWN.md.
 - **New products may be invented** ("New in the range", like Creatify's Grow Walls): always allowed.
 - **Words are drawn by the AI** into the picture, in a layout that changes every time: no templates on AI pictures.
   The free templates stay for plans without AI pictures (Starter) and when credits run out.
-- **Image credits, not images**: Nano Banana (Lite, `gemini-2.5-flash-image`, $0.039) costs **1 credit**, Nano Banana
-  Pro (`gemini-3-pro-image`, $0.134) **4 credits**, so a credit stays about $0.039 and the margins stay as before. The
-  plans' "AI images" limits are now credits (Business 100 = 25 Pro, or 100 Lite, or a mix).
+- **Image credits, not images**: Lite is **Nano Banana 2** (`gemini-3.1-flash-image`, about $0.067) at **2 credits**,
+  Pro is Nano Banana Pro (`gemini-3-pro-image`, about $0.134) at **4 credits**, so a credit is about $0.034. The plans'
+  "AI images" limits are now credits (Business 100 = 25 Pro, or 50 Lite, or a mix). First test (23 October): Lite on
+  Nano Banana (2.5 Flash Image) misspelt small words ("hesh", "hydorponics") while Pro was perfect, so the owner chose
+  Nano Banana 2 for Lite. `GEMINI_IMAGE_PRO_MODEL` / `GEMINI_IMAGE_LITE_MODEL` change them.
 - **Smart mix** by default: the first picture of a batch on Pro, then one in four, while the credits allow.
 - **Claude and Gemini both write** the concepts. Claude uses ANTHROPIC_API_KEY when set; until then the owner's Claude
   subscription, **on the test site only** (`IMAGE_ENGINE_CLAUDE_SUBSCRIPTION=1` on the Mac that serves
@@ -26,7 +28,7 @@ Creatify does: docs/IMAGE_ENGINE_TEARDOWN.md.
 | Prompter | prompter.ts (pure), planner.ts | Claude Sonnet + Gemini Flash, in parallel | Each picture's idea, headline (≤7 words), small line, button and its own 80–170 word image prompt, all different from each other and from the recent pictures. Never an invented number, %, promise or review (checked in code). A gap is retried by the other writer, then written by the rules. |
 | Captioner | captions.ts (pure), captioner.ts | Gemini | The post caption and hashtags for each picture, in the business's language; sentences with invented numbers dropped. |
 | Painter | painter-prompt.ts, `createEngineDesign` (lib/designs/service.ts) | Nano Banana Pro or Lite | The finished advert from the concept's prompt, the product photo (exact, at scale, or a new item of the line), the logo and the exact words. |
-| Checker | checker.ts (pure), check.ts | Gemini Flash vision | Reads the words in the picture: misspelt words, numbers nobody gave, product not visible. |
+| Checker | checker.ts (pure), check.ts | Gemini Flash vision | Reads the words in the picture and, for each line we asked for, copies what is drawn letter by letter and says whether it is the same (a reading model silently corrects typos: in the first test it read "hydorponics" as right). A line passes only when its copy matches exactly. Also numbers nobody gave, product not visible. |
 | Editor | `createEngineDesign({ editOf })` | the picture's tier | One automatic fix after a failed check (the better picture is kept), and the owner's "Change this" (the tier's credits). |
 
 `engine.ts` runs them: `planBatch` (Director, Prompter, Captioner; credits reserved; `ImageConcept` rows "planned"),
