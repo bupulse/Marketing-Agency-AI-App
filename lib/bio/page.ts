@@ -28,7 +28,7 @@ export interface BioPageOptions {
   pageUrl?: string;
   /** Absolute address of the picture in the link preview. */
   ogImage?: string | null;
-  /** BuPulse's address, for the small "Made with BuPulse" line. */
+  /** BuPulse's address, for the "Made with BuPulse" corner link (it opens BuPulse's help chat in sales mode). */
   siteUrl: string;
 }
 
@@ -44,12 +44,14 @@ const ICON = {
     '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 6v6l4 2"/></svg>',
 };
 
+const PULSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l3-7 4 14 3-7h4"/></svg>';
+
 const CSS = `
 *{box-sizing:border-box;margin:0}
 html{-webkit-text-size-adjust:100%}
 body{font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#15161a;background:#f4f5f7}
 a{color:inherit}
-.wrap{max-width:480px;margin:0 auto;padding:0 16px 28px}
+.wrap{max-width:480px;margin:0 auto;padding:0 16px 88px}
 .top{height:88px;background:var(--accent);margin:0 -16px}
 .head{display:flex;flex-direction:column;align-items:center;text-align:center;margin-top:-44px;gap:8px}
 .logo{width:88px;height:88px;border-radius:50%;background:#fff;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.12);object-fit:cover;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:700;color:var(--accent);overflow:hidden}
@@ -81,8 +83,9 @@ h2{font-size:17px;font-weight:700;margin:24px 2px 10px}
 .ask svg{width:18px;height:18px}
 .links{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:22px;list-style:none;padding:0}
 .links a{display:inline-flex;align-items:center;min-height:44px;padding:0 16px;border-radius:22px;background:#fff;border:1px solid #e1e4e9;text-decoration:none;font-weight:600;font-size:14.5px}
-.foot{text-align:center;color:#7a808b;font-size:12.5px;margin-top:26px}
-.foot a{text-decoration:none}
+.made{position:fixed;right:16px;bottom:20px;z-index:10;display:inline-flex;align-items:center;gap:8px;padding:8px 12px 8px 8px;border-radius:999px;background:rgba(255,255,255,.92);border:1px solid #dcdce0;box-shadow:0 8px 24px -12px rgba(11,11,15,.35);text-decoration:none;color:#1d1d1f;font-size:13px;font-weight:600}
+.made span{width:26px;height:26px;border-radius:50%;background-image:linear-gradient(120deg,#2f6bff,#7b5cff);display:inline-flex;align-items:center;justify-content:center;color:#fff}
+.made svg{width:14px;height:14px}
 @media (min-width:560px){.grid{grid-template-columns:1fr 1fr 1fr}.wrap{padding-top:16px}.top{border-radius:0 0 24px 24px}}
 `;
 
@@ -164,7 +167,9 @@ function body(v: BioView): string {
 export function renderBioPage(o: BioPageOptions): string {
   const v = o.view;
   const nonce = o.nonce ? ` nonce="${esc(o.nonce)}"` : "";
-  const made = `${o.siteUrl.replace(/\/$/, "")}/?utm_source=bio&utm_medium=referral`;
+  // The corner link opens BuPulse's own help chat in sales mode ("want a page like this?"), on a page of its own, so
+  // this page keeps its strict CSP and loads nothing more (docs/SUPPORT_CHAT.md "10. Visitor chat").
+  const made = `${o.siteUrl.replace(/\/$/, "")}/help-chat?from=bio&utm_source=bio&utm_medium=referral`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -174,8 +179,8 @@ ${head(o)}
 <body>
 <main class="wrap">
 ${body(v)}
-<p class="foot"><a href="${esc(made)}" rel="noopener">Made with BuPulse</a></p>
 </main>
+<a class="made" href="${esc(made)}" rel="noopener" aria-label="Made with BuPulse: chat with BuPulse about getting a page like this"><span>${PULSE}</span>Made with BuPulse</a>
 ${o.mode === "live" ? '<script src="/bio.js" defer></script>' : ""}
 </body>
 </html>`;

@@ -176,7 +176,23 @@ export default function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="13. Changes and contact">
+      <LegalSection id="support-chat" title="13. The BuPulse help chat">
+        <p>
+          The help chat in the corner of bupulse.com, the BuPulse app and the creator portal is how we answer your questions. An AI answers first, and a
+          person from our team can join the chat.
+        </p>
+        <LegalList
+          items={[
+            <><strong>What it records:</strong> the name, email, business name and (if you give it) WhatsApp number you type in the chat form, or your account details if you are signed in; your messages, and any photos, PDFs and voice notes you send (with a written transcript of voice notes); the pages of bupulse.com you visit while the chat is loaded, the page you came from, how long you stay and how many times you visit; your approximate location (country and city), worked out from your IP address; and your device type and browser.</>,
+            <><strong>Why:</strong> to answer you, to let our team see where you are stuck and pick up a chat where the AI left off, to reply by email or WhatsApp if you leave the page, to follow up as a sales enquiry when you are not yet a client, and to improve our answers and guides.</>,
+            <><strong>Who sees it:</strong> BuPulse staff who answer chats. It is stored with Supabase in the United States. To write answers, summaries, translations and voice-note transcripts we send the conversation to Google Gemini. For the help chat we use Gemini&apos;s free tier, under which Google may use the content to improve its products, and its staff may review it. Please do not share passwords, payment details or other sensitive information in the chat. If you are signed in, the AI can read your account&apos;s status (plan, trial, connected channels and similar) to answer you; it cannot change anything.</>,
+            <><strong>How long:</strong> your IP address is kept for 30 days, then only the country is kept. Photos, PDFs and voice notes are deleted after 90 days. Chat messages and your contact details are kept as described in section 7, or until you ask us to delete them.</>,
+            <><strong>Your choices:</strong> you do not have to use the chat; you can email {mail} instead. You can object to this use of your data, ask for a copy, or ask us to delete your chats and contact details at any time by emailing us. This is our legitimate interest in answering you and running our sales, under Rwanda&apos;s Law No 058/2021 on the protection of personal data and privacy.</>,
+          ]}
+        />
+      </LegalSection>
+
+      <LegalSection title="14. Changes and contact">
         <p>
           If we change this policy in a meaningful way, we will update the date above and, where appropriate, notify you. Questions or requests: {mail}
           {" "}or BuPulse, Kigali, Rwanda.

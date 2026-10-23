@@ -57,7 +57,7 @@ const urlOf = (file: string) => {
   return `/admin${segs.length ? `/${segs.join("/")}` : ""}`;
 };
 /** The permission literal(s) in a gate call: "x" or ["x", "y"]. */
-const permsIn = (arg: string): string[] => [...arg.matchAll(/"([a-z.]+)"/g)].map((m) => m[1]);
+const permsIn = (arg: string): string[] => [...arg.matchAll(/"([a-zA-Z.]+)"/g)].map((m) => m[1]);
 
 describe("every admin page names its permission", () => {
   const pages = files(ROOT, "page.tsx");
