@@ -67,6 +67,14 @@ file it wrote) is deleted, and its later "complete" is refused.
 The run stops claiming when about 17 minutes have passed (the job is killed at 20) or after 12 videos; the workflow's
 concurrency group stops runs overlapping.
 
+## AI clips
+
+A video marked for AI clips (docs/CONTENT_VISUALS.md "Video quality") is not handed out while its clips are being
+made (`clipState` "waiting" or "making", `robotWaitingWhere`). Once they are settled, the job carries `clipUrls`
+(signed URLs of the clips, like the photos); the robot downloads them in Node (same storage origin, 12 MB each) and
+passes them to the page as data URLs, and the renderer plays each clip in its scene, muted. A clip that does not
+arrive or decode keeps the scene's photo. `SELF_TEST_CLIP=<an MP4> node scripts/video-robot/self-test.mjs` checks it.
+
 ## MP4 or WebM
 
 The robot makes MP4 (WebCodecs H.264 through `mp4-muxer`, the browser's main path) when the runner's Chrome can encode

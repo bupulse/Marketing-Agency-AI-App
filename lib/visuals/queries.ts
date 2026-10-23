@@ -1,5 +1,6 @@
 // Content visuals as the content screens show them: plans, rendered items and video photos with signed URLs.
 import "server-only";
+import { clipsInProgress } from "./ai-clips";
 import { prisma } from "@/lib/db";
 import { bucketForPath } from "@/lib/publishing/schemas";
 import { createClient } from "@/lib/supabase/server";
@@ -42,7 +43,7 @@ export async function loadVisuals(businessId: string, by: { contentIds?: string[
     take: 400,
   });
   const parsed = rows.map((r) => ({ row: r, items: readItems(r.items), image: r.kind === "video" ? null : readImagePlan(r.plan), video: r.kind === "video" ? readVideoPlan(r.plan) : null }));
-  const paths = parsed.flatMap((p) => [...p.items.map((i) => i.path), ...(p.video?.scenes.flatMap((s) => (s.photoPath ? [s.photoPath] : [])) ?? [])]);
+  const paths = parsed.flatMap((p) => [...p.items.map((i) => i.path), ...(p.video?.scenes.flatMap((s) => [...(s.photoPath ? [s.photoPath] : []), ...(s.clipPath ? [s.clipPath] : [])]) ?? [])]);
   const urls = await signAll(paths);
   return parsed.map(({ row, items, image, video }) => ({
     id: row.id,
@@ -55,6 +56,8 @@ export async function loadVisuals(businessId: string, by: { contentIds?: string[
     imagePlan: image,
     videoPlan: video,
     photoUrls: Object.fromEntries((video?.scenes ?? []).flatMap((s) => (s.photoPath && urls.has(s.photoPath) ? [[s.photoPath, urls.get(s.photoPath)!]] : []))),
+    clipUrls: Object.fromEntries((video?.scenes ?? []).flatMap((s) => (s.clipPath && urls.has(s.clipPath) ? [[s.clipPath, urls.get(s.clipPath)!]] : []))),
+    clips: row.kind === "video" && clipsInProgress(row) ? ("making" as const) : null,
     renderedAt: row.renderedAt?.toISOString() ?? null,
     robot: robotStateOf(row),
   }));

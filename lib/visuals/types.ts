@@ -123,6 +123,11 @@ export interface VideoScene {
   motion: Motion;
   /** "hook" is the opening line, "cta" the closing one; both are drawn larger. */
   role: "hook" | "body" | "cta";
+  /**
+   * An AI clip (Google Veo, lib/visuals/ai-clips.ts) drawn instead of the photo, muted, in the media bucket
+   * (`<userId>/aiclips/…`). The photo stays as the stand-in when the clip cannot be played.
+   */
+  clipPath?: string | null;
 }
 
 export interface VideoPlan {
@@ -158,6 +163,8 @@ export interface VideoPlan {
    * this video; the video engine makes them and falls back to the slideshow. Missing or "simple": the slideshow.
    */
   quality?: "simple" | "ai";
+  /** Why the AI clips were not (all) made, in the owner's words (lib/visuals/clip-scenes.ts). */
+  aiNote?: string | null;
 }
 
 export interface VideoVoice {
@@ -204,6 +211,10 @@ export interface VisualView {
   videoPlan: VideoPlan | null;
   /** Signed URLs of the photos a video plan uses, by path, for the browser renderer. */
   photoUrls: Record<string, string>;
+  /** Signed URLs of the AI clips a video plan uses, by path (lib/visuals/ai-clips.ts). */
+  clipUrls?: Record<string, string>;
+  /** "making" while AI clips are being made for this video (it waits for them); null otherwise. */
+  clips?: "making" | null;
   renderedAt: string | null;
   /**
    * A pending video while the video robot is on (docs/VIDEO_ROBOT.md): "queued" waits for the next robot run,

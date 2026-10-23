@@ -353,7 +353,9 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage, hasScr
 
   // While the video robot is on, a pending video is made automatically (docs/VIDEO_ROBOT.md); the owner may still
   // make it now. The screen looks again every minute so the finished video appears.
-  const robotBusy = visual?.status === "pending" && (visual.robot === "queued" || visual.robot === "making");
+  // AI clips being made for it (lib/visuals/ai-clips.ts): the video waits for them, here too.
+  const clipsBusy = visual?.status === "pending" && visual.clips === "making";
+  const robotBusy = visual?.status === "pending" && (clipsBusy || visual.robot === "queued" || visual.robot === "making");
   const { refresh } = router;
   useEffect(() => {
     if (!robotBusy || render.busy) return;
@@ -410,7 +412,7 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage, hasScr
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-[15px] font-semibold">Video, {seconds} seconds</h3>
         <Badge tone="neutral">{plan.scenes.length} scenes</Badge>
-        {visual.status === "pending" && !render.busy && <Badge tone="blue">{robotBusy ? "Being made automatically" : "Video ready to render"}</Badge>}
+        {visual.status === "pending" && !render.busy && <Badge tone="blue">{clipsBusy ? "AI clips being made" : robotBusy ? "Being made automatically" : "Video ready to render"}</Badge>}
         {visual.status === "failed" && <Badge tone="danger">{ready ? "New version not made" : "Not made"}</Badge>}
       </div>
 
@@ -424,10 +426,11 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage, hasScr
               {render.phase === "rendering" && `Making your video… ${Math.round(render.progress * 100)}%`}
               {render.phase === "loading" && "Getting ready…"}
               {render.phase === "uploading" && "Saving your video…"}
-              {!render.busy && visual.status === "pending" && visual.robot === "queued" && "Being made automatically (usually within 30 min)."}
-              {!render.busy && visual.status === "pending" && visual.robot === "making" && "Being made automatically right now…"}
-              {!render.busy && visual.status === "pending" && visual.robot === "browser" && "We could not make it automatically. Make it here in your browser."}
-              {!render.busy && visual.status === "pending" && !visual.robot && "Your video plan is ready."}
+              {!render.busy && clipsBusy && "AI clips are being made for this video (usually within 15 minutes). It will be ready soon."}
+              {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "queued" && "Being made automatically (usually within 30 min)."}
+              {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "making" && "Being made automatically right now…"}
+              {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "browser" && "We could not make it automatically. Make it here in your browser."}
+              {!render.busy && !clipsBusy && visual.status === "pending" && !visual.robot && "Your video plan is ready."}
               {!render.busy && visual.status === "failed" && (visual.error ?? "The video could not be made here.")}
               {!render.busy && removed && `${VIDEO_REMOVED_NOTE}. It is still on your social accounts.`}
               {render.busy && (
@@ -452,11 +455,13 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage, hasScr
             </p>
           )}
           {render.musicSkipped && <p className="text-[13px] text-muted">Your music could not be added in this browser, so the video has no sound.</p>}
+          {/* Why the AI clips were not (all) made: a simple video instead, credits back (lib/visuals/clip-scenes.ts). */}
+          {plan.aiNote && <p className="text-[13px] text-muted">{plan.aiNote}</p>}
           <p className="text-[13px] text-muted">
             {visual.robot ? "Made automatically (or in your browser) from your photos and script" : "Made in your browser from your photos and script"}, {VIDEO_LIMITS.width}x{VIDEO_LIMITS.height}, captions included. It counts {seconds} seconds of your plan&apos;s video; making it again counts only the seconds it gets longer.
           </p>
           <div className="flex flex-wrap gap-2">
-            {visual.status === "pending" && !render.busy && visual.robot === "queued" && (
+            {visual.status === "pending" && !render.busy && !clipsBusy && visual.robot === "queued" && (
               <Button size="sm" variant="outline" leading={<Clapperboard aria-hidden className="size-4" />} onClick={() => {
                 started.current = visual.id;
                 void render.run(music);

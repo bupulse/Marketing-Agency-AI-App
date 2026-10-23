@@ -130,7 +130,7 @@ describe(".env.example", () => {
   const example = readFileSync(".env.example", "utf8");
   const listed = new Set([...example.matchAll(/^([A-Z][A-Z0-9_]+)=/gm)].map((m) => m[1]));
   // Set by the host or the tooling, never by hand.
-  const provided = new Set(["NODE_ENV", "NETLIFY", "LAMBDA_TASK_ROOT", "COMMIT_REF", "GITHUB_OUTPUT", "SELF_TEST_OUT", "BUPULSE_BUILD_PLATFORM", "APP_VERSION"]);
+  const provided = new Set(["NODE_ENV", "NETLIFY", "LAMBDA_TASK_ROOT", "COMMIT_REF", "GITHUB_OUTPUT", "SELF_TEST_OUT", "SELF_TEST_CLIP", "BUPULSE_BUILD_PLATFORM", "APP_VERSION"]);
 
   function files(dir: string): string[] {
     return readdirSync(dir).flatMap((name) => {

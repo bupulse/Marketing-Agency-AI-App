@@ -4,6 +4,9 @@
 // except the font CDN. Needs Google Chrome (or ROBOT_CHROME_PATH):
 //
 //   node scripts/video-robot/self-test.mjs
+//
+// SELF_TEST_CLIP=<an MP4> plays it as an AI clip in the opening scene (lib/visuals/ai-clips.ts, VideoScene.clipPath);
+// SELF_TEST_OUT=<file> keeps the video made.
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { videoDurationMs } from "../../lib/visuals/duration.ts";
@@ -28,6 +31,9 @@ const plan = {
   totalMs: 10_500,
 };
 
+const clip = process.env.SELF_TEST_CLIP ? readFileSync(process.env.SELF_TEST_CLIP) : null;
+if (clip) plan.scenes[0].clipPath = "u/aiclips/v-0.mp4";
+
 const state = { claimed: false, uploaded: null, contentType: null, completed: false, failed: null, report: null };
 const photo = readFileSync(new URL("../../public/brand/logo-stacked.png", import.meta.url));
 
@@ -41,6 +47,7 @@ const server = createServer(async (req, res) => {
   };
   const base = `http://127.0.0.1:${server.address().port}`;
   if (req.url === "/photo.png") return send(200, photo, "image/png");
+  if (req.url === "/clip.mp4" && clip) return send(200, clip, "video/mp4");
   if (req.method === "PUT" && req.url.startsWith("/upload")) {
     state.uploaded = body;
     state.contentType = req.headers["content-type"];
@@ -53,7 +60,7 @@ const server = createServer(async (req, res) => {
       if (state.claimed) return send(200, { jobs: [] });
       state.claimed = true;
       const ext = input.format === "webm" ? "webm" : "mp4";
-      return send(200, { jobs: [{ job: JOB, plan, photoUrls: { "u/gallery/photo.png": `${base}/photo.png` }, upload: { url: `${base}/upload/x.${ext}?token=t`, contentType: `video/${ext}` }, leaseUntil: new Date(Date.now() + 15 * 60_000).toISOString() }] });
+      return send(200, { jobs: [{ job: JOB, plan, photoUrls: { "u/gallery/photo.png": `${base}/photo.png` }, clipUrls: clip ? { "u/aiclips/v-0.mp4": `${base}/clip.mp4` } : {}, upload: { url: `${base}/upload/x.${ext}?token=t`, contentType: `video/${ext}` }, leaseUntil: new Date(Date.now() + 15 * 60_000).toISOString() }] });
     }
     case "/api/robot/videos/complete":
       state.completed = input.job === JOB && !!state.uploaded;

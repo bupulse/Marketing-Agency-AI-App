@@ -136,11 +136,14 @@ describe("planVisuals (the art director with the content)", () => {
     expect(video).toMatchObject({ kind: "video", status: "pending" });
     expect(video.plan.scenes[0].text).toBe("The all-new Aero Sneaker");
     expect(video.plan.quality).toBeUndefined();
+    expect(video.clipState).toBeUndefined();
 
     // The daily posts' "AI videos" choice marks the video for AI clips.
     mocks.prisma.contentVisual.create.mockClear();
     await planVisuals(input({ video: true, videoQuality: "ai" }));
     expect(mocks.prisma.contentVisual.create.mock.calls[1][0].data.plan.quality).toBe("ai");
+    // ...and it waits for its clips (lib/visuals/ai-clips.ts) before it is rendered.
+    expect(mocks.prisma.contentVisual.create.mock.calls[1][0].data.clipState).toBe("waiting");
   });
 
   it("an AI error gives the rules' plan (logged), the budget cap gives it quietly", async () => {
@@ -377,6 +380,12 @@ describe("video upload checks", () => {
     const data = mocks.prisma.contentVisual.updateMany.mock.calls[1][0].data;
     expect(data).toMatchObject({ robotJobId: null, uploadPath: null, uploadBytes: 0, uploadExpiresAt: null });
     expect(mocks.storage.remove).toHaveBeenCalledWith([PATH]);
+  });
+
+  it("the owner's browser waits while AI clips are being made for the video", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...row, clipState: "making" });
+    await expect(leaseVideoForBrowser(owner, "vid1")).rejects.toThrow(/AI clips are being made/);
+    expect(mocks.prisma.contentVisual.updateMany).not.toHaveBeenCalled();
   });
 
   it("finalize is idempotent: the same file again is not billed twice", async () => {

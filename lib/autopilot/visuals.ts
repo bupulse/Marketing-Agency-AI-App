@@ -150,7 +150,8 @@ async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: V
   plan.mood = moodFor({ tone: ctx.business.tone });
   plan.music = await trackForVideo(plan.mood, group.groupId);
   if (videoGetsAiClips(ctx.videoQuality, group.groupId)) plan.quality = "ai";
-  await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "video", status: "pending", plan: json(plan), items: json([]) } });
+  // A video marked for AI clips waits for them (lib/visuals/ai-clips.ts) before it is rendered.
+  await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "video", status: "pending", plan: json(plan), items: json([]), ...(plan.quality === "ai" ? { clipState: "waiting" } : {}) } });
 }
 
 export async function makeGroupVisuals(group: PlannedGroup, written: WrittenGroup, ctx: VisualContext, run: RunVisualState): Promise<GroupVisuals> {

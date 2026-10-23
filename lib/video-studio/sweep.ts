@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { refundUsage } from "@/lib/usage";
 import { sweepSeedanceJobs } from "./seedance-jobs";
+import { runAiClips, type AiClipsResult } from "@/lib/visuals/ai-clips";
 
 // The Video Studio's sweep (/api/cron/video-jobs, docs/VIDEO_APP_INTEGRATION.md task 8): a design whose request died
 // (the Worker stopped, the browser left) stays "designing" with its credits taken. Once its lease has passed it is
@@ -11,7 +12,8 @@ import { sweepSeedanceJobs } from "./seedance-jobs";
 // two can never both refund it or both finish it. A voice-over's credits held on a job (lib/video-studio/voice.ts) are
 // given back the same way once VOICE_LEASE_MS has passed. Seedance clips (lib/video-studio/seedance-jobs.ts): a submit
 // that died before BytePlus answered, and a task BytePlus has ended, are failed with their credits back the same way
-// (the studio's poller does the polling itself).
+// (the studio's poller does the polling itself). Content videos marked for AI clips get their Veo clips here too
+// (lib/visuals/ai-clips.ts).
 
 export const STRANDED_MESSAGE = "The design was interrupted before it finished. Your credits are back; please try again.";
 /** How long a voice-over's credits may stay held on a job (lib/video-studio/voice.ts): well over its route's 120 s. */
@@ -19,7 +21,7 @@ export const VOICE_LEASE_MS = 10 * 60_000;
 /** Jobs looked at per run; the rest wait for the next run. */
 export const SWEEP_BATCH = 100;
 
-export type SweepResult = { stranded: number; refunded: number; credits: number; refundErrors: number; voiceRefunded: number; voiceCredits: number; seedance?: { stranded: number; expired: number } };
+export type SweepResult = { stranded: number; refunded: number; credits: number; refundErrors: number; voiceRefunded: number; voiceCredits: number; seedance?: { stranded: number; expired: number }; aiClips?: AiClipsResult | null };
 
 export async function sweepVideoJobs(now = new Date()): Promise<SweepResult> {
   const stale = await prisma.videoJob.findMany({
@@ -50,6 +52,11 @@ export async function sweepVideoJobs(now = new Date()): Promise<SweepResult> {
   result.seedance = await sweepSeedanceJobs(now).catch(async (error: unknown) => {
     await logError(error, { source: "video.sweep.seedance" }).catch(() => {});
     return { stranded: 0, expired: 0 };
+  });
+  // AI clips for content videos marked "ai" (lib/visuals/ai-clips.ts): started, checked, settled.
+  result.aiClips = await runAiClips(now).catch(async (error: unknown) => {
+    await logError(error, { source: "video.sweep.ai-clips" }).catch(() => {});
+    return null;
   });
   return result;
 }

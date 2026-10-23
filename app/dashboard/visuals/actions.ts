@@ -7,7 +7,7 @@ import { finalizeVideo, leaseVideoForBrowser, markVideoFailed, prepareVideoUploa
 import { activeTracks } from "@/lib/music/service";
 import { featureStatus } from "@/lib/entitlements";
 import { getUsageSummary } from "@/lib/usage";
-import { audioUrlsFor } from "@/lib/visuals/robot";
+import { audioUrlsFor, signClips } from "@/lib/visuals/robot";
 import { SCRIPT_RULES } from "@/lib/visuals/script";
 import { VISUAL_LIMITS, type VideoPlan } from "@/lib/visuals/types";
 import { renderPhotoUrls, setVideoMusic } from "@/lib/visuals/sound";
@@ -82,13 +82,14 @@ export async function changeVideo(visualId: string, changes: z.input<typeof vide
  * The browser is about to make the video: it holds it (unless the video robot is making it right now), its voiceover
  * is made or reused (docs/VOICE_AND_MUSIC.md), and the plan to render comes back with its photo and sound URLs.
  */
-export async function startVideoRender(visualId: string): Promise<Result<{ plan: VideoPlan | null; photoUrls: Record<string, string>; audioUrls: { voice?: string; music?: string } }>> {
+export async function startVideoRender(visualId: string): Promise<Result<{ plan: VideoPlan | null; photoUrls: Record<string, string>; clipUrls: Record<string, string>; audioUrls: { voice?: string; music?: string } }>> {
   if (!id.safeParse(visualId).success) return BAD;
   return knowledgeAction({ ...GUARD, source: "visuals.video.lease" }, async ({ userId, businessId }) => {
     await leaseVideoForBrowser({ userId, businessId }, visualId);
     const voiced = await ensureVoiceover({ userId, businessId }, visualId);
-    if (!voiced) return { plan: null, photoUrls: {}, audioUrls: {} };
-    return { plan: voiced.plan, photoUrls: await renderPhotoUrls(userId, voiced.plan), audioUrls: await audioUrlsFor(businessId, voiced.plan, voiced.voiceDataUrl) };
+    if (!voiced) return { plan: null, photoUrls: {}, clipUrls: {}, audioUrls: {} };
+    // The video's AI clips (lib/visuals/ai-clips.ts), signed for an hour like the photos.
+    return { plan: voiced.plan, photoUrls: await renderPhotoUrls(userId, voiced.plan), clipUrls: await signClips(userId, voiced.plan, 60 * 60), audioUrls: await audioUrlsFor(businessId, voiced.plan, voiced.voiceDataUrl) };
   });
 }
 

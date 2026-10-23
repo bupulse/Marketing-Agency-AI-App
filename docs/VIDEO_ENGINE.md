@@ -865,6 +865,13 @@ only.
 
 ## Veo AI clips (19 October 2026)
 
+**23 October 2026:** Google shut the Veo 3.1 previews down on the Gemini API on 22 October; the clips are now made by
+**Gemini Omni Flash** (`gemini-omni-1.1-flash`, the default `VEO_MODEL`) through the Interactions API, with the same
+functions in `lib/video-engine/veo.ts` (`submitVeo` returns `interactions/<id>`, `getVeoOperation` may carry the clip
+inline, `veoClipBytes` takes it either way). About $0.10 a second (credits doubled: 4 s 130, 6 s 190, 8 s 255). No
+length setting: the prompt asks for it. Google: "English is fully supported. Other languages are untested." The text
+below describes Veo; the flow is the same.
+
 Owner decision, 19 October 2026: a client can pick **"AI makes the clips"** on the Create page. The studio then asks
 **Google Veo 3.1 Lite** (Gemini API, `veo-3.1-lite-generate-preview`, the existing `GEMINI_API_KEY`) for 2 or 3 short
 real moving clips of the product, never a slideshow of photos, and the Motion design mixes them in as full-frame

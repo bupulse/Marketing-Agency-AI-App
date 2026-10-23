@@ -51,6 +51,7 @@ export function useVideoRender(visual: VisualView | null, onDone?: () => void) {
         try {
           result = await renderVideo(plan, {
             photoUrls: { ...visual.photoUrls, ...lease.photoUrls },
+            clipUrls: { ...visual.clipUrls, ...lease.clipUrls },
             music,
             voiceUrl: lease.audioUrls.voice ?? null,
             musicUrl: lease.audioUrls.music ?? null,

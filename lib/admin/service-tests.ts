@@ -95,7 +95,8 @@ const PROBES: Partial<Record<ServiceId, Probe>> = {
   veo: async () => {
     // Reading the Veo model's card is free and proves the Gemini key can see it (a clip costs money; billing is only
     // confirmed by the first clip).
-    const model = env("VEO_MODEL") || "veo-3.1-lite-generate-preview";
+    // Gemini Omni Flash since the Veo 3.1 previews were shut down (22 October 2026; lib/video-engine/veo.ts).
+    const model = env("VEO_MODEL") || "gemini-omni-1.1-flash";
     const res = await get(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`, { "x-goog-api-key": env("GEMINI_API_KEY") });
     if (res.ok) return { ok: true, message: `Google accepted the Gemini key and it can see ${model}.` };
     if (res.status === 404) return { ok: false, message: `The Gemini key cannot see ${model} (404). Check VEO_MODEL.` };

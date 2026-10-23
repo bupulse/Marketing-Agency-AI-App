@@ -148,11 +148,53 @@ simple.
 
 The planners mark a video that should get AI clips with `VideoPlan.quality = "ai"` (`videoGetsAiClips` in
 lib/visuals/video-quality.ts; Autopilot's `planGroupVideo`, Daily posts through `planVisuals({ videoQuality })`). An
-unmarked plan, or "simple", is the slideshow. **Making the clips is the video engine's part** (requested from the
-video-engine session, 23 October 2026): overnight, without the owner, submit and check Veo clips
-(`AI_CLIPS_PER_VIDEO` × `AI_CLIP_SECONDS`, priced with `veoClipCredits`, paid in studio credits), draw them in the
-slideshow, and fall back to the simple video, credits given back, when the switch, the credits or the AI cannot. Until
-then a marked plan renders as the slideshow.
+unmarked plan, or "simple", is the slideshow.
+
+**The AI clips are made with nobody present** (`lib/visuals/ai-clips.ts`, in the `/api/cron/video-jobs` sweep every 4
+minutes; owner decision "fully automatic", 23 October 2026). A marked video is created with `clipState = "waiting"`
+(migration `20261031100200_visual_ai_clips`), and the robot and the owner's browser leave it alone until its clips are
+settled (`robotWaitingWhere`, `leaseVideoForBrowser`; the panel says "AI clips being made").
+1. **Start:** the "Google Veo AI clips" switch, the Gemini key, a scene photo and BuPulse's own limit
+   (`VEO_CLIPS_PER_DAY`, 10 clips in 24 hours for all companies) are checked, then `AI_CLIPS_PER_VIDEO` (2) ×
+   `veoClipCredits(AI_CLIP_SECONDS)` (190 for 6 s of Gemini Omni Flash, about $0.10 a second; Google shut the Veo 3.1
+   previews down on 22 October 2026) = **380 studio credits** are taken from the company owner
+   (`videoCredits`). The clip scenes are picked by `pickClipScenes` (`lib/visuals/clip-scenes.ts`): the opening scene
+   first, then a body scene with a different photo; never the closing scene. Each clip starts from that scene's photo
+   (`firstFrame`, 720x1280 centre crop, `lib/video-engine/veo-frame.ts`), with the product's name and summary in the
+   prompt (`veoPrompt`, `defaultClipPlan`: hands using it, then the product in everyday life; the prompt asks for the
+   length, which Omni has no setting for, and the real length is read from the file). Submitted through
+   `withLedger` (feature `video-veo`: the switch and the platform cap). Then `clipState = "making"`.
+2. **Check:** each sweep asks Google about each clip (`getVeoOperation`); a made clip is taken at once (`veoClipBytes`:
+   inline from Gemini Omni, or downloaded) into the media bucket, `<userId>/aiclips/<visualId>-<scene>.mp4`, and its 6
+   real seconds go into the ledger (`recordAiCall`). A sweep that cannot reach Google or save a clip tries again next time.
+3. **Settle** when every clip is made or failed, or 20 minutes after the start: the made clips go into their scenes
+   (`VideoScene.clipPath`, the scene held for the clip, the video still within 30 s: `withClips`) and `clipState =
+   "done"`; with none made, `withoutClips` clears the mark (`quality = "simple"`) and `clipState = "fallback"`. Owner
+   decision: a half-done video **keeps the clip that was made** and gives back the other clip's 190 credits.
+4. **Credits back exactly once:** the settling update is conditional (still waiting or making, the held credits
+   unchanged), so two sweeps never both refund. A start that died after taking the credits is refunded by the next
+   sweep, or followed up when its clips already reached Google. Deleting the video (`releaseVideo`) gives back credits
+   still held and deletes the clip files; the 30-day clean-up deletes them with the video.
+5. **Falling back before anything is paid:** the switch off or no key, no photo, BuPulse's daily limit, not enough
+   credits, or an account that cannot use credits: a simple video at once, no credits taken.
+
+The reason is kept in `plan.aiNote` (`CLIP_NOTES`) and shown on the video panel, for example "Not enough studio credits
+for AI clips, so this is a simple video. No studio credits were used." or "One AI clip could not be made, so that scene
+shows your photo. Its studio credits are back."
+
+**Drawing:** the renderer (`components/visuals/clip-layers.ts`) opens each clip with `VideoSource` (mp4box + WebCodecs)
+and draws its frame for the scene's own time into a canvas before each video frame; the plan drawn points the clip
+scene at that canvas, so the slideshow and every video look draw the clip like a photo (crop, motion, captions on
+top). The clip's own sound is never used (the video's voice-over and music are). A clip that cannot be loaded or
+decoded keeps the scene's photo; the real-time WebM fallback shows the photos. The robot gets the clips as signed URLs
+(`clipUrls`) and passes them to its page as data URLs; the browser gets them from `startVideoRender`. Checked on 23
+October 2026 with a paid lab clip through the robot's self-test (`SELF_TEST_CLIP=<mp4> node
+scripts/video-robot/self-test.mjs`): the clip moves under the caption in the opening scene. **First real run** (23
+October 2026, LEAF on TEST, owner-approved): 2 Gemini Omni clips of 6.0 s made in about 85 s for $1.20, rendered by the
+robot's renderer into a 20 s MP4 with the clips in scenes 1 and 2 (docs/AI_COSTS.md, the test clips table).
+
+Tests: `tests/visuals/ai-clips.test.ts` (Google as a fake fetch: every fallback, partial, timeout, retries, refund
+once), `tests/visuals/clip-scenes.test.ts`, `tests/visuals/clip-layers.test.ts`.
 
 ## What the owner can change
 
