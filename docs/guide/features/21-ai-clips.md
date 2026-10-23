@@ -21,6 +21,23 @@ cannot make gives its credits back.
 4. Claude then designs the video with the clips in it, and you make the MP4 as usual.
 5. A client's clips are also saved in their BuPulse **Photos**, folder **AI clips**, so they can use them again.
 
+## AI videos made overnight (Autopilot and Daily posts)
+
+When the **Videos** choice (Autopilot's settings card, or Content -> Settings for Daily posts) is **AI videos** (every
+video) or **Mix** (one video in four), BuPulse makes the AI clips by itself, with nobody present:
+
+1. The video is planned as usual, and its panel says **"AI clips being made"**.
+2. Within about 4 minutes BuPulse takes **190 studio credits** (2 clips of 6 s) and asks Google for the clips: one for
+   the opening scene and one for a body scene, each starting from that scene's photo.
+3. About 5 to 15 minutes later the clips are in the video, and the video robot (or your browser) makes the MP4 with the
+   clips playing in their scenes, under the captions, with the video's own voice-over and music.
+4. If Google makes only one clip, the video keeps it and the other clip's 95 credits come back. If none is made, the
+   video is a simple slideshow and all 190 credits come back. Either way the panel says why.
+
+A simple video is made at once, with no credits taken, when AI clips are switched off, there are not enough studio
+credits, the video has no photo, or BuPulse has made its most AI clips for today (`VEO_CLIPS_PER_DAY`, 10 by
+default).
+
 ## What the clips will and will not show
 
 - The product as it is in the photo: same shape, colours and details.
@@ -48,7 +65,11 @@ cannot make gives its credits back.
 | Runs, credits and refunds, retries, Gallery copies, resume after a restart, clips into the design brief | `video-lab/ai-clips.ts` |
 | Routes: `GET /api/ai-clips/status`, `POST /api/ai-clips`, `GET /api/ai-clips`, `GET /api/ai-clips/runs/<vr-id>`, `GET /videos/veo/<vc-id>.mp4` (all "any", scoped to the business) | `video-lab/server.ts`, `video-lab/scope.ts` |
 | The Create page's choice and the wait | `video-lab/site/client/ai-clips.ts` |
-| Tests (fetch mocked: no spend) | `tests/video-engine/veo.test.ts`, `tests/video-lab/ai-clips.test.ts` |
+| Overnight AI clips for content videos: start, check, settle, refunds, fallbacks (in the `/api/cron/video-jobs` sweep) | `lib/visuals/ai-clips.ts`, called from `lib/video-studio/sweep.ts` |
+| Which scenes get clips, the plan with clips, the notes | `lib/visuals/clip-scenes.ts` |
+| The clips drawn in the slideshow (browser and robot) | `components/visuals/clip-layers.ts`, `components/visuals/video-renderer.ts` |
+| The first frame (photo crop), shared with the studio | `lib/video-engine/veo-frame.ts` |
+| Tests (fetch mocked: no spend) | `tests/video-engine/veo.test.ts`, `tests/video-lab/ai-clips.test.ts`, `tests/visuals/ai-clips.test.ts`, `tests/visuals/clip-scenes.test.ts`, `tests/visuals/clip-layers.test.ts` |
 
 More: `docs/VIDEO_ENGINE.md` "Veo AI clips", costs in `docs/AI_COSTS.md` "Veo AI clips".
 
@@ -61,4 +82,5 @@ More: `docs/VIDEO_ENGINE.md` "Veo AI clips", costs in `docs/AI_COSTS.md` "Veo AI
 | "Google Veo needs billing turned on…" | Google AI Studio, Billing, for the key's project | Turn billing on (Veo has no free tier) or top up the prepaid credit. |
 | "Google Veo is at its limit right now…" | Google's per-minute or per-day quota | Wait a few minutes; fewer clips at once. |
 | "Google declined this clip under its safety rules." | The photo (a real person's face?) or the shot | Use a product-only photo; the credits are already back. |
+| A content video stays on "AI clips being made" | `ContentVisual.clipState`, `clipJobs`, `clipUntil`; Admin -> Health, `video-jobs` | The sweep gives up after 20 minutes and falls back with the credits back; check the `video-jobs` cron runs. |
 | A clip stays at "Making…" after a restart | `video-lab/data/veo/clips/<id>.json` (`operation`) | The studio picks it up again at start (`resumeAiClips`); one never sent to Google is refunded. |

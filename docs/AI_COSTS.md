@@ -93,6 +93,17 @@ clip costs nothing, and its credits are given back. Credits use the usual formul
 | Design + 3 clips of 6 s | 0.107 + 0.90 = about 1.01 | 35 + 285 = 320 | 3,200 |
 | (+ voice-over) | + about 0.06 | + 15 | + 150 |
 
+| An Autopilot / Daily posts video marked "AI" (made overnight, `lib/visuals/ai-clips.ts`) | Provider cost (USD) | Client pays (credits) | RWF |
+| --- | --- | --- | --- |
+| Slideshow + 2 clips of 6 s (the default: `AI_CLIPS_PER_VIDEO`, `AI_CLIP_SECONDS`) | 0.60 (the slideshow is free) | 190 | 1,900 |
+| Half done (1 clip made, 1 blocked or failed; Google bills only the made one) | 0.30 | 95 (95 back) | 950 |
+| Nothing made (simple video instead) | 0 | 0 (190 back) | 0 |
+
+"Mix" makes one video in four an AI video. BuPulse's own limit, `VEO_CLIPS_PER_DAY` (default 10 clips in 24 hours for
+all companies, at most about $3 a day), stops a run-away spend; the videos past it are simple videos with no credits
+taken. The voice-over and music of these videos are the slideshow's own (plan voice-over characters, the music
+library), not studio credits.
+
 The clips are made once per request and shared by every version of the design. Recorded: in the lab ledger as
 `veo-clip` rows for the owner's tests, through `withLedger` (provider `veo`, feature `video-veo`, seconds recorded as
 input tokens and priced per second in `lib/ai/pricing.ts`) for a client.
