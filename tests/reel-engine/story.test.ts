@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BEATS, buildReelSpec, directReel, reelCostUsd, reelCuts, snapToBeat, spokenLine, subtitleOf, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
+import { BEATS, buildReelSpec, directReel, REEL_CAMERAS, reelCostUsd, reelCuts, snapToBeat, spokenLine, subtitleOf, veoClipPrompt, type ReelPlan } from "@/lib/reel-engine/story";
 import { totalMs } from "@/lib/video-engine/spec";
 import { readReel, REEL_SYSTEM, reelPrompt, ruleReel, type ReelInput } from "@/lib/reel-engine/writer";
 import { viralRecipe } from "@/lib/video-engine/brain/viral";
@@ -41,6 +41,9 @@ describe("the reel's story", () => {
     expect(p).toMatch(/At most two people/);
     expect(p).toMatch(/crisp real sounds/);
     expect(p).toContain("No text, captions, subtitles or logos added.");
+    // The round-2 reel showed the phone on its tripod: the camera is never in the frame.
+    expect(p).toContain("the camera is never seen");
+    expect(REEL_CAMERAS.join(" ")).not.toMatch(/tripod/);
     expect(veoClipPrompt({ motion, line: "", camera: "static", presenter: false }, "English")).toContain("Only the natural sound of the place.");
     // A take the checker sent back is filmed again with what went wrong.
     expect(veoClipPrompt({ motion, line: "", camera: "static", presenter: false, avoid: ["2 s: her hand passes through the leaves"] }, "English")).toContain("avoid exactly this: 2 s: her hand passes through the leaves.");
