@@ -16,8 +16,7 @@ import { DEFAULT_GEMINI_TEXT_MODEL } from "@/lib/ai/gemini-text";
 import { withLedger } from "@/lib/ai/ledger";
 import { createEngineDesign, designUrls } from "@/lib/designs/service";
 import { checkPicture } from "@/lib/image-engine/check";
-import { claudeBySubscription } from "@/lib/image-engine/claude-cli";
-import { claudeRoute } from "@/lib/image-engine/planner";
+import { claudeJson } from "@/lib/image-engine/planner";
 import { loadFacts } from "@/lib/image-engine/engine";
 import { realismBlock } from "@/lib/image-engine/realism";
 import { musicUrl, trackForVideo } from "@/lib/music/service";
@@ -92,12 +91,9 @@ async function writeReel(owner: Owner, input: ReelInput): Promise<ReelPlan> {
   };
   try {
     // Gemini writes Kinyarwanda; English goes to Claude when it is there.
-    const route = input.language === "English" ? await claudeRoute() : null;
-    if (route === "subscription") {
-      const r = await claudeBySubscription(REEL_SYSTEM, reelPrompt(input), REEL_SCHEMA);
-      const plan = readReel(parse(r.text), input);
-      if (plan) return plan;
-    }
+    const claude = input.language === "English" ? await claudeJson(owner, REEL_SYSTEM, reelPrompt(input), REEL_SCHEMA, "reelEngine") : null;
+    const fromClaude = claude ? readReel(parse(claude), input) : null;
+    if (fromClaude) return fromClaude;
     const provider = getTextProvider();
     const model = provider.name === "claude" ? (process.env.CLAUDE_TEXT_MODEL ?? "claude-opus-5-5") : (process.env.GEMINI_TEXT_MODEL ?? DEFAULT_GEMINI_TEXT_MODEL);
     const result = await withLedger({ ...owner, feature: "reelEngine" }, { provider: provider.name, model }, () => provider.generate({ system: REEL_SYSTEM, prompt: reelPrompt(input), jsonSchema: REEL_SCHEMA, maxOutputTokens: 4000 }), (r) => ({ provider: r.provider, model: r.model, usage: r.usage }));

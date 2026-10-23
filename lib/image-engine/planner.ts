@@ -46,6 +46,19 @@ export async function claudeRoute(): Promise<"api" | "subscription" | null> {
   return subscriptionAllowed() ? "subscription" : null;
 }
 
+/**
+ * One JSON answer from Claude through the route allowed here (the API key, else the owner's subscription on the test
+ * site only), for the engines' writers (also the reel engine). Null when Claude cannot be used here.
+ */
+export async function claudeJson(owner: Owner, system: string, prompt: string, schema: object, feature = ENGINE_FEATURE): Promise<string | null> {
+  const route = await claudeRoute();
+  if (!route) return null;
+  if (route === "subscription") return (await claudeBySubscription(system, prompt, schema)).text;
+  const provider = new ClaudeTextProvider(process.env.ANTHROPIC_API_KEY!, CLAUDE_API_MODEL, "low");
+  const result = await withLedger({ ...owner, feature }, { provider: "claude", model: CLAUDE_API_MODEL }, () => provider.generate({ system, prompt, jsonSchema: schema as Record<string, unknown>, maxOutputTokens: 4000 }), (r) => ({ provider: r.provider, model: r.model, usage: r.usage }));
+  return result.text;
+}
+
 async function claudeWrite(owner: Owner, input: PlannerInput, route: "api" | "subscription"): Promise<(Concept | null)[]> {
   if (route === "api") {
     const provider = new ClaudeTextProvider(process.env.ANTHROPIC_API_KEY!, CLAUDE_API_MODEL, "low");

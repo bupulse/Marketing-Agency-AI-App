@@ -39,8 +39,7 @@ vi.mock("@/lib/ai", () => ({ getTextProvider: () => ({ name: "gemini", generate:
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: async (_c: unknown, _m: unknown, call: () => unknown) => call() }));
 vi.mock("@/lib/designs/service", () => ({ createEngineDesign: h.design, designUrls: async () => new Map() }));
 vi.mock("@/lib/image-engine/check", () => ({ checkPicture: async () => ({ ok: true, problems: [], fix: null, ran: true }) }));
-vi.mock("@/lib/image-engine/claude-cli", () => ({ claudeBySubscription: vi.fn() }));
-vi.mock("@/lib/image-engine/planner", () => ({ claudeRoute: async () => null }));
+vi.mock("@/lib/image-engine/planner", () => ({ claudeJson: async () => null }));
 vi.mock("@/lib/image-engine/engine", () => ({
   loadFacts: async () => ({ business: { audience: null }, facts: { name: "LEAF", industry: null, description: "Towers", audience: null, place: "Kigali", language: "English", voice: null, colors: [] }, subject: { name: "Tower", description: null, price: null, sellingPoints: [] }, photos: ["u1/gallery/a.jpg"], reviews: [], hasPrice: false }),
 }));
