@@ -30,13 +30,21 @@ describe("the Checker", () => {
     expect(judge(expected, { ...corrected, lines: lines.map((l) => ({ ...l, written: l.expected, same: true })) }).ok).toBe(true);
   });
 
+  it("sends a picture that looks AI-made back to the Editor, naming what to fix (unknown markers ignored)", () => {
+    const ok = { texts: [expected.headline, expected.subline, expected.cta], productVisible: true };
+    const v = judge(expected, { ...ok, slop: ["plastic or waxy skin", "extra, missing or merged fingers or limbs", "made up"] });
+    expect(v.problems).toEqual(["It looks AI-made: plastic or waxy skin, extra, missing or merged fingers or limbs."]);
+    expect(v.fix).toContain("unretouched real photograph");
+    expect(judge(expected, { ...ok, slop: [] }).ok).toBe(true);
+  });
+
   it("allows the numbers that are in the words", () => {
     expect(judge({ ...expected, headline: "Only 250,000 RWF", productShown: false }, { texts: ["Only 250,000 RWF", expected.subline, expected.cta], productVisible: false }).ok).toBe(true);
   });
 });
 
 describe("the Painter's prompt", () => {
-  const base = { businessName: "LEAF", aspectRatio: "4:5" as const, concept: { prompt: "A wide shot of a commercial greenhouse.", headline: "Built for the whole farm.", subline: "", cta: "Scale your harvest" }, layout: "words in a column down the left side", colors: ["deep green"] };
+  const base = { businessName: "LEAF", aspectRatio: "4:5" as const, concept: { prompt: "A wide shot of a commercial greenhouse.", headline: "Built for the whole farm.", subline: "", cta: "Scale your harvest" }, layout: "words in a column down the left side", camera: "a film photo on Kodak Portra 400", colors: ["deep green"] };
   it("is the concept plus the product, the logo and the exact words, with no template", () => {
     const p = painterPrompt({ ...base, treatment: "scale", hasPhoto: true, hasLogo: true });
     expect(p).toContain("A wide shot of a commercial greenhouse.");

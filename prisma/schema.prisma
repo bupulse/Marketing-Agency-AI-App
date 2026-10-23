@@ -1295,6 +1295,7 @@ model ImageConcept {
   shot          String
   light         String
   layout        String
+  camera        String    @default("") // the camera and medium it is shot on (lib/image-engine/realism.ts CAMERAS)
   treatment     String // exact | scale | line
   title         String
   scene         String

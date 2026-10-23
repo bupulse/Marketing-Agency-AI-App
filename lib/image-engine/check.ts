@@ -7,6 +7,7 @@ import { DEFAULT_GEMINI_TEXT_MODEL } from "@/lib/ai/gemini-text";
 import { withLedger } from "@/lib/ai/ledger";
 import { logError } from "@/lib/errors";
 import { judge, type Expected, type Verdict } from "./checker";
+import { SLOP_MARKERS } from "./realism";
 
 const SCHEMA = {
   type: "object",
@@ -17,8 +18,9 @@ const SCHEMA = {
       items: { type: "object", properties: { expected: { type: "string" }, written: { type: "string" }, same_letters: { type: "boolean" } }, required: ["expected", "written", "same_letters"] },
     },
     product_visible: { type: "boolean" },
+    slop_signs: { type: "array", items: { type: "string", enum: [...SLOP_MARKERS] } },
   },
-  required: ["texts", "lines", "product_visible"],
+  required: ["texts", "lines", "product_visible", "slop_signs"],
 };
 
 function toBase64(bytes: Uint8Array): string {
@@ -52,6 +54,7 @@ export async function checkPicture(owner: { userId: string; businessId: string }
                   "2. lines: for each line below, find it in the picture and copy what is really drawn there letter by letter (\"written\"), then say whether every letter is the same as the line (\"same_letters\"). Check each word letter by letter; one wrong, missing or extra letter means false. If the line is not in the picture, written is \"\" and same_letters is false.",
                   ...[expected.headline, expected.subline, expected.cta].filter(Boolean).map((l) => `LINE: ${l}`),
                   `3. product_visible: is this product clearly visible: ${expected.product.slice(0, 200)}?`,
+                  "4. slop_signs: which of these flaws of AI-made pictures you can CLEARLY see in the photo part (not in the words); an empty list when none. Look closely at faces, hands, produce and the background.",
                 ].join("\n"),
               },
             ],
@@ -63,13 +66,14 @@ export async function checkPicture(owner: { userId: string; businessId: string }
       (r) => ({ provider: "gemini", model, usage: { inputTokens: r.usage?.total_input_tokens ?? 0, outputTokens: (r.usage?.total_output_tokens ?? 0) + (r.usage?.total_thought_tokens ?? 0) } }),
     );
     const text = (interaction.steps ?? []).flatMap((s) => (s.type === "model_output" ? (s.content ?? []) : [])).find((c) => c.type === "text")?.text ?? "";
-    const seen = JSON.parse(text) as { texts?: unknown; lines?: unknown; product_visible?: unknown };
+    const seen = JSON.parse(text) as { texts?: unknown; lines?: unknown; product_visible?: unknown; slop_signs?: unknown };
     const texts = Array.isArray(seen.texts) ? seen.texts.filter((t): t is string => typeof t === "string").slice(0, 40) : [];
     const lines = (Array.isArray(seen.lines) ? seen.lines : [])
       .filter((l): l is { expected: string; written: string; same_letters: boolean } => !!l && typeof l.expected === "string" && typeof l.written === "string")
       .slice(0, 5)
       .map((l) => ({ expected: l.expected, written: l.written, same: l.same_letters === true }));
-    return { ...judge(expected, { texts, lines, productVisible: seen.product_visible !== false }), ran: true };
+    const slop = Array.isArray(seen.slop_signs) ? seen.slop_signs.filter((s): s is string => typeof s === "string") : [];
+    return { ...judge(expected, { texts, lines, slop, productVisible: seen.product_visible !== false }), ran: true };
   } catch (error) {
     await logError(error, { source: "image-engine.check", level: "warn", businessId: owner.businessId });
     return { ok: true, problems: [], fix: null, ran: false };

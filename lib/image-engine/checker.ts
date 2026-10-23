@@ -2,12 +2,14 @@
 // it with the words that were asked for. A misspelt headline, a number or price nobody gave, or a missing product is a
 // problem; the Editor gets one try to fix it (engine.ts). This file's judge is pure (tested); the reading is in check.ts.
 
+import { SLOP_MARKERS } from "./realism";
+
 export type Expected = { headline: string; subline: string; cta: string; productShown: boolean };
 /**
  * What the Checker read: all the text, and for each line we asked for, what is really written there letter by letter
  * (a reading model tends to correct typos silently, so it is asked to compare, not only to read).
  */
-export type Seen = { texts: string[]; productVisible: boolean; lines?: { expected: string; written: string; same: boolean }[] };
+export type Seen = { texts: string[]; productVisible: boolean; lines?: { expected: string; written: string; same: boolean }[]; slop?: string[] };
 export type Verdict = { ok: boolean; problems: string[]; fix: string | null };
 
 const norm = (s: string) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -62,6 +64,12 @@ export function judge(expected: Expected, seen: Seen): Verdict {
   if (extra.length) {
     problems.push(`The picture shows numbers nobody gave: ${extra.join(", ")}.`);
     fixes.push(`Remove every number that is not in the words above (${extra.join(", ")}).`);
+  }
+  // The AI-slop markers the Checker saw (realism.ts SLOP_MARKERS): the Editor makes it look like a real photo.
+  const slop = [...new Set((seen.slop ?? []).filter((s) => SLOP_MARKERS.includes(s as (typeof SLOP_MARKERS)[number])))];
+  if (slop.length) {
+    problems.push(`It looks AI-made: ${slop.join(", ")}.`);
+    fixes.push(`Make the photo look like an unretouched real photograph: fix ${slop.join("; ")}, with natural skin texture, real light and true-to-life colour.`);
   }
   if (expected.productShown && !seen.productVisible) {
     problems.push("The product cannot be seen clearly.");
