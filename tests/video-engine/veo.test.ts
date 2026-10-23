@@ -266,5 +266,12 @@ describe("no money in clip prompts (Gemini Omni refuses a request that says a pr
     expect(p).not.toMatch(/45,000|RWF|20%|off!/);
     expect(defaultClipPlan({ productName: "LEAF Hydro Tower (45,000 RWF)" }, 2).map((n) => n.shot).join(" ")).not.toMatch(/45,000|RWF/);
   });
+
+  it("cleans recipe and page shots too: a shot only about money becomes a plain product shot", () => {
+    const p = veoPrompt({ shot: "The owner holds up a price card next to the tower.", setting: "A market stall with a 50% off sign" }, { productName: "LEAF Hydro Tower" });
+    expect(p).not.toMatch(/price card|50%|off sign/i);
+    expect(p).toMatch(/Shot: The LEAF Hydro Tower, shown clearly/);
+    expect(veoPrompt({ shot: "Hands lift the tower. Then a 30,000 Frw label.", setting: null }, { productName: "LEAF Hydro Tower" })).toMatch(/Shot: Hands lift the tower\./);
+  });
 });
 

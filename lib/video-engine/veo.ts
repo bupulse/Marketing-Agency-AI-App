@@ -435,18 +435,22 @@ export function defaultClipPlan(f: ClipFacts, count = 3, seconds: VeoSeconds = 4
 export function veoPrompt(need: ClipNeed, facts: ClipFacts, opts: { withImage?: boolean; ratio?: VeoRatio } = {}): string {
   const name = clean(nameWithoutMoney(facts.productName), 80) || "the product";
   const summary = clean(withoutMoney(facts.summary ?? ""), 200);
+  // Shots and settings come from recipes (what viral videos showed), the page or the default plan: money out of them
+  // too; a shot that was only about money becomes a plain one of the product.
+  const shot = clean(withoutMoney(need.shot), 400) || `The ${name}, shown clearly in one smooth, natural movement.`;
+  const setting = clean(withoutMoney(need.setting ?? ""), 200);
   const vertical = (opts.ratio ?? "9:16") === "9:16";
   const lines = [
     `${vertical ? "Vertical 9:16" : "Horizontal 16:9"} short video for a social media ad, realistic filmed look, smooth natural motion.`,
     opts.withImage !== false
       ? `The first frame shows the real product: ${name}${summary ? ` (${summary})` : ""}. Keep the product exactly as it is in that frame: same shape, colours and details. It stays clearly visible.`
       : `The product: ${name}${summary ? ` (${summary})` : ""}.`,
-    `Shot: ${clean(need.shot, 400)}`,
+    `Shot: ${shot}`,
     // With a first frame, a different setting makes Veo morph the scene mid-clip (tested 19 October 2026: the greenhouse
     // turned into a street shop and the tower changed shape), so the photo's place is kept and the setting is a mood.
     opts.withImage !== false
-      ? `One continuous shot in the place shown in the first frame: no cut, no change of scene, and the product never changes shape.${need.setting ? ` Mood: ${clean(need.setting, 200)}.` : ""}`
-      : `Setting: ${clean(need.setting, 200) || defaultSetting(facts)}.`,
+      ? `One continuous shot in the place shown in the first frame: no cut, no change of scene, and the product never changes shape.${setting ? ` Mood: ${setting}.` : ""}`
+      : `Setting: ${setting || defaultSetting(facts)}.`,
     `Camera: ${clean(need.camera, 120) || "slow, steady push-in"}.`,
     // Gemini Omni has no length setting: the prompt asks for it (Veo's own length setting wins there).
     `Length: about ${need.seconds ?? 6} seconds.`,
