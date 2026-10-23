@@ -216,6 +216,8 @@ describe("Gemini Omni Flash (the default since the Veo 3.1 previews shut down, 2
     const e = await submitVeo(omniReq, o((async () => ok({ error: { code: "invalid_request", message: "bad thing in project 99" } }, 400)) as unknown as typeof fetch)).then(() => null, (x: unknown) => x as VeoError);
     expect(e).toBeInstanceOf(VeoError);
     expect(e?.message).not.toMatch(/99/);
+    const limit = await submitVeo(omniReq, o((async () => ok({ errors: [{ code: "RESOURCE_EXHAUSTED", message: "Busy" }] }, 400)) as unknown as typeof fetch)).then(() => null, (x: unknown) => x as VeoError);
+    expect(limit?.kind).toBe("quota");
   });
 
   it("reads an interaction: working, the clip inline or as a link, a safety block, a failure", async () => {
@@ -229,6 +231,9 @@ describe("Gemini Omni Flash (the default since the Veo 3.1 previews shut down, 2
     const blocked = await read({ status: "failed", error: { code: "invalid_request", message: "The input violates our usage policies." } });
     expect(blocked.error?.kind).toBe("blocked");
     expect((await read({ status: "failed", error: { code: "internal", message: "Something broke" } })).error?.kind).toBe("failed");
+    // At Google's limit a failed interaction says so in errors[] (nothing made, nothing billed): "quota", not "failed".
+    expect((await read({ status: "failed", errors: [{ code: "RESOURCE_EXHAUSTED", message: "There was a problem processing your request." }] })).error?.kind).toBe("quota");
+    expect((await read({ status: "failed", errors: [{ code: "internal", message: "The input violates our usage policies." }] })).error?.kind).toBe("blocked");
     expect((await read({ status: "completed", steps: [{ type: "model_output", content: [{ type: "text", text: "I can't make that." }] }] })).error?.kind).toBe("failed");
     await expect(veoClipBytes({ videoUri: null, videoBytes: Buffer.from("not a video at all, far too short") }, o((async () => mp4()) as unknown as typeof fetch))).rejects.toThrow(/not an MP4/);
   });

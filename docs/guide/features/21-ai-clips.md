@@ -88,6 +88,7 @@ More: `docs/VIDEO_ENGINE.md` "Veo AI clips", costs in `docs/AI_COSTS.md` "Veo AI
 | "AI clips are paused right now." | Admin -> Services, Google Veo AI clips (off until switched on) | Switch it on. |
 | "Google Veo needs billing turned on…" | Google AI Studio, Billing, for the key's project | Turn billing on (Veo has no free tier) or top up the prepaid credit. |
 | "Google Veo is at its limit right now…" | Google's per-minute or per-day quota | Wait a few minutes; fewer clips at once. |
+| A content video says "Google was too busy to make the AI clips" | Google refused the clips at its limit `CLIP_QUOTA_TRIES` (3) times, 4 minutes apart (the interaction's `errors[0].code` is `RESOURCE_EXHAUSTED`, read as `quota` in `lib/video-engine/veo.ts`; `lib/visuals/ai-clips.ts` sends again). Nothing was billed. | The credits are already back. If it happens often, lower `VEO_CLIPS_PER_DAY` or `VEO_PARALLEL` (clips at Google at once, 3). |
 | "Google declined this clip under its safety rules." | The photo (a real person's face?) or the shot | Use a product-only photo; the credits are already back. |
 | A content video stays on "AI clips being made" | `ContentVisual.clipState`, `clipJobs`, `clipUntil`; Admin -> Health, `video-jobs` | The sweep gives up after 20 minutes and falls back with the credits back; check the `video-jobs` cron runs. |
 | A clip stays at "Making…" after a restart | `video-lab/data/veo/clips/<id>.json` (`operation`) | The studio picks it up again at start (`resumeAiClips`); one never sent to Google is refunded. |
