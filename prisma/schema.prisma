@@ -137,6 +137,7 @@ model Business {
   autopilot        AutopilotSettings?
   autopilotRuns    AutopilotRun[]
   dailyPostRuns    DailyPostRun[]
+  imageConcepts    ImageConcept[]
   creatorCampaigns CreatorCampaign[]
   chatWidgets      ChatWidget[]
   chatSessions     ChatSession[]
@@ -1277,6 +1278,50 @@ model DailyPostRun {
 
   @@unique([businessId, day])
   @@index([day, status])
+}
+
+// The image engine's memory (docs/IMAGE_ENGINE.md, lib/image-engine): one row per picture idea. The Director reads
+// the recent rows so a company never gets the same idea twice; the batch's pictures are painted one step at a time from
+// these rows (planned -> painting -> done | failed). Credits are reserved when the batch is planned (creditPeriod) and
+// given back for a picture that fails.
+model ImageConcept {
+  id            String    @id @default(cuid())
+  businessId    String
+  business      Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  batchId       String
+  source        String // designs | content | daily | autopilot
+  subjectId     String? // the product or campaign
+  pattern       String // lib/image-engine/patterns.ts
+  shot          String
+  light         String
+  layout        String
+  treatment     String // exact | scale | line
+  title         String
+  scene         String
+  headline      String
+  subline       String
+  cta           String
+  prompt        String // the Prompter's image prompt for this picture
+  planner       String // which AI wrote it: gemini | claude
+  photoPath     String? // the product photo given to the Painter
+  tier          String // lite | pro
+  aspectRatio   String
+  credits       Int
+  creditPeriod  DateTime? // the usage period the credits were reserved in
+  status        String    @default("planned") // planned | painting | done | failed
+  paintingUntil DateTime?
+  designId      String?
+  path          String?
+  caption       String?
+  check         Json? // the Checker's verdict
+  fixed         Boolean   @default(false) // the Editor fixed it once after the check
+  rating        Int? // 1 liked, -1 disliked
+  error         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([businessId, createdAt])
+  @@index([batchId])
 }
 
 // Outgoing webhooks (Phase 7), on every plan. One business can have a few endpoints, each with its own
