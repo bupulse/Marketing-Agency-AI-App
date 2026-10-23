@@ -33,12 +33,15 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // The gate reads the signed session token here, without a round trip to Supabase Auth: getClaims checks its signature
+  // with the project's published key (ES256, cached 10 minutes for every request) and refreshes an expired session
+  // like getUser did. A token signed the legacy way (HS256) falls back to the network check by itself. Pages still
+  // verify the person with Supabase Auth (getCurrentUser), so a revoked session cannot reach any data.
+  const { data } = await supabase.auth.getClaims();
+  const signedIn = Boolean(data?.claims?.sub);
 
   const path = request.nextUrl.pathname;
-  if (!user && PROTECTED.some((p) => path === p || path.startsWith(`${p}/`))) {
+  if (!signedIn && PROTECTED.some((p) => path === p || path.startsWith(`${p}/`))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     // Keep the query too: a Shopify install arrives as /dashboard/stores/shopify?shop=…&hmac=… and must survive sign-in.

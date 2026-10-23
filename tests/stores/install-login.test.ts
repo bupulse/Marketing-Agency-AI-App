@@ -18,7 +18,7 @@ vi.mock("next/headers", () => ({
     delete: (name: string) => void jar.values.delete(name),
   }),
 }));
-vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: mocks.user } }) } }) }));
+vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: mocks.user } }), getClaims: async () => ({ data: mocks.user ? { claims: { sub: (mocks.user as { id?: string }).id ?? "u1" } } : null }) } }) }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ auth: { signInWithPassword: mocks.signIn, signUp: mocks.signUp, verifyOtp: mocks.verifyOtp } }),
 }));
