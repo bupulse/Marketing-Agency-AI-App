@@ -18,6 +18,8 @@ describe("support host routing", () => {
   it("knows the support hosts, with or without a port, and nothing else", () => {
     expect(isSupportHost("support.bupulse.com")).toBe(true);
     expect(isSupportHost("SUPPORT.localhost:3013")).toBe(true);
+    expect(isSupportHost("support-test.bupulse.com")).toBe(true);
+    expect(isSupportHost("test.bupulse.com")).toBe(false);
     expect(isSupportHost("bupulse.com")).toBe(false);
     expect(isSupportHost("support.bupulse.com.evil.test")).toBe(false);
     expect(isSupportHost(null)).toBe(false);

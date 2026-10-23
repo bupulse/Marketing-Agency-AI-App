@@ -4,8 +4,11 @@
 
 export const SUPPORT_PREFIX = "/support";
 
-/** Hosts that are the support app itself. support.localhost works in local testing with no DNS change. */
-export const SUPPORT_HOSTS = ["support.bupulse.com", "support.localhost"];
+/**
+ * Hosts that are the support app itself. support-test.bupulse.com is the test copy (the Mac behind test.bupulse.com, the
+ * TEST database); support.localhost works in local testing with no DNS change.
+ */
+export const SUPPORT_HOSTS = ["support.bupulse.com", "support-test.bupulse.com", "support.localhost"];
 
 /** Files and routes the support host serves as they are (the app's own assets, its API, the support service worker). */
 const PASS_THROUGH = ["/_next/", "/api/support/", "/icons/", "/fonts/", "/brand/"];
