@@ -4,6 +4,7 @@ import { STYLES } from "@/lib/designs/library/styles";
 import { captionAt, frameCount, frameTimestampUs, kenBurns, layersAt, wrapText } from "@/lib/visuals/timeline";
 import { VIDEO_LIMITS, type VideoPlan } from "@/lib/visuals/types";
 import { getVideoLook } from "@/lib/visuals/video-looks";
+import { openClipLayers } from "./clip-layers";
 import { drawLookFrame } from "./look-renderer";
 import { mixSamples } from "@/lib/voice/mix";
 
@@ -35,6 +36,11 @@ export class VideoRenderError extends Error {
 export interface RenderOptions {
   /** Signed URLs for scene.photoPath values. A missing or failing image draws the brand backdrop instead (never fail). */
   photoUrls: Record<string, string>;
+  /**
+   * Signed (or data) URLs for scene.clipPath values: the scene plays its AI clip, muted (components/visuals/clip-layers.ts).
+   * A missing or failing clip keeps the scene's photo. MP4 only: the real-time WebM fallback shows the photos.
+   */
+  clipUrls?: Record<string, string>;
   /** Optional owner-uploaded music track (never stored); it replaces the library track. */
   music?: File | Blob | null;
   /** The voiceover MP3 (signed URL or data URL) and the library track (public or data URL), mixed under the video. */
@@ -194,11 +200,18 @@ export async function renderVideo(plan: VideoPlan, options: RenderOptions): Prom
     if (support.mp4) {
       const wantsAudio = !!(options.music || options.voiceUrl || options.musicUrl);
       const audio = wantsAudio ? await encodeSoundtrack(plan, options).catch(() => null) : null;
-      let blob = await encodeMp4(plan, images, VIDEO_LIMITS.bitrate, audio, options);
-      if (blob.size > VIDEO_LIMITS.maxBytes) blob = await encodeMp4(plan, images, VIDEO_LIMITS.bitrate * 0.55, audio, options);
-      if (blob.size > VIDEO_LIMITS.maxBytes) throw new VideoRenderError("too_large", TOO_LARGE);
-      options.onProgress?.(1);
-      return { blob, mimeType: "video/mp4", durationMs: plan.totalMs, musicSkipped: wantsAudio && !audio };
+      // AI clips play in their scenes (the clips' own sound is never mixed in: the soundtrack above is the video's).
+      const clips = await openClipLayers(plan, images, options.clipUrls);
+      try {
+        const draw = { plan: clips.plan, images: clips.images, beforeFrame: clips.count ? clips.update : undefined };
+        let blob = await encodeMp4(draw, VIDEO_LIMITS.bitrate, audio, options);
+        if (blob.size > VIDEO_LIMITS.maxBytes) blob = await encodeMp4(draw, VIDEO_LIMITS.bitrate * 0.55, audio, options);
+        if (blob.size > VIDEO_LIMITS.maxBytes) throw new VideoRenderError("too_large", TOO_LARGE);
+        options.onProgress?.(1);
+        return { blob, mimeType: "video/mp4", durationMs: plan.totalMs, musicSkipped: wantsAudio && !audio };
+      } finally {
+        clips.close();
+      }
     }
     const blob = await recordWebm(plan, images, options);
     if (blob.size > VIDEO_LIMITS.maxBytes) throw new VideoRenderError("too_large", TOO_LARGE);
@@ -309,7 +322,8 @@ async function encodePcm(channels: Float32Array[], sampleRate: number): Promise<
 }
 
 /** Encodes every frame with WebCodecs H.264 and muxes it (plus the music, if any) into an in-memory MP4. */
-async function encodeMp4(plan: VideoPlan, images: Map<string, Img>, bitrate: number, audio: EncodedAudio | null, options: RenderOptions): Promise<Blob> {
+async function encodeMp4(draw: { plan: VideoPlan; images: Map<string, Img>; beforeFrame?: (tMs: number) => Promise<void> }, bitrate: number, audio: EncodedAudio | null, options: RenderOptions): Promise<Blob> {
+  const { plan, images } = draw;
   const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
   let config: VideoEncoderConfig | null = null;
   for (const codec of ["avc1.640028", "avc1.4d0028", "avc1.42e028"]) {
@@ -338,7 +352,9 @@ async function encodeMp4(plan: VideoPlan, images: Map<string, Img>, bitrate: num
     for (let i = 0; i < total; i++) {
       checkAbort(options.signal);
       if (failure) throw failure;
-      drawFrame(ctx, plan, images, (i * 1000) / plan.fps);
+      const tMs = (i * 1000) / plan.fps;
+      await draw.beforeFrame?.(tMs);
+      drawFrame(ctx, plan, images, tMs);
       const frame = new VideoFrame(canvas, { timestamp: frameTimestampUs(i, plan.fps), duration });
       try {
         encoder.encode(frame, { keyFrame: i % (plan.fps * 2) === 0 });

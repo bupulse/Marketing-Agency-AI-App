@@ -187,9 +187,11 @@ async function openPage(browser, html, script) {
 async function makeOne(config, browser, page, job, format) {
   const photos = await photoDataUrls(job.photoUrls, job.upload?.url);
   const audio = await audioDataUrls(job.audioUrls, job.upload?.url);
+  // The video's AI clips (MP4, at most 12 MB each), fetched like the photos.
+  const clips = await photoDataUrls(job.clipUrls, job.upload?.url);
   const leaseLeft = new Date(job.leaseUntil).getTime() - Date.now() - 60_000;
   const result = await withTimeout(
-    page.evaluate(({ plan, photos, format, audio }) => globalThis.videoRobot.render(plan, photos, format, audio), { plan: job.plan, photos, format, audio }),
+    page.evaluate(({ plan, photos, format, audio, clips }) => globalThis.videoRobot.render(plan, photos, format, audio, clips), { plan: job.plan, photos, format, audio, clips }),
     Math.max(10_000, Math.min(config.videoTimeoutMs, leaseLeft)),
   );
   if (!result.ok) {

@@ -25,11 +25,12 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 /** Renders one plan. The renderer picks MP4 whenever VideoEncoder exists, so WebM is forced by hiding it. */
-async function render(plan: VideoPlan, photoUrls: Record<string, string>, format: Format, audio: { voice?: string; music?: string } = {}) {
+async function render(plan: VideoPlan, photoUrls: Record<string, string>, format: Format, audio: { voice?: string; music?: string } = {}, clipUrls: Record<string, string> = {}) {
   if (format === "webm") Reflect.deleteProperty(globalThis, "VideoEncoder");
   try {
     // Voiceover and music arrive as data URLs, like the photos: the same mix as the owner's browser (lib/voice/mix.ts).
-    const result = await renderVideo(plan, { photoUrls, voiceUrl: audio.voice ?? null, musicUrl: audio.music ?? null });
+    // AI clips arrive as data URLs too (lib/visuals/ai-clips.ts); a missing one keeps its scene's photo.
+    const result = await renderVideo(plan, { photoUrls, clipUrls, voiceUrl: audio.voice ?? null, musicUrl: audio.music ?? null });
     return { ok: true as const, base64: toBase64(new Uint8Array(await result.blob.arrayBuffer())), mimeType: result.mimeType, bytes: result.blob.size };
   } catch (error) {
     const reason = error instanceof VideoRenderError ? (error.reason === "too_large" ? "too_large" : error.reason === "unsupported" ? "unsupported" : "render_failed") : "render_failed";
