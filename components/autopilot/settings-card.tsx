@@ -208,7 +208,7 @@ export function SettingsCard({ initial, accounts, timeZone, videoOffer = null }:
         />
         <ToggleRow
           title="AI images with people (on by default, uses image credits)"
-          text="On (the default): most posts get a new AI picture with people who look like your customers, using 1 image credit each, and free templates with your photos when the month's AI images run out. Off: only your own photos in free brand templates, no image credits used."
+          text="On (the default): every post gets a unique AI ad made from your product, using AI image credits (2 for Lite, 4 for Pro), and your own photos when the month's credits run out. Off: only your own photos, as they are, no credits used."
           checked={config.useAiImages}
           onChange={(v) => set("useAiImages", v)}
         />

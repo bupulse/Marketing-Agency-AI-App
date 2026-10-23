@@ -148,7 +148,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
 
   const meters = [
     { label: "Text generations", used: used.text, max: limits.text },
-    { label: "Brand designs", used: used.image, max: limits.image },
+    { label: "AI image credits", used: used.image, max: limits.image },
     { label: "Videos (up to 30 s each)", used: used.videos, max: limits.videos },
     { label: "Voice characters", used: used.voiceCharacters, max: limits.voiceCharacters },
     // Video Studio credits: only for plans with the studio (it is coming soon, so none yet).

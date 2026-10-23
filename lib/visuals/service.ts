@@ -8,10 +8,10 @@ import { logError } from "@/lib/errors";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { companyCallAllowed, companySpendThisMonth } from "@/lib/ai/budget";
 import { AIProviderError } from "@/lib/ai/types";
-import { createAiDesign, createTemplateDesign, DesignError } from "@/lib/designs/service";
+import { createPhotoDesign, DesignError } from "@/lib/designs/service";
+import { EngineError, paintOne } from "@/lib/image-engine/engine";
 import { isOwnDesignPath, isOwnPhotoPath } from "@/lib/designs/assets";
 import { isPackId } from "@/lib/designs/packs";
-import { buildSceneBrief } from "@/lib/designs/photo-scene";
 import { isTemplateId } from "@/lib/designs/templates/registry";
 import { featureStatus, hasFeature } from "@/lib/entitlements";
 import { KnowledgeError } from "@/lib/knowledge/service";
@@ -175,7 +175,24 @@ export function directionContext(input: Omit<PlanInput, "owner" | "target" | "vi
 }
 
 function kindOf(plan: ImagePlan): VisualKind {
-  return plan.slides.length > 1 ? "carousel" : "image";
+  return plan.slides.filter((s) => !s.skipped).length > 1 ? "carousel" : "image";
+}
+
+/** The brief and caption of the content (or the Autopilot post) a visual belongs to. Never fails: none on error. */
+async function drawContextOf(row: { businessId: string; contentId: string | null; groupId: string | null }): Promise<DrawContext> {
+  try {
+    if (row.contentId) {
+      const c = await prisma.generatedContent.findFirst({ where: { id: row.contentId, businessId: row.businessId }, select: { brief: true, caption: true } });
+      return { source: "content", brief: c?.brief ?? null, caption: c?.caption ?? null };
+    }
+    if (row.groupId) {
+      const p = await prisma.post.findFirst({ where: { businessId: row.businessId, groupId: row.groupId }, select: { text: true }, orderBy: { createdAt: "asc" } });
+      return { source: "autopilot", caption: p?.text ?? null };
+    }
+  } catch {
+    // The picture is made without them.
+  }
+  return { source: "content" };
 }
 
 /** Designs and video looks of the business's latest visuals, newest first (never fails: none on error). */
@@ -263,22 +280,12 @@ async function subjectOf(row: { contentId: string | null; groupId: string | null
 
 /** Why an AI photo was not made, for the slide's note. */
 function aiNote(error: unknown): string {
-  if (error instanceof UsageLimitError) return "AI images for this month used, so this slide uses your photo or a brand design.";
-  if (error instanceof AIProviderError) return error.message.includes("allowance") ? error.message : "AI photos are paused for a short while, so this slide uses a free design.";
-  if (error instanceof RateLimitError) return "You made many AI photos this hour, so this slide uses a free design.";
-  return "The AI photo could not be made, so this slide uses a free design.";
+  if (error instanceof UsageLimitError) return "AI image credits for this month are used, so your own photo is used.";
+  if (error instanceof AIProviderError) return error.message.includes("allowance") ? error.message : "AI pictures are paused for a short while, so your own photo is used.";
+  if (error instanceof RateLimitError) return "You made many AI pictures this hour, so your own photo is used.";
+  return "The AI picture could not be made, so your own photo is used.";
 }
 
-/** The slide's library design, or one that fits when it has none of this style or it needs the photo that failed. */
-function designFor(plan: ImagePlan, slide: VisualSlide, hasPhoto: boolean): string {
-  const kept = usableDesign(slide, plan.pack, hasPhoto);
-  if (kept) return kept;
-  const found = plan.slides.findIndex((s) => s === slide || (s.headline === slide.headline && s.template === slide.template));
-  const at = found >= 0 ? found : 0;
-  const base = found >= 0 ? plan.slides : [slide];
-  const slides = base.map((s, i) => (i === at ? { ...slide, ...(hasPhoto ? {} : { source: "text" as const, aiPhotoPath: null, photoPath: null }) } : s));
-  return assignDesigns({ ...plan, slides }, { recent: [], seed: `${slide.headline}#${at}`, only: new Set([at]) }).slides[at].design!;
-}
 
 /**
  * How long one drawing call holds a visual: longer than the slowest call can run (the Gemini image request alone may
@@ -289,10 +296,14 @@ export const RENDER_LEASE_MS = 4 * 60 * 1000;
 
 export type DrawState = { aiAllowed: boolean; aiMade: number; maxAi: number };
 
+/** Where a picture's post comes from, for the image engine: its brief and caption guide the picture's idea. */
+export type DrawContext = { source: "content" | "autopilot"; brief?: string | null; caption?: string | null };
+
 /**
- * Draws one slide: makes its AI photo first when it needs one (1 image credit, once: the photo is kept for
- * re-styling), then the template. A photo that cannot be drawn falls back to the text design; only a text design
- * that cannot be drawn either is an error.
+ * Draws one slide (owner decision, 23 October 2026: no templates). An AI slide is a finished ad from the image engine
+ * (lib/image-engine paintOne: its own idea, words and prompt, Pro or Lite, checked); without AI (not in the plan, no
+ * credits, a failure) the slide is the owner's own photo as it is; a slide with neither is skipped. The engine takes
+ * its own credits, so a credit reserved when the content was planned goes back.
  */
 export async function drawSlide(
   owner: Owner,
@@ -300,65 +311,47 @@ export async function drawSlide(
   plan: ImagePlan,
   slide: VisualSlide,
   state: DrawState,
-  /** Saves the slide as soon as its AI photo is paid for, so a failed template draw never loses the photo. */
+  /** Saves the slide as soon as its AI picture is made, so it is never paid for twice. */
   onAiPhoto?: (slide: VisualSlide) => Promise<void>,
+  context?: DrawContext,
 ): Promise<VisualSlide> {
-  const next: VisualSlide = { ...slide };
-  // A designed carousel slide shows the cover's photo (its AI photo, or its album photo when AI was not possible).
-  const cover = plan.slides[0];
-  const coverPhoto = slide.useCoverPhoto && cover !== slide ? (cover?.aiPhotoPath ?? (cover?.source === "album" ? cover.photoPath : null)) : null;
-  let photo: string | null = slide.source === "album" ? slide.photoPath : slide.source === "ai" ? (slide.aiPhotoPath ?? null) : coverPhoto;
-  const prepaid = slide.prepaidAi ? { periodStart: new Date(slide.prepaidAi) } : undefined;
-  next.prepaidAi = null;
-  if (slide.source !== "ai" || slide.aiPhotoPath) await refundPrepaid(owner, prepaid);
-  if (slide.source === "ai" && !slide.aiPhotoPath) {
+  const next: VisualSlide = { ...slide, prepaidAi: null, skipped: false };
+  await refundPrepaid(owner, slide.prepaidAi ? { periodStart: new Date(slide.prepaidAi) } : undefined);
+
+  // A picture already made (a re-draw) is the slide as it is.
+  if (slide.aiPhotoPath) return { ...next, designId: slide.designId, path: slide.aiPhotoPath };
+
+  if (slide.source === "ai") {
     if (state.aiAllowed && state.aiMade < state.maxAi) {
       try {
-        const scene = buildSceneBrief({ template: slide.template, aspectRatio: plan.aspectRatio, scene: slide.scene, headline: slide.headline });
-        // A credit reserved when the run was planned is used (createAiDesign gives it back on any failure).
-        const made = await createAiDesign({ ...owner, subjectId, prompt: scene, aspectRatio: plan.aspectRatio, usePhotoPath: slide.photoPath, includePeople: true, prepaid });
+        const made = await paintOne(
+          { ...owner, service: owner.service },
+          { source: context?.source ?? "content", subjectId, aspectRatio: plan.aspectRatio, photoPath: slide.photoPath, brief: context?.brief ?? null, caption: context?.caption ?? slide.headline },
+        );
         state.aiMade += 1;
-        next.aiPhotoPath = made.path;
-        photo = made.path;
-        await onAiPhoto?.({ ...next, source: "ai", designId: null, path: null });
+        if (made) {
+          const done: VisualSlide = { ...next, source: "ai", conceptId: made.id, aiPhotoPath: made.path, designId: made.designId, path: made.path };
+          await onAiPhoto?.(done);
+          return done;
+        }
+        next.note = "The AI picture could not be made this time (its credits were given back), so your own photo is used.";
       } catch (error) {
-        if (error instanceof UsageLimitError || error instanceof RateLimitError || error instanceof AIProviderError) state.aiAllowed = false;
-        else if (!(error instanceof DesignError)) await logError(error, { source: "visuals.ai-photo", level: "warn", businessId: owner.businessId });
-        next.note = aiNote(error);
-        photo = slide.photoPath;
+        if (error instanceof EngineError || error instanceof UsageLimitError || error instanceof RateLimitError || error instanceof AIProviderError) state.aiAllowed = false;
+        else await logError(error, { source: "visuals.ai-picture", level: "warn", businessId: owner.businessId });
+        next.note = error instanceof EngineError ? `${error.message} Your own photo is used instead.` : aiNote(error);
       }
     } else {
-      await refundPrepaid(owner, prepaid);
-      next.note = "AI photos are not available right now, so this slide uses your photo or a free design.";
-      photo = slide.photoPath;
+      next.note = "AI pictures are not available right now, so your own photo is used.";
     }
-    if (!next.aiPhotoPath) next.source = photo ? "album" : "text";
   }
 
-  const draw = (photoPath: string | null) =>
-    createTemplateDesign({
-      ...owner,
-      subjectId,
-      template: !photoPath && PHOTO_TEMPLATES.includes(next.template) ? "announcement" : next.template,
-      aspectRatio: plan.aspectRatio,
-      headline: next.headline,
-      subline: next.subline || null,
-      chip: next.chip || null,
-      kicker: next.kicker,
-      photoPath,
-      pack: plan.pack,
-      design: (next.design = designFor(plan, slide, !!photoPath)),
-      step: next.step ?? null,
-    });
-  let made;
-  try {
-    made = await draw(photo);
-  } catch (error) {
-    if (!(error instanceof DesignError) || !photo) throw error;
-    made = await draw(null);
-    next.note = "That photo could not be drawn (templates need a JPG or PNG), so this slide is a text design.";
+  // The owner's own photo, as it is (a designed slide over the cover's photo is no more).
+  const photo = slide.useCoverPhoto ? null : slide.photoPath;
+  if (photo) {
+    const made = await createPhotoDesign({ ...owner, subjectId, photoPath: photo, aspectRatio: plan.aspectRatio });
+    return { ...next, source: "album", designId: made.id, path: made.path };
   }
-  return { ...next, designId: made.id, path: made.path };
+  return { ...next, source: "text", skipped: true, designId: null, path: null, note: next.note ?? "Nothing to show on this slide: add photos of the product or AI image credits." };
 }
 
 /** The ordered rendered items of an image plan. */
@@ -407,8 +400,10 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
   const subjectId = await subjectOf(row);
   let error: string | null = null;
 
+  // The post's brief and caption guide the AI picture's idea.
+  const context = await drawContextOf(row);
   for (let i = 0; i < plan.slides.length; i++) {
-    if (plan.slides[i].path) continue;
+    if (plan.slides[i].path || plan.slides[i].skipped) continue;
     if (Date.now() - started > budget) break;
     const index = i;
     const keepPhoto = async (slide: VisualSlide) => {
@@ -416,7 +411,7 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
       await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(plan) } });
     };
     try {
-      plan.slides[i] = await drawSlide(owner, subjectId, plan, plan.slides[i], state, keepPhoto);
+      plan.slides[i] = await drawSlide(owner, subjectId, plan, plan.slides[i], state, keepPhoto, context);
     } catch (e) {
       if (e instanceof RateLimitError) error = "You made a lot of designs this hour. Try again in a little while.";
       else if (e instanceof DesignError) error = e.message;
@@ -428,9 +423,12 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
     }
   }
 
-  const done = plan.slides.every((s) => s.path);
-  const status = done ? "ready" : error ? "failed" : "pending";
+  const drawn = plan.slides.every((s) => s.path || s.skipped);
   const items = itemsOf(plan);
+  // Every slide skipped: no AI picture could be made and the product has no photo.
+  if (drawn && items.length === 0) error = error ?? "No picture could be made: add a photo of the product, or AI image credits.";
+  const done = drawn && items.length > 0;
+  const status = done ? "ready" : error ? "failed" : "pending";
   await prisma.contentVisual.update({
     where: { id: row.id },
     data: { plan: json(plan), items: json(items), kind: kindOf(plan), status, error, renderingUntil: null, ...(done ? { renderedAt: new Date() } : {}) },

@@ -22,7 +22,7 @@ import { consumeUsage, getUsageSummary, refundUsage } from "@/lib/usage";
 import { knownCountry, safePhrase } from "@/lib/visuals/people";
 import { captionBatch } from "./captioner";
 import { checkPicture } from "./check";
-import { chooseTiers, creditsOf, directBatch, patternsFromBrief, TIER_CREDITS, type Quality, type Tier } from "./director";
+import { chooseTiers, creditsOf, directBatch, patternsFromBrief, postTier, PRO_EVERY, TIER_CREDITS, type Quality, type Tier } from "./director";
 import { painterPrompt } from "./painter-prompt";
 import { writeConcepts } from "./planner";
 import type { Treatment } from "./patterns";
@@ -164,6 +164,17 @@ export async function paintNext(owner: Owner, batchId: string, now: Date = new D
   });
   if (claimed === 0) return paintNext(owner, batchId, now);
 
+  const result = await paintRow(owner, row);
+  return { id: row.id, status: result.status };
+}
+
+type ConceptRow = NonNullable<Awaited<ReturnType<typeof prisma.imageConcept.findFirst>>>;
+
+/**
+ * The Painter, the Checker and at most one Editor fix for one planned picture whose painting the caller holds. Saves
+ * the result on the row; a failure gives the picture's credits back. Never throws.
+ */
+async function paintRow(owner: Owner, row: ConceptRow): Promise<{ status: "done"; designId: string; path: string } | { status: "failed"; error: string }> {
   try {
     const loaded = await loadFacts(owner, row.subjectId);
     const model = tierModel(row.tier as Tier);
@@ -206,13 +217,73 @@ export async function paintNext(owner: Owner, batchId: string, now: Date = new D
       where: { id: row.id },
       data: { status: "done", paintingUntil: null, designId: made.id, path: made.path, check: { ok: verdict.ok, problems: verdict.problems, ran: verdict.ran }, fixed },
     });
-    return { id: row.id, status: "done" };
+    return { status: "done", designId: made.id, path: made.path };
   } catch (error) {
     const message = error instanceof DesignError || error instanceof EngineError ? error.message : "This picture could not be made. Its credits were given back.";
     if (!(error instanceof DesignError)) await logError(error, { source: "image-engine.paint", businessId: owner.businessId });
     await prisma.imageConcept.update({ where: { id: row.id }, data: { status: "failed", paintingUntil: null, error: message } });
     if (row.creditPeriod) await refundUsage(owner.userId, "image", row.creditPeriod, row.credits).catch((e) => logError(e, { source: "image-engine.refund", businessId: owner.businessId }));
-    return { id: row.id, status: "failed" };
+    return { status: "failed", error: message };
+  }
+}
+
+/**
+ * One finished picture for a post (Create post, Daily posts, Studio, Autopilot: lib/visuals drawSlide), no template:
+ * the Director picks a pattern, shot, light, layout and camera the company has not had lately, the Prompter writes it
+ * from the post (its brief and caption), then the Painter, Checker and Editor. Pro when the credits allow and none of
+ * the company's last pictures was Pro, else Lite. Throws EngineError when it cannot start (not in the plan, no credits:
+ * the caller then uses the owner's own photo); a picture that fails after that gives its credits back and returns null.
+ */
+export async function paintOne(owner: Owner, request: { source: BatchSource; subjectId?: string | null; aspectRatio: AspectRatio; photoPath?: string | null; brief?: string | null; caption?: string | null }): Promise<{ id: string; designId: string; path: string } | null> {
+  if ((await featureStatus(owner.businessId, "aiPhotos")) !== "ok") throw new EngineError("AI pictures are not in your plan.");
+  const loaded = await loadFacts(owner, request.subjectId);
+  const recent = await prisma.imageConcept.findMany({ where: { businessId: owner.businessId }, orderBy: { createdAt: "desc" }, take: 60, select: { pattern: true, shot: true, light: true, layout: true, camera: true, title: true, scene: true, tier: true, planner: true } });
+  const tier = postTier(await creditsLeft(owner.userId), recent.slice(0, PRO_EVERY - 1).map((r) => r.tier as Tier));
+  if (!tier) throw new EngineError("You have no AI image credits left this month.");
+  const credits = TIER_CREDITS[tier];
+  const { periodStart } = await consumeUsage(owner.userId, "image", credits);
+  const photos = request.photoPath ? [request.photoPath] : loaded.photos;
+  const batchId = globalThis.crypto.randomUUID();
+  try {
+    const [slot] = directBatch({ tiers: [tier], recent, photoCount: photos.length, facts: { reviews: loaded.reviews.length > 0, price: loaded.hasPrice }, seed: batchId, prefer: patternsFromBrief(request.brief) });
+    const brief = [request.brief?.trim(), request.caption?.trim() ? `The post's caption: ${request.caption.trim().slice(0, 600)}` : null].filter(Boolean).join("\n") || null;
+    const input: PlannerInput = { business: loaded.facts, subject: loaded.subject, brief, reviews: loaded.reviews, slots: [slot], recent: recent.slice(0, 30).map((r) => `${r.title}: ${r.scene}`.slice(0, 200)) };
+    // Both writers take turns: Claude for one picture, Gemini for the next.
+    const [concept] = await writeConcepts(owner, input, { only: recent[0]?.planner === "claude" ? "gemini" : undefined });
+    const row = await prisma.imageConcept.create({
+      data: {
+        businessId: owner.businessId,
+        batchId,
+        source: request.source,
+        subjectId: request.subjectId ?? null,
+        pattern: slot.pattern,
+        shot: slot.shot,
+        light: slot.light,
+        layout: slot.layout,
+        camera: slot.camera,
+        treatment: slot.treatment,
+        title: concept.title,
+        scene: concept.scene,
+        headline: concept.headline,
+        subline: concept.subline,
+        cta: concept.cta,
+        prompt: concept.prompt,
+        planner: concept.planner,
+        photoPath: slot.photoIndex === null ? null : photos[slot.photoIndex],
+        tier,
+        aspectRatio: request.aspectRatio,
+        credits,
+        creditPeriod: periodStart,
+        status: "painting",
+        paintingUntil: new Date(Date.now() + PAINT_LEASE_MS),
+      },
+    });
+    const result = await paintRow(owner, row);
+    return result.status === "done" ? { id: row.id, designId: result.designId, path: result.path } : null;
+  } catch (error) {
+    // Only before the row exists (paintRow never throws and refunds on its own).
+    await refundUsage(owner.userId, "image", periodStart, credits).catch(() => undefined);
+    throw error;
   }
 }
 

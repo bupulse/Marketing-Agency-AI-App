@@ -87,6 +87,13 @@ export interface VisualSlide {
   path: string | null;
   /** Why the slide could not be drawn as planned (shown to the owner, never blocks the content). */
   note?: string;
+  /** The image engine's picture (ImageConcept id, lib/image-engine): the finished ad, words included. */
+  conceptId?: string | null;
+  /**
+   * Nothing to show (no templates since 23 October 2026): a designed slide with no AI picture and no photo of the
+   * owner's. It is left out of the post; the visual is ready without it.
+   */
+  skipped?: boolean;
 }
 
 export interface ImagePlan {

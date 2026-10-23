@@ -9,7 +9,7 @@ export default async function UsagePage() {
   const { used, limits, plan, subscription } = usage;
   const rows = [
     { label: "Text generations", unit: "generations", key: "text" as const },
-    { label: "Images", unit: "images", key: "image" as const },
+    { label: "AI image credits", unit: "credits", key: "image" as const },
     { label: "Videos", unit: "videos", key: "videos" as const },
     { label: "Voice characters", unit: "characters", key: "voiceCharacters" as const },
     // Video Studio credits (docs/VIDEO_APP_INTEGRATION.md): only for plans with the studio; unused ones do not roll over.

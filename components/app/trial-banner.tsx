@@ -104,7 +104,7 @@ export function TrialBanner(props: TrialBannerProps) {
   // An ended plan's meters (0 of its old limits) would read as still active; the "ends on" and grace notices need none.
   const meters = state === "planEnded" || state === "grace" || state === "ending" ? [] : [
     { label: "Text generations", ...text },
-    { label: "Image generations", ...image },
+    { label: "AI image credits", ...image },
   ].filter((m) => m.max > 0);
   const danger = state === "ended" || state === "planEnded" || state === "usage" || state === "pastDue";
 

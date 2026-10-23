@@ -31,7 +31,7 @@ export type PlanFormInitial = {
 
 const METRIC_LABELS: Record<string, string> = {
   text: "Text generations",
-  image: "Brand designs",
+  image: "AI image credits",
   chat: "Chat widget replies",
   videos: "Videos a month",
   voiceCharacters: "Voice characters",

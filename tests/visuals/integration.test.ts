@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   generate: vi.fn(),
   createTemplateDesign: vi.fn(),
   createAiDesign: vi.fn(),
+  createPhotoDesign: vi.fn(),
+  paintOne: vi.fn(),
   makeGroupImages: vi.fn(),
   logError: vi.fn(),
 }));
@@ -28,7 +30,8 @@ vi.mock("@/lib/usage", () => ({ getUsageSummary: mocks.getUsageSummary, consumeU
 vi.mock("@/lib/ai/budget", async (original) => ({ ...(await original<typeof import("@/lib/ai/budget")>()), companySpendThisMonth: async () => ({ totalUsd: 0, widgetUsd: 0, ownerUsd: 0, allowanceUsd: 3, widgetCapUsd: 1.5 }) }));
 vi.mock("@/lib/ai", () => ({ getCheapTextProvider: () => ({ provider: { name: "gemini", generate: mocks.generate }, model: "gemini-2.5-flash-lite" }) }));
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: async (_c: unknown, _m: unknown, call: () => unknown) => call(), withLateTimeout: <T,>(p: Promise<T>) => p }));
-vi.mock("@/lib/designs/service", () => ({ createTemplateDesign: mocks.createTemplateDesign, createAiDesign: mocks.createAiDesign, DesignError: class extends Error {} }));
+vi.mock("@/lib/designs/service", () => ({ createTemplateDesign: mocks.createTemplateDesign, createAiDesign: mocks.createAiDesign, createPhotoDesign: mocks.createPhotoDesign, DesignError: class extends Error {} }));
+vi.mock("@/lib/image-engine/engine", () => ({ paintOne: mocks.paintOne, EngineError: class extends Error {} }));
 vi.mock("@/lib/autopilot/images", () => ({ makeGroupImages: mocks.makeGroupImages, PHOTO_MARK: "photo:" }));
 vi.mock("@/lib/knowledge/service", () => ({ KnowledgeError: class extends Error {}, writingSubject: vi.fn() }));
 vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: vi.fn() }));
@@ -60,6 +63,8 @@ beforeEach(() => {
   mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videos: 0 }, limits: { image: 50, videos: 120 } });
   mocks.generate.mockResolvedValue(answer([s("Light as air", "album")]));
   mocks.createTemplateDesign.mockImplementation(async () => ({ id: `d${++n}`, path: `${U}/designs/d${n}.png` }));
+  mocks.createPhotoDesign.mockImplementation(async () => ({ id: `d${++n}`, path: `${U}/designs/d${n}.jpg` }));
+  mocks.paintOne.mockResolvedValue({ id: "c1", designId: "ai1", path: `${U}/designs/ai1.png` });
 });
 
 const content = { id: "c1", caption: "Meet the Aero Sneaker.", adHeadlines: ["The all-new Aero Sneaker"], videoScript: "Hook: Light.\nCTA: Visit us!" };
@@ -137,16 +142,25 @@ describe("Autopilot group visuals", () => {
   const written = (text: string) => ({ image: { kicker: "", headline: "3 ways to style it", subline: "", chip: "" }, versions: [{ network: "instagram" as const, title: null, text, hashtags: [] }], provider: "gemini", model: "m", usage: { inputTokens: 0, outputTokens: 0 } });
   const ctx = { userId: U, businessId: "biz1", businessName: "Kigali Kicks", language: "English", useAiImages: false, service: true, business, videoAllowed: true };
 
-  it("a list idea on a carousel network becomes a carousel (no duplicate single image), recorded on the group", async () => {
-    mocks.generate.mockResolvedValue(answer([s("Cover", "album"), s("With jeans"), s("With a dress")], "carousel"));
+  it("several product photos on a carousel network: a carousel of the photos as they are, recorded on the group", async () => {
+    const photos = [1, 2, 3].map((i) => ({ path: `${U}/gallery/aaaaaaaa-${i}.jpg`, fromProject: false, mimeType: "image/jpeg" }));
+    mocks.generate.mockResolvedValue(answer([{ ...s("Cover", "album"), photo: 0 }, { ...s("Two", "album"), photo: 1 }, { ...s("Three", "album"), photo: 2 }], "carousel"));
     const run = newRunState();
-    const out = await makeGroupVisuals(group(), written("How to wear it:\n1. With jeans\n2. With a dress\n3. For the gym"), ctx, run);
+    const out = await makeGroupVisuals(group({ photos }), written("How to wear it:\n1. With jeans\n2. With a dress\n3. For the gym"), ctx, run);
     expect(out.carousel).toHaveLength(3);
     expect(mocks.makeGroupImages).not.toHaveBeenCalled();
-    expect(run.renders).toBe(3);
+    expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
     const saved = mocks.prisma.contentVisual.create.mock.calls[0][0].data;
     expect(saved).toMatchObject({ groupId: "g1", kind: "carousel", status: "ready" });
-    expect(saved.plan.slides[0].headline).toBe("3 ways to style it"); // the writer's cover text
+  });
+
+  it("a list idea with one photo: the designed tip slides are no more, so the photo is a single image", async () => {
+    mocks.generate.mockResolvedValue(answer([s("Cover", "album"), s("With jeans"), s("With a dress")], "carousel"));
+    const out = await makeGroupVisuals(group(), written("How to wear it:\n1. With jeans\n2. With a dress\n3. For the gym"), ctx, newRunState());
+    expect(out.carousel).toBeNull();
+    expect(out.designs["4:5"]).toBe(`${U}/designs/d1.jpg`);
+    expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
+    expect(mocks.prisma.contentVisual.create.mock.calls[0][0].data).toMatchObject({ groupId: "g1", kind: "image" });
   });
 
   it("a plain idea keeps the playbook's single image; a video idea gets a video plan when the plan has video", async () => {
@@ -171,15 +185,14 @@ describe("Autopilot group visuals", () => {
     expect(mocks.prisma.contentVisual.create.mock.calls[1][0].data.plan.quality).toBe("ai");
   });
 
-  it("the run's caps count a slide that failed half-way (its AI photo was paid)", async () => {
+  it("an AI cover counts against the run's AI pictures, and the post's caption guides it", async () => {
     mocks.generate.mockResolvedValue(answer([{ ...s("Cover", "ai"), scene: "shoes" }, s("With jeans"), s("With a dress")], "carousel"));
-    mocks.createAiDesign.mockResolvedValue({ id: "ai1", path: `${U}/designs/ai1.png` });
-    mocks.createTemplateDesign.mockRejectedValueOnce(new Error("satori crashed"));
     mocks.makeGroupImages.mockResolvedValue({ designs: {}, aiStopped: false, notes: [], aiUsed: false });
     const run = newRunState();
-    await makeGroupVisuals(group({ photos: [] }), written("How to wear it:\n1. With jeans\n2. With a dress\n3. For the gym"), { ...ctx, useAiImages: true }, run);
+    const out = await makeGroupVisuals(group({ photos: [] }), written("How to wear it:\n1. With jeans\n2. With a dress\n3. For the gym"), { ...ctx, useAiImages: true }, run);
     expect(run.aiMade).toBe(1);
-    expect(run.renders).toBe(1);
+    expect(mocks.paintOne.mock.calls[0][1]).toMatchObject({ source: "autopilot", caption: expect.stringContaining("How to wear it") });
+    expect(out.designs["4:5"]).toBe(`${U}/designs/ai1.png`);
   });
 
   it("a recording failure never fails the group", async () => {

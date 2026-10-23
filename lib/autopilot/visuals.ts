@@ -89,7 +89,7 @@ async function carouselFor(group: PlannedGroup, written: WrittenGroup, ctx: Visu
     for (let i = 0; i < plan.slides.length; i++) {
       // Counted before drawing: a draw that throws still used the run's budget (and maybe an AI photo).
       run.renders += 1;
-      const slide = (plan.slides[i] = await drawSlide(owner, group.project?.id ?? null, plan, plan.slides[i], state));
+      const slide = (plan.slides[i] = await drawSlide(owner, group.project?.id ?? null, plan, plan.slides[i], state, undefined, { source: "autopilot", brief: group.idea.name, caption: feedText(written) }));
       // Remembered like the single images, so the next weeks prefer photos that were not used recently.
       if (slide.source === "album" && slide.photoPath && slide.designId) await prisma.design.update({ where: { id: slide.designId }, data: { prompt: `${PHOTO_MARK}${slide.photoPath}` } }).catch(() => {});
     }
@@ -99,7 +99,9 @@ async function carouselFor(group: PlannedGroup, written: WrittenGroup, ctx: Visu
     if (!state.aiAllowed && dctx.aiAllowed) run.aiStopped = true;
   }
   const items = itemsOf(plan);
-  await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "carousel", status: "ready", plan: json(plan), items: json(items), renderedAt: new Date() } });
+  if (items.length === 0) return null;
+  // Designed slides are no more (no templates): with fewer than two pictures left it is a single image.
+  await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: items.length > 1 ? "carousel" : "image", status: "ready", plan: json(plan), items: json(items), renderedAt: new Date() } });
   return items.map((i) => i.path);
 }
 
@@ -158,11 +160,16 @@ export async function makeGroupVisuals(group: PlannedGroup, written: WrittenGrou
   } catch (error) {
     await logError(error, { source: "autopilot.visuals.carousel", level: "warn", businessId: ctx.businessId });
   }
+  // A carousel left with one picture (its visual is already recorded as an image) is that picture.
+  if (carousel && carousel.length < 2) {
+    await planGroupVideo(group, written, ctx).catch((error) => logError(error, { source: "autopilot.visuals.record", level: "warn", businessId: ctx.businessId }));
+    return { designs: { "4:5": carousel[0], "1:1": carousel[0] }, aiStopped: run.aiStopped, notes: [], aiUsed: false, carousel: null };
+  }
   // The single image is still made when a feed network has no carousels (in every size the networks need).
   const needsSingle = !carousel || group.posts.some((p) => FEED_FORMATS.has(p.format) && !getProvider(p.network).rules.formats.includes("CAROUSEL"));
   let images: GroupImages;
   if (needsSingle) {
-    images = await makeGroupImages(group, written.image, { ...ctx, useAiImages: ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun }, { aiStopped: run.aiStopped });
+    images = await makeGroupImages(group, written.image, { ...ctx, useAiImages: ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun }, { aiStopped: run.aiStopped, caption: feedText(written) });
     run.renders += Object.keys(images.designs).length;
     if (images.aiUsed) run.aiMade += 1;
     if (images.aiStopped) run.aiStopped = true;
