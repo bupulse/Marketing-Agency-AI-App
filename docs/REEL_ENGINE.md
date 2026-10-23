@@ -112,3 +112,23 @@ budget became **$20** and the "veo" switch stays on.
   WhatsApp number at the end), and Gemini judged the footage "entirely genuine live-action". It saw a phone on a tripod
   in the last clip: the camera move said "static phone on a small tripod" and the model filmed it. The moves never name
   equipment now, every clip says the camera is never seen, and the checker fails a clip that shows one.
+
+## Round 3: the viral montage (owner, 24 October 2026)
+
+The owner: "you didn't use methods like this [a Rwandan car seller's reel] … with the edits and the beats and songs
+create some cool edit". That reel: the presenter in the real place, full of energy (walks up to the phone, dances), cut
+every 1 to 2 seconds with product shots (fast spins, tilted angles, details), big game-style stickers ("MAPLE GEELY" in
+flames, "+25M RWF" in green), flashes, all on the song's beat.
+
+- **7 clips** (`directMontage`): 3 talking clips of 8 s (the hook, how it works, the call to action) and 4 product
+  shots of 4 s with no talking (`BROLL_SHOTS`: a fast tilted spin round the product, a low-angle reveal, a detail
+  push-in, a whip pan into its place, the result), about $4.50 a reel (7 frames, 40 s of video, checks).
+- **The edit** (`buildMontageSpec`, about 21 shots of 1.4 s on average): the hook talking with product shots cut in on
+  the beat while the voice runs on (the talking clip's sound plays under the cutaway); a 7-second montage of product
+  shots on every beat or two, spun and punched in, with whip, flash and spin cuts and the product's name then the price
+  as big 3D stickers (yellow on red, green); how it works, cut the same way; the call to action with the brand and the
+  WhatsApp number. A vivid grade and a little glow.
+- **The writer** is told the style (energy, a groove or small dance on the beat, jokes, product shots between) and
+  writes a `tag` (the product's name, 3 words at most) and only frames and moves for the product shots.
+- A clip that failed for good fails the reel only when the others are finished, so "Try again" never pays twice.
+- Old reels (4 talking clips) are still cut the round-2 way.

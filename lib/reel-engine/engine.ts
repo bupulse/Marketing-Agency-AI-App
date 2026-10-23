@@ -26,7 +26,7 @@ import { readKnowledge } from "@/lib/brand/schemas";
 import { canCall, canWhatsApp, contactDisplay } from "@/lib/business-info/contacts";
 import * as veo from "@/lib/video-engine/veo";
 import { downloadVeo, getVeoOperation, submitVeo, veoClipUsd, veoLedgerUsage, veoModel } from "@/lib/video-engine/veo";
-import { CLIP_SECONDS, directReel, reelCostUsd, variantOf, veoClipPrompt, type ReelClip, type ReelLanguage, type ReelPlan, type ReelTier } from "./story";
+import { CLIP_SECONDS, directMontage, reelCostUsd, variantOf, veoClipPrompt, type ReelClip, type ReelLanguage, type ReelPlan, type ReelTier } from "./story";
 import { readReel, reelPrompt, REEL_SCHEMA, REEL_SYSTEM, ruleReel, type ReelInput } from "./writer";
 import { checkClip } from "./checker";
 import { sectorFromText } from "@/lib/video-engine/brain/select";
@@ -124,7 +124,8 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     const presenter = await ensurePresenter(owner, job.id, loaded.business.audience);
     const recentJobs = await prisma.reelJob.findMany({ where: { businessId: owner.businessId, id: { not: job.id } }, orderBy: { createdAt: "desc" }, take: 10, select: { plan: true } });
     const recentClips = recentJobs.flatMap((j) => ((j.plan as unknown as ReelPlan).clips ?? []).map((c) => ({ variant: c.variant, camera: c.camera })));
-    const beats = directReel(recentClips, job.id);
+    // The viral montage: 3 talking clips and 4 product shots cut between them (the owner's example reel).
+    const beats = directMontage(recentClips, job.id);
     // What kind of business it is decides where the product is filmed, and which viral videos the reel learns from.
     const sector = sectorFromText([loaded.facts.industry, loaded.facts.description, loaded.subject?.name, loaded.subject?.description].filter(Boolean).join(" "));
     let recipe: ViralRecipe | null = null;
@@ -217,7 +218,7 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
     for (const clip of plan.clips.filter((c) => c.status === "framed")) {
       const frame = await bytesOf("designs", clip.framePath!);
       const mimeType = frame[0] === 0x89 ? "image/png" : "image/jpeg";
-      clip.operation = await submitVeo({ model, prompt: veoClipPrompt(clip, job.language as ReelLanguage, plan.setting), image: { base64: base64(frame), mimeType }, ratio: "9:16", seconds: CLIP_SECONDS, resolution: "720p" }, { apiKey });
+      clip.operation = await submitVeo({ model, prompt: veoClipPrompt(clip, job.language as ReelLanguage, plan.setting), image: { base64: base64(frame), mimeType }, ratio: "9:16", seconds: clip.seconds === 4 ? 4 : CLIP_SECONDS, resolution: "720p" }, { apiKey });
       clip.status = "filming";
     }
     // 3. The clips being filmed: one finished clip is downloaded and checked per step (four in one request took longer
@@ -236,19 +237,19 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
       }
       // The clip comes back as a link (Veo) or inline (Omni: veoClipBytes); both are read the same way.
       const clipBytes = (veo as { veoClipBytes?: (o: typeof op, opts: { apiKey: string }) => Promise<Buffer> }).veoClipBytes;
-      const bytes = await withLedger({ ...owner, feature: "reelEngine" }, { provider: "veo", model }, () => (clipBytes ? clipBytes(op, { apiKey }) : downloadVeo(op.videoUri!, { apiKey })), () => veoLedgerUsage(model, CLIP_SECONDS));
+      const bytes = await withLedger({ ...owner, feature: "reelEngine" }, { provider: "veo", model }, () => (clipBytes ? clipBytes(op, { apiKey }) : downloadVeo(op.videoUri!, { apiKey })), () => veoLedgerUsage(model, clip.seconds ?? CLIP_SECONDS));
       const path = `${owner.userId}/clips/reels/${job.id}-${i}.mp4`;
       const { error } = await createAdminClient().storage.from(CLIPS_BUCKET).upload(path, bytes, { contentType: "video/mp4", upsert: true });
       if (error) throw new ReelError("A clip could not be saved. Please try again.");
       clip.clipPath = path;
       clip.status = "done";
-      await addCost(job.id, veoClipUsd(CLIP_SECONDS, model));
+      await addCost(job.id, veoClipUsd(clip.seconds ?? CLIP_SECONDS, model));
       // The Checker watches the clip for broken physics and AI slop; a bad one is filmed again with what went wrong,
       // while the reel's refilms and the test budget allow.
       const verdict = await checkClip(owner, bytes, plan.setting ?? null);
       clip.problems = verdict.problems;
       if (!verdict.ok) {
-        const room = (await reelTestSpentUsd()) + veoClipUsd(CLIP_SECONDS, model) <= reelTestCapUsd();
+        const room = (await reelTestSpentUsd()) + veoClipUsd(clip.seconds ?? CLIP_SECONDS, model) <= reelTestCapUsd();
         if ((plan.refilms ?? 0) < MAX_REFILMS && room) {
           plan.refilms = (plan.refilms ?? 0) + 1;
           clip.avoid = verdict.problems;
@@ -258,8 +259,10 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
       }
       break;
     }
+    // A clip that failed for good fails the reel once the others are finished, so "Try again" never pays for them twice.
     const failed = plan.clips.find((c) => c.status === "failed");
-    if (failed) return void (await save({ status: "failed", error: `A clip could not be made: ${failed.error}` }));
+    const busy = plan.clips.some((c) => c.status === "filming" || c.status === "framed");
+    if (failed && !busy) return void (await save({ status: "failed", error: `A clip could not be made: ${failed.error}` }));
     await save(plan.clips.every((c) => c.status === "done") ? { status: "assembling" } : {});
   } catch (error) {
     await logError(error, { source: "reel-engine.step", businessId: owner.businessId });
@@ -282,7 +285,8 @@ export type ReelView = {
   hook: string | null;
   setting: string | null;
   refilms: number;
-  clips: { beat: string; label: string; line: string; stress: string[]; status: string; problems: string[]; frameUrl: string | null; clipUrl: string | null }[];
+  clips: { beat: string; kind: "talk" | "broll"; seconds: number; label: string; line: string; stress: string[]; status: string; problems: string[]; frameUrl: string | null; clipUrl: string | null }[];
+  tag: string | null;
   musicUrl: string | null;
   reelUrl: string | null;
 };
@@ -320,7 +324,8 @@ export async function reelView(owner: Owner, jobId: string): Promise<ReelView | 
     hook: plan.hook ?? null,
     setting: plan.setting ?? null,
     refilms: plan.refilms ?? 0,
-    clips: clips.map((c) => ({ beat: c.beat, label: variantOf(c.variant)?.idea ?? c.beat, line: c.line, stress: c.stress ?? [], status: c.status, problems: c.problems ?? [], frameUrl: c.framePath ? (frames.get(c.framePath) ?? null) : null, clipUrl: c.clipPath ? (files.get(c.clipPath) ?? null) : null })),
+    tag: plan.tag ?? null,
+    clips: clips.map((c) => ({ beat: c.beat, kind: c.kind ?? "talk", seconds: c.seconds ?? CLIP_SECONDS, label: variantOf(c.variant)?.idea ?? c.beat, line: c.line, stress: c.stress ?? [], status: c.status, problems: c.problems ?? [], frameUrl: c.framePath ? (frames.get(c.framePath) ?? null) : null, clipUrl: c.clipPath ? (files.get(c.clipPath) ?? null) : null })),
     musicUrl: music ? musicUrl(music.path) : null,
     reelUrl: job.path ? (files.get(job.path) ?? null) : null,
   };
@@ -333,9 +338,9 @@ export async function retryReel(owner: Owner, jobId: string): Promise<void> {
   if (!job) throw new ReelError("This reel cannot be tried again.");
   const plan = job.plan as unknown as ReelPlan;
   if (!plan.clips?.length) throw new ReelError("This reel was not planned. Make a new one.");
-  const left = plan.clips.filter((c) => c.status !== "done").length;
+  const left = plan.clips.filter((c) => c.status !== "done").reduce((usd, c) => usd + FRAME_USD + veoClipUsd(c.seconds ?? CLIP_SECONDS, veoModel()), 0);
   const spent = await reelTestSpentUsd();
-  if (spent + left * (FRAME_USD + veoClipUsd(CLIP_SECONDS, veoModel())) > reelTestCapUsd()) throw new ReelError(`The test budget is used: $${spent.toFixed(2)} of $${reelTestCapUsd()}. Ask to raise it before trying again.`);
+  if (spent + left > reelTestCapUsd()) throw new ReelError(`The test budget is used: $${spent.toFixed(2)} of $${reelTestCapUsd()}. Ask to raise it before trying again.`);
   for (const clip of plan.clips) {
     if (clip.status === "done") continue;
     clip.status = clip.framePath ? "framed" : "planned";
