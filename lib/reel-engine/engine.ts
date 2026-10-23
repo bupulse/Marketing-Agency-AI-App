@@ -14,7 +14,7 @@ import { isServiceEnabled } from "@/lib/admin/switch";
 import { getTextProvider } from "@/lib/ai";
 import { DEFAULT_GEMINI_TEXT_MODEL } from "@/lib/ai/gemini-text";
 import { withLedger } from "@/lib/ai/ledger";
-import { createEngineDesign, designUrls } from "@/lib/designs/service";
+import { createEngineDesign, DesignError, designUrls } from "@/lib/designs/service";
 import { checkPicture } from "@/lib/image-engine/check";
 import { claudeJson } from "@/lib/image-engine/planner";
 import { loadFacts } from "@/lib/image-engine/engine";
@@ -155,7 +155,20 @@ function base64(bytes: Uint8Array): string {
 }
 
 /** The start frame of one clip: the presenter's portrait and the product photo as references, checked for slop once. */
-async function frameFor(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhoto: string | null): Promise<string> {
+async function frameFor(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhotos: string[]): Promise<string> {
+  // The product's photos in turn: one that cannot be read (too big, a type the model cannot take) is skipped, and with
+  // none the frame is painted from the words (a LEAF photo that would not load failed the first round-2 reel).
+  for (const photo of productPhotos.slice(0, 3)) {
+    try {
+      return await paintFrame(owner, job, plan, clip, presenterPath, photo);
+    } catch (error) {
+      if (!(error instanceof DesignError)) throw error;
+    }
+  }
+  return paintFrame(owner, job, plan, clip, presenterPath, null);
+}
+
+async function paintFrame(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhoto: string | null): Promise<string> {
   const prompt = [
     `A tall vertical (9:16) photograph, the first frame of a video clip. ${clip.frame}`,
     plan.setting ? `The place: ${plan.setting}. Nowhere else.` : null,
@@ -193,8 +206,9 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
     if (toFrame) {
       const presenter = await ensurePresenter(owner, job.id, null);
       const loaded = await loadFacts(owner, job.subjectId);
-      const photo = loaded.photos.length ? loaded.photos[plan.clips.indexOf(toFrame) % loaded.photos.length] : null;
-      toFrame.framePath = await frameFor(owner, job, plan, toFrame, presenter.path, photo);
+      const at = plan.clips.indexOf(toFrame);
+      const photos = loaded.photos.map((_, k) => loaded.photos[(at + k) % loaded.photos.length]);
+      toFrame.framePath = await frameFor(owner, job, plan, toFrame, presenter.path, photos);
       toFrame.status = "framed";
       await save();
       return;
