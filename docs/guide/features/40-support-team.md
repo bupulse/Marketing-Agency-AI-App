@@ -59,6 +59,12 @@ Every change is in **Admin → Audit log**.
   always hands to a person (for example refunds or payment confirmation), and the support **WhatsApp number** for
   "Continue on WhatsApp" (with the country code, like +250788000000; empty hides the button).
 
+## Chat leads
+
+**Admin → Live chat → Chat leads** lists everyone who filled in the help chat's form (name, email, business, WhatsApp)
+with their first question, newest first. **Open the chat** opens their conversation in the support app; the email and
+WhatsApp links let you follow up directly.
+
 ## Working in the support app
 
 - **Online / Away / Offline** at the top: only online agents get new chats.

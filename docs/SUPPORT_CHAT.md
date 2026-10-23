@@ -163,7 +163,7 @@ list rules, real time, and the mock):
 
 ### Admin → Live chat
 
-`app/admin/(console)/live-chat` (tabs Agents, Departments, Team hours, Greetings, AI rules), permission **`liveChat`**
+`app/admin/(console)/live-chat` (tabs Agents, Departments, Team hours, Greetings, AI rules, Chat leads), permission **`liveChat`**
 (owner always; staff through a custom role), menu group **Live chat**.
 
 - `lib/support/agents.ts`: invite, edit, lock / unlock, resend invite, reset authenticator, rename a department. Only
@@ -171,6 +171,9 @@ list rules, real time, and the mock):
   sets `status: locked`, deletes the agent's `auth.sessions` rows (refresh tokens go with them) and the guard refuses
   them from the next request. **Reset authenticator** deletes their factors and signs them out. Every change is
   audited (`support_agent_*`, `support_department_rename`).
+- **Chat leads:** the pre-chat form's leads (ContactRequest `kind: "support_chat"`), newest first, 50 a page, with
+  **Open the chat** (the visitor's newest chat, through `SupportVisitor.leadId`). Read by `chatLeads` in
+  `lib/support/admin-leads.ts`, which switches to sc-core's `listSupportLeads` from `lib/support/leads.ts` once merged.
 - `saveSupportSettings` (`lib/support/settings.ts`): schema plus `supportSettingsProblems` (times, overlaps, greeting
   paths, E.164 WhatsApp), audited as `support_settings_save`, cache cleared.
 

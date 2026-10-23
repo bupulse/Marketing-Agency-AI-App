@@ -7,6 +7,7 @@ export const LIVE_CHAT_TABS = [
   ["hours", "Team hours"],
   ["greetings", "Greetings"],
   ["ai", "AI rules"],
+  ["leads", "Chat leads"],
 ] as const;
 export type LiveChatTab = (typeof LIVE_CHAT_TABS)[number][0];
 
