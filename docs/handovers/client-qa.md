@@ -28,6 +28,21 @@ Format: where (URL) · steps · what happened / what should happen · severity (
      two Auth round trips. Supabase recommends `getClaims()` in the proxy (verifies the JWT locally when the project
      uses asymmetric signing keys); the page would keep `getUser()`. Saves one Auth trip per request.
 2. **Quiz round pills were cut off with no hint of more** · polish · /dashboard/knowledge/quiz. Fixed: they scroll to the current round and fade at the edges (a2a0232d).
+3. **A post whose time has passed still says only "Needs approval", with no hint what Approve does** · annoying ·
+   /dashboard/calendar (week of 19 Oct: LinkedIn post Tue 20 Oct 09:00, opened on Fri 23 Oct).
+   - Steps: open a waiting post whose time is in the past.
+   - Happened: Approve and Move with the old date; nothing says the time is gone (approvePosts quietly moves it to the
+     next good time). Should: say so before the tap. Fixed: a note "Its time has passed. Approve it and BuPulse posts
+     it at the next good time, or pick a new time with Move." and the toast says it went to the next good time
+     (lib/publishing/approval-note.ts, components/publishing/post-detail.tsx).
+4. **Import on "All photos" is greyed out until a folder or product is picked** · question for the owner ·
+   /dashboard/gallery, Import menu. It is the documented rule (lib/media/destinations.ts: every upload names its
+   destination), but it is one more decision for a busy owner. Option: let "Not in a folder" be a destination.
+   Google Drive and Dropbox show "Coming soon" on the test site (no keys).
+5. **First page after a test-site restart takes about 22 s** · annoying (test site) · any page right after a deploy.
+   Warm pages after each restart (main session's deploy step).
+6. **Speed after batch 3 (warm):** /dashboard/usage 3.9 s to first byte (was 6.2-9.3 s), /dashboard/gallery 4.3-4.5 s
+   (was 6.9 s).
 
 ## Fixed
 

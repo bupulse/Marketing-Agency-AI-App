@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CheckCheck, ClipboardCopy, Copy, Download, ExternalLink, Pencil, PlugZap, RotateCw, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { CheckCheck, ClipboardCopy, Clock, Copy, Download, ExternalLink, Pencil, PlugZap, RotateCw, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { APPROVED_LATE, approvalTimePassed, TIME_PASSED_NOTE } from "@/lib/publishing/approval-note";
 import { Badge, Button, Dialog, useToast } from "@/components/ui";
 import {
   approvePostsAction,
@@ -65,6 +66,8 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
   const [error, setError] = useState<string | null>(null);
   const style = STATUS_STYLE[post.status];
   const editable = (EDITABLE as readonly string[]).includes(post.status);
+  // Opened from a click, never rendered on the server: reading the clock here cannot mismatch.
+  const timePassed = approvalTimePassed(post);
   // Results (when the plan shows them, lib/publishing/results.ts): this post first, then its other networks.
   const withResults = post.status === "PUBLISHED" && post.results ? [post, ...group.filter((p) => p.id !== post.id && p.status === "PUBLISHED" && p.results)] : null;
 
@@ -103,6 +106,12 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
           <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
           <p>{post.lastError ?? "This post could not be published."}</p>
         </div>
+      )}
+      {timePassed && (
+        <p role="note" className="flex gap-2.5 rounded-2xl bg-soft p-3.5 text-[14px] text-muted">
+          <Clock aria-hidden className="mt-0.5 size-4 shrink-0" />
+          {TIME_PASSED_NOTE}
+        </p>
       )}
       {post.status === "PENDING_APPROVAL" && post.reviewNote && (
         <p role="note" className="rounded-2xl bg-new-bg p-3.5 text-[14px] text-new">
@@ -172,7 +181,7 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
 
       <div className="flex flex-wrap items-start gap-2">
         {post.status === "PENDING_APPROVAL" && (
-          <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => approvePostsAction([post.id]), (res) => (Number(res.skipped ?? 0) > 0 ? { text: "No free time was found for it. Open it, pick a time with Move, then approve.", tone: "error" } : { text: "Approved. It will go out at its time.", tone: "success" }))}>Approve</Button>
+          <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => approvePostsAction([post.id]), (res) => (Number(res.skipped ?? 0) > 0 ? { text: "No free time was found for it. Open it, pick a time with Move, then approve.", tone: "error" } : { text: timePassed ? APPROVED_LATE : "Approved. It will go out at its time.", tone: "success" }))}>Approve</Button>
         )}
         {post.status === "FAILED" && (
           <Button size="sm" leading={<RotateCw aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => retryPostAction(post.id), retryMessage)}>Retry</Button>
