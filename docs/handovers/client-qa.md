@@ -23,6 +23,10 @@ Format: where (URL) · steps · what happened / what should happen · severity (
      (was 7 in a row, now 1, plus the offer's payment only when an offer was accepted). Test: tests/app/context-speed.test.ts.
      About 10 round trips fewer per page, roughly 2 s on the test site. To measure after deploy: fetch timings of
      /dashboard/usage and /dashboard/gallery (before: 6.2-9.3 s and 6.9 s to first byte).
+   - Proposal, not done (sign-in security, needs the main session's OK): proxy.ts and getCurrentUser
+     (lib/supabase/server.ts) each call `supabase.auth.getUser()`, a network call to Supabase Auth, so every page pays
+     two Auth round trips. Supabase recommends `getClaims()` in the proxy (verifies the JWT locally when the project
+     uses asymmetric signing keys); the page would keep `getUser()`. Saves one Auth trip per request.
 2. **Quiz round pills were cut off with no hint of more** · polish · /dashboard/knowledge/quiz. Fixed: they scroll to the current round and fade at the edges (a2a0232d).
 
 ## Fixed
