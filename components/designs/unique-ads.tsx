@@ -214,7 +214,8 @@ function PictureCard({ picture: p, onChange, onToast }: { picture: PictureView; 
         <Badge tone="violet">{label}</Badge>
         <Badge tone={p.tier === "pro" ? "blue" : "neutral"}>{p.tier === "pro" ? "Pro" : "Lite"} · {p.credits} credit{p.credits === 1 ? "" : "s"}</Badge>
         {p.fixed && <Badge tone="success">Checked and fixed</Badge>}
-        {p.problems.length > 0 && <Badge tone="danger">Check the words</Badge>}
+        {p.problems.some((x) => x.startsWith("It looks AI-made")) && <Badge tone="danger">Looks AI-made</Badge>}
+        {p.problems.some((x) => !x.startsWith("It looks AI-made")) && <Badge tone="danger">Check the words</Badge>}
       </div>
       <p className="text-[15px] font-semibold leading-snug">{p.title}</p>
       {p.caption && <p className="line-clamp-4 whitespace-pre-line text-[13px] text-muted">{p.caption}</p>}
