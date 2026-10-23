@@ -194,3 +194,16 @@ describe("a product photo that cannot be read", () => {
     expect(h.jobs.get(id)!.costUsd).toBeCloseTo(0.067, 3);
   });
 });
+
+describe("re-cutting a finished reel", () => {
+  it("lets the browser replace the reel's file (the first re-cut failed: 'The resource already exists')", async () => {
+    const storage = await import("@/lib/storage");
+    vi.mocked(storage.createSignedUploadUrl).mockResolvedValue({ path: "p", token: "tok", signedUrl: "u" });
+    const { reelUploadTarget } = await import("@/lib/reel-engine/engine");
+    const id = await startReel(owner, { language: "English", tier: "lite" });
+    for (let i = 0; i < 4; i++) await stepReel(owner, id);
+    await settle(id);
+    expect(await reelUploadTarget(owner, id)).toEqual({ path: `u1/clips/reels/${id}.mp4`, token: "tok" });
+    expect(storage.createSignedUploadUrl).toHaveBeenCalledWith("gallery-videos", `u1/clips/reels/${id}.mp4`, { service: true, upsert: true });
+  });
+});
