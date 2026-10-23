@@ -102,3 +102,14 @@ describe("the reel engine (test only)", () => {
     expect(String(h.jobs.get(id)!.error)).toMatch(/safety rules/);
   });
 });
+
+describe("the presenter", () => {
+  it("is always described fully, whatever the company id", async () => {
+    const { presenterDescription } = await import("@/lib/reel-engine/engine");
+    for (const seed of ["cmv535q4400018345z64tfm4l", "a", "zzzzzzzzzzzzzzzzzzzzzzzzz", "b1", "9f94cabc-e849-4619"]) {
+      const d = presenterDescription(seed, null);
+      expect(d).not.toContain("undefined");
+      expect(d).toMatch(/^a Black Rwandan (woman|man) in (her|his) /);
+    }
+  });
+});
