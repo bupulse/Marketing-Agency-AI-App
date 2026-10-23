@@ -71,7 +71,7 @@ export const REEL_CAMERAS = [
   "handheld phone camera walking backwards in front of the subject",
   "handheld phone camera at eye level, gentle natural shake",
   "slow push-in towards the subject",
-  "static phone on a small tripod, the subject moves",
+  "locked-off shot at eye level, the subject moves",
   "slow orbit around the subject",
   "low angle tilting up",
   "slow sideways move",
@@ -173,7 +173,7 @@ export const CLIP_RULES = [
   "At most two people in the frame and no crowd in the background. Hands stay simple: no close-ups of fingers on small parts.",
   "One continuous shot from the first frame to the last: no cuts, no jumps, the same people and the same product all through, exactly one of it, its shape unchanged.",
   "Sound: the speech, and crisp real sounds of what happens (steps, water, leaves, a door, a click), a quick whoosh on a fast camera move. No music.",
-  "Real skin texture and true-to-life colour. No text, captions, subtitles or logos added.",
+  "Real skin texture and true-to-life colour. No text, captions, subtitles or logos added. No cameras, phones on stands, tripods, microphones or lights in the frame: the camera is never seen.",
 ];
 
 /** The video model's prompt for one clip: the place, the action and camera, the line spoken, the rules, what to avoid. */

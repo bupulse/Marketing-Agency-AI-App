@@ -17,6 +17,7 @@ export const CLIP_CHECK_PROMPT = [
   "- a face melts, changes into another person, or the presenter's identity changes;",
   "- the product changes shape, size or number, appears from nothing or vanishes;",
   "- garbled text, letters or a logo appear anywhere;",
+  "- a camera, a phone on a stand, a tripod, a microphone or film lights are visible;",
   "- a hard cut or a jump inside the clip;",
   "- the place does not fit the product (the SETTING below), or a crowd fills the background.",
   "Small softness, grain or a little motion blur is fine: only fail what a viewer would notice as fake.",

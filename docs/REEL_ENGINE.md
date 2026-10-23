@@ -107,3 +107,8 @@ budget became **$20** and the "veo" switch stays on.
   WhatsApp number on its own. "Re-cut it (free)" edits a finished reel again from its paid clips. One finished clip is
   saved and checked per step (four in one request outlasted the test site's connection). A product photo that cannot
   be read is skipped.
+- **The viral re-cut** (free, from the same clips; 7/10): frame by frame the edits are there (the 30% punch-in, a white
+  flash and a whip blur between clips, captions a few words at a time with yellow stressed words, the price then the
+  WhatsApp number at the end), and Gemini judged the footage "entirely genuine live-action". It saw a phone on a tripod
+  in the last clip: the camera move said "static phone on a small tripod" and the model filmed it. The moves never name
+  equipment now, every clip says the camera is never seen, and the checker fails a clip that shows one.
