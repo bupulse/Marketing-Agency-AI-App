@@ -1,9 +1,13 @@
 // BuPulse database schema (Supabase Postgres).
 // Auth users live in Supabase's own `auth.users` table; `User.id` is that same UUID.
 
+// relationJoins: a query that reads related rows (include / nested select) is one SQL query with joins instead of one
+// round trip per relation level; about 250 ms a level from the test site. Checked on TEST (23 Oct 2026): every model
+// read with its relations gives the same rows both ways (docs/handovers/client-qa.md).
 generator client {
-  provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../lib/generated/prisma"
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
