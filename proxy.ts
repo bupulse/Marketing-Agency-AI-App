@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { REF_COOKIE, refCookieFor } from "@/lib/sales/ref-cookie";
+import { isSupportPath, supportRoute } from "@/lib/support/app-host";
 
 const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/start-trial", "/book-demo", "/custom-plan", "/account"];
 
@@ -11,7 +12,11 @@ const REGION_KEY = /^[A-Z][A-Z0-9_]{1,15}$/;
 // Refreshes the Supabase session cookie on every request and keeps
 // signed-out visitors out of the dashboard.
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  // support.bupulse.com serves only the support app: its paths are rewritten under /support (lib/support/app-host.ts).
+  const support = supportRoute(request.nextUrl.pathname, request.headers.get("host"));
+  const pass = () =>
+    support?.action === "rewrite" ? NextResponse.rewrite(new URL(`${support.path}${request.nextUrl.search}`, request.url), { request }) : NextResponse.next({ request });
+  let response = pass();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +28,7 @@ export async function proxy(request: NextRequest) {
         },
         setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request });
+          response = pass();
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );
@@ -38,7 +43,9 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  if (!user && PROTECTED.some((p) => path === p || path.startsWith(`${p}/`))) {
+  // The support app is never indexed, on its own host or at /support.
+  if (support || isSupportPath(path)) response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  if (!support && !user && PROTECTED.some((p) => path === p || path.startsWith(`${p}/`))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     // Keep the query too: a Shopify install arrives as /dashboard/stores/shopify?shop=…&hmac=… and must survive sign-in.

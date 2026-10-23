@@ -1,6 +1,9 @@
 import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { writeAudit } from "@/lib/admin/audit";
+import { can, type AdminIdentity } from "@/lib/admin/auth";
+import { AdminError, type AdminContext } from "@/lib/admin/types";
 import type { Hours } from "./contract";
 
 // The support chat's settings (Admin -> Live chat): team hours, page greetings, AI rules and the WhatsApp number. One
@@ -94,4 +97,67 @@ export function greetingFor(settings: Pick<SupportSettings, "greetings">, path: 
   const matches = settings.greetings.filter((g) => g.path !== "*" && (path === g.path || path.startsWith(`${g.path}/`)));
   matches.sort((a, b) => b.path.length - a.path.length);
   return matches[0] ?? settings.greetings.find((g) => g.path === "*") ?? null;
+}
+
+// ---------- Saving (Admin -> Live chat) ----------
+
+const E164 = /^\+[1-9]\d{7,14}$/;
+const validTime = (hhmm: string) => Number(hhmm.slice(0, 2)) <= 24 && Number(hhmm.slice(3, 5)) <= 59 && (hhmm.slice(0, 2) !== "24" || hhmm === "24:00");
+
+/** Problems a person can fix, in plain words; empty when the settings can be saved. */
+export function supportSettingsProblems(value: SupportSettings): string[] {
+  const out: string[] = [];
+  for (const [day, ranges] of Object.entries(value.hours)) {
+    const name = DAY_NAMES[Number(day)];
+    const sorted = [...ranges].sort((a, b) => minutes(a.from) - minutes(b.from));
+    for (const r of sorted) {
+      if (!validTime(r.from) || !validTime(r.to)) out.push(`${name}: use times like 08:00 or 20:30.`);
+      else if (minutes(r.from) >= minutes(r.to)) out.push(`${name}: ${r.from} to ${r.to} ends before it starts.`);
+    }
+    for (let i = 1; i < sorted.length; i++) if (minutes(sorted[i].from) < minutes(sorted[i - 1].to)) out.push(`${name}: two time ranges overlap.`);
+  }
+  const paths = value.greetings.map((g) => g.path.trim());
+  if (paths.some((p) => p !== "*" && !p.startsWith("/"))) out.push('Greeting pages start with "/" (for example /pricing), or are "*" for every other page.');
+  if (new Set(paths).size !== paths.length) out.push("Each page can have one greeting only.");
+  if (value.whatsapp && !E164.test(value.whatsapp)) out.push("WhatsApp number: write it with the country code, like +250788000000, or leave it empty.");
+  return out;
+}
+
+/**
+ * Saves the settings (owner, or staff with the liveChat permission), audited with the before and after. Refuses
+ * anything the schema or supportSettingsProblems rejects; the API sees the change within 30 seconds (this server: now).
+ */
+export async function saveSupportSettings(ctx: AdminContext, actor: Pick<AdminIdentity, "permissions">, input: unknown): Promise<SupportSettings> {
+  if (!can(actor, "liveChat")) throw new AdminError("forbidden", "You need the Live chat permission for this.");
+  const parsed = supportSettingsSchema.safeParse(input);
+  if (!parsed.success) throw new AdminError("invalid", "Some settings are not valid. Check the times, greetings and number, then save again.");
+  const value = { ...parsed.data, whatsapp: parsed.data.whatsapp.replace(/[\s-]/g, "") };
+  const problems = supportSettingsProblems(value);
+  if (problems.length) throw new AdminError("invalid", problems[0]);
+  const row = await prisma.adminSetting.findUnique({ where: { key: SUPPORT_SETTINGS_KEY } });
+  const before = row ? supportSettingsSchema.safeParse(row.value) : null;
+  await prisma.$transaction(async (tx) => {
+    await tx.adminSetting.upsert({ where: { key: SUPPORT_SETTINGS_KEY }, create: { key: SUPPORT_SETTINGS_KEY, value }, update: { value } });
+    await writeAudit(tx, ctx, "support_settings_save", `setting:${SUPPORT_SETTINGS_KEY}`, before?.success ? before.data : null, value);
+  });
+  clearSupportSettingsCache();
+  return value;
+}
+
+const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "Mon–Sat 08:00–20:00 Kigali": days in a row with the same hours are joined (stats header, guide). */
+export function hoursSummary(settings: Pick<SupportSettings, "hours">): string {
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const label = (d: number) => (settings.hours[String(d)] ?? []).map((r) => `${r.from}–${r.to}`).join(", ");
+  const parts: string[] = [];
+  for (let i = 0; i < order.length; i++) {
+    const hours = label(order[i]);
+    if (!hours) continue;
+    let j = i;
+    while (j + 1 < order.length && label(order[j + 1]) === hours) j++;
+    parts.push(`${SHORT_DAYS[order[i]]}${j > i ? `–${SHORT_DAYS[order[j]]}` : ""} ${hours}`);
+    i = j;
+  }
+  return parts.length ? `${parts.join(", ")} Kigali` : "no team hours set";
 }
