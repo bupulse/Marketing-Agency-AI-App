@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { PageLoaderLayer, PageLoaderScript } from "@/components/page-loader";
+import { SupportChatMount } from "@/components/support-chat/mount";
 import { ThemeProvider, ThemeScript } from "@/components/theme";
 import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
@@ -63,6 +64,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <ThemeProvider>
           <PageLoaderLayer />
           <ToastProvider>{children}</ToastProvider>
+          {/* BuPulse's help chat: public pages, dashboard, creator portal; never Admin or the support app. */}
+          <SupportChatMount />
         </ThemeProvider>
       </body>
     </html>

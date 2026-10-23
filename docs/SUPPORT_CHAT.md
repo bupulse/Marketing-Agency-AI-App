@@ -88,3 +88,64 @@ A UX and feature study of dashboard.tawk.to: the owner signs in to their own fre
 | `sc-app` (`~/BuPulse-sc-app`) | `support.bupulse.com`:<br>• host routing in `proxy.ts`<br>• `app/support/**`: sign-in with password + TOTP, chats, live visitors, stats; installable as a PWA<br>• `app/admin/(console)/live-chat/**` (agents, departments, hours, greetings, AI rules)<br>• the menu entry in Admin<br>• tests | API internals, widget |
 
 **Until sc-core lands,** sc-widget and sc-app build against the contract, with a small mock where they need data. The main session merges `sc-core` first, then the others, into `support-chat`, then `support-chat` into `quiz-mode` for test.bupulse.com.
+
+## 10. Visitor chat (sc-widget)
+
+The chat visitors, clients and creators see. Guide page for owners: `docs/guide/features/39-help-chat.md`.
+
+**Where it shows.** `SupportChatMount` (`components/support-chat/mount.tsx`) sits in the root layout. `chatSurface` (`lib/support/client/mount.ts`) decides from the path and host:
+- `/dashboard/**` → `dashboard`, `/creator/**` → `creator`, every other page → `public`;
+- never on `/admin`, `/support`, `/help-chat`, `/b/`, `/widget/`, `/screen/`, `/api/`, or any `support.` host.
+
+Link-in-bio pages (`lib/bio/page.ts`) get only the "Made with BuPulse" corner pill. It links to `/help-chat?from=bio`, the chat on a page of its own (`app/help-chat/page.tsx`), surface `bio`: sales mode, no greeting. The bio page keeps its strict CSP and loads no extra script. The public pages' floating WhatsApp button was removed: the chat has "Continue on WhatsApp".
+
+**Loading.** At first only the gradient button is drawn. The chat code (`components/support-chat/widget.tsx`) loads when the browser is idle, or on hover or the first tap. supabase-js loads only when the panel opens (real time). The mock server (`lib/support/client/mock.ts`) is used only with `NODE_ENV !== "production"` and `NEXT_PUBLIC_SUPPORT_CHAT_MOCK=1`, so it never ships.
+
+**Greeting** (`lib/support/client/greeting.ts` `greetingMode`). It shows after `greeting.delaySec` from `/visit`, once per visit (sessionStorage `bp-sc-greeting`). It never shows:
+- within 7 days of the visitor's last chat message (localStorage `bp-sc-last-chat`);
+- on the first page of a visit that came from an ad (`gclid`, `fbclid`, `ttclid`… or a paid `utm_medium`) or a bio link (`utm_source=bio` or a `/b/` referrer);
+- while chatting or with the panel open, or on bio pages.
+
+Phones (≤ 480 px) only get a red dot on the button. Closing the greeting keeps it closed for the visit.
+
+**Panel.** On a computer, a 380 × 640 card above the button. On a phone, a full-screen sheet: it pushes a history entry, so Back closes it, and the page behind does not scroll. Focus moves into the panel (not into a field on phones, so the keyboard stays down); Tab stays inside; Esc closes and gives focus back to the button. New messages are announced (`role="log"`, `aria-live`). Light and dark follow the site. All words are in `lib/support/client/copy.ts`.
+
+**Views:**
+- Pre-chat form, when `me.needsForm` and no conversation yet: name, email and business (required), WhatsApp after +250 (optional, saved as E.164), the privacy line (links `/privacy#support-chat`) and "Already a client? Log in".
+- Chat:
+  - the AI's "from the guide" line (`sources`) and its action buttons (only `/…` and `https://` links);
+  - quick replies, "Talk to a person" and "That's all, thanks";
+  - EVENT messages as dividers (body shown as-is); the typing line; the agent's initials and name in the header; the team hours label; WhatsApp.
+- End screen: thumbs up/down, comment, "Email me a copy" (only when the email is known), WhatsApp, "Start a new chat".
+
+**Sending** (`lib/support/client/outbox.ts`):
+- Every message gets a `clientMsgId` once. Messages go out one at a time and in order, with the same id on every retry.
+- Network and 5xx errors retry by themselves (1, 2, 4 … 30 s). 4xx errors wait for "Tap to try again".
+- Offline, the messages wait and go out on `online`. Text-only messages survive a reload (sessionStorage).
+- The banner says "Reconnecting…" or "You are offline"; the conversation never disappears.
+- A 403 `challenge_required` runs Cloudflare Turnstile (`turnstileSiteKey` from `/visit`) and retries once.
+
+**Files** (`lib/support/client/uploads.ts`, `components/support-chat/media.ts`):
+- Photos are redrawn in the browser as JPEG, at most 1600 px on the longest side (iPhone HEIC converted), unless already small.
+- PDFs: at most 10 MB (`UPLOAD_LIMITS`).
+- Voice notes: MediaRecorder (webm/opus, mp4 on Safari), stopped at 120 s. They show as a waveform bubble with the transcript.
+- Flow: `POST …/uploads`, `PUT` the file to `uploadUrl`, `POST …/uploads/:id/done`, then the message with `attachmentId`. A retry does not upload again.
+- Files need a conversation, so the paperclip and microphone wake up after the first message.
+
+**Real time and heartbeats** (`components/support-chat/use-support-chat.ts`):
+- The visitor topic (`conversation.topic`, or `visit.topic`) is subscribed only while the panel is open. A `message.created`, `conversation.updated` or `handover` ping fetches `GET …/messages?after=<last id>`. A `typing` ping shows the dots.
+- While the socket is down and the panel is open, it polls every 5 s.
+- Heartbeats go to Supabase's RPC endpoint (`/rest/v1/rpc/support_heartbeat`, public key only) every 45 s while the tab is visible. Page changes are sent the same way, 1.5 s after the visitor settles on a page, never twice for the same path, path only (no query).
+- The typing draft goes at most once a second, only with the panel open and a conversation.
+
+**What the widget expects from the API** (asked of sc-core):
+- `VisitResponse` also has `topic` (before any conversation), `whatsapp` (E.164 or null) and `turnstileSiteKey`. All are optional in the widget's type (`Visit` in `lib/support/client/api.ts`).
+- 401 on a visit token: the widget calls `/visit` again once.
+- The heartbeat RPC may answer `{ unread }`; then the closed button shows a dot.
+
+**Tests:** `tests/support-widget/` covers:
+- greeting rules, mount exclusions, phone width;
+- outbox order, retry, idempotency and offline;
+- path and typing throttles;
+- upload checks, shrink sizes, voice types, the pre-chat form;
+- the HTTP client with a fake fetch, the mock, and the bio corner link.

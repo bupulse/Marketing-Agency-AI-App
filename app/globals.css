@@ -458,6 +458,12 @@ dialog.bp-dialog[open] {
     --bp-bottom-bar: calc(4.5rem + env(safe-area-inset-bottom));
   }
 }
+/* The creator portal's phone bar (components/creators/portal/shell.tsx): the help chat button sits above it too. */
+@media (width < 40rem) {
+  body:has([data-creator-bar]) {
+    --bp-bottom-bar: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+}
 
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {

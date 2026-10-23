@@ -32,7 +32,7 @@ export function CreatorShell({ name, children }: { name: string; children: React
         <CreatorNav />
       </div>
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 sm:px-6 sm:pb-16">{children}</main>
-      <div className="fixed inset-x-0 bottom-0 z-40 print:hidden rounded-t-[24px] border border-b-0 border-line bg-surface px-2 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1.5 shadow-glass sm:hidden">
+      <div data-creator-bar className="fixed inset-x-0 bottom-0 z-40 print:hidden rounded-t-[24px] border border-b-0 border-line bg-surface px-2 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1.5 shadow-glass sm:hidden">
         <CreatorNav bottom />
       </div>
     </div>

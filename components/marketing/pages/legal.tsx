@@ -16,9 +16,9 @@ export function LegalPage({ title, intro, children }: { title: string; intro: Re
   );
 }
 
-export function LegalSection({ title, children }: { title: string; children: ReactNode }) {
+export function LegalSection({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-4">
+    <section id={id} className="flex scroll-mt-28 flex-col gap-4">
       <h2 className="mt-8 text-2xl font-bold tracking-tight">{title}</h2>
       {children}
     </section>
