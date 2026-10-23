@@ -213,26 +213,32 @@ export function snapToBeat(t: number, lo: number, hi: number, beat: MusicBeat): 
 }
 
 /**
- * Where the edits fall: the 4 clips' lengths (each 6.8 to 8 s, 30 s in all) and a punch-in inside each clip, all on
- * the music's beat when it is known. The first punch comes fast (about 1.8 s), the hook's pattern interrupt.
+ * Where the edits fall: the 4 clips' lengths (each 6.8 to 8 s, 30 s in all) and two cuts inside each clip (3 shots of
+ * about 2.5 s, the pace of the owner's viral example), all on the music's beat when it is known. The first cut comes
+ * fast (about 1.8 s), the hook's pattern interrupt.
  */
-export function reelCuts(beat: MusicBeat): { lengths: number[]; punches: number[] } {
+export function reelCuts(beat: MusicBeat): { lengths: number[]; cuts: [number, number][] } {
   const r2 = (v: number) => Math.round(v * 100) / 100;
   const bounds = [0];
   for (let i = 1; i < 4; i++) bounds.push(snapToBeat(i * SCENE_SECONDS, Math.max(bounds[i - 1] + 6.8, REEL_SECONDS - (4 - i) * CLIP_SECONDS), bounds[i - 1] + CLIP_SECONDS, beat));
   bounds.push(REEL_SECONDS);
   const lengths = bounds.slice(1).map((b, i) => r2(b - bounds[i]));
-  const punches = lengths.map((len, i) => r2(snapToBeat(bounds[i] + (i === 0 ? 1.8 : len / 2), bounds[i] + 1.2, bounds[i] + len - 1.2, beat) - bounds[i]));
-  return { lengths, punches };
+  const cuts = lengths.map((len, i): [number, number] => {
+    const first = snapToBeat(bounds[i] + (i === 0 ? 1.8 : len / 3), bounds[i] + 1.2, bounds[i] + len - 3, beat) - bounds[i];
+    const second = snapToBeat(bounds[i] + (i === 0 ? (first + len) / 2 : (2 * len) / 3), bounds[i] + first + 1.2, bounds[i] + len - 1.2, beat) - bounds[i];
+    return [r2(first), r2(second)];
+  });
+  return { lengths, cuts };
 }
 
 const BETWEEN: Transition[] = ["flash", "whip", "zoom"];
 
 /**
- * The finished reel as a motion spec for the browser encoder, edited like a viral reel: each clip is two scenes, the
- * second a punch-in on the same moving shot (the clip's sound runs straight through); flash, whip and zoom cuts between
- * clips on the beat; the line as a bold caption that pops in word by word with its key words in the brand colour; the
- * hook sticker; the business name, how to reach it and the price on the last scene.
+ * The finished reel as a motion spec for the browser encoder, edited like a viral reel: each clip is three shots of the
+ * same moving clip (its sound runs straight through): as filmed, a 30% punch-in, then a medium crop; flash, whip and zoom
+ * cuts between clips on the beat; the line as a big caption that pops in word by word, a few words a shot, with its key
+ * words in the brand colour; the hook sticker; at the end the business name, then the price, then how to reach it, one
+ * after the other so they do not compete.
  */
 export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name: string; color: string; contact?: string | null }, beat: MusicBeat = null): MotionSpec {
   const text = (over: Partial<TextLayer> & Pick<TextLayer, "text" | "size" | "y" | "h">): TextLayer => ({
@@ -246,33 +252,37 @@ export function buildReelSpec(plan: ReelPlan, clipUrls: string[], brand: { name:
     shadow: true,
     ...over,
   });
-  const { lengths, punches } = reelCuts(beat);
+  const { lengths, cuts } = reelCuts(beat);
   const scenes: Scene[] = [];
   plan.clips.forEach((clip, i) => {
     const words = subtitleOf(clip.line).split(" ").filter(Boolean);
-    // The caption is split between the two shots, so each shows a few words at a time.
-    const half = Math.ceil(words.length / 2);
-    const parts = [words.slice(0, half).join(" "), words.slice(half).join(" ")];
+    // The caption is split between the three shots, so each shows a few words at a time.
+    const third = Math.ceil(words.length / 3);
+    const parts = [0, 1, 2].map((k) => words.slice(k * third, (k + 1) * third).join(" "));
     const stress = (clip.stress ?? []).filter((w) => w.trim()).slice(0, 2);
+    const [a, b] = cuts[i];
     const shots = [
-      { start: 0, seconds: punches[i], zoom: [1, 1.05] },
-      { start: punches[i], seconds: lengths[i] - punches[i], zoom: [1.16, 1.2] },
+      { start: 0, seconds: a, zoom: [1, 1.06] },
+      { start: a, seconds: b - a, zoom: [1.3, 1.34] },
+      { start: b, seconds: lengths[i] - b, zoom: [1.12, 1.16] },
     ];
+    const last = shots.length - 1;
     shots.forEach((shot, s) => {
       const video: VideoLayer = { kind: "video", url: clipUrls[i], fit: "cover", start: shot.start, sound: true, x: 0.5, y: 0.5, w: 1, h: 1, keyframes: [{ at: 0, scale: shot.zoom[0] }, { at: 1, scale: shot.zoom[1] }] };
       const layers: Layer[] = [video];
-      if (parts[s]) layers.push(text({ text: parts[s], size: 0.058, y: 0.72, h: 0.14, animate: "wordsPop", animateFor: Math.min(1.2, shot.seconds * 0.5), highlight: stress.length ? { words: stress, color: brand.color } : null, from: 0.02 }));
+      if (parts[s]) layers.push(text({ text: parts[s], size: 0.078, y: 0.66, h: 0.16, animate: "wordsPop", animateFor: Math.min(0.9, shot.seconds * 0.4), box: { color: "rgba(0,0,0,0.28)", padding: 0.015, radius: 0.02 }, highlight: stress.length ? { words: stress, color: "#FFE14D" } : null, from: 0.02 }));
       if (i === 0 && s === 0 && plan.hook?.trim())
         layers.push(text({ text: plan.hook.trim().slice(0, 40), size: 0.07, y: 0.18, h: 0.11, w: 0.82, uppercase: true, animate: "pop", animateFor: 0.35, box: { color: brand.color, padding: 0.025, radius: 0.03 }, keyframes: [{ at: 0, rotate: -3 }, { at: 1, rotate: -3 }] }));
-      if (i === plan.clips.length - 1 && s === 1) {
-        layers.push(text({ text: brand.name, size: 0.06, y: 0.12, h: 0.09, w: 0.8, animate: "rise", box: { color: brand.color, padding: 0.025, radius: 0.04 }, from: 0.05 }));
-        // How to reach the business, so the call to action can be acted on (the first reel said "message us" with no number).
-        if (brand.contact) layers.push(text({ text: brand.contact, size: 0.042, y: 0.22, h: 0.07, w: 0.8, weight: 700, animate: "rise", box: { color: "rgba(0,0,0,0.6)", padding: 0.02, radius: 0.03 }, from: 0.12 }));
+      // The last clip's last two shots: the brand, then the price sticker; then how to reach the business on its own.
+      if (i === plan.clips.length - 1 && s >= last - 1) {
+        layers.push(text({ text: brand.name, size: 0.06, y: 0.11, h: 0.09, w: 0.8, animate: s === last - 1 ? "rise" : "none", box: { color: brand.color, padding: 0.025, radius: 0.04 } }));
         // The price as a sticker: buyers want it before they message, and only speaking it is refused.
-        if (plan.price?.trim())
-          layers.push(text({ text: plan.price.trim().slice(0, 40), size: 0.055, y: brand.contact ? 0.32 : 0.22, h: 0.08, w: 0.7, animate: "pop", box: { color: "#FFFFFF", padding: 0.02, radius: 0.03 }, color: brand.color, shadow: false, from: 0.2, keyframes: [{ at: 0, rotate: 3 }, { at: 1, rotate: 3 }] }));
+        if (plan.price?.trim() && s === last - 1)
+          layers.push(text({ text: plan.price.trim().slice(0, 40), size: 0.06, y: 0.22, h: 0.085, w: 0.7, animate: "pop", box: { color: "#FFFFFF", padding: 0.02, radius: 0.03 }, color: brand.color, shadow: false, from: 0.25, keyframes: [{ at: 0, rotate: 3 }, { at: 1, rotate: 3 }] }));
+        // How to reach the business, so the call to action can be acted on (the first reel said "message us" with no number).
+        if (brand.contact && s === last) layers.push(text({ text: brand.contact, size: 0.05, y: 0.22, h: 0.08, w: 0.84, animate: "pop", box: { color: brand.contact.startsWith("WhatsApp") ? "#1DA851" : "rgba(0,0,0,0.7)", padding: 0.022, radius: 0.04 }, from: 0.05 }));
       }
-      const transition: Transition | undefined = scenes.length === 0 ? undefined : s === 1 ? "cut" : BETWEEN[(i - 1) % BETWEEN.length];
+      const transition: Transition | undefined = scenes.length === 0 ? undefined : s > 0 ? "cut" : BETWEEN[(i - 1) % BETWEEN.length];
       scenes.push({ seconds: Math.round(shot.seconds * 100) / 100, background: { kind: "solid", colors: ["#000000"] }, layers, ...(transition ? { transition } : {}) });
     });
   });

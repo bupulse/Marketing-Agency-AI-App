@@ -100,3 +100,10 @@ budget became **$20** and the "veo" switch stays on.
 | The Checker | checker.ts | Gemini watches every clip (about $0.003) for bodies or objects passing through each other, hands without contact or with fused fingers, faces changing, the product changing, garbled text, cuts, the wrong place or a crowd; a failed clip is filmed again with what went wrong (`avoid`), at most 2 a reel (`MAX_REFILMS`) and only inside the test budget |
 | The edit | story.ts `buildReelSpec`, `reelCuts` | 8 shots: each clip is a shot and a punch-in on the same moving clip (its sound runs straight through); flash, whip and zoom cuts between clips; the first punch at about 1.8 s; captions pop in word by word with the stressed words in the brand colour; the hook sticker; the brand, the contact and a price sticker at the end |
 | On the beat | beats.ts | The music library has no tempo, so the browser finds the track's beat (onset curve, autocorrelation, phase) and every cut snaps to it |
+- **First round-2 reel** (Kinyarwanda, balcony in Kigali, $3.47, every clip passed the checker): Gemini's review found
+  natural physics, no AI slop and the right place, but 6.8/10 because the edits were too quiet (a 16% punch-in reads as
+  a plain cut) and the end crowded. Now: three shots a clip (a cut about every 2.5 s on the beat), a 30% punch-in,
+  captions 35% bigger with the stressed words in yellow, and at the end the brand with the price sticker, then the
+  WhatsApp number on its own. "Re-cut it (free)" edits a finished reel again from its paid clips. One finished clip is
+  saved and checked per step (four in one request outlasted the test site's connection). A product photo that cannot
+  be read is skipped.

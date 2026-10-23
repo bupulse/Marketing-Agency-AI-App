@@ -46,45 +46,50 @@ describe("the reel's story", () => {
     expect(veoClipPrompt({ motion, line: "", camera: "static", presenter: false, avoid: ["2 s: her hand passes through the leaves"] }, "English")).toContain("avoid exactly this: 2 s: her hand passes through the leaves.");
   });
 
-  it("edits like a viral reel: 30 seconds, a punch-in inside every clip, flash and whip cuts, captions popping in, the hook sticker", () => {
-    const plan: ReelPlan = { ...ruleReel(input), hook: "No land? No problem.", clips: ruleReel(input).clips.map((c, i) => ({ ...c, line: `Line ${i} has a few more words`, stress: ["words"] })) };
+  it("edits like a viral reel: 30 seconds, three shots a clip with a punch-in, flash and whip cuts, big captions popping in, the hook sticker", () => {
+    const plan: ReelPlan = { ...ruleReel(input), hook: "No land? No problem.", clips: ruleReel(input).clips.map((c, i) => ({ ...c, line: `Line ${i} has a few more words now`, stress: ["words"] })) };
     const spec = buildReelSpec(plan, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20" });
     expect(totalMs(spec)).toBe(30_000);
-    expect(spec.scenes).toHaveLength(8);
-    // Two shots per clip: the same clip, its sound straight through, the second zoomed in.
+    expect(spec.scenes).toHaveLength(12);
+    // Three shots of the same clip, its sound straight through, the middle one punched in by about 30%.
     expect(spec.scenes[0].layers[0]).toMatchObject({ kind: "video", url: "a.mp4", start: 0, sound: true });
     expect(spec.scenes[1].layers[0]).toMatchObject({ kind: "video", url: "a.mp4", start: spec.scenes[0].seconds });
-    expect((spec.scenes[1].layers[0] as { keyframes: { scale: number }[] }).keyframes[0].scale).toBeGreaterThan(1.1);
-    expect(spec.scenes[1].transition).toBe("cut");
-    expect(spec.scenes.filter((_, i) => i % 2 === 0 && i > 0).map((s) => s.transition)).toEqual(["flash", "whip", "zoom"]);
-    // The hook's first punch comes fast.
+    expect(spec.scenes[2].layers[0]).toMatchObject({ kind: "video", url: "a.mp4", start: Math.round((spec.scenes[0].seconds + spec.scenes[1].seconds) * 100) / 100 });
+    expect((spec.scenes[1].layers[0] as { keyframes: { scale: number }[] }).keyframes[0].scale).toBeGreaterThanOrEqual(1.3);
+    expect([spec.scenes[1].transition, spec.scenes[2].transition]).toEqual(["cut", "cut"]);
+    expect([3, 6, 9].map((i) => spec.scenes[i].transition)).toEqual(["flash", "whip", "zoom"]);
+    // The hook's first cut comes fast, and every shot is short.
     expect(spec.scenes[0].seconds).toBeLessThan(2.5);
+    expect(spec.scenes.every((s) => s.seconds >= 1.2 && s.seconds <= 3.6)).toBe(true);
     const captions = spec.scenes.flatMap((s) => s.layers).filter((l) => l.kind === "text" && l.animate === "wordsPop");
-    expect(captions.map((l) => (l as { text: string }).text).join(" ")).toContain("Line 0 has a");
-    expect(captions[0]).toMatchObject({ highlight: { words: ["words"], color: "#1B5E20" } });
+    expect(captions.map((l) => (l as { text: string }).text).join(" ")).toContain("Line 0 has a few more words now");
+    expect((captions[0] as { size: number }).size).toBeGreaterThanOrEqual(0.075);
+    expect(captions.some((l) => (l as { highlight: { words: string[] } | null }).highlight?.words[0] === "words")).toBe(true);
     expect(spec.scenes[0].layers.some((l) => l.kind === "text" && l.text === "No land? No problem." && l.uppercase)).toBe(true);
-    expect(spec.scenes[7].layers.some((l) => l.kind === "text" && l.text === "LEAF")).toBe(true);
-    const withContact = buildReelSpec({ ...plan, price: "250,000 RWF" }, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" });
-    expect(withContact.scenes[7].layers.some((l) => l.kind === "text" && l.text === "WhatsApp 0788 000 000")).toBe(true);
-    // The price is a sticker on the last shot (only speaking it is refused), never before.
-    expect(withContact.scenes[7].layers.some((l) => l.kind === "text" && l.text === "250,000 RWF")).toBe(true);
-    expect(withContact.scenes.slice(0, 7).some((s) => s.layers.some((l) => l.kind === "text" && (l.text === "250,000 RWF" || l.text.startsWith("WhatsApp"))))).toBe(false);
+    const end = buildReelSpec({ ...plan, price: "250,000 RWF" }, ["a.mp4", "b.mp4", "c.mp4", "d.mp4"], { name: "LEAF", color: "#1B5E20", contact: "WhatsApp 0788 000 000" });
+    const texts = (i: number) => end.scenes[i].layers.filter((l) => l.kind === "text").map((l) => (l as { text: string }).text);
+    // The brand and the price first, then how to reach the business on its own; none of them before the last clip.
+    expect(texts(10)).toEqual(expect.arrayContaining(["LEAF", "250,000 RWF"]));
+    expect(texts(10)).not.toContain("WhatsApp 0788 000 000");
+    expect(texts(11)).toEqual(expect.arrayContaining(["LEAF", "WhatsApp 0788 000 000"]));
+    expect(end.scenes.slice(0, 10).some((s) => s.layers.some((l) => l.kind === "text" && ["LEAF", "250,000 RWF", "WhatsApp 0788 000 000"].includes(l.text)))).toBe(false);
     expect(reelCostUsd(0.8)).toBeCloseTo(3.5, 2);
   });
 
   it("puts every cut on the music's beat when it is known, and keeps 30 seconds and the clips' 8 seconds", () => {
     const beat = { period: 0.5, offset: 0.1 };
-    const { lengths, punches } = reelCuts(beat);
+    const { lengths, cuts } = reelCuts(beat);
     expect(lengths.reduce((a, b) => a + b, 0)).toBeCloseTo(30, 5);
     expect(lengths.every((l) => l >= 6.8 && l <= 8)).toBe(true);
     let t = 0;
     for (let i = 0; i < 4; i++) {
       const onBeat = (x: number) => Math.abs(((x - 0.1) / 0.5) - Math.round((x - 0.1) / 0.5)) < 1e-6;
       if (i > 0) expect(onBeat(t)).toBe(true);
-      expect(onBeat(t + punches[i])).toBe(true);
+      expect(onBeat(t + cuts[i][0])).toBe(true);
+      expect(onBeat(t + cuts[i][1])).toBe(true);
       t += lengths[i];
     }
-    expect(reelCuts(null)).toEqual({ lengths: [7.5, 7.5, 7.5, 7.5], punches: [1.8, 3.75, 3.75, 3.75] });
+    expect(reelCuts(null)).toEqual({ lengths: [7.5, 7.5, 7.5, 7.5], cuts: [[1.8, 4.65], [2.5, 5], [2.5, 5], [2.5, 5]] });
     expect(snapToBeat(3.6, 1, 5, null)).toBe(3.6);
   });
 });

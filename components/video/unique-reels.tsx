@@ -3,7 +3,7 @@
 import { Clapperboard, Copy, LoaderCircle, Wand2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Badge, Button, Chip, GlassCard, Select, Textarea, useToast } from "@/components/ui";
-import { finishReelAction, reelUploadAction, retryReelAction, startReelAction, stepReelAction } from "@/app/dashboard/video/reel-actions";
+import { finishReelAction, recutReelAction, reelUploadAction, retryReelAction, startReelAction, stepReelAction } from "@/app/dashboard/video/reel-actions";
 import type { ReelView } from "@/lib/reel-engine/engine";
 import { buildReelSpec, reelCostUsd, REEL_LANGUAGES, type ReelLanguage, type ReelPlan } from "@/lib/reel-engine/story";
 import { createClient } from "@/lib/supabase/client";
@@ -95,6 +95,20 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
     setError(null);
     setBusy(FILMING);
     const res = await retryReelAction(id);
+    if (!res.ok) {
+      setBusy(null);
+      setError(res.error);
+      return;
+    }
+    job.current = id;
+    void step(id);
+  }
+
+  /** The finished reel edited again from its clips (free). */
+  async function recut(id: string) {
+    setError(null);
+    setBusy(JOINING);
+    const res = await recutReelAction(id);
     if (!res.ok) {
       setBusy(null);
       setError(res.error);
@@ -208,6 +222,9 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
               Copy caption
             </Button>
             <p className="text-[13px] text-muted">Cost of this reel: ${reel.costUsd.toFixed(2)}.</p>
+            <Button size="sm" variant="ghost" onClick={() => recut(reel.id)} disabled={!!busy}>
+              Re-cut it (free)
+            </Button>
           </div>
         </div>
       )}
