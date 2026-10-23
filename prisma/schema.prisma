@@ -1050,6 +1050,15 @@ model ContentVisual {
   // The video robot (docs/VIDEO_ROBOT.md): its job while it holds the render lease, and its failed renders (3 = left to the browser).
   robotJobId      String?   @unique
   robotAttempts   Int       @default(0)
+  // AI clips (lib/visuals/ai-clips.ts, docs/CONTENT_VISUALS.md "Video quality"): "waiting" | "making" | "done" |
+  // "fallback"; the clips at Google; the studio credits held for them (given back once for clips not made); when they
+  // are given up; and the sweep holding the row.
+  clipState       String?
+  clipJobs        Json      @default("[]")
+  clipCredits     Int       @default(0)
+  clipPeriodStart DateTime?
+  clipUntil       DateTime?
+  clipLeaseUntil  DateTime?
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
 
@@ -1058,6 +1067,7 @@ model ContentVisual {
   @@index([groupId])
   @@index([businessId, kind])
   @@index([kind, status, createdAt])
+  @@index([clipState, clipLeaseUntil])
 }
 
 // A voiceover made by the text-to-speech provider (docs/VOICE_AND_MUSIC.md): the MP3 in the media bucket at

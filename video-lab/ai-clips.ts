@@ -10,7 +10,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import sharp from "sharp";
+import { firstFrame } from "@/lib/video-engine/veo-frame";
 import { ServiceDisabledError, isServiceEnabled } from "@/lib/admin/switch";
 import { withLedger } from "@/lib/ai/ledger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -201,29 +201,8 @@ export const aiClipPrices = () => Object.fromEntries(([4, 6, 8] as const).map((s
 
 // ---- Making clips ---------------------------------------------------------------------------------------------------
 
-/** The product photo as Veo's first frame: cropped to the clip's shape around the product, at the clip's size. */
-export async function firstFrame(photo: Buffer, ratio: VeoRatio, box: { x: number; y: number; w: number; h: number } | null): Promise<Buffer> {
-  const [width, height] = ratio === "9:16" ? [720, 1280] : [1280, 720];
-  const img = sharp(photo).rotate();
-  const meta = await img.metadata();
-  const w = meta.width ?? 0;
-  const h = meta.height ?? 0;
-  if (box && w && h) {
-    // The largest crop of the clip's shape, centred on the product's box (kept inside the photo).
-    const scale = Math.min(w / width, h / height);
-    const cw = Math.round(width * scale);
-    const ch = Math.round(height * scale);
-    const cx = (box.x + box.w / 2) * w;
-    const cy = (box.y + box.h / 2) * h;
-    const left = Math.max(0, Math.min(w - cw, Math.round(cx - cw / 2)));
-    const top = Math.max(0, Math.min(h - ch, Math.round(cy - ch / 2)));
-    return sharp(photo).rotate().extract({ left, top, width: cw, height: ch }).resize(width, height).jpeg({ quality: 88 }).toBuffer();
-  }
-  // No cut-out (a photo with a scene behind the product): the centre, where product photos put the product. sharp's
-  // "attention" crop was tried on 19 October 2026 and picked a fruit bowl and a control box instead of the tower (Veo then
-  // invented a tower of its own), so it is not used.
-  return img.resize(width, height, { fit: "cover", position: "centre" }).jpeg({ quality: 88 }).toBuffer();
-}
+/** The product photo as Veo's first frame (shared with BuPulse's overnight AI clips). */
+export { firstFrame };
 
 /** Clip needs from the page or a recipe, checked: 1 to 3 shots of plain text. */
 export function readNeeds(raw: unknown, seconds: VeoSeconds): ClipNeed[] | null {

@@ -34,6 +34,7 @@ import { trackForVideo } from "@/lib/music/service";
 import type { Audience } from "./people";
 import { buildVideoPlan, readVideoPlan, withSceneTexts } from "./video-plan";
 import { videoGetsAiClips, type VideoQuality } from "./video-quality";
+import { CLIPS_IN_PROGRESS, clipsInProgress, releaseClips } from "./ai-clips";
 
 /** A problem the owner can read and act on (a KnowledgeError, so the content actions show its message). */
 export class VisualError extends KnowledgeError {}
@@ -229,7 +230,8 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
       video.music = await trackForVideo(mood, "contentId" in input.target ? input.target.contentId : input.target.groupId);
       if (videoGetsAiClips(input.videoQuality, seed)) video.quality = "ai";
       const v = await prisma.contentVisual.create({
-        data: { businessId: input.owner.businessId, ...input.target, kind: "video", status: "pending", plan: json(video), items: json([]) },
+        // A video marked for AI clips waits for them (lib/visuals/ai-clips.ts) before it is rendered.
+        data: { businessId: input.owner.businessId, ...input.target, kind: "video", status: "pending", plan: json(video), items: json([]), ...(video.quality === "ai" ? { clipState: "waiting" } : {}) },
         select: { id: true },
       });
       out.video = v.id;
@@ -580,6 +582,7 @@ async function releaseVideo(businessId: string, row: { id: string; items: unknow
     }
   }
   if (paths.length) await createAdminClient().storage.from("media").remove(paths).catch(() => {});
+  await releaseClips(row.id).catch((e) => logError(e, { source: "visuals.release.clips", level: "warn", businessId }));
   return true;
 }
 
@@ -848,6 +851,8 @@ export const ROBOT_TAKEOVER_MS = 5 * 60 * 1000;
 export async function leaseVideoForBrowser(owner: Owner, visualId: string, now = new Date()) {
   const { row } = await videoRow(owner, visualId);
   if (row.status !== "pending") return;
+  // AI clips being made (lib/visuals/ai-clips.ts): the video waits for them rather than being made without them.
+  if (clipsInProgress(row)) throw new VisualError(CLIPS_IN_PROGRESS);
   // The robot's lease started ROBOT_LEASE_MS before it ends; it is "recent" while it ends later than this.
   const recentRobot = new Date(now.getTime() + ROBOT_LEASE_MS - ROBOT_TAKEOVER_MS);
   const taken = await prisma.contentVisual.updateMany({

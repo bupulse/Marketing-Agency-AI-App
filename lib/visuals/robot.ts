@@ -14,6 +14,8 @@ import { rateLimit, RateLimitError, type RateLimitRule } from "@/lib/rate-limit"
 import { finalizeVideo, prepareVideoUpload, ROBOT_LEASE_MS, videoAvailable, VisualError } from "./service";
 import { VIDEO_LIMITS, type VideoPlan } from "./types";
 import { readVideoPlan } from "./video-plan";
+import { CLIP_WORKING } from "./ai-clips";
+import { clipPathsOf, isOwnClipPath } from "./clip-scenes";
 import { musicUrl } from "@/lib/music/service";
 import { ensureVoiceover } from "@/lib/voice/service";
 
@@ -46,13 +48,16 @@ export function robotEnabled(): boolean {
   return !!process.env.VIDEO_ROBOT_SECRET;
 }
 
-/** Pending videos the robot may take: plan ready, not made, fewer than 3 robot failures, no live lease. */
+/**
+ * Pending videos the robot may take: plan ready, not made, fewer than 3 robot failures, no live lease, and no AI clips
+ * still being made for it (lib/visuals/ai-clips.ts: it waits for them).
+ */
 export function robotWaitingWhere(now: Date) {
   return {
     kind: "video",
     status: "pending",
     robotAttempts: { lt: ROBOT_MAX_ATTEMPTS },
-    OR: [{ renderingUntil: null }, { renderingUntil: { lt: now } }],
+    AND: [{ OR: [{ renderingUntil: null }, { renderingUntil: { lt: now } }] }, { OR: [{ clipState: null }, { clipState: { notIn: [...CLIP_WORKING] } }] }],
   };
 }
 
@@ -77,6 +82,8 @@ export interface RobotJob {
   plan: VideoPlan;
   /** Signed download URLs of the scene photos, keyed by the plan's photo paths (what the renderer looks up). */
   photoUrls: Record<string, string>;
+  /** Signed download URLs of the scenes' AI clips (MP4), keyed by their paths; a clip missing here shows its photo. */
+  clipUrls: Record<string, string>;
   /** The voiceover (signed) and the library track (public), when the video has them (docs/VOICE_AND_MUSIC.md). */
   audioUrls: { voice?: string; music?: string };
   /** Where to PUT the file: a signed upload URL reserved through the same checks as the browser's upload. */
@@ -99,6 +106,14 @@ async function signScenePhotos(userId: string, plan: VideoPlan): Promise<Record<
     }),
   );
   return out;
+}
+
+/** Signed URLs for the plan's AI clips that are the owner's own (lib/visuals/ai-clips.ts). */
+export async function signClips(userId: string, plan: VideoPlan, seconds = PHOTO_URL_SECONDS): Promise<Record<string, string>> {
+  const paths = clipPathsOf(plan).filter((p) => isOwnClipPath(userId, p));
+  if (paths.length === 0) return {};
+  const { data } = await createAdminClient().storage.from("media").createSignedUrls(paths, seconds);
+  return Object.fromEntries((data ?? []).flatMap((d) => (d.path && d.signedUrl ? [[d.path, d.signedUrl]] : [])));
 }
 
 /**
@@ -184,7 +199,7 @@ export async function claimRobotVideos(options: { max?: number; format?: RobotFo
       const prepared = await ensureVoiceover(owner, row.id).catch(() => null);
       const voiced = prepared?.plan ?? plan;
       const target = await prepareVideoUpload(owner, row.id, { bytes: VIDEO_LIMITS.maxBytes, mimeType, durationMs: voiced.totalMs });
-      jobs.push({ job, plan: voiced, photoUrls: await signScenePhotos(userId, voiced), audioUrls: await audioUrlsFor(row.businessId, voiced, prepared?.voiceDataUrl), upload: { url: target.signedUrl, contentType: mimeType }, leaseUntil: leaseUntil.toISOString() });
+      jobs.push({ job, plan: voiced, photoUrls: await signScenePhotos(userId, voiced), clipUrls: await signClips(userId, voiced), audioUrls: await audioUrlsFor(row.businessId, voiced, prepared?.voiceDataUrl), upload: { url: target.signedUrl, contentType: mimeType }, leaseUntil: leaseUntil.toISOString() });
     } catch (error) {
       await releaseLease(row.id, job, { robotAttempts: { decrement: 1 } }).catch(() => {});
       // Seconds used up, quota full, other uploads open: the owner's problem, not the robot's; tried again next run.

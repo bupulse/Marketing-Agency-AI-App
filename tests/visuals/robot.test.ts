@@ -75,7 +75,7 @@ describe("claiming videos", () => {
     expect(jobs).toHaveLength(1);
     const lease = mocks.prisma.contentVisual.updateMany.mock.calls[0][0];
     // Compare-and-set: still pending, under 3 failures, no live lease.
-    expect(lease.where).toMatchObject({ id: "v1", kind: "video", status: "pending", robotAttempts: { lt: ROBOT_MAX_ATTEMPTS }, OR: [{ renderingUntil: null }, { renderingUntil: { lt: NOW } }] });
+    expect(lease.where).toMatchObject({ id: "v1", kind: "video", status: "pending", robotAttempts: { lt: ROBOT_MAX_ATTEMPTS }, AND: [{ OR: [{ renderingUntil: null }, { renderingUntil: { lt: NOW } }] }, { OR: [{ clipState: null }, { clipState: { notIn: ["waiting", "making"] } }] }] });
     expect(lease.data.renderingUntil).toEqual(new Date(NOW.getTime() + ROBOT_LEASE_MS));
     expect(lease.data.robotJobId).toBe(jobs[0].job);
     // The attempt counts from the claim, so a run killed mid-render still counts toward the 3.

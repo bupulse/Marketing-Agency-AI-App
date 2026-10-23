@@ -7,6 +7,8 @@ import { logError } from "@/lib/errors";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readItems, WAITING_STATUSES } from "./service";
+import { clipPathsOf } from "./clip-scenes";
+import { readVideoPlan } from "./video-plan";
 
 import { VIDEO_REMOVED_NOTE, VIDEO_RETENTION_DAYS } from "./types";
 
@@ -39,11 +41,11 @@ export async function purgePublishedVideos(now = new Date(), options: { budgetMs
   let cursor: string | null = null;
   for (;;) {
     // A video rendered after the cutoff cannot have been posted before it.
-    const rows: { id: string; businessId: string; items: Prisma.JsonValue; bytes: number }[] = await prisma.contentVisual.findMany({
+    const rows: { id: string; businessId: string; items: Prisma.JsonValue; plan: Prisma.JsonValue; bytes: number }[] = await prisma.contentVisual.findMany({
       where: { kind: "video", bytes: { gt: 0 }, renderedAt: { lte: cutoff }, ...(cursor ? { id: { gt: cursor } } : {}) },
       orderBy: { id: "asc" },
       take: PAGE,
-      select: { id: true, businessId: true, items: true, bytes: true },
+      select: { id: true, businessId: true, items: true, plan: true, bytes: true },
     });
     if (rows.length === 0) return result;
     for (const row of rows) {
@@ -53,7 +55,8 @@ export async function purgePublishedVideos(now = new Date(), options: { budgetMs
       if (paths.length === 0) continue;
       const posts = await prisma.post.findMany({ where: { businessId: row.businessId, mediaPaths: { hasSome: paths } }, select: { status: true, publishedAt: true } });
       if (!videoExpired(posts, now)) continue;
-      const { error } = await createAdminClient().storage.from("media").remove(paths);
+      // The video's AI clips (lib/visuals/ai-clips.ts) go with it.
+      const { error } = await createAdminClient().storage.from("media").remove([...paths, ...clipPathsOf(readVideoPlan(row.plan))]);
       if (error) {
         await logError(new Error(`Could not remove an expired video: ${error.message}`), { source: "visuals.cleanup", level: "warn", businessId: row.businessId });
         continue;
