@@ -132,3 +132,8 @@ flames, "+25M RWF" in green), flashes, all on the song's beat.
   writes a `tag` (the product's name, 3 words at most) and only frames and moves for the product shots.
 - A clip that failed for good fails the reel only when the others are finished, so "Try again" never pays twice.
 - Old reels (4 talking clips) are still cut the round-2 way.
+- **Google's limit** (first montage reel): all 7 clips were sent at once and Omni answered 6 of them with
+  `RESOURCE_EXHAUSTED` (its interactions report it in `errors[].code`; the shared client turned it into "could not make
+  this clip", so they were counted as refusals and failed). Now at most `VEO_PARALLEL` (3) clips film at once, and a
+  clip Google is too busy for (a quota error, or a submit answered 429) waits a minute and goes again without counting
+  as a try. The video-engine session was asked to map `RESOURCE_EXHAUSTED` to the "quota" kind in veo.ts.
