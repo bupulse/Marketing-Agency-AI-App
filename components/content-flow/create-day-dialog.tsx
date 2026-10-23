@@ -262,8 +262,8 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
 
           {mode !== "own" && (
             <div role="radiogroup" aria-label="Design" className="grid gap-3 @md:grid-cols-2">
-              <Option selected={design === "ai"} disabled={!allowance.aiPhotos} onSelect={() => setDesign("ai")} icon={<Sparkles className="size-5" />} title="AI designs (images with people)" text={allowance.aiPhotos ? "AI photos of people with your product where they fit; uses AI image credits." : "No AI images left this month, or not in your plan."} />
-              <Option selected={design === "free"} onSelect={() => setDesign("free")} icon={<ImagePlus className="size-5" />} title="Free templates" text="Your photos and BuPulse designs. BuPulse picks the design for each post." />
+              <Option selected={design === "ai"} disabled={!allowance.aiPhotos} onSelect={() => setDesign("ai")} icon={<Sparkles className="size-5" />} title="Unique AI pictures" text={allowance.aiPhotos ? "A different finished ad for every post, made from your product and photos; uses AI image credits (your own photos when they run out)." : "No AI image credits left this month, or not in your plan."} />
+              <Option selected={design === "free"} onSelect={() => setDesign("free")} icon={<ImagePlus className="size-5" />} title="Your own photos" text="Your product photos as they are, no credits used." />
             </div>
           )}
 

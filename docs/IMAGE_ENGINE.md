@@ -59,6 +59,18 @@ what performed well.
 
 ## Where it runs
 
+- **Every post picture (step 1, 23 October 2026; no templates, owner decision):** `drawSlide` (lib/visuals/service.ts),
+  used by Create post / "Create today's content", Daily posts, Studio, "Make the picture again" and Autopilot
+  carousels, and Autopilot's single pictures (lib/autopilot/images.ts) call `paintOne`: one picture with the Director's
+  least-used pattern, shot, light, layout and camera, the Prompter writing from the post's brief and caption (Claude and
+  Gemini take turns), then the Painter, Checker and Editor. Pro when the credits allow it and none of the company's last
+  three pictures was Pro (about one post in four), else Lite. Without AI (not in the plan, no credits, a failure) the
+  slide is the owner's own photo as it is (`createPhotoDesign`); with no photo either, the slide is skipped, and a
+  visual with nothing to show fails with "add a photo of the product, or AI image credits". Designed tip slides are no
+  more, so a carousel is the AI cover and the product's photos.
+- **Starter** gets AI pictures with its 30 credits (migration `20261030250000_starter_ai_pictures`).
+- **Designs** shows "Unique AI ads" and the gallery; the template and "Describe an image" tools and their actions are
+  removed. Plans, Billing, Usage and Home say "AI image credits".
 - **Designs → Unique AI ads** (components/designs/unique-ads.tsx, app/dashboard/designs/engine-actions.ts): an idea
   (optional), 4 / 10 / 20 pictures, shape, quality (Smart mix, Best, Saver) with the credits it will use; the pictures
   are painted two at a time and appear as they finish, each with its pattern, Pro/Lite, caption (copy), like / dislike

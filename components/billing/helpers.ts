@@ -121,7 +121,7 @@ export function planFeatures(limits: PlanLimits) {
   const { text, image, videos, voiceCharacters } = limits;
   return [
     `${text} text generations per month`,
-    `${image} brand designs per month`,
+    `${image} AI image credits per month`,
     ...(videos > 0 ? [`${videos} ${videos === 1 ? "video" : "videos"} a month (up to 30 s each${videos > 1 ? `, ${videosPerDayLimit(limits)} a day` : ""})`] : []),
     ...(voiceCharacters > 0 ? [`${voiceCharacters.toLocaleString("en-US")} voice characters`] : []),
   ];

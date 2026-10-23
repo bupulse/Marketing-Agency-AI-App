@@ -6,11 +6,9 @@ import { PageHeader } from "@/components/app/page-header";
 import { DesignStudio } from "@/components/designs/design-studio";
 import { UniqueAds } from "@/components/designs/unique-ads";
 import { isCanvaEnabled } from "@/lib/canva/config";
-import { recommendPack } from "@/lib/designs/packs";
 import { DesignsFilter, DesignsPager } from "@/components/designs/designs-paging";
 import { DESIGNS_PER_PAGE, designsDateBounds, parseDesignsQuery } from "@/lib/designs/list";
 import { listDesignsPage } from "@/lib/designs/service";
-import { assetById, signedUrls } from "@/lib/media/service";
 import { SubjectPicker } from "@/components/knowledge/subject-picker";
 import { resolveSubject, subjectOptions, writingSubject } from "@/lib/knowledge/service";
 
@@ -21,31 +19,28 @@ export default async function DesignsPage({ searchParams }: { searchParams: Prom
   if (blocked) return blocked;
   const { user, business, usage, entitlements } = await getAppContext();
   const sp = await searchParams;
-  const { photo, for: forId } = sp;
+  const { for: forId } = sp;
   // 30 designs a page, newest first, optionally only from some dates (in the business's time zone).
   const query = parseDesignsQuery(sp);
   const bounds = designsDateBounds(query, new Date(), business.timezone);
   const list = await listDesignsPage(user.id, { page: query.page, perPage: DESIGNS_PER_PAGE, ...bounds });
   const designs = list.items;
   const keep = { for: forId && forId.length <= 60 ? forId : undefined };
-  // ?photo=<assetId> from the Gallery: only the business's own photo counts, anything else is ignored.
-  const asset = photo && photo.length <= 60 ? await assetById(business.id, photo) : null;
-  // ?for=<product or campaign id>: the design starts from it (its name, price and album) and is saved with it.
+  // ?for=<product or campaign id>: the ads are made for it (its name, price and album) and saved with it.
   const subject = await resolveSubject(business.id, forId);
   const about = subject ? await writingSubject(business.id, subject) : null;
-  const urls = about ? await signedUrls(about.photoPaths) : new Map<string, string>();
   const options = await subjectOptions(business.id);
 
   return (
     <>
-      <PageHeader title="Designs" description="Branded images made with your logo, colours and photos. Templates are free; described images use your image credits." />
+      <PageHeader title="Designs" description="Unique AI ads for your business, made from your products and photos, and every picture BuPulse made for you." />
       <Suspense>
         <CanvaReturnToast />
       </Suspense>
       <SubjectPicker
         base="/dashboard/designs"
         value={subject?.id ?? ""}
-        label="Make a design for"
+        label="Make ads for"
         none="Nothing in particular"
         options={[...options.products.map((p) => ({ id: p.id, name: p.name, group: "Products & services" as const })), ...options.campaigns.map((c) => ({ id: c.id, name: c.name, group: "Campaigns" as const }))]}
       />
@@ -58,25 +53,12 @@ export default async function DesignsPage({ searchParams }: { searchParams: Prom
           credits={{ used: usage.used.image, limit: usage.limits.image }}
         />
       )}
-      {/* Not keyed by the product: choosing one keeps the template chosen so far (DesignStudio fills in its details). */}
       <DesignStudio
-        subjectId={subject?.id}
-        album={subject ? `${subject.kind}:${subject.id}` : undefined}
-        defaults={
-          about
-            ? { headline: about.title, subline: about.features[0] ?? "", chip: (about.price ?? "").slice(0, 40), photoPaths: about.photoPaths, photoUrls: about.photoPaths.map((p) => urls.get(p) ?? ""), projectType: about.type }
-            : undefined
-        }
-        pack={recommendPack(business)}
-        canva={isCanvaEnabled() && entitlements.usable.has("canva")}
-        aiPhotos={entitlements.usable.has("aiPhotos")}
         designs={designs}
+        canva={isCanvaEnabled() && entitlements.usable.has("canva")}
         timeZone={business.timezone}
         galleryTop={<DesignsFilter base="/dashboard/designs" query={query} total={list.total} extra={keep} />}
         galleryBottom={<DesignsPager base="/dashboard/designs" query={{ ...query, page: list.page }} page={list.page} pages={list.pages} extra={keep} />}
-        galleryPhoto={asset && asset.url ? { path: asset.path, url: asset.url } : null}
-        hasLogo={!!business.logoUrl}
-        credits={{ used: usage.used.image, limit: usage.limits.image, resetsAt: usage.resetsAt?.toISOString() ?? null }}
       />
     </>
   );

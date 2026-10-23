@@ -12,7 +12,7 @@ function rowsFor(plans: PublicPlan[], trialDays: number): { label: string; cells
     // The trial length is the admin setting (docs/REGIONS.md), not the TRIAL plan's own column.
     { label: "Price", cells: each((p) => (p.isTrial ? `Free for ${trialDays} ${trialDays === 1 ? "day" : "days"}` : `${formatPrice(p.monthlyPriceCents, p.currency)}/month`)) },
     { label: "AI text generations", cells: each((p) => total(p, p.limits.text)) },
-    { label: "Brand designs", cells: each((p) => total(p, p.limits.image)) },
+    { label: "AI image credits", cells: each((p) => total(p, p.limits.image)) },
     { label: "Brand voice and business knowledge", cells: each(() => true) },
     { label: "Post to Instagram, Facebook, TikTok, LinkedIn, YouTube", cells: each((p) => p.features.includes("calendar")) },
     { label: "Content calendar and scheduling", cells: each((p) => p.features.includes("calendar")) },

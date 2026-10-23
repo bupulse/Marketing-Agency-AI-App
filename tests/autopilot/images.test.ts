@@ -86,6 +86,11 @@ describe("group images (no templates: the engine's finished ad, else the owner's
     expect(out.designs["4:5"]).toBe("user1/designs/4x5.jpg");
   });
 
+  it("sizes: Instagram is portrait, the rest square", () => {
+    expect(aspectFor("instagram")).toBe("4:5");
+    expect(aspectFor("facebook")).toBe("1:1");
+  });
+
   it("an article or a script to film needs no picture", async () => {
     const out = await makeGroupImages(group("li-thought-leadership", { posts: [{ connectionId: "c", network: "linkedin", format: "ARTICLE", scheduledAt: new Date() }] }), text, { ...ctx, useAiImages: true });
     if (!getIdea("li-thought-leadership")!.template) expect(out.designs).toEqual({});

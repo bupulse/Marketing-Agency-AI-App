@@ -129,8 +129,8 @@ export function DailyPostsForm({
             <legend className="text-[15px] font-semibold">Design style</legend>
             {(
               [
-                ["free", "Free designs", "Your photos and BuPulse designs."],
-                ["ai", "AI photos with people", aiPhotos ? "While your plan's AI images last, spread over the month; then free designs." : "Not available on your plan right now: free designs are used."],
+                ["free", "Your own photos", "Your product photos as they are, no credits used."],
+                ["ai", "Unique AI pictures", aiPhotos ? "A different finished ad every day while your AI image credits last, spread over the month; then your own photos." : "Not available on your plan right now: your own photos are used."],
               ] as const
             ).map(([value, label, hint]) => (
               <label key={value} className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-[15px]">

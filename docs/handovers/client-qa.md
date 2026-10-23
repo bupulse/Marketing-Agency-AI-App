@@ -90,3 +90,17 @@ _None yet._
 ### Request 4 progress
 - Done (client-qa): the **Videos** choice (Simple / Mix / AI videos) in Autopilot and Content -> Settings, stored (migration `20261030220000_autopilot_video_quality` for Autopilot, JSON for Daily posts), and the planners mark AI videos with `VideoPlan.quality = "ai"`. Mix and AI are greyed out until the `veo` switch is on and the plan has studio credits. Docs: docs/CONTENT_VISUALS.md "Video quality".
 - Asked for (video-engine, through the main session): the overnight AI clip maker that picks up plans marked "ai", charges studio credits, draws the clips into the slideshow, and falls back to simple with a refund.
+
+## Image engine (23 October 2026)
+
+- Built: docs/IMAGE_ENGINE.md (agents, decisions, where it runs), docs/IMAGE_ENGINE_TEARDOWN.md (Creatify),
+  docs/IMAGE_ANTI_SLOP.md (realism rules). Live tests: batch 1 (Pro words perfect, Lite misspelt: Lite is now Nano
+  Banana 2), batch 2 after anti-slop (3 of 4 looked like real photos; 1 warped tower the Editor could not save).
+- Step 1 (every post picture from the engine, no templates, Starter gets AI pictures): commits after 8b81b1ca.
+- **Before production (bupulse.com on Netlify, 60 s per request):** one picture with Claude planning (about 20 s on the
+  CLI), a Pro paint (about 40 s), the check and one fix can pass 60 s. Split paintRow into steps (paint, then
+  check-and-fix in the next call, using the row's status) before it runs on Netlify. The test site (Mac) has no limit.
+- Open ideas: a fresh repaint instead of an edit when the Checker sees slop (costs one more picture: owner to decide);
+  store what the Checker read, to tell real typos from false alarms; lib/designs/service createTemplateDesign,
+  createAiDesign, createAiPhotoDesign and the templates library are now unused by the app (left for a cleanup commit);
+  docs/guide/features/05-designs.md still describes templates.
