@@ -40,7 +40,7 @@ vi.mock("@/lib/errors", () => ({ logError: vi.fn(async () => {}) }));
 vi.mock("@/lib/admin/switch", () => ({ isServiceEnabled: async () => h.switchOn.value }));
 vi.mock("@/lib/ai", () => ({ getTextProvider: () => ({ name: "gemini", generate: async () => ({ text: "{}", provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } }) }) }));
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: async (_c: unknown, _m: unknown, call: () => unknown) => call() }));
-vi.mock("@/lib/designs/service", () => ({ createEngineDesign: h.design, designUrls: async () => new Map() }));
+vi.mock("@/lib/designs/service", () => ({ createEngineDesign: h.design, designUrls: async () => new Map(), DesignError: class DesignError extends Error {} }));
 vi.mock("@/lib/image-engine/check", () => ({ checkPicture: async () => ({ ok: true, problems: [], fix: null, ran: true }) }));
 vi.mock("@/lib/image-engine/planner", () => ({ claudeJson: async () => null }));
 vi.mock("@/lib/image-engine/engine", () => ({
@@ -165,5 +165,22 @@ describe("the clip checker in the engine", () => {
     expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
     // 6 clips paid: the 4 and the 2 filmed again.
     expect(h.jobs.get(id)!.costUsd).toBeCloseTo(4 * 0.067 + 6 * veoClipUsd(8, veoModel()), 2);
+  });
+});
+
+describe("a product photo that cannot be read", () => {
+  it("is skipped: the frame is painted without it instead of failing the reel", async () => {
+    const { DesignError } = await import("@/lib/designs/service");
+    const id = await startReel(owner, { language: "English", tier: "lite" });
+    h.design.mockImplementationOnce(async () => {
+      throw new DesignError("That photo could not be loaded. Please pick it again.");
+    });
+    await stepReel(owner, id);
+    expect(h.jobs.get(id)).toMatchObject({ status: "filming" });
+    expect(h.design).toHaveBeenCalledTimes(2);
+    expect(h.design.mock.calls[0][0]).toMatchObject({ usePhotoPath: "u1/gallery/a.jpg" });
+    expect(h.design.mock.calls[1][0]).toMatchObject({ usePhotoPath: null });
+    // The failed try was never painted, so it is not charged.
+    expect(h.jobs.get(id)!.costUsd).toBeCloseTo(0.067, 3);
   });
 });

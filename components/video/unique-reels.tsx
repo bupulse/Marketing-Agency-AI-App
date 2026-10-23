@@ -189,12 +189,12 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
           {error ?? reel?.error ?? "This reel could not be made. Please try again."}
         </p>
       )}
-      {reel?.status === "failed" && !busy && reel.clips.some((c) => c.status === "done") && (
+      {reel?.status === "failed" && !busy && reel.clips.length > 0 && (
         <div>
           <Button size="sm" variant="outline" onClick={() => retry(reel.id)}>
-            Try the failed clips again
+            {reel.clips.some((c) => c.status === "done") ? "Try the failed clips again" : "Try this reel again"}
           </Button>
-          <p className="mt-1 text-[13px] text-muted">The clips already filmed are kept.</p>
+          <p className="mt-1 text-[13px] text-muted">What is already made (start frames and filmed clips) is kept.</p>
         </div>
       )}
 
