@@ -108,7 +108,7 @@ export function QuizFrame({
   return (
     <div ref={cardRef} className="mx-auto flex w-full max-w-2xl scroll-mt-4 flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <nav ref={pillsRef} aria-label="Rounds" className="-mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
+        <nav ref={pillsRef} aria-label="Rounds" className="-mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 py-1 [mask-image:linear-gradient(to_right,transparent,black_20px,black_calc(100%-20px),transparent)] [scrollbar-width:none]">
           {rounds.map((r) => {
             const here = r.id === quiz.round && !quiz.finished;
             const done = doneRounds.has(r.id);
