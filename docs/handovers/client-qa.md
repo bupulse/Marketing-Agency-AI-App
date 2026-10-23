@@ -30,3 +30,7 @@ _None yet._
 - Autopilot and Daily posts do not make Claude "Motion" videos today: they make free slideshow videos (photos + captions + voice-over) from a video plan, drawn in the owner's browser or by the video robot (GitHub Actions). So "Simple" = today's slideshow.
 - AI clips (Veo) and Motion videos exist only in the Video Studio (video-lab, studio.bupulse.com, the video-engine session), paid in studio credits (`videoCredits`: Starter 100, Business 500, Pro 1,500 a month). One AI video with 2-3 clips is about 230-320 credits, so only Business and Pro can afford a few a month.
 - Veo clips take 1-6 minutes, longer than a server function may run, so making them for a nightly post needs a submit-then-check job (the existing `/api/cron/video-jobs`) plus clip support in the slideshow renderer. That touches the video engine: coordinate with the video-engine session.
+
+### Request 4 progress
+- Done (client-qa): the **Videos** choice (Simple / Mix / AI videos) in Autopilot and Content -> Settings, stored (migration `20261030220000_autopilot_video_quality` for Autopilot, JSON for Daily posts), and the planners mark AI videos with `VideoPlan.quality = "ai"`. Mix and AI are greyed out until the `veo` switch is on and the plan has studio credits. Docs: docs/CONTENT_VISUALS.md "Video quality".
+- Asked for (video-engine, through the main session): the overnight AI clip maker that picks up plans marked "ai", charges studio credits, draws the clips into the slideshow, and falls back to simple with a refund.

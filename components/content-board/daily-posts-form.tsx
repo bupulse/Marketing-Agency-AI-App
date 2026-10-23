@@ -9,6 +9,8 @@ import { saveDailySettingsAction } from "@/app/dashboard/content/actions";
 import { networkLabel } from "@/lib/content-board/labels";
 import { appsText, dailyApps, type DailyPostSettings } from "@/lib/daily-posts/settings";
 import type { Network } from "@/lib/social/types";
+import { VideoQualityPicker } from "@/components/visuals/video-quality-picker";
+import type { VideoQualityOffer } from "@/lib/visuals/video-quality-server";
 
 /** "Daily posts made for you": on/off, posts per app, which apps and the design style. Read-only for Members. */
 export function DailyPostsForm({
@@ -17,6 +19,7 @@ export function DailyPostsForm({
   connected,
   perAppLimit,
   appsLimit = null,
+  videoOffer = null,
   aiPhotos,
   canEdit,
   askText,
@@ -27,6 +30,8 @@ export function DailyPostsForm({
   perAppLimit: number;
   /** The plan's apps a day (Starter: 1); null: every app. */
   appsLimit?: number | null;
+  /** The "Videos" choice; null when the plan makes no videos. */
+  videoOffer?: VideoQualityOffer | null;
   aiPhotos: boolean;
   canEdit: boolean;
   askText: string;
@@ -137,6 +142,12 @@ export function DailyPostsForm({
               </label>
             ))}
           </fieldset>
+
+          {videoOffer && (
+            <div className="border-t border-line pt-5">
+              <VideoQualityPicker name="daily-video-quality" value={settings.videoQuality} onChange={(v) => setSettings((s) => ({ ...s, videoQuality: v }))} offer={videoOffer} disabled={locked} />
+            </div>
+          )}
         </>
       )}
 

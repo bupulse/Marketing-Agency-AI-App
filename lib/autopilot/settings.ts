@@ -1,6 +1,7 @@
 // Autopilot settings: validation and the mapping between the form and AutopilotSettings.
 import { z } from "zod";
 import { BY_HAND_PREFIX } from "@/lib/content-board/by-hand";
+import { DEFAULT_VIDEO_QUALITY, readVideoQuality, videoQualitySchema, type VideoQuality } from "@/lib/visuals/video-quality";
 import { minutesOf } from "./timezone";
 
 export const MIN_POSTS_PER_WEEK = 2;
@@ -17,6 +18,8 @@ export interface AutopilotConfig {
   postingTimes: string[];
   useAiImages: boolean;
   skipReligious: boolean;
+  /** Simple videos (the default), a mix, or AI videos with real AI clips paid in studio credits. */
+  videoQuality: VideoQuality;
 }
 
 export const DEFAULT_CONFIG: AutopilotConfig = {
@@ -28,6 +31,7 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   // Posts show people (docs/CONTENT_VISUALS.md): AI photos are on unless the owner turns them off.
   useAiImages: true,
   skipReligious: false,
+  videoQuality: DEFAULT_VIDEO_QUALITY,
 };
 
 type Row = {
@@ -38,6 +42,7 @@ type Row = {
   postingTimes: string[];
   useAiImages: boolean;
   skipReligiousHolidays: boolean;
+  videoQuality: string;
 };
 
 /** The stored row (or none yet) as the config the planner and the page use. */
@@ -52,6 +57,7 @@ export function readConfig(row: Row | null | undefined): AutopilotConfig {
     postingTimes: times.length > 0 ? times : DEFAULT_POSTING_TIMES,
     useAiImages: row.useAiImages,
     skipReligious: row.skipReligiousHolidays,
+    videoQuality: readVideoQuality(row.videoQuality),
   };
 }
 
@@ -65,6 +71,7 @@ export function toRow(config: AutopilotConfig): Row {
     postingTimes: config.postingTimes,
     useAiImages: config.useAiImages,
     skipReligiousHolidays: config.skipReligious,
+    videoQuality: config.videoQuality,
   };
 }
 
@@ -96,6 +103,8 @@ export const settingsSchema = z.object({
     .transform((times) => [...new Set(times)].sort()),
   useAiImages: z.boolean(),
   skipReligious: z.boolean(),
+  // Optional so a form from before the choice still saves (it keeps "simple").
+  videoQuality: videoQualitySchema.default(DEFAULT_VIDEO_QUALITY),
 });
 
 export type SettingsInput = z.input<typeof settingsSchema>;

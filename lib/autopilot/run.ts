@@ -220,7 +220,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         const images = await makeGroupVisuals(
           group,
           written,
-          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed: videoAllowed && !albumVideo, audience },
+          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed: videoAllowed && !albumVideo, videoQuality: input.config.videoQuality, audience },
           visualRun,
         );
         if (images.aiStopped) aiStopped = true;

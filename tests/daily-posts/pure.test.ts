@@ -116,11 +116,11 @@ describe("when and what", () => {
 describe("daily posts settings", () => {
   it("are on by default, one post per app, the connected apps, free designs", () => {
     expect(readDailySettings(null)).toEqual(DEFAULT_DAILY_SETTINGS);
-    expect(DEFAULT_DAILY_SETTINGS).toEqual({ enabled: true, perApp: 1, apps: null, design: "free" });
+    expect(DEFAULT_DAILY_SETTINGS).toEqual({ enabled: true, perApp: 1, apps: null, design: "free", videoQuality: "simple" });
   });
 
   it("read field by field, so one bad value does not reset the rest", () => {
-    expect(readDailySettings({ enabled: false, perApp: 99, apps: ["facebook", "instagram"], design: "ai" })).toEqual({ enabled: false, perApp: 1, apps: ["instagram", "facebook"], design: "ai" });
+    expect(readDailySettings({ enabled: false, perApp: 99, apps: ["facebook", "instagram"], design: "ai" })).toEqual({ enabled: false, perApp: 1, apps: ["instagram", "facebook"], design: "ai", videoQuality: "simple" });
     expect(readDailySettings("garbage")).toEqual(DEFAULT_DAILY_SETTINGS);
   });
 

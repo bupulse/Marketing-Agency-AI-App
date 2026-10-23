@@ -50,6 +50,7 @@ import { isPriceLike, mentionsPrice, priceAngleAllowed, priceFreeLines, priceSlo
 import { assignAngles, postsPerApp, withinDaily } from "./slots";
 import { postsPerAppLimit } from "@/lib/plans";
 import { applyContest, CONTEST_NOTE, contestDraftText, contestEndProblem, hasContestPlaceholders, readContest, withoutPlaceholders, type ContestConfirm } from "./contest";
+import type { VideoQuality } from "@/lib/visuals/video-quality";
 
 /** A problem the owner can read and act on. */
 export class DayRunError extends KnowledgeError {}
@@ -95,6 +96,8 @@ export type DailyRunLimits = {
   maxVideos: number;
   /** Yesterday's ideas: not used again today while others are left. */
   avoidAngles: readonly string[];
+  /** The owner's video quality (Content -> Settings): "ai" or "mix" mark videos for AI clips. Simple when missing. */
+  videoQuality?: VideoQuality;
 };
 
 export type DayRunResult = { day: string; packId: string; posts: number; scheduled: number; skipped: { network: Network; reason: string }[]; failed: Network[]; angles: string[]; contests: number; videos: number; notes: string[] };
@@ -589,7 +592,7 @@ async function planDayVisuals(
       target: { contentId: j.content.id },
       subjectId,
       ...base(j, j.kind === "image" ? aiFor.get(j.i)! : false),
-      ...(j.kind === "image" ? { precomputed: directed[k], video: false, aiExhausted: useAi && !aiFor.get(j.i) && ai.exhausted ? ai.exhausted : undefined } : { image: false, video: true }),
+      ...(j.kind === "image" ? { precomputed: directed[k], video: false, aiExhausted: useAi && !aiFor.get(j.i) && ai.exhausted ? ai.exhausted : undefined } : { image: false, video: true, videoQuality: input.daily?.videoQuality }),
     });
   }
 }

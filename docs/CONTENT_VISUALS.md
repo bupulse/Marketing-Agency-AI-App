@@ -136,6 +136,24 @@ Videos count toward the company's media quota (500 items, 2 GB: `mediaUsage` add
 platform guard (`platformBytes`, `MEDIA_PLATFORM_MAX_BYTES`, 900 MB default). The media bucket now accepts
 `video/mp4` and `video/webm` (still 10 MB per file).
 
+### Video quality (owner decision, 23 October 2026)
+
+Autopilot (its settings card) and Daily posts (Content -> Settings) have a **Videos** choice, shown when the plan makes
+videos: **Simple videos** (the default: the slideshow above, no studio credits), **Mix** (one video in four gets AI
+clips, picked by a stable hash of the group or content id) and **AI videos** (every video gets AI clips). Mix and AI
+videos are greyed out, with the reason, while the "Google Veo AI clips" switch is off or the plan has no studio credits
+(`videoQualityOffer`, lib/visuals/video-quality-server.ts). Stored in `AutopilotSettings.videoQuality` (migration
+`20261030220000_autopilot_video_quality`) and `Business.dailyPostSettings.videoQuality`; anything unknown reads as
+simple.
+
+The planners mark a video that should get AI clips with `VideoPlan.quality = "ai"` (`videoGetsAiClips` in
+lib/visuals/video-quality.ts; Autopilot's `planGroupVideo`, Daily posts through `planVisuals({ videoQuality })`). An
+unmarked plan, or "simple", is the slideshow. **Making the clips is the video engine's part** (requested from the
+video-engine session, 23 October 2026): overnight, without the owner, submit and check Veo clips
+(`AI_CLIPS_PER_VIDEO` × `AI_CLIP_SECONDS`, priced with `veoClipCredits`, paid in studio credits), draw them in the
+slideshow, and fall back to the simple video, credits given back, when the switch, the credits or the AI cannot. Until
+then a marked plan renders as the slideshow.
+
 ## What the owner can change
 
 On the day view's "Pictures and videos" (Content, docs/CONTENT.md) and the Autopilot card ("Picture and video"):

@@ -1232,6 +1232,7 @@ model AutopilotSettings {
   postingTimes          String[] @default(["09:00", "18:00"]) // local times (Business.timezone) it may use
   useAiImages           Boolean  @default(true) // AI photos with people (image credits); false: gallery photos and free templates only
   skipReligiousHolidays Boolean  @default(false) // true: no greetings or posts for religious holidays
+  videoQuality          String   @default("simple") // simple | mix | ai: AI clips in its videos (lib/visuals/video-quality.ts)
   updatedAt             DateTime @updatedAt
 }
 

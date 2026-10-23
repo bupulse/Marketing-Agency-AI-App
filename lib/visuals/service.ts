@@ -33,6 +33,7 @@ import { moodFor } from "@/lib/music/tracks";
 import { trackForVideo } from "@/lib/music/service";
 import type { Audience } from "./people";
 import { buildVideoPlan, readVideoPlan, withSceneTexts } from "./video-plan";
+import { videoGetsAiClips, type VideoQuality } from "./video-quality";
 
 /** A problem the owner can read and act on (a KnowledgeError, so the content actions show its message). */
 export class VisualError extends KnowledgeError {}
@@ -137,6 +138,8 @@ export interface PlanInput {
   image?: boolean;
   /** Make a video plan too (the content is a video, or has a script, and the plan has video). */
   video: boolean;
+  /** The owner's video quality for videos BuPulse makes by itself (Daily posts): "ai" or "mix" may mark it for AI clips. */
+  videoQuality?: VideoQuality;
   carouselAllowed: boolean;
   aiAllowed: boolean;
   maxSlides?: number;
@@ -154,7 +157,7 @@ export interface PlanInput {
 
 const mimeOf = (path: string) => (/\.png$/i.test(path) ? "image/png" : /\.jpe?g$/i.test(path) ? "image/jpeg" : /\.webp$/i.test(path) ? "image/webp" : null);
 
-export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "image" | "subjectId" | "aiExhausted" | "precomputed">): DirectionContext {
+export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "videoQuality" | "image" | "subjectId" | "aiExhausted" | "precomputed">): DirectionContext {
   return {
     subjectType: input.subjectType,
     title: input.title,
@@ -224,6 +227,7 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
       const mood = plan.mood ?? moodFor({ angle: input.angle?.id, tone: input.business.tone });
       video.mood = mood;
       video.music = await trackForVideo(mood, "contentId" in input.target ? input.target.contentId : input.target.groupId);
+      if (videoGetsAiClips(input.videoQuality, seed)) video.quality = "ai";
       const v = await prisma.contentVisual.create({
         data: { businessId: input.owner.businessId, ...input.target, kind: "video", status: "pending", plan: json(video), items: json([]) },
         select: { id: true },

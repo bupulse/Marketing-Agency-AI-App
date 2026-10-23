@@ -29,9 +29,12 @@ describe("daily posts settings on the server", () => {
 
   it("lets an Owner or Admin save, with an audit row of before and after", async () => {
     const saved = await saveDailySettings(admin, input);
-    expect(saved).toEqual(input);
-    expect(prisma.tx.business.update).toHaveBeenCalledWith({ where: { id: "b1" }, data: { dailyPostSettings: input } });
-    expect(prisma.tx.auditLog.create.mock.calls[0][0].data).toMatchObject({ actor: "user:person-1", action: "content.daily_posts", target: "company:b1", before: DEFAULT_DAILY_SETTINGS, after: input });
+    // A form from before the video choice keeps simple videos.
+    const stored = { ...input, videoQuality: "simple" };
+    expect(saved).toEqual(stored);
+    expect(prisma.tx.business.update).toHaveBeenCalledWith({ where: { id: "b1" }, data: { dailyPostSettings: stored } });
+    expect(prisma.tx.auditLog.create.mock.calls[0][0].data).toMatchObject({ actor: "user:person-1", action: "content.daily_posts", target: "company:b1", before: DEFAULT_DAILY_SETTINGS, after: stored });
+    expect((await saveDailySettings(admin, { ...input, videoQuality: "ai" })).videoQuality).toBe("ai");
   });
 
   it("refuses a Member, more posts per app than the plan allows, and bad input, before writing", async () => {

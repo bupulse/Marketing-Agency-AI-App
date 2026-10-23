@@ -17,6 +17,7 @@ import { assignDesigns, chooseLook } from "@/lib/visuals/designs";
 import { directionContext, drawSlide, itemsOf, recentVisualChoices, type DrawState } from "@/lib/visuals/service";
 import { VISUAL_LIMITS, type ImagePlan } from "@/lib/visuals/types";
 import { buildVideoPlan } from "@/lib/visuals/video-plan";
+import { videoGetsAiClips, type VideoQuality } from "@/lib/visuals/video-quality";
 import { makeGroupImages, PHOTO_MARK, type GroupImages, type ImageContext } from "./images";
 import type { PlannedGroup } from "./planner";
 import type { WrittenGroup } from "./writer";
@@ -27,6 +28,8 @@ export interface VisualContext extends ImageContext {
   business: { name: string; tone: string | null; industry: string | null; brandColors: string[] };
   /** The plan has video: video ideas get a video plan. */
   videoAllowed: boolean;
+  /** The owner's video quality (Autopilot settings): "ai" or "mix" mark video plans for AI clips. Simple when missing. */
+  videoQuality?: VideoQuality;
   /** The company's country and personas, for the people in AI photos. */
   audience?: Audience;
 }
@@ -144,6 +147,7 @@ async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: V
   });
   plan.mood = moodFor({ tone: ctx.business.tone });
   plan.music = await trackForVideo(plan.mood, group.groupId);
+  if (videoGetsAiClips(ctx.videoQuality, group.groupId)) plan.quality = "ai";
   await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "video", status: "pending", plan: json(plan), items: json([]) } });
 }
 

@@ -8,17 +8,20 @@ import { SettingsCard } from "@/components/autopilot/settings-card";
 import { Button, GlassCard } from "@/components/ui";
 import { askMessage, can } from "@/lib/team/roles";
 import { loadAutopilotView } from "@/lib/autopilot/view";
+import { videoQualityOffer } from "@/lib/visuals/video-quality-server";
 
 export const metadata = { title: "Autopilot" };
 
 export default async function AutopilotPage() {
   const blocked = await featureGate("autopilot");
   if (blocked) return blocked;
-  const { user, usage, role } = await getAppContext();
+  const { user, usage, role, business } = await getAppContext();
   const canConfigure = can(role, "autopilotSettings");
   const canConnect = can(role, "channels");
   const view = await loadAutopilotView(user.id);
   const creditsLeft = Math.max(0, usage.limits.text - usage.used.text);
+  // The "Videos" choice (Simple, Mix, AI videos): only when the plan makes videos.
+  const videoOffer = canConfigure && business ? await videoQualityOffer(business.id, usage.limits.videoCredits ?? 0).catch(() => null) : null;
 
   return (
     <>
@@ -47,7 +50,7 @@ export default async function AutopilotPage() {
       ) : (
         <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
           {canConfigure ? (
-            <SettingsCard initial={view.config} accounts={view.accounts} timeZone={view.timeZone} />
+            <SettingsCard initial={view.config} accounts={view.accounts} timeZone={view.timeZone} videoOffer={videoOffer} />
           ) : (
             <GlassCard as="section" aria-labelledby="ap-settings" className="flex flex-col gap-2 p-5">
               <h2 id="ap-settings" className="text-lg font-semibold">Autopilot settings</h2>

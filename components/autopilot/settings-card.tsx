@@ -9,6 +9,8 @@ import { cn } from "@/lib/cn";
 import type { AutopilotConfig } from "@/lib/autopilot/settings";
 import { defaultAccountIds, MAX_POSTING_TIMES, MAX_POSTS_PER_WEEK, MIN_POSTS_PER_WEEK } from "@/lib/autopilot/settings";
 import type { ViewAccount } from "@/lib/autopilot/view";
+import { VideoQualityPicker } from "@/components/visuals/video-quality-picker";
+import type { VideoQualityOffer } from "@/lib/visuals/video-quality-server";
 import { Switch } from "./switch";
 
 function ToggleRow({ title, text, checked, onChange }: { title: string; text: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -24,7 +26,7 @@ function ToggleRow({ title, text, checked, onChange }: { title: string; text: st
 }
 
 /** Autopilot's settings: on/off, accounts, how many posts, times and the three "how" choices. */
-export function SettingsCard({ initial, accounts, timeZone }: { initial: AutopilotConfig; accounts: ViewAccount[]; timeZone: string }) {
+export function SettingsCard({ initial, accounts, timeZone, videoOffer = null }: { initial: AutopilotConfig; accounts: ViewAccount[]; timeZone: string; videoOffer?: VideoQualityOffer | null }) {
   const [config, setConfig] = useState(initial);
   const [saved, setSaved] = useState(initial);
   const [newTime, setNewTime] = useState("12:00");
@@ -216,6 +218,11 @@ export function SettingsCard({ initial, accounts, timeZone }: { initial: Autopil
           checked={config.skipReligious}
           onChange={(v) => set("skipReligious", v)}
         />
+        {videoOffer && (
+          <div className="py-4">
+            <VideoQualityPicker name="autopilot-video-quality" value={config.videoQuality} onChange={(v) => set("videoQuality", v)} offer={videoOffer} />
+          </div>
+        )}
       </div>
 
       {error && (

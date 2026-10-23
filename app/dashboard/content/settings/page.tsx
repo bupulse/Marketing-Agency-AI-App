@@ -15,6 +15,7 @@ import { getDailySettings } from "@/lib/daily-posts/settings-service";
 import { hasFeature } from "@/lib/entitlements";
 import { dailyPostAppsLimit, postsPerAppLimit } from "@/lib/plans";
 import { aiPhotosAvailable } from "@/lib/visuals/service";
+import { videoQualityOffer } from "@/lib/visuals/video-quality-server";
 
 export const metadata = { title: "Post settings" };
 
@@ -26,7 +27,15 @@ export default async function ContentSettingsPage() {
     getContentSettings(business.id),
     prisma.connection.findMany({ where: { businessId: business.id, kind: "SOCIAL" }, select: { provider: true, status: true, postingMode: true } }),
     // Daily posts made for you (docs/CONTENT.md): only for plans that have them.
-    hasFeature(business.id, "dailyPosts").then(async (on) => (on ? { settings: await getDailySettings(business.id), aiPhotos: await aiPhotosAvailable({ userId: business.userId, businessId: business.id }).catch(() => false) } : null)),
+    hasFeature(business.id, "dailyPosts").then(async (on) =>
+      on
+        ? {
+            settings: await getDailySettings(business.id),
+            aiPhotos: await aiPhotosAvailable({ userId: business.userId, businessId: business.id }).catch(() => false),
+            videoOffer: await videoQualityOffer(business.id, usage.limits.videoCredits ?? 0).catch(() => null),
+          }
+        : null,
+    ),
   ]);
   const connected = [...new Set(connections.map((c) => c.provider).filter(isNetwork))] as Network[];
 
@@ -43,6 +52,7 @@ export default async function ContentSettingsPage() {
           connected={[...new Set(connections.filter(accountUsable).map((c) => c.provider).filter(isNetwork))] as Network[]}
           perAppLimit={postsPerAppLimit(usage.limits)}
           appsLimit={dailyPostAppsLimit(usage.limits)}
+          videoOffer={daily.videoOffer}
           aiPhotos={daily.aiPhotos}
           canEdit={can(role, "contentSettings")}
           askText={askMessage("contentSettings")}

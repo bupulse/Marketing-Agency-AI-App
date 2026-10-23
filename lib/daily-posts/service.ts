@@ -191,7 +191,7 @@ export async function runDailyPosts(businessId: string, now = new Date()): Promi
         networks,
         perApp: Math.max(...networks.map((n) => room[n] ?? 0)),
         price: "auto",
-        daily: { maxPosts: budget.maxPosts, room, maxAiImages: budget.maxAiImages, maxVideos: budget.maxVideos, avoidAngles: yesterday?.angles ?? [] },
+        daily: { maxPosts: budget.maxPosts, room, maxAiImages: budget.maxAiImages, maxVideos: budget.maxVideos, avoidAngles: yesterday?.angles ?? [], videoQuality: settings.videoQuality },
         requestKey: `daily-${claim.id}-${claim.attempts}`,
       },
       now,

@@ -127,6 +127,12 @@ describe("planVisuals (the art director with the content)", () => {
     expect(image.plan.people).toMatchObject({ role: expect.any(String), age: expect.any(String) });
     expect(video).toMatchObject({ kind: "video", status: "pending" });
     expect(video.plan.scenes[0].text).toBe("The all-new Aero Sneaker");
+    expect(video.plan.quality).toBeUndefined();
+
+    // The daily posts' "AI videos" choice marks the video for AI clips.
+    mocks.prisma.contentVisual.create.mockClear();
+    await planVisuals(input({ video: true, videoQuality: "ai" }));
+    expect(mocks.prisma.contentVisual.create.mock.calls[1][0].data.plan.quality).toBe("ai");
   });
 
   it("an AI error gives the rules' plan (logged), the budget cap gives it quietly", async () => {

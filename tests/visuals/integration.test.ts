@@ -162,6 +162,13 @@ describe("Autopilot group visuals", () => {
     mocks.prisma.contentVisual.create.mockClear();
     await makeGroupVisuals(g, w, { ...ctx, videoAllowed: false }, newRunState());
     expect(mocks.prisma.contentVisual.create.mock.calls.map(([a]) => a.data.kind)).toEqual(["image"]);
+    // Simple videos by default; "AI videos" in the settings marks the video for AI clips (lib/visuals/video-quality.ts).
+    mocks.prisma.contentVisual.create.mockClear();
+    await makeGroupVisuals(g, w, ctx, newRunState());
+    expect(mocks.prisma.contentVisual.create.mock.calls[1][0].data.plan.quality).toBeUndefined();
+    mocks.prisma.contentVisual.create.mockClear();
+    await makeGroupVisuals(g, w, { ...ctx, videoQuality: "ai" }, newRunState());
+    expect(mocks.prisma.contentVisual.create.mock.calls[1][0].data.plan.quality).toBe("ai");
   });
 
   it("the run's caps count a slide that failed half-way (its AI photo was paid)", async () => {

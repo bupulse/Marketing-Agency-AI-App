@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultAccountIds, DEFAULT_CONFIG, readConfig, toRow } from "@/lib/autopilot/settings";
+import { defaultAccountIds, DEFAULT_CONFIG, readConfig, settingsSchema, toRow } from "@/lib/autopilot/settings";
 
 describe("autopilot settings mapping", () => {
   it("starts off and asking first, with AI photos of people on (docs/CONTENT_VISUALS.md)", () => {
@@ -17,10 +17,20 @@ describe("autopilot settings mapping", () => {
   });
 
   it("falls back to default times and clamps the count for odd stored rows", () => {
-    const row = { enabled: true, autoPublish: false, postsPerWeek: 99, connectionIds: [], postingTimes: ["nonsense"], useAiImages: false, skipReligiousHolidays: false };
+    const row = { enabled: true, autoPublish: false, postsPerWeek: 99, connectionIds: [], postingTimes: ["nonsense"], useAiImages: false, skipReligiousHolidays: false, videoQuality: "fancy" };
     const config = readConfig(row);
     expect(config.postsPerWeek).toBe(14);
     expect(config.postingTimes).toEqual(["09:00", "18:00"]);
+    expect(config.videoQuality).toBe("simple");
+  });
+
+  it("keeps simple videos by default and round-trips the video quality", () => {
+    expect(DEFAULT_CONFIG.videoQuality).toBe("simple");
+    expect(readConfig(toRow({ ...DEFAULT_CONFIG, videoQuality: "mix" })).videoQuality).toBe("mix");
+    const { videoQuality, ...older } = DEFAULT_CONFIG;
+    expect(videoQuality).toBe("simple");
+    expect(settingsSchema.parse({ ...older }).videoQuality).toBe("simple");
+    expect(settingsSchema.safeParse({ ...DEFAULT_CONFIG, videoQuality: "4k" }).success).toBe(false);
   });
 });
 

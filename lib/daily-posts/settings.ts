@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { dayKey } from "@/lib/publishing/time";
 import { NETWORKS, type Network } from "@/lib/social/types";
+import { DEFAULT_VIDEO_QUALITY, videoQualitySchema, type VideoQuality } from "@/lib/visuals/video-quality";
 
 export type DailyDesign = "free" | "ai";
 
@@ -16,9 +17,11 @@ export interface DailyPostSettings {
   apps: Network[] | null;
   /** Free designs (your photos and BuPulse designs) by default; AI photos only while the plan's images last. */
   design: DailyDesign;
+  /** Simple videos by default; "mix" or "ai" add real AI clips, paid in studio credits (lib/visuals/video-quality.ts). */
+  videoQuality: VideoQuality;
 }
 
-export const DEFAULT_DAILY_SETTINGS: DailyPostSettings = { enabled: true, perApp: 1, apps: null, design: "free" };
+export const DEFAULT_DAILY_SETTINGS: DailyPostSettings = { enabled: true, perApp: 1, apps: null, design: "free", videoQuality: DEFAULT_VIDEO_QUALITY };
 
 /** The apps a company with no connected app gets posts for (reminders to post them yourself until connected). */
 export const DEFAULT_DAILY_APPS: readonly Network[] = ["instagram", "facebook"];
@@ -29,6 +32,8 @@ export const dailySettingsSchema = z
     perApp: z.number().int().min(1).max(10),
     apps: z.array(z.enum(NETWORKS as unknown as [Network, ...Network[]])).min(1, "Choose at least one app.").max(NETWORKS.length).nullable(),
     design: z.enum(["free", "ai"]),
+    // Optional so a form from before the choice still saves (it keeps "simple").
+    videoQuality: videoQualitySchema.default(DEFAULT_VIDEO_QUALITY),
   })
   .strict();
 
@@ -42,7 +47,7 @@ export function readDailySettings(value: unknown): DailyPostSettings {
     return parsed.success ? (parsed.data as DailyPostSettings[K]) : DEFAULT_DAILY_SETTINGS[key];
   };
   const apps = field("apps");
-  return { enabled: field("enabled"), perApp: field("perApp"), apps: apps ? NETWORKS.filter((n) => apps.includes(n)) : null, design: field("design") };
+  return { enabled: field("enabled"), perApp: field("perApp"), apps: apps ? NETWORKS.filter((n) => apps.includes(n)) : null, design: field("design"), videoQuality: field("videoQuality") };
 }
 
 /**

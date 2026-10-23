@@ -146,6 +146,11 @@ export interface VideoPlan {
   music?: VideoMusic | null;
   /** The mood the art director chose (lib/music/tracks.ts MOODS), for picking music. */
   mood?: string | null;
+  /**
+   * "ai": the owner's video quality (Autopilot, Daily posts: lib/visuals/video-quality.ts) asked for real AI clips in
+   * this video; the video engine makes them and falls back to the slideshow. Missing or "simple": the slideshow.
+   */
+  quality?: "simple" | "ai";
 }
 
 export interface VideoVoice {
