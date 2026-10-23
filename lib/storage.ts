@@ -30,12 +30,12 @@ export function buildObjectPath(
 // Storage policies apply (own folder, account not read-only). `service` makes it with the service key instead, for
 // the few uploads the app allows while the account is read-only (the onboarding logo while the demo is pending); the
 // caller has then already checked the user and built the path in their own folder.
-export async function createSignedUploadUrl(bucket: Bucket, path: string, options: { service?: boolean } = {}) {
+export async function createSignedUploadUrl(bucket: Bucket, path: string, options: { service?: boolean; upsert?: boolean } = {}) {
   // The gallery-videos bucket has no Storage policies: only the server's key can issue its upload tokens.
   const supabase = options.service || bucket === "gallery-videos" ? createAdminClient() : await createClient();
   const { data, error } = await supabase.storage
     .from(bucket)
-    .createSignedUploadUrl(path);
+    .createSignedUploadUrl(path, options.upsert ? { upsert: true } : undefined);
   if (error) throw error;
   return { path: data.path, token: data.token, signedUrl: data.signedUrl };
 }

@@ -132,7 +132,7 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
       const blob = await encodeSpecMp4(spec, new Map(), { musicUrl: view.musicUrl, quality: "720p", onProgress: (f) => setBusy(`${JOINING} ${Math.round(f * 100)}%`) });
       const target = await reelUploadAction(view.id);
       if (!target.ok) throw new Error(target.error);
-      const { error: uploadError } = await createClient().storage.from("gallery-videos").uploadToSignedUrl(target.path, target.token, blob, { contentType: "video/mp4" });
+      const { error: uploadError } = await createClient().storage.from("gallery-videos").uploadToSignedUrl(target.path, target.token, blob, { contentType: "video/mp4", upsert: true });
       if (uploadError) throw new Error("The reel could not be saved. Please try again.");
       const done = await finishReelAction(view.id);
       if (!done.ok) throw new Error(done.error);

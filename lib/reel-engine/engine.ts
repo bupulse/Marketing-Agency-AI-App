@@ -373,7 +373,8 @@ export async function reelUploadTarget(owner: Owner, jobId: string): Promise<{ p
   const job = await prisma.reelJob.findFirst({ where: { id: jobId, businessId: owner.businessId, status: "assembling" } });
   if (!job) throw new ReelError("This reel is not ready to be put together.");
   const path = `${owner.userId}/clips/reels/${job.id}.mp4`;
-  const { token } = await createSignedUploadUrl(CLIPS_BUCKET, path, { service: true });
+  // A re-cut replaces the reel's file.
+  const { token } = await createSignedUploadUrl(CLIPS_BUCKET, path, { service: true, upsert: true });
   return { path, token };
 }
 
