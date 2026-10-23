@@ -82,6 +82,8 @@ export type ReelClip = {
   clipPath?: string | null;
   status: "planned" | "framed" | "filming" | "done" | "failed";
   error?: string | null;
+  /** How many times the video model refused this clip (a refusal costs nothing, so it is sent again, up to 2 times). */
+  tries?: number;
 };
 
 export type ReelPlan = { title: string; caption: string; hashtags: string[]; music: string | null; clips: ReelClip[]; presenter: string };
