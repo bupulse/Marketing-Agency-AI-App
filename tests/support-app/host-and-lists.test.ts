@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({ user: null as null | { id: string } }));
-vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: auth.user } }) } }) }));
+vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: auth.user } }), getClaims: async () => ({ data: auth.user ? { claims: { sub: (auth.user as { id?: string }).id ?? "user" } } : null }) } }) }));
 
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
