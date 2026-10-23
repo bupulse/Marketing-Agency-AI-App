@@ -36,6 +36,18 @@ Format: where (URL) · steps · what happened / what should happen · severity (
      (lib/supabase/server.ts) each call `supabase.auth.getUser()`, a network call to Supabase Auth, so every page pays
      two Auth round trips. Supabase recommends `getClaims()` in the proxy (verifies the JWT locally when the project
      uses asymmetric signing keys); the page would keep `getUser()`. Saves one Auth trip per request.
+   - Batch 5 (fewer trips per page), measured with read-only timings of the shared lookups against TEST:
+     - **Prisma relationJoins** (prisma/schema.prisma generator `previewFeatures`): a nested read was one round trip
+       per level. business -> user -> subscription 800 ms -> 250 ms; companyEntitlements 800 -> 290 ms;
+       getUsageSummary 730 -> 500 ms. Checked: all 125 models read with their relations (take 8, each relation take
+       10, ordered by createdAt then id) give identical results with "query" and "join". Needs `prisma generate` at
+       build (the build does it); no migration.
+     - getAppContext: ensureAccount and resolveCompany together (a first visit looks again), the plan's features start
+       as soon as the company is known.
+     - The logo link is reused for 50 minutes (signedLogoUrl, lib/storage.ts): no Storage call on most pages, and the
+       browser keeps the image.
+     - clientOffer (the layout asks on every page): one read; the expire-and-audit step only when the latest open
+       offer is past its date (was a findMany before every read).
 2. **Quiz round pills were cut off with no hint of more** · polish · /dashboard/knowledge/quiz. Fixed: they scroll to the current round and fade at the edges (a2a0232d).
 3. **A post whose time has passed still says only "Needs approval", with no hint what Approve does** · annoying ·
    /dashboard/calendar (week of 19 Oct: LinkedIn post Tue 20 Oct 09:00, opened on Fri 23 Oct).

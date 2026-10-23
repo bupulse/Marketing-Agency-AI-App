@@ -187,6 +187,17 @@ describe("what the client sees", () => {
     expect(await msg(offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, late))).toMatch(/expired/);
   });
 
+  it("is one read on every page when the company's offer is still open or there is none: nothing to expire", async () => {
+    seed();
+    const findMany = vi.spyOn(h.db.planOffer, "findMany");
+    expect(await offers.clientOffer("biz2", NOW)).toBeNull();
+    await sentOffer();
+    expect(await offers.clientOffer("biz1", NOW)).not.toBeNull();
+    // expireOffers looks for due offers with findMany: not asked while nothing is due.
+    expect(findMany).not.toHaveBeenCalled();
+    findMany.mockRestore();
+  });
+
   it("the custom plan is never on the pricing page or in the plan pickers", async () => {
     seed();
     const id = await sentOffer();

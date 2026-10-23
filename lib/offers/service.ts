@@ -467,11 +467,19 @@ export const clientViewOf = (o: AdminOfferView): ClientOfferView => toClientOffe
 
 // ---- client: see, accept, pay -----------------------------------------------------------------------------------------
 
-/** The company's open offer (sent or accepted), for Billing and the dashboard banner. Expires a due one first. */
+/**
+ * The company's open offer (sent or accepted), for Billing and the dashboard banner. One read on every page (the
+ * dashboard layout asks): only when the latest open offer is past its date are the company's due offers expired (with
+ * their audit rows), then it reads again.
+ */
 export async function clientOffer(businessId: string, now: Date = new Date()): Promise<ClientOfferView | null> {
   if (!businessId) return null;
-  await expireOffers(now, businessId).catch(() => undefined);
-  const row = await prisma.planOffer.findFirst({ where: { businessId, status: { in: ["sent", "accepted"] } }, orderBy: { createdAt: "desc" } });
+  const latest = () => prisma.planOffer.findFirst({ where: { businessId, status: { in: ["sent", "accepted"] } }, orderBy: { createdAt: "desc" } });
+  let row = await latest();
+  if (row && isOfferExpired(row, now)) {
+    await expireOffers(now, businessId).catch(() => undefined);
+    row = await latest();
+  }
   if (!row || isOfferExpired(row, now)) return null;
   // Features being added to a card plan are paid by the card subscription itself, never with the offer's pay buttons.
   if (readCardPlan(row.options)) return null;
