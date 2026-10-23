@@ -9,7 +9,7 @@ const MIN = 60_000;
 
 export function mockData(now = Date.now(), me: AgentMe = MOCK_AGENT) {
   const at = (msAgo: number) => new Date(now - msAgo).toISOString();
-  const msg = (id: string, author: MessageView["author"], body: string, msAgo: number, extra: Partial<MessageView> = {}): MessageView & { seenByVisitorAt: string | null } => ({
+  const msg = (id: string, author: MessageView["author"], body: string, msAgo: number, extra: Partial<MessageView> = {}): MessageView & { seenByVisitorAt: string | null; original: string | null } => ({
     id,
     author,
     kind: "TEXT",
@@ -21,6 +21,7 @@ export function mockData(now = Date.now(), me: AgentMe = MOCK_AGENT) {
     createdAt: at(msAgo),
     clientMsgId: null,
     seenByVisitorAt: null,
+    original: null,
     ...extra,
   });
   const base = { unread: false, tags: [] as string[], urgency: null, leadScore: null, language: "en", assigneeName: null, waitingSince: null, businessName: null };
@@ -168,7 +169,7 @@ export function createMockAgentApi({ me = MOCK_AGENT, now = Date.now(), delayMs 
     },
     async send(id, body) {
       await pause();
-      const message: MessageView & { seenByVisitorAt: string | null } = { id: `new-${++seq}`, author: "AGENT", kind: body.kind ?? "TEXT", body: body.text, agentName: self.name, sources: null, actions: null, attachment: null, createdAt: new Date().toISOString(), clientMsgId: body.clientMsgId, seenByVisitorAt: null };
+      const message: MessageView & { seenByVisitorAt: string | null; original: string | null } = { id: `new-${++seq}`, author: "AGENT", kind: body.kind ?? "TEXT", body: body.text, agentName: self.name, sources: null, actions: null, attachment: null, createdAt: new Date().toISOString(), clientMsgId: body.clientMsgId, seenByVisitorAt: null, original: null };
       const d = find(id);
       d.messages.push(message);
       if (message.kind === "TEXT") patch(id, { status: "OPEN", aiActive: false, waitingSince: null, assigneeName: self.name, preview: body.text, lastMessageAt: message.createdAt });
