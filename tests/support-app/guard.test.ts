@@ -117,3 +117,16 @@ describe("dev-only preview", () => {
     expect(previewAllowed("test")).toBe(true);
   });
 });
+
+describe("refused API calls in the app", () => {
+  it("send the agent to the right sign-in step, and leave other refusals on the page", async () => {
+    const { sessionEnded } = await import("@/components/support-app/app-context");
+    const { AgentApiError } = await import("@/lib/support/app-client/api");
+    expect(sessionEnded(new AgentApiError(401, "unauthorized", ""))).toBe("/sign-in?error=signed_out");
+    expect(sessionEnded(new AgentApiError(403, "locked", ""))).toBe("/sign-in?error=locked");
+    expect(sessionEnded(new AgentApiError(403, "not_agent", ""))).toBe("/sign-in?error=no_access");
+    expect(sessionEnded(new AgentApiError(403, "mfa_required", ""))).toBe("/verify");
+    expect(sessionEnded(new AgentApiError(403, "forbidden", ""))).toBeNull();
+    expect(sessionEnded(new AgentApiError(409, "closed", ""))).toBeNull();
+  });
+});

@@ -15,6 +15,7 @@ const m = vi.hoisted(() => {
     deleteFactor: fn(async () => ({ error: null })),
     sendEmail: fn<(e: { to: string; text: string }) => Promise<boolean>>(async () => true),
     upsert: fn(async () => ({})),
+    releaseChats: fn(async () => ({ count: 2 })),
   };
 });
 
@@ -36,7 +37,8 @@ vi.mock("@/lib/db", () => {
     },
     update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => Object.assign(m.agents.find((a) => a.id === where.id)!, data),
   };
-  const tx = { supportAgent, auditLog: audit, supportAgentDepartment: { deleteMany: async () => ({}) }, adminSetting: { upsert: m.upsert } };
+  const supportConversation = { updateMany: m.releaseChats };
+  const tx = { supportAgent, supportConversation, auditLog: audit, supportAgentDepartment: { deleteMany: async () => ({}) }, adminSetting: { upsert: m.upsert } };
   return {
     prisma: {
       ...tx,
@@ -66,7 +68,7 @@ beforeEach(() => {
   m.setting = null;
   m.audit = [];
   vi.stubEnv("SUPPORT_APP_URL", "https://support.bupulse.com");
-  for (const f of [m.executeRaw, m.generateLink, m.deleteUser, m.listFactors, m.deleteFactor, m.sendEmail, m.upsert]) f.mockClear();
+  for (const f of [m.executeRaw, m.generateLink, m.deleteUser, m.listFactors, m.deleteFactor, m.sendEmail, m.upsert, m.releaseChats]) f.mockClear();
 });
 
 describe("support agents (Admin -> Live chat)", () => {
@@ -116,6 +118,9 @@ describe("support agents (Admin -> Live chat)", () => {
     expect(m.executeRaw).toHaveBeenCalledTimes(1);
     expect(String((m.executeRaw.mock.calls[0] as unknown[])[0])).toContain("DELETE FROM auth.sessions");
     expect(m.audit.map((a) => a.action)).toEqual(["support_agent_lock"]);
+    // Their open chats go back to Waiting, for someone else to take.
+    expect(m.releaseChats).toHaveBeenCalledWith({ where: { assigneeId: "ag1", status: { in: ["OPEN", "WAITING"] } }, data: expect.objectContaining({ status: "WAITING", assigneeId: null }) });
+    expect(m.audit[0].after).toMatchObject({ status: "locked", chatsBackToWaiting: 2 });
     await expect(setAgentLocked(ctx, owner, "ag1", false)).resolves.toEqual({ id: "ag1", status: "active" });
     expect(m.executeRaw).toHaveBeenCalledTimes(1);
   });
