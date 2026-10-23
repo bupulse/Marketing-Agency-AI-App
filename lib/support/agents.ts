@@ -15,6 +15,7 @@ import { writeAudit } from "@/lib/admin/audit";
 import { can, isAdminEmail, type AdminIdentity } from "@/lib/admin/auth";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { DEPARTMENT_KEYS, type DepartmentKey } from "./contract";
+import { forceLogout } from "./realtime";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -227,7 +228,11 @@ export async function setAgentLocked(ctx: AdminContext, actor: AdminIdentity, id
     await tx.supportAgent.update({ where: { id }, data: locked ? { status, lockedAt: new Date(), availability: "offline" } : { status, lockedAt: null } });
     await writeAudit(tx, ctx, locked ? "support_agent_lock" : "support_agent_unlock", `support_agent:${id}`, { status: agent.status }, { status });
   });
-  if (locked && agent.userId) await signOutEverywhere(agent.userId);
+  if (locked) {
+    if (agent.userId) await signOutEverywhere(agent.userId);
+    // Open support-app tabs keep their socket until the token expires: tell them to go to the sign-in page now.
+    await forceLogout(id).catch((e) => logError(e, { source: "support.agent.forceLogout", level: "warn" }));
+  }
   return { id, status };
 }
 

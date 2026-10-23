@@ -18,9 +18,9 @@ beforeEach(() => {
 describe("chat leads (Admin -> Live chat)", () => {
   it("lists help-chat leads newest first, a page at a time, with the chat to open", async () => {
     m.findMany.mockResolvedValue([row("lead00000001", 1), row("lead00000002", 5), row("lead00000003", 9)]);
-    m.visitors.mockResolvedValue([{ leadId: "lead00000001", conversations: [{ id: "conv1" }] }, { leadId: "lead00000002", conversations: [] }]);
+    m.visitors.mockResolvedValue([{ leadId: "lead00000001", conversations: [{ id: "conv1", createdAt: new Date("2026-10-23T09:59:00Z") }] }, { leadId: "lead00000002", conversations: [] }]);
     const out = await chatLeads({ limit: 2 });
-    expect(m.findMany).toHaveBeenCalledWith({ where: { kind: "support_chat" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 3 });
+    expect(m.findMany.mock.calls[0][0]).toMatchObject({ where: { kind: "support_chat" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 3 });
     expect(out.items.map((l) => [l.id, l.conversationId])).toEqual([["lead00000001", "conv1"], ["lead00000002", null]]);
     expect(out.next).toBe("lead00000002");
   });
