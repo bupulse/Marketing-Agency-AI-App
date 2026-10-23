@@ -68,13 +68,13 @@ beforeEach(() => {
 describe("planning a batch", () => {
   it("reserves exactly the batch's credits and saves one planned picture per slot, Pro first", async () => {
     const res = await planBatch(owner, { source: "designs", subjectId: "p1", brief: "large scale", count: 4, quality: "auto", aspectRatio: "4:5" });
-    expect(res).toMatchObject({ count: 4, credits: 7, pro: 1 });
-    expect(h.consume).toHaveBeenCalledWith("u1", "image", 7);
+    expect(res).toMatchObject({ count: 4, credits: 10, pro: 1 });
+    expect(h.consume).toHaveBeenCalledWith("u1", "image", 10);
     expect(h.rows.map((r) => r.tier)).toEqual(["pro", "lite", "lite", "lite"]);
     expect(h.rows[0]).toMatchObject({ pattern: "at-scale", photoPath: "u1/gallery/a.jpg", credits: 4, caption: "Caption 0", creditPeriod: period });
   });
   it("makes fewer pictures when the credits run short, and refuses with none", async () => {
-    h.left.value = 2;
+    h.left.value = 4;
     expect((await planBatch(owner, { source: "designs", count: 4, quality: "auto", aspectRatio: "1:1" })).count).toBe(2);
     h.left.value = 0;
     await expect(planBatch(owner, { source: "designs", count: 4, quality: "auto", aspectRatio: "1:1" })).rejects.toThrow("no AI image credits left");
@@ -91,7 +91,7 @@ describe("painting a batch", () => {
     const first = h.design.mock.calls[0][0];
     expect(first).toMatchObject({ model: "gemini-3-pro-image", usePhotoPath: "u1/gallery/a.jpg", useLogo: true, aspectRatio: "4:5" });
     expect(first.prompt).toContain('Headline, large and bold: "Headline 0"');
-    expect(h.design.mock.calls[1][0].model).toBe("gemini-2.5-flash-image");
+    expect(h.design.mock.calls[1][0].model).toBe("gemini-3.1-flash-image");
   });
   it("lets the Editor fix a picture that fails the check once, keeping the better one", async () => {
     const { batchId } = await planBatch(owner, { source: "designs", subjectId: "p1", count: 4, quality: "lite", aspectRatio: "4:5" });

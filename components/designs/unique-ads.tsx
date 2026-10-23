@@ -4,15 +4,15 @@ import { Check, Copy, LoaderCircle, Sparkles, ThumbsDown, ThumbsUp, Wand2 } from
 import { useRef, useState } from "react";
 import { Badge, Button, Chip, GlassCard, Input, Textarea, useToast } from "@/components/ui";
 import { editPictureAction, paintImageStep, ratePictureAction, startImageBatch, type PictureView } from "@/app/dashboard/designs/engine-actions";
-import { chooseTiers, creditsOf, type Quality } from "@/lib/image-engine/director";
+import { chooseTiers, creditsOf, TIER_CREDITS, type Quality } from "@/lib/image-engine/director";
 import { patternById } from "@/lib/image-engine/patterns";
 import { cn } from "@/lib/cn";
 
 const COUNTS = [4, 10, 20] as const;
 const QUALITIES: { value: Quality; label: string; hint: string }[] = [
   { value: "auto", label: "Smart mix", hint: "The best ideas on Pro, the rest on Lite" },
-  { value: "pro", label: "Best (Pro)", hint: "Every picture on Nano Banana Pro, 4 credits each" },
-  { value: "lite", label: "Saver (Lite)", hint: "Every picture on Nano Banana, 1 credit each" },
+  { value: "pro", label: "Best (Pro)", hint: `Every picture on Nano Banana Pro, ${TIER_CREDITS.pro} credits each` },
+  { value: "lite", label: "Saver (Lite)", hint: `Every picture on Nano Banana 2, ${TIER_CREDITS.lite} credits each` },
 ];
 const SHAPES = [
   { value: "4:5", label: "Feed (4:5)" },

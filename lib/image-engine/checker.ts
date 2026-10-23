@@ -3,7 +3,11 @@
 // problem; the Editor gets one try to fix it (engine.ts). This file's judge is pure (tested); the reading is in check.ts.
 
 export type Expected = { headline: string; subline: string; cta: string; productShown: boolean };
-export type Seen = { texts: string[]; productVisible: boolean };
+/**
+ * What the Checker read: all the text, and for each line we asked for, what is really written there letter by letter
+ * (a reading model tends to correct typos silently, so it is asked to compare, not only to read).
+ */
+export type Seen = { texts: string[]; productVisible: boolean; lines?: { expected: string; written: string; same: boolean }[] };
 export type Verdict = { ok: boolean; problems: string[]; fix: string | null };
 
 const norm = (s: string) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -43,13 +47,18 @@ export function judge(expected: Expected, seen: Seen): Verdict {
   const problems: string[] = [];
   const fixes: string[] = [];
   for (const [label, words] of [["headline", expected.headline], ["small line", expected.subline], ["button", expected.cta]] as const) {
-    if (words && !wordsShown(words, seen.texts)) {
+    if (!words) continue;
+    const line = seen.lines?.find((l) => norm(l.expected) === norm(words));
+    // The letter-by-letter answer wins when there is one, and its copy must match exactly (one letter off is the typo
+    // this check is for); without one, the words must be found in what was read.
+    const right = line ? line.same && norm(line.written) === norm(words) : wordsShown(words, seen.texts);
+    if (!right) {
       problems.push(`The ${label} is not written correctly.`);
       fixes.push(`Write the ${label} exactly as: "${words}".`);
     }
   }
   const allowed = new Set(numbers([expected.headline, expected.subline, expected.cta].join(" ")));
-  const extra = [...new Set(seen.texts.flatMap(numbers))].filter((n) => !allowed.has(n));
+  const extra = [...new Set([...seen.texts, ...(seen.lines ?? []).map((l) => l.written)].flatMap(numbers))].filter((n) => !allowed.has(n));
   if (extra.length) {
     problems.push(`The picture shows numbers nobody gave: ${extra.join(", ")}.`);
     fixes.push(`Remove every number that is not in the words above (${extra.join(", ")}).`);
