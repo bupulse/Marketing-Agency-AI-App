@@ -1,4 +1,8 @@
-# AI clips (Google Veo)
+# AI clips (Google Veo, now Gemini Omni Flash)
+
+> **23 October 2026:** Google shut the Veo 3.1 previews down on 22 October. AI clips are now made by **Gemini Omni
+> Flash** (same Gemini key, about $0.10 a second, twice the old price), so the credits below doubled. The switch keeps
+> its name, "Google Veo AI clips".
 
 "AI makes the clips" puts 2 or 3 short **real moving clips** of your product into a Motion video: hands using the
 product, the product in a Kigali setting, a slow close-up. Google Veo makes each clip from your product photo, so your
@@ -7,8 +11,8 @@ real product is in it. BuPulse then adds its own text, music and voice-over on t
 **Page:** the Video Studio, **Create** (`/create`), Motion engine, the **Options** pill: "AI makes the clips (Google
 Veo)".
 
-**Price:** 65 credits for each 4 s clip (95 for 6 s, 130 for 8 s), on top of the video's 35 credits. Three 4 s clips
-make the whole video 230 credits (2,300 RWF). The Generate button shows the total before you press it. A clip Google
+**Price:** 130 credits for each 4 s clip (190 for 6 s, 255 for 8 s), on top of the video's 35 credits. Three 4 s clips
+make the whole video 425 credits (4,250 RWF). The Generate button shows the total before you press it. A clip Google
 cannot make gives its credits back.
 
 ## How to use it
@@ -27,12 +31,12 @@ When the **Videos** choice (Autopilot's settings card, or Content -> Settings fo
 video) or **Mix** (one video in four), BuPulse makes the AI clips by itself, with nobody present:
 
 1. The video is planned as usual, and its panel says **"AI clips being made"**.
-2. Within about 4 minutes BuPulse takes **190 studio credits** (2 clips of 6 s) and asks Google for the clips: one for
+2. Within about 4 minutes BuPulse takes **380 studio credits** (2 clips of 6 s) and asks Google for the clips: one for
    the opening scene and one for a body scene, each starting from that scene's photo.
 3. About 5 to 15 minutes later the clips are in the video, and the video robot (or your browser) makes the MP4 with the
    clips playing in their scenes, under the captions, with the video's own voice-over and music.
-4. If Google makes only one clip, the video keeps it and the other clip's 95 credits come back. If none is made, the
-   video is a simple slideshow and all 190 credits come back. Either way the panel says why.
+4. If Google makes only one clip, the video keeps it and the other clip's 190 credits come back. If none is made, the
+   video is a simple slideshow and all 380 credits come back. Either way the panel says why.
 
 A simple video is made at once, with no credits taken, when AI clips are switched off, there are not enough studio
 credits, the video has no photo, or BuPulse has made its most AI clips for today (`VEO_CLIPS_PER_DAY`, 10 by
@@ -58,8 +62,8 @@ default).
 
 | Part | Where |
 | --- | --- |
-| Veo calls (submit, poll, download), errors in plain English, prices, prompts, the default shot plan | `lib/video-engine/veo.ts` |
-| Credits (`veoClipCredits`: 4 s 65, 6 s 95, 8 s 130) | `lib/video-engine/credits.ts` |
+| Clip calls (Gemini Omni through the Interactions API by default, Veo's predictLongRunning for a Veo model): submit, check, the clip inline or downloaded, errors in plain English, prices, prompts, the default shot plan | `lib/video-engine/veo.ts` |
+| Credits (`veoClipCredits`, Gemini Omni: 4 s 130, 6 s 190, 8 s 255) | `lib/video-engine/credits.ts` |
 | Ledger price (seconds as input tokens), feature `video-veo`, provider `veo` | `lib/ai/pricing.ts`, `lib/video-engine/ledger-features.ts` |
 | Service switch "Google Veo AI clips" (`veo`: `GEMINI_API_KEY`, optional `VEO_MODEL`, `VEO_USD_PER_SECOND`) and its free test | `lib/admin/service-catalog.ts`, `lib/admin/service-tests.ts` |
 | Runs, credits and refunds, retries, Gallery copies, resume after a restart, clips into the design brief | `video-lab/ai-clips.ts` |

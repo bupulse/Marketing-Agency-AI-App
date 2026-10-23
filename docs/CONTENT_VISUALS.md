@@ -156,19 +156,21 @@ minutes; owner decision "fully automatic", 23 October 2026). A marked video is c
 settled (`robotWaitingWhere`, `leaseVideoForBrowser`; the panel says "AI clips being made").
 1. **Start:** the "Google Veo AI clips" switch, the Gemini key, a scene photo and BuPulse's own limit
    (`VEO_CLIPS_PER_DAY`, 10 clips in 24 hours for all companies) are checked, then `AI_CLIPS_PER_VIDEO` (2) ×
-   `veoClipCredits(AI_CLIP_SECONDS)` (95 for 6 s) = **190 studio credits** are taken from the company owner
+   `veoClipCredits(AI_CLIP_SECONDS)` (190 for 6 s of Gemini Omni Flash, about $0.10 a second; Google shut the Veo 3.1
+   previews down on 22 October 2026) = **380 studio credits** are taken from the company owner
    (`videoCredits`). The clip scenes are picked by `pickClipScenes` (`lib/visuals/clip-scenes.ts`): the opening scene
    first, then a body scene with a different photo; never the closing scene. Each clip starts from that scene's photo
    (`firstFrame`, 720x1280 centre crop, `lib/video-engine/veo-frame.ts`), with the product's name and summary in the
-   prompt (`veoPrompt`, `defaultClipPlan`: hands using it, then the product in everyday life). Submitted through
+   prompt (`veoPrompt`, `defaultClipPlan`: hands using it, then the product in everyday life; the prompt asks for the
+   length, which Omni has no setting for, and the real length is read from the file). Submitted through
    `withLedger` (feature `video-veo`: the switch and the platform cap). Then `clipState = "making"`.
-2. **Check:** each sweep asks Google about each clip (`getVeoOperation`); a made clip is downloaded at once
-   (`downloadVeo`; Google keeps it 2 days) into the media bucket, `<userId>/aiclips/<visualId>-<scene>.mp4`, and its 6
-   seconds go into the ledger (`recordAiCall`). A sweep that cannot reach Google or save a clip tries again next time.
+2. **Check:** each sweep asks Google about each clip (`getVeoOperation`); a made clip is taken at once (`veoClipBytes`:
+   inline from Gemini Omni, or downloaded) into the media bucket, `<userId>/aiclips/<visualId>-<scene>.mp4`, and its 6
+   real seconds go into the ledger (`recordAiCall`). A sweep that cannot reach Google or save a clip tries again next time.
 3. **Settle** when every clip is made or failed, or 20 minutes after the start: the made clips go into their scenes
    (`VideoScene.clipPath`, the scene held for the clip, the video still within 30 s: `withClips`) and `clipState =
    "done"`; with none made, `withoutClips` clears the mark (`quality = "simple"`) and `clipState = "fallback"`. Owner
-   decision: a half-done video **keeps the clip that was made** and gives back the other clip's 95 credits.
+   decision: a half-done video **keeps the clip that was made** and gives back the other clip's 190 credits.
 4. **Credits back exactly once:** the settling update is conditional (still waiting or making, the held credits
    unchanged), so two sweeps never both refund. A start that died after taking the credits is refunded by the next
    sweep, or followed up when its clips already reached Google. Deleting the video (`releaseVideo`) gives back credits
@@ -187,7 +189,9 @@ top). The clip's own sound is never used (the video's voice-over and music are).
 decoded keeps the scene's photo; the real-time WebM fallback shows the photos. The robot gets the clips as signed URLs
 (`clipUrls`) and passes them to its page as data URLs; the browser gets them from `startVideoRender`. Checked on 23
 October 2026 with a paid lab clip through the robot's self-test (`SELF_TEST_CLIP=<mp4> node
-scripts/video-robot/self-test.mjs`): the clip moves under the caption in the opening scene.
+scripts/video-robot/self-test.mjs`): the clip moves under the caption in the opening scene. **First real run** (23
+October 2026, LEAF on TEST, owner-approved): 2 Gemini Omni clips of 6.0 s made in about 85 s for $1.20, rendered by the
+robot's renderer into a 20 s MP4 with the clips in scenes 1 and 2 (docs/AI_COSTS.md, the test clips table).
 
 Tests: `tests/visuals/ai-clips.test.ts` (Google as a fake fetch: every fallback, partial, timeout, retries, refund
 once), `tests/visuals/clip-scenes.test.ts`, `tests/visuals/clip-layers.test.ts`.

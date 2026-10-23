@@ -73,6 +73,22 @@ expired clips are given back and BytePlus does not bill them. Free previews (no 
 
 ### Veo AI clips (Google, 19 October 2026)
 
+**23 October 2026: now Gemini Omni Flash.** Google shut the three Veo 3.1 previews down on the Gemini API on 22 October
+2026 (a submit answers 404 "no longer available ... use models/gemini-omni-1.1-flash"). Owner decision the same day:
+AI clips use **Gemini Omni Flash** (`gemini-omni-1.1-flash`, the default `VEO_MODEL`), same Gemini key, through the
+Interactions API. Price from the Gemini API pricing page read that day: $17.50 per million output tokens at 5,792 tokens
+a second of 720p, **about $0.10 a second** (twice Veo Lite; no free tier). Credits by the same formula:
+
+| One Gemini Omni clip (720p, 9:16) | Provider cost (USD) | RWF | Client pays (credits) | RWF | Margin |
+| --- | --- | --- | --- | --- | --- |
+| 4 s | 0.40 | 580 | 130 | 1,300 | 2.2× |
+| 6 s | 0.60 | 870 | 190 | 1,900 | 2.2× |
+| 8 s | 0.80 | 1,160 | 255 | 2,550 | 2.2× |
+
+Omni has no length setting: the prompt asks for the length ("Length: about 6 seconds."), and the first real clips came
+out 6.0 s for 6 asked; the ledger records the file's real seconds. The Veo tables below are kept for history (and for a
+Veo model set by hand in `VEO_MODEL`).
+
 "AI makes the clips" adds 2 or 3 real moving clips of the product to a Motion video, made by **Google Veo 3.1 Lite**
 through the Gemini API (the existing `GEMINI_API_KEY`; Veo has no free tier, so billing must be on). Owner decision,
 19 October 2026. Price: **$0.05 a second at 720p**, audio always on (BuPulse mutes it and uses its own music and
@@ -95,12 +111,12 @@ clip costs nothing, and its credits are given back. Credits use the usual formul
 
 | An Autopilot / Daily posts video marked "AI" (made overnight, `lib/visuals/ai-clips.ts`) | Provider cost (USD) | Client pays (credits) | RWF |
 | --- | --- | --- | --- |
-| Slideshow + 2 clips of 6 s (the default: `AI_CLIPS_PER_VIDEO`, `AI_CLIP_SECONDS`) | 0.60 (the slideshow is free) | 190 | 1,900 |
-| Half done (1 clip made, 1 blocked or failed; Google bills only the made one) | 0.30 | 95 (95 back) | 950 |
-| Nothing made (simple video instead) | 0 | 0 (190 back) | 0 |
+| Slideshow + 2 Gemini Omni clips of 6 s (the default: `AI_CLIPS_PER_VIDEO`, `AI_CLIP_SECONDS`) | 1.20 (the slideshow is free) | 380 | 3,800 |
+| Half done (1 clip made, 1 blocked or failed; Google bills only the made one) | 0.60 | 190 (190 back) | 1,900 |
+| Nothing made (simple video instead) | 0 | 0 (380 back) | 0 |
 
 "Mix" makes one video in four an AI video. BuPulse's own limit, `VEO_CLIPS_PER_DAY` (default 10 clips in 24 hours for
-all companies, at most about $3 a day), stops a run-away spend; the videos past it are simple videos with no credits
+all companies, at most about $6 a day at Omni's price), stops a run-away spend; the videos past it are simple videos with no credits
 taken. The voice-over and music of these videos are the slideshow's own (plan voice-over characters, the music
 library), not studio credits.
 
@@ -119,6 +135,8 @@ input tokens and priced per second in `lib/ai/pricing.ts`) for a client.
 | 5 | 19 Oct 2026 | 4 s, studio route, centre crop (`vc-1475999cf352`) | the greenhouse rack, then the scene morphs into a street shop and the rack changes shape (the "Kigali setting" asked for a new place; prompt fixed after this) | 0.20 | 1.00 |
 | 6 | 19 Oct 2026 | 4 s, studio route, fixed prompt (`vc-fbd17b278a07`) | the same rack stays in its greenhouse; slow orbit, the sun flares through; the product and its LEAF base unchanged | 0.20 | 1.20 |
 | 7-9 | 19 Oct 2026 | 3 clips of 4 s made together from the Create page for a viral recipe's AI beats (run `vr-32e2d800bc09`, 55 to 74 s) | the spiral, terracotta and sculpture towers from their own photos, hands reaching in; then designed (same recipe), rendered to a 15 s MP4 with music: clips placed in scenes 2 to 4, their sound absent from the mix | 0.60 | 1.80 |
+| - | 23 Oct 2026 | the overnight clip maker's first try (`lib/visuals/ai-clips.ts`, LEAF Hydro Tower video on TEST) | Google refused both submits: Veo 3.1 Lite shut down the day before (404). Not billed; the video fell back to the slideshow and its 190 credits came back once | 0.00 | 1.80 |
+| 10-11 | 23 Oct 2026 | 2 Gemini Omni Flash clips of 6 s by the overnight clip maker (same LEAF video, owner-approved paid test), both made in about 85 s, 6.0 s each (3.2 and 4.7 MB) | scene 1 from the tower photo: push-in, an adult's hand picks basil, the product unchanged; scene 2: slow move over the terracotta tower. Rendered by the robot's renderer into a 20 s MP4 (4.9 MB, 11 s to make) with the clips under the captions and the music | 1.20 | 3.00 |
 
 **What the margins say:**
 - **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to
