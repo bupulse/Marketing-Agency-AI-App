@@ -220,7 +220,8 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
       clip.operation = await submitVeo({ model, prompt: veoClipPrompt(clip, job.language as ReelLanguage, plan.setting), image: { base64: base64(frame), mimeType }, ratio: "9:16", seconds: CLIP_SECONDS, resolution: "720p" }, { apiKey });
       clip.status = "filming";
     }
-    // 3. The clips being filmed: done ones are downloaded, through the cost ledger.
+    // 3. The clips being filmed: one finished clip is downloaded and checked per step (four in one request took longer
+    // than the test site's connection waits, and the screen lost the reel).
     for (const [i, clip] of plan.clips.entries()) {
       if (clip.status !== "filming" || !clip.operation) continue;
       const op = await getVeoOperation(clip.operation, { apiKey });
@@ -255,6 +256,7 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
           clip.operation = null;
         }
       }
+      break;
     }
     const failed = plan.clips.find((c) => c.status === "failed");
     if (failed) return void (await save({ status: "failed", error: `A clip could not be made: ${failed.error}` }));
@@ -352,6 +354,12 @@ export async function reelContact(businessId: string): Promise<string | null> {
   if (whatsapp) return `WhatsApp ${contactDisplay(whatsapp)}`;
   const phone = contacts.find((c) => canCall(c.type));
   return phone ? `Call ${contactDisplay(phone)}` : null;
+}
+
+/** A finished reel is edited again from its clips, already paid for (free: only the browser's work). */
+export async function recutReel(owner: Owner, jobId: string): Promise<void> {
+  const { count } = await prisma.reelJob.updateMany({ where: { id: jobId, businessId: owner.businessId, status: "done" }, data: { status: "assembling" } });
+  if (count === 0) throw new ReelError("Only a finished reel can be cut again.");
 }
 
 /** The company's latest reel of the last week (the screen shows it and carries on with it when it is not finished). */

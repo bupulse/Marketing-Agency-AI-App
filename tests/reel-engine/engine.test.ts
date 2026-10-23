@@ -56,6 +56,11 @@ import { veoClipUsd, veoModel } from "@/lib/video-engine/veo";
 
 const owner = { userId: "u1", businessId: "b1" };
 
+/** Steps until the reel is no longer filming (one finished clip is saved and checked per step). */
+async function settle(id: string) {
+  for (let n = 0; n < 20 && h.jobs.get(id)!.status === "filming"; n++) await stepReel(owner, id);
+}
+
 beforeEach(() => {
   h.jobs.clear();
   h.switchOn.value = true;
@@ -91,6 +96,9 @@ describe("the reel engine (test only)", () => {
     await stepReel(owner, id);
     expect(h.submit).toHaveBeenCalledTimes(4);
     expect(h.submit.mock.calls[0][0]).toMatchObject({ ratio: "9:16", seconds: 8, resolution: "720p", image: { mimeType: "image/png" } });
+    // One finished clip is saved and checked per step, so no request runs long.
+    expect(h.upload).toHaveBeenCalledTimes(1);
+    await settle(id);
     const job = h.jobs.get(id)!;
     expect(job.status).toBe("assembling");
     expect(h.upload).toHaveBeenCalledTimes(4);
@@ -154,14 +162,16 @@ describe("the clip checker in the engine", () => {
       .mockResolvedValueOnce({ ok: false, problems: ["3 s: a man walks through the tower"], ran: true })
       .mockResolvedValueOnce({ ok: false, problems: ["5 s: her fingers melt into the leaves"], ran: true })
       .mockResolvedValueOnce({ ok: false, problems: ["1 s: a face changes"], ran: true });
-    await stepReel(owner, id);
-    const plan = h.jobs.get(id)!.plan as { refilms: number; clips: { status: string; avoid?: string[] }[] };
+    await settle(id);
+    const plan = h.jobs.get(id)!.plan as { refilms: number; clips: { status: string; avoid?: string[]; problems?: string[] }[] };
     expect(plan.refilms).toBe(2);
-    expect(plan.clips.map((c) => c.status)).toEqual(["framed", "framed", "done", "done"]);
-    expect(plan.clips[0].avoid).toEqual(["3 s: a man walks through the tower"]);
-    await stepReel(owner, id);
+    expect(plan.clips.every((c) => c.status === "done")).toBe(true);
+    // The first clip was filmed again twice, each time told what went wrong; its third take is kept with what the
+    // checker saw, because the reel's 2 refilms were used.
+    expect(plan.clips[0].avoid).toEqual(["5 s: her fingers melt into the leaves"]);
+    expect(plan.clips[0].problems).toEqual(["1 s: a face changes"]);
     expect(h.submit).toHaveBeenCalledTimes(6);
-    expect(String(h.submit.mock.calls[4][0].prompt)).toContain("avoid exactly this: 3 s: a man walks through the tower.");
+    expect(h.submit.mock.calls.slice(4).map((c) => String(c[0].prompt)).join(" ")).toContain("avoid exactly this: 3 s: a man walks through the tower.");
     expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
     // 6 clips paid: the 4 and the 2 filmed again.
     expect(h.jobs.get(id)!.costUsd).toBeCloseTo(4 * 0.067 + 6 * veoClipUsd(8, veoModel()), 2);

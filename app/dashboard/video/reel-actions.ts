@@ -7,7 +7,7 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
-import { ReelError, finishReel, retryReel, reelTestCapUsd, reelTestSpentUsd, reelUploadTarget, reelView, startReel, stepReel, type ReelView } from "@/lib/reel-engine/engine";
+import { ReelError, finishReel, recutReel, retryReel, reelTestCapUsd, reelTestSpentUsd, reelUploadTarget, reelView, startReel, stepReel, type ReelView } from "@/lib/reel-engine/engine";
 import { REEL_LANGUAGES } from "@/lib/reel-engine/story";
 import { can } from "@/lib/team/roles";
 
@@ -68,6 +68,18 @@ export async function retryReelAction(jobId: string): Promise<{ ok: true } | Fai
   if (!owner || !id.safeParse(jobId).success) return { ok: false, error: "That reel was not found." };
   try {
     await retryReel(owner, jobId);
+    return { ok: true };
+  } catch (error) {
+    return failure(error, owner.userId);
+  }
+}
+
+/** A finished reel is edited again from its clips (free). */
+export async function recutReelAction(jobId: string): Promise<{ ok: true } | Fail> {
+  const owner = await ownerOf();
+  if (!owner || !id.safeParse(jobId).success) return { ok: false, error: "That reel was not found." };
+  try {
+    await recutReel(owner, jobId);
     return { ok: true };
   } catch (error) {
     return failure(error, owner.userId);
