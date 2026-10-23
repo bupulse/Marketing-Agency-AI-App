@@ -5,6 +5,9 @@ import { VideoLibrary, type StudioState } from "@/components/video-library/video
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { can } from "@/lib/team/roles";
 import { listLibraryVideos, markStudioVideosSeen } from "@/lib/video-library/service";
+import { UniqueReels } from "@/components/video/unique-reels";
+import { reelEngineOn } from "@/lib/reel-engine/engine";
+import { subjectOptions } from "@/lib/knowledge/service";
 
 export const metadata = { title: "Videos" };
 
@@ -21,7 +24,9 @@ export default async function VideosPage({ searchParams }: PageProps<"/dashboard
   const reason = typeof params.studio === "string" && REASONS.has(params.studio) ? params.studio : null;
   const focus = typeof params.v === "string" ? params.v.slice(0, 40) : null;
 
-  const [videos, studioOn] = await Promise.all([listLibraryVideos(business.id), isServiceEnabled("studio")]);
+  const [videos, studioOn, reelsOn] = await Promise.all([listLibraryVideos(business.id), isServiceEnabled("studio"), can(role, "content") ? reelEngineOn(business.id) : false]);
+  // The temporary reel engine (docs/REEL_ENGINE.md): only while it is tested, for the companies it is on for.
+  const reelProducts = reelsOn ? (await subjectOptions(business.id)).products.map((p) => ({ id: p.id, name: p.name })) : [];
   // Opening the library is what "seen" means for the bell; the cards still say "New" this once.
   await markStudioVideosSeen(business.id, videos.filter((v) => v.isNew).map((v) => v.id)).catch(() => {});
 
@@ -31,6 +36,7 @@ export default async function VideosPage({ searchParams }: PageProps<"/dashboard
   return (
     <>
       <PageHeader title="Videos" description="Every video BuPulse made for you, from the Video Studio and your daily posts. Make new ones in the Video Studio; they appear here when they are ready." />
+      {reelsOn && <UniqueReels products={reelProducts} brand={{ name: business.name, color: business.brandColors.find((c) => /^#[0-9a-f]{6}$/i.test(c)) ?? "#1B5E20" }} />}
       <VideoLibrary
         initialVideos={videos}
         studio={studio}

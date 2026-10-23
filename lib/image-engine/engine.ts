@@ -49,7 +49,7 @@ export async function creditsLeft(userId: string): Promise<number> {
   return Math.max(0, (usage.limits.image ?? 0) - (usage.used.image ?? 0));
 }
 
-async function loadFacts(owner: Owner, subjectId: string | null | undefined) {
+export async function loadFacts(owner: Owner, subjectId: string | null | undefined) {
   const business = await prisma.business.findUnique({
     where: { id: owner.businessId },
     select: { id: true, userId: true, name: true, industry: true, description: true, audience: true, tone: true, contentLanguage: true, country: true, knowledge: true, brandColors: true, logoUrl: true },
