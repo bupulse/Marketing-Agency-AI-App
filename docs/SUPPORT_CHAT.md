@@ -69,3 +69,22 @@ A UX and feature study of dashboard.tawk.to: the owner signs in to their own fre
 - **Real time:** Supabase Realtime (free tier, already on Supabase) for new messages, typing and the visitors list, with a 5 s polling fallback.
 - **AI model:** Gemini Flash-Lite (the same as the website chat, free tier), with the main text model as fallback. It is logged in the AI cost ledger as feature `support`.
 - **IP location:** the hosting provider's geo headers (Netlify `x-nf-geo` / Cloudflare `cf-ipcountry`), with no paid IP database. The IP is stored for 30 days, then reduced to the country.
+
+## 8. Build (started 2026-10-23)
+
+**Designs:** the owner approved the mockups on the canvas "BuPulse Support Chat Design" (https://claude.ai/artifact/5nKvVay7E27mP37zBaP8e5). Build what they show.
+- **Brand:** Geist, background `#f5f5f7`, text `#1d1d1f`, muted `#5e5e63`, and the brand gradient `linear-gradient(120deg, #2f6bff, #7b5cff)` for the launcher and primary buttons. Use the existing Tailwind tokens and components (`bg-brand-gradient`, `glass`, `Button`, `GlassCard`).
+- **Support app sidebar:** the brand gradient in light mode, not black (owner, 23 Oct). In dark mode it takes a dark tone, e.g. `#0b0b0f` or the dark glass of the dashboard, with the gradient only on accents.
+- Both the support app and the widget follow the site's light/dark theme.
+
+**Contract:** `lib/support/contract.ts` defines the request bodies, responses, routes and real-time events. Prisma models are `Support*` in `prisma/schema.prisma`. Change the contract only in sc-core, and announce it.
+
+**Who builds what.** Three branches off `support-chat`, each in its own folder:
+
+| Branch / folder | Owns | Does not touch |
+|---|---|---|
+| `sc-core` (`~/BuPulse-sc-core`) | The migration (with the `support_heartbeat` RPC and the RLS on `realtime.messages`), `lib/support/**` (except the contract, which it may extend), `app/api/support/**`, AI (guide search over `SupportGuideChunk`, account facts, hand-over rules, summary, suggestions, rewrite), real-time broadcast, uploads to the private bucket `support`, leads from the pre-chat form, email alerts after 2 min, retention jobs, the agent auth guard `requireSupportAgent`, the agent and department services that Admin uses, and tests | Widget UI, support app UI |
+| `sc-widget` (`~/BuPulse-sc-widget`) | The visitor chat:<br>• loader `public/support-widget.js`<br>• chat page `app/help-chat/**`<br>• its UI and greeting rules<br>• mounting it on public pages, the dashboard and the creator portal (never Admin)<br>• the bio-page corner link<br>• the privacy-policy section<br>• tests | API internals, support app |
+| `sc-app` (`~/BuPulse-sc-app`) | `support.bupulse.com`:<br>• host routing in `proxy.ts`<br>• `app/support/**`: sign-in with password + TOTP, chats, live visitors, stats; installable as a PWA<br>• `app/admin/(console)/live-chat/**` (agents, departments, hours, greetings, AI rules)<br>• the menu entry in Admin<br>• tests | API internals, widget |
+
+**Until sc-core lands,** sc-widget and sc-app build against the contract, with a small mock where they need data. The main session merges `sc-core` first, then the others, into `support-chat`, then `support-chat` into `quiz-mode` for test.bupulse.com.

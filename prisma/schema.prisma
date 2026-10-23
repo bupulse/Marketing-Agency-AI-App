@@ -3056,3 +3056,273 @@ model CreatorReport {
 
   @@index([status, createdAt])
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// BuPulse support chat (docs/SUPPORT_CHAT.md): BuPulse's own help chat on every page except Admin, an AI that answers
+// first, and the support app at support.bupulse.com where agents reply. Not the clients' Website chat (ChatWidget).
+// ---------------------------------------------------------------------------------------------------------------------
+
+enum SupportRole {
+  AGENT
+  SUPERVISOR
+}
+
+enum SupportConversationStatus {
+  AI // the AI is answering
+  WAITING // handed over, no person has replied yet
+  OPEN // a person is in the chat
+  PENDING // ticket: waiting for the team outside hours (email/WhatsApp follow-up)
+  CLOSED
+}
+
+enum SupportAuthor {
+  VISITOR
+  AI
+  AGENT
+  SYSTEM
+}
+
+enum SupportMessageKind {
+  TEXT
+  NOTE // internal note, never shown to the visitor
+  EVENT // "Jean joined", "handed over"
+  FILE
+  VOICE
+}
+
+// One support agent. Signs in at support.bupulse.com with their own Supabase account (password + authenticator code);
+// created and locked from Admin -> Live chat. Never an admin or StaffMember account.
+model SupportAgent {
+  id           String                   @id @default(cuid())
+  email        String                   @unique // lower case
+  name         String
+  userId       String?                  @unique @db.Uuid // set when the invite is accepted
+  role         SupportRole              @default(AGENT)
+  status       String                   @default("invited") // invited | active | locked
+  availability String                   @default("offline") // online | away | offline
+  maxChats     Int                      @default(5)
+  invitedBy    String // AuditLog actor
+  lastSeenAt   DateTime?
+  lockedAt     DateTime?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  departments  SupportAgentDepartment[]
+  assigned     SupportConversation[]
+  messages     SupportMessage[]
+  devices      SupportDevice[]
+
+  @@index([status, availability])
+}
+
+model SupportDepartment {
+  id            String                   @id @default(cuid())
+  key           String                   @unique // sales | technical | billing | creators
+  name          String
+  sort          Int                      @default(0)
+  agents        SupportAgentDepartment[]
+  conversations SupportConversation[]
+}
+
+model SupportAgentDepartment {
+  agentId      String
+  agent        SupportAgent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   SupportDepartment @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, departmentId])
+}
+
+// One person across visits: a random key kept in their browser, linked to their account once they sign in.
+model SupportVisitor {
+  id               String                @id @default(cuid())
+  visitorKey       String                @unique // random, from the widget's localStorage
+  userId           String?               @db.Uuid // signed-in client or creator
+  businessId       String?
+  creatorProfileId String?
+  name             String?
+  email            String?
+  phone            String? // WhatsApp, E.164
+  businessName     String? // typed in the pre-chat form
+  leadId           String? // the lead in Admin -> Sales made from the pre-chat form
+  visitCount       Int                   @default(0)
+  optedOut         Boolean               @default(false) // asked not to be tracked
+  firstSeenAt      DateTime              @default(now())
+  lastSeenAt       DateTime              @default(now())
+  visits           SupportVisit[]
+  conversations    SupportConversation[]
+
+  @@index([userId])
+  @@index([lastSeenAt])
+}
+
+// One visit (session): ends after 20 minutes without a heartbeat. Geo and IP are read once, when it starts.
+model SupportVisit {
+  id           String                @id @default(cuid())
+  visitorId    String
+  visitor      SupportVisitor        @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  tokenHash    String                @unique // sha256 of the visit token the widget sends with heartbeats
+  surface      String // public | dashboard | creator | bio
+  ip           String? // cleared after 30 days (retention job)
+  country      String? // ISO code
+  city         String?
+  region       String?
+  timezone     String?
+  device       String? // phone | tablet | desktop
+  os           String?
+  browser      String?
+  referrer     String? // hostname only
+  landingPath  String?
+  currentPath  String?
+  currentTitle String?
+  pageCount    Int                   @default(0)
+  startedAt    DateTime              @default(now())
+  lastSeenAt   DateTime              @default(now())
+  endedAt      DateTime?
+  pages        SupportPageHit[]
+  conversations SupportConversation[]
+
+  @@index([lastSeenAt])
+  @@index([visitorId, startedAt])
+}
+
+model SupportPageHit {
+  id      String       @id @default(cuid())
+  visitId String
+  visit   SupportVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  path    String
+  title   String?
+  at      DateTime     @default(now())
+
+  @@index([visitId, at])
+  @@index([at])
+}
+
+model SupportConversation {
+  id                String                    @id @default(cuid())
+  number            Int                       @unique @default(autoincrement()) // #1042, for people
+  visitorId         String
+  visitor           SupportVisitor            @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  visitId           String?
+  visit             SupportVisit?             @relation(fields: [visitId], references: [id], onDelete: SetNull)
+  surface           String // where it started: public | dashboard | creator | bio
+  status            SupportConversationStatus @default(AI)
+  departmentId      String?
+  department        SupportDepartment?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  assigneeId        String?
+  assignee          SupportAgent?             @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  aiActive          Boolean                   @default(true) // false once a person takes over
+  handoverAt        DateTime?
+  handoverReason    String? // asked | not_confident | upset | topic | outside_hours | agent
+  waitingSince      DateTime? // set at hand-over, cleared by the first agent reply
+  firstHumanReplyAt DateTime?
+  lastMessageAt     DateTime                  @default(now())
+  lastVisitorMessageAt DateTime?
+  closedAt          DateTime?
+  closedBy          String? // agent id | visitor | system
+  language          String? // ISO 639-1 of the visitor's last message
+  summary           String? // AI summary for agents
+  summaryAt         DateTime?
+  leadScore         Int?
+  urgency           String? // upset | urgent
+  tags              String[]
+  aiReplyCount      Int                       @default(0)
+  agentReplyCount   Int                       @default(0)
+  aiResolved        Boolean? // judged after a quiet window (docs/SUPPORT_CHAT.md)
+  rating            Int? // 1 good, -1 not good
+  ratingComment     String?
+  transcriptSentAt  DateTime?
+  alertSentAt       DateTime? // the "no reply after 2 minutes" email
+  topicTokenHash    String                    @unique // sha256 of the visitor's private realtime topic secret
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  messages          SupportMessage[]
+  attachments       SupportAttachment[]
+
+  @@index([status, lastMessageAt])
+  @@index([assigneeId, status])
+  @@index([visitorId, createdAt])
+  @@index([waitingSince])
+}
+
+model SupportMessage {
+  id             String              @id @default(cuid())
+  conversationId String
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author         SupportAuthor
+  agentId        String?
+  agent          SupportAgent?       @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  kind           SupportMessageKind  @default(TEXT)
+  body           String
+  lang           String?
+  translations   Json? // { "en": "...", "rw": "..." }
+  attachmentId   String?             @unique
+  attachment     SupportAttachment?  @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  aiSources      Json? // [{ file, heading, anchor }] guide sections the AI used
+  aiConfident    Boolean?
+  clientMsgId    String? // idempotent retries from the widget or app
+  seenByVisitorAt DateTime?
+  seenByAgentAt  DateTime?
+  createdAt      DateTime            @default(now())
+
+  @@unique([conversationId, clientMsgId])
+  @@index([conversationId, createdAt])
+}
+
+model SupportAttachment {
+  id               String              @id @default(cuid())
+  conversationId   String
+  conversation     SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  storagePath      String // private bucket "support"
+  mime             String
+  bytes            Int
+  fileName         String?
+  width            Int?
+  height           Int?
+  durationSec      Int?
+  transcript       String? // voice notes
+  transcriptStatus String? // pending | done | paused | failed
+  uploadedAt       DateTime?
+  expiresAt        DateTime // 90 days after upload
+  createdAt        DateTime            @default(now())
+  message          SupportMessage?
+
+  @@index([expiresAt])
+}
+
+// Owner guide sections the AI searches (rebuilt from docs/guide/features/*.md).
+model SupportGuideChunk {
+  id      String @id @default(cuid())
+  file    String
+  heading String
+  anchor  String
+  body    String
+  hash    String
+
+  @@unique([file, anchor])
+}
+
+// Where an agent gets alerts (web push now; desktop and phone apps later).
+model SupportDevice {
+  id         String       @id @default(cuid())
+  agentId    String
+  agent      SupportAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  kind       String // webpush | tauri | fcm | apns
+  endpoint   String       @unique
+  keys       Json?
+  label      String?
+  lastSentAt DateTime?
+  createdAt  DateTime     @default(now())
+}
+
+// Reporting events (first reply, wait, hand-over), counted in team hours too.
+model SupportEvent {
+  id             String   @id @default(cuid())
+  name           String // conversation_started | handover | first_human_reply | closed | rated | ai_resolved
+  conversationId String?
+  agentId        String?
+  value          Int? // seconds
+  valueInHours   Int? // seconds inside team hours
+  at             DateTime @default(now())
+
+  @@index([name, at])
+}
