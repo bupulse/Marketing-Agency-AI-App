@@ -35,3 +35,12 @@ screen (components/video/unique-reels.tsx) calls it every 6 seconds, then joins 
 
 Cost of one reel: about $1.89 with Lite (4 start frames $0.27, 4 clips $1.60, checks), about $3.49 with Fast; the
 presenter's portrait once ($0.13).
+
+## 23 October 2026: Veo 3.1 retired, Gemini Omni Flash
+
+Google retired the Veo 3.1 preview models the same day (404 "no longer available"); nothing was billed. The shared
+client lib/video-engine/veo.ts (video-engine session) moves to **Gemini Omni Flash** (`gemini-omni-1.1-flash`, owner's
+choice), keeping submit / check / download: about $0.10 a second, so about $0.80 a clip and **about $3.49 a reel**. The
+reel engine follows `veoModel()` and `veoClipUsd()`, reads clips through `veoClipBytes` (a link or inline bytes), and asks
+for "about 8 seconds" in the prompt (Omni has no duration setting). One model for now: the Lite / Pro choice is hidden.
+Kinyarwanda speech is untested by Google; if it is poor, the fallback stays an English voice with Kinyarwanda subtitles.
