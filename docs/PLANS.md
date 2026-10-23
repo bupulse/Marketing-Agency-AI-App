@@ -68,7 +68,9 @@ the plan builder ("Daily posts: apps a day", 0 = every app, up to 10) and Jarvis
 every app. `dailyApps()` keeps the first apps in the app list's order; Content -> Settings lets the owner pick which one
 and the save refuses more than the plan's number. Cost to BuPulse per company a day, at about $0.02 a written post:
 Starter about $0.02 (about 900 RWF a month); two apps with free designs about $0.04, with AI photos about $0.12, with a
-voiced video about $0.30. The pricing cards do not mention daily posts yet (an owner decision).
+voiced video about $0.30. The pricing cards say it second, after the AI texts (owner decision, same day; migration
+`20261030210000_daily_posts_price_cards`): Starter "A post made for you every day, ready to approve", Standard, Business
+and Pro "Posts made for you every day, ready to approve".
 
 ## Regions and the demo-first trial
 
