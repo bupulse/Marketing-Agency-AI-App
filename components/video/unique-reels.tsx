@@ -9,6 +9,7 @@ import { buildReelSpec, reelCostUsd, REEL_LANGUAGES, type ReelLanguage, type Ree
 import { createClient } from "@/lib/supabase/client";
 
 const STEP_EVERY_MS = 6000;
+const FILMING = "Filming: start frames first, then each clip is filmed (a few minutes). Keep this tab open.";
 const BEAT_LABEL: Record<string, string> = { hook: "1. Hook", use: "2. In use", result: "3. Result", cta: "4. Call to action" };
 
 /**
@@ -16,32 +17,63 @@ const BEAT_LABEL: Record<string, string> = { hook: "1. Hook", use: "2. In use", 
  * 30-second reel from 4 Google Veo clips with the company's own AI presenter, in Kinyarwanda or English. Test only:
  * every reel counts against the owner's test budget.
  */
-export function UniqueReels({ products, brand, clipUsd }: { products: { id: string; name: string }[]; brand: { name: string; color: string }; clipUsd: number }) {
+export function UniqueReels({ products, brand, clipUsd, initialReel }: { products: { id: string; name: string }[]; brand: { name: string; color: string }; clipUsd: number; initialReel: ReelView | null }) {
   const { toast } = useToast();
   const [subjectId, setSubjectId] = useState(products[0]?.id ?? "");
   const [brief, setBrief] = useState("");
   const [language, setLanguage] = useState<ReelLanguage>("Kinyarwanda");
-  const [reel, setReel] = useState<ReelView | null>(null);
+  const [reel, setReel] = useState<ReelView | null>(initialReel);
   const [budget, setBudget] = useState<{ spent: number; cap: number } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const unfinished = !!initialReel && (initialReel.status === "filming" || initialReel.status === "assembling");
+  const [busy, setBusy] = useState<string | null>(unfinished ? FILMING : null);
   const [error, setError] = useState<string | null>(null);
   const job = useRef<string | null>(null);
   const joining = useRef(false);
+  // One step at a time: the next one is planned only when the last has answered. Browsers pause timers in a tab that
+  // is in the background, so coming back to the tab (or opening the page again) carries on where the reel stopped.
+  const stepping = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function step(id: string) {
-    const res = await stepReelAction(id);
+    if (stepping.current) return;
+    stepping.current = true;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    const res = await stepReelAction(id).catch(() => ({ ok: false as const, error: "The connection was lost. The reel carries on when you are back." }));
+    stepping.current = false;
     if (job.current !== id) return;
     if (!res.ok) {
       setError(res.error);
       setBusy(null);
       return;
     }
+    setError(null);
     setReel(res.reel);
     setBudget({ spent: res.spent, cap: res.cap });
-    if (res.reel.status === "filming") setTimeout(() => step(id), STEP_EVERY_MS);
-    else if (res.reel.status === "assembling") void join(res.reel);
+    if (res.reel.status === "filming") {
+      setBusy(FILMING);
+      timer.current = setTimeout(() => step(id), STEP_EVERY_MS);
+    } else if (res.reel.status === "assembling") void join(res.reel);
     else setBusy(null);
   }
+
+  // Carry on with an unfinished reel when the page opens, and whenever the tab comes back to the front.
+  useEffect(() => {
+    if (initialReel && unfinished) {
+      job.current = initialReel.id;
+      void step(initialReel.id);
+    }
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && job.current && !joining.current) void step(job.current);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      if (timer.current) clearTimeout(timer.current);
+      job.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, for the reel the page opened with
+  }, []);
 
   async function start() {
     setError(null);
@@ -54,7 +86,7 @@ export function UniqueReels({ products, brand, clipUsd }: { products: { id: stri
       return;
     }
     job.current = res.id;
-    setBusy("Filming: start frames first, then each clip is filmed (a few minutes)…");
+    setBusy(FILMING);
     void step(res.id);
   }
 
@@ -84,8 +116,6 @@ export function UniqueReels({ products, brand, clipUsd }: { products: { id: stri
       setBusy(null);
     }
   }
-
-  useEffect(() => () => void (job.current = null), []);
 
   return (
     <GlassCard as="section" aria-labelledby="unique-reels" padding="lg" className="flex flex-col gap-5">
@@ -139,9 +169,9 @@ export function UniqueReels({ products, brand, clipUsd }: { products: { id: stri
           Make my reel
         </Button>
       </div>
-      {error && (
+      {(error || reel?.status === "failed") && (
         <p role="alert" className="text-[14px] font-medium text-danger">
-          {error}
+          {error ?? reel?.error ?? "This reel could not be made. Please try again."}
         </p>
       )}
 

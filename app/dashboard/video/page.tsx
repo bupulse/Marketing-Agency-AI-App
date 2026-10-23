@@ -6,7 +6,7 @@ import { isServiceEnabled } from "@/lib/admin/switch";
 import { can } from "@/lib/team/roles";
 import { listLibraryVideos, markStudioVideosSeen } from "@/lib/video-library/service";
 import { UniqueReels } from "@/components/video/unique-reels";
-import { reelEngineOn } from "@/lib/reel-engine/engine";
+import { latestReel, reelEngineOn } from "@/lib/reel-engine/engine";
 import { CLIP_SECONDS } from "@/lib/reel-engine/story";
 import { veoClipUsd, veoModel } from "@/lib/video-engine/veo";
 import { subjectOptions } from "@/lib/knowledge/service";
@@ -28,7 +28,9 @@ export default async function VideosPage({ searchParams }: PageProps<"/dashboard
 
   const [videos, studioOn, reelsOn] = await Promise.all([listLibraryVideos(business.id), isServiceEnabled("studio"), can(role, "content") ? reelEngineOn(business.id) : false]);
   // The temporary reel engine (docs/REEL_ENGINE.md): only while it is tested, for the companies it is on for.
-  const reelProducts = reelsOn ? (await subjectOptions(business.id)).products.map((p) => ({ id: p.id, name: p.name })) : [];
+  const [reelProducts, lastReel] = reelsOn
+    ? await Promise.all([subjectOptions(business.id).then((o) => o.products.map((p) => ({ id: p.id, name: p.name }))), latestReel({ userId: business.userId, businessId: business.id })])
+    : [[], null];
   // Opening the library is what "seen" means for the bell; the cards still say "New" this once.
   await markStudioVideosSeen(business.id, videos.filter((v) => v.isNew).map((v) => v.id)).catch(() => {});
 
@@ -38,7 +40,7 @@ export default async function VideosPage({ searchParams }: PageProps<"/dashboard
   return (
     <>
       <PageHeader title="Videos" description="Every video BuPulse made for you, from the Video Studio and your daily posts. Make new ones in the Video Studio; they appear here when they are ready." />
-      {reelsOn && <UniqueReels products={reelProducts} brand={{ name: business.name, color: business.brandColors.find((c) => /^#[0-9a-f]{6}$/i.test(c)) ?? "#1B5E20" }} clipUsd={veoClipUsd(CLIP_SECONDS, veoModel())} />}
+      {reelsOn && <UniqueReels products={reelProducts} brand={{ name: business.name, color: business.brandColors.find((c) => /^#[0-9a-f]{6}$/i.test(c)) ?? "#1B5E20" }} clipUsd={veoClipUsd(CLIP_SECONDS, veoModel())} initialReel={lastReel} />}
       <VideoLibrary
         initialVideos={videos}
         studio={studio}

@@ -268,6 +268,12 @@ export async function reelView(owner: Owner, jobId: string): Promise<ReelView | 
   };
 }
 
+/** The company's latest reel of the last week (the screen shows it and carries on with it when it is not finished). */
+export async function latestReel(owner: Owner, now: Date = new Date()): Promise<ReelView | null> {
+  const job = await prisma.reelJob.findFirst({ where: { businessId: owner.businessId, createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } }, orderBy: { createdAt: "desc" }, select: { id: true } });
+  return job ? reelView(owner, job.id) : null;
+}
+
 /** Where the browser uploads the finished reel. */
 export async function reelUploadTarget(owner: Owner, jobId: string): Promise<{ path: string; token: string }> {
   const job = await prisma.reelJob.findFirst({ where: { id: jobId, businessId: owner.businessId, status: "assembling" } });

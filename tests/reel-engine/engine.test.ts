@@ -27,6 +27,7 @@ const h = vi.hoisted(() => {
         updateMany: vi.fn(async () => ({ count: 1 })),
         findUnique: vi.fn(async ({ where }: { where: { id: string } }) => jobs.get(where.id) ?? null),
         findMany: vi.fn(async () => []),
+        findFirst: vi.fn(async ({ where }: { where: { id?: string; businessId: string } }) => (where.id ? (jobs.get(where.id) ?? null) : ([...jobs.values()].at(-1) ?? null))),
       },
     },
   };
@@ -48,7 +49,7 @@ vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => ({ download: async () => ({ data: new Blob([new Uint8Array([0x89, 1, 2])]), error: null }), upload: h.upload, createSignedUrls: async () => ({ data: [] }) }) } }) }));
 vi.mock("@/lib/video-engine/veo", async (orig) => ({ ...(await orig<typeof import("@/lib/video-engine/veo")>()), submitVeo: h.submit, getVeoOperation: h.poll, veoClipBytes: undefined, downloadVeo: async () => Buffer.from([0, 0, 0, 24]) }));
 
-import { reelEngineOn, startReel, stepReel } from "@/lib/reel-engine/engine";
+import { latestReel, reelEngineOn, startReel, stepReel } from "@/lib/reel-engine/engine";
 import { veoClipUsd, veoModel } from "@/lib/video-engine/veo";
 
 const owner = { userId: "u1", businessId: "b1" };
@@ -111,5 +112,16 @@ describe("the presenter", () => {
       expect(d).not.toContain("undefined");
       expect(d).toMatch(/^a Black Rwandan (woman|man) in (her|his) /);
     }
+  });
+});
+
+describe("carrying on with a reel", () => {
+  it("the page gets the latest reel back, so an unfinished one carries on", async () => {
+    expect(await latestReel(owner)).toBeNull();
+    const id = await startReel(owner, { language: "Kinyarwanda", tier: "lite" });
+    await stepReel(owner, id);
+    const view = await latestReel(owner);
+    expect(view).toMatchObject({ id, status: "filming", language: "Kinyarwanda" });
+    expect(view!.clips.map((c) => c.status)).toEqual(["framed", "planned", "planned", "planned"]);
   });
 });
