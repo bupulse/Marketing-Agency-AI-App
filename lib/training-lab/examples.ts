@@ -193,12 +193,13 @@ export async function confirmExampleFile(ctx: AdminContext, identity: LabOwner, 
   if (row.path && row.path !== path) await removeObjects([row.path]).catch(() => {});
 }
 
-/** Saves the owner's edits. The kind stays (it goes with the file) and the AI notes are left alone. */
+/** Saves the owner's edits. The kind stays (it goes with the file) and the AI notes are left alone (a posting habit's notes are its schedule). */
 export async function updateExample(ctx: AdminContext, identity: LabOwner, id: string, raw: unknown) {
   assertLabOwner(ctx, identity);
   const row = await found(id);
   const input = parse({ ...(raw as object), kind: row.kind, hasFile: !!row.path || (raw as { hasFile?: unknown })?.hasFile === true });
-  const data = columns(input);
+  // A posting habit's notes are the schedule the owner typed; for every other kind the AI notes are left alone.
+  const data = { ...columns(input), ...(row.kind === "schedule" ? { notes: input.notes === null ? Prisma.DbNull : (input.notes as Prisma.InputJsonValue) } : {}) };
   const consentAt = input.consentGiven ? (row.consentGiven && row.consentAt ? row.consentAt : new Date()) : null;
   await prisma.$transaction(async (tx) => {
     await tx.trainingExample.update({ where: { id: row.id }, data: { ...data, consentAt } });

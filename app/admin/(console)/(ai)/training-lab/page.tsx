@@ -9,6 +9,7 @@ import { analysisStatus, exampleProblem, type AnalysisStatus } from "@/lib/train
 import { filterChoices, LIST_MAX, listExamples, NOTE_FIELDS, NOTE_LABELS, parseFilter, previewLinks, readNotes, type ExampleFilter } from "@/lib/training-lab/examples";
 import { ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, type TrainingKind } from "@/lib/training-lab/types";
 import { deleteExampleAction, draftNotesAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
+import { describeSchedule } from "@/lib/training-lab/schedule";
 import { EditExample, ExampleForm } from "./example-form";
 import { LabTabs } from "./lab-tabs";
 
@@ -133,8 +134,9 @@ function ExampleCard({ example: e, link, back, analysis }: { example: Example; l
       )}
       {noFile && <p role="status" className={notice.bad}>The file is missing (the upload did not finish). Open Edit and add it again.</p>}
 
-      <Text label="How it was made">{e.howMade}</Text>
-      <Text label="What is good">{e.whatIsGood}</Text>
+      {e.kind === "schedule" && <Text label="When to post">{describeSchedule(e.notes)}</Text>}
+      <Text label={e.kind === "schedule" ? "Where this comes from" : "How it was made"}>{e.howMade}</Text>
+      <Text label={e.kind === "schedule" ? "Why these times" : "What is good"}>{e.whatIsGood}</Text>
       <Text label="Never this">{e.neverThis}</Text>
       {e.kind === "voice" && <Text label="What is said">{e.transcript}</Text>}
       {(e.technique.length > 0 || e.tags.length > 0) && (
@@ -149,7 +151,7 @@ function ExampleCard({ example: e, link, back, analysis }: { example: Example; l
         e.kind === "actor" && <p className={notice.bad}>No consent recorded: the presenters will not use this actor.</p>
       )}
 
-      <Notes example={e} here={here} analysis={analysis} />
+      {e.kind !== "schedule" && <Notes example={e} here={here} analysis={analysis} />}
 
       <form action={rateExampleAction} className="flex flex-wrap items-center gap-1">
         <input type="hidden" name="id" value={e.id} />
@@ -209,6 +211,7 @@ function ExampleCard({ example: e, link, back, analysis }: { example: Example; l
             engines: e.engines,
             transcript: e.transcript,
             path: e.path,
+            notes: e.notes,
           }}
         />
         <ConfirmButton action={deleteExampleAction} fields={{ id: e.id }} label="Delete" title={`Delete “${e.title}”?`} description="The example and its file are deleted, and the engines stop learning from it. This cannot be undone." confirmLabel="Delete example" pendingLabel="Deleting…" />

@@ -65,6 +65,15 @@ describe("owner only", () => {
   });
 });
 
+describe("createExample for a posting habit", () => {
+  it("stores the schedule in notes in the shape the planners read", async () => {
+    const out = await lab.createExample(ctx, OWNER, { kind: "schedule", title: "Habit", howMade: "x", whatIsGood: "y", engines: ["schedule"], schedule: { network: "", country: "Rwanda", hours: "7", weekdays: [] } }, null);
+    expect(out.upload).toBeNull();
+    const data = m.tx.trainingExample.create.mock.calls[0][0].data;
+    expect(data.notes).toEqual({ country: "Rwanda", hours: [7] });
+  });
+});
+
 describe("filters", () => {
   it("keeps only known kinds and engines", () => {
     expect(lab.parseFilter({ kind: "reel", engine: "presenter", sector: " Cars ", language: ["Kinyarwanda", "x"] })).toEqual({ kind: "reel", engine: "presenter", sector: "Cars", language: "Kinyarwanda" });
@@ -154,6 +163,15 @@ describe("updateExample", () => {
     expect(data).not.toHaveProperty("kind");
     expect(data).not.toHaveProperty("notes");
     expect(data.consentAt).toBe(at);
+  });
+
+  it("saves a posting habit's schedule as its notes, and clears it with the hours and days", async () => {
+    const habit = { kind: "schedule", title: "Facebook in Kigali", howMade: "From Insights.", whatIsGood: "Evenings.", engines: ["schedule"] };
+    m.findUnique.mockResolvedValueOnce(row({ kind: "schedule" }));
+    await lab.updateExample(ctx, OWNER, ID, { ...habit, schedule: { network: "facebook", country: "Rwanda", hours: "7, 19h", weekdays: [1] } });
+    expect(m.tx.trainingExample.update.mock.calls[0][0].data.notes).toEqual({ network: "facebook", country: "Rwanda", hours: [7, 19], weekdays: [1] });
+    m.findUnique.mockResolvedValueOnce(row({ kind: "schedule" }));
+    await expect(lab.updateExample(ctx, OWNER, ID, { ...habit, schedule: { network: "facebook" } })).rejects.toMatchObject({ message: "Give at least one hour or one day." });
   });
 
   it("clears the consent date when consent is unticked", async () => {

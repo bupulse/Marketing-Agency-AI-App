@@ -40,7 +40,7 @@ describe("exampleInputSchema", () => {
     expect(exampleInputProblem({ ...reel, hasFile: false })).toBe("Add a file or a link to the example.");
     expect(exampleInputProblem({ ...reel, hasFile: false, sourceUrl: "www.tiktok.com/x" })).toBe("Use a full link starting with https://");
     expect(exampleInputProblem({ ...reel, hasFile: false, sourceUrl: "https://www.tiktok.com/@a/video/1" })).toBeNull();
-    expect(exampleInputProblem({ ...reel, kind: "schedule", hasFile: false })).toBeNull();
+    expect(exampleInputProblem({ ...reel, kind: "schedule", hasFile: false, schedule: { hours: "7, 19" } })).toBeNull();
   });
 
   it("needs what is said for a recording, and consent with a name for an actor", () => {
@@ -105,5 +105,27 @@ describe("storage paths", () => {
     expect(isExamplePath(`${admin}/${example}/../x/a.mp4`, admin, example)).toBe(false);
     expect(isExamplePath(`${admin}/${example}/sub/a.mp4`, admin, example)).toBe(false);
     expect(isExamplePath(`${admin}/${example}/a.mp4`, "../x", example)).toBe(false);
+  });
+});
+
+describe("a schedule example", () => {
+  const base = { kind: "schedule", title: "Facebook in Kigali", howMade: "From Insights.", whatIsGood: "Evenings work." };
+  it("turns the form's fields into notes", () => {
+    const v = exampleInputSchema.parse({ ...base, schedule: { network: "facebook", country: "Rwanda", hours: "7, 12:30, 19h", weekdays: [1, 3], postsPerWeek: "5", formats: ["reel"] } });
+    expect(v.notes).toEqual({ network: "facebook", country: "Rwanda", hours: [7, 12, 19], weekdays: [1, 3], postsPerWeek: 5, formats: ["reel"] });
+  });
+  it("takes all networks and days only", () => {
+    expect(exampleInputSchema.parse({ ...base, schedule: { network: "", hours: "", weekdays: [5] } }).notes).toEqual({ weekdays: [5] });
+  });
+  it("asks for at least one hour or one day, and explains unreadable parts", () => {
+    expect(exampleInputProblem({ ...base, schedule: { network: "facebook" } })).toBe("Give at least one hour or one day.");
+    expect(exampleInputProblem(base)).toBe("Give at least one hour or one day.");
+    expect(exampleInputProblem({ ...base, schedule: { hours: "after lunch" } })).toBe("We could not read the hours. Write them like 7, 12:30, 19h.");
+    expect(exampleInputProblem({ ...base, schedule: { network: "myspace", hours: "7" } })).toBe("Choose a network from the list.");
+    expect(exampleInputProblem({ ...base, schedule: { hours: "7", postsPerWeek: "99" } })).toMatch(/Posts per week/);
+  });
+  it("leaves other kinds' notes alone", () => {
+    expect(exampleInputSchema.parse(reel).notes).toBeNull();
+    expect(exampleInputSchema.parse({ ...reel, notes: { hook: "x" } }).notes).toEqual({ hook: "x" });
   });
 });

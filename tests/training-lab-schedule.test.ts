@@ -6,7 +6,7 @@ vi.mock("@/lib/db", () => ({ prisma: { trainingExample: { findMany: (...a: unkno
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 
 import { buildProfile, EMPTY_PROFILE, NETWORK_DEFAULTS, preferredHours, preferredWeekdays, withLab, type PostResult } from "@/lib/autopilot/learning";
-import { labHoursByNetwork, parseScheduleNotes } from "@/lib/training-lab/schedule";
+import { buildScheduleNotes, describeSchedule, hoursText, labHoursByNetwork, parseScheduleNotes } from "@/lib/training-lab/schedule";
 import { labSchedule } from "@/lib/training-lab/schedule-reader";
 
 beforeEach(() => {
@@ -112,5 +112,24 @@ describe("the planner's preferred times", () => {
   it("does not change the profile it is given", () => {
     withLab(EMPTY_PROFILE, lab);
     expect(EMPTY_PROFILE.labHours).toBeUndefined();
+  });
+});
+
+describe("the form helpers", () => {
+  it("reads the form into notes that labHoursByNetwork understands", () => {
+    const { notes, problem } = buildScheduleNotes({ network: "facebook", country: "Rwanda", hours: "7, 12:30, 19h", weekdays: [1, 3], postsPerWeek: "", formats: "reel, photo" });
+    expect(problem).toBeNull();
+    expect(notes).toEqual({ network: "facebook", country: "Rwanda", hours: [7, 12, 19], weekdays: [1, 3], formats: ["reel", "photo"] });
+    expect(labHoursByNetwork([{ rating: null, notes }]).hours.get("facebook")).toEqual([7, 12, 19]);
+  });
+  it("shows what was read", () => {
+    expect(hoursText([7, 12, 19])).toBe("07:00, 12:00, 19:00");
+  });
+  it("describes a schedule in words", () => {
+    expect(describeSchedule({ network: "facebook", country: "Rwanda", hours: [7, 12, 19], weekdays: [1, 3] })).toBe("Facebook, Rwanda: 07:00, 12:00, 19:00 on Tue, Thu");
+    expect(describeSchedule({ hours: [8], postsPerWeek: 4, formats: ["reel"] })).toBe("All networks: 08:00, about 4 posts a week (reel)");
+    expect(describeSchedule({ weekdays: [6] })).toBe("All networks: on Sun");
+    expect(describeSchedule("nonsense")).toBeNull();
+    expect(describeSchedule(null)).toBeNull();
   });
 });

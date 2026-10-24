@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { buildScheduleNotes } from "./schedule";
 
 // The Training Lab's examples (docs/TRAINING_LAB.md, model TrainingExample): what kinds there are, which engines read
 // them, and the check on what the owner types in the Admin form. Shared by the server and the form, so no server-only.
@@ -99,13 +100,29 @@ export const exampleInputSchema = z
       .default([])
       .transform((list) => [...new Set(list)]),
     transcript: optionalText(TRANSCRIPT_MAX, "That is too long: keep what is said under 10,000 letters."),
+    /** A posting habit as the owner types it (kind "schedule"); it becomes `notes` in the shape schedule.ts reads. */
+    schedule: z
+      .object({
+        network: z.string().default(""),
+        country: z.string().max(60).default(""),
+        hours: z.string().max(200).default(""),
+        weekdays: z.array(z.number()).max(7).default([]),
+        postsPerWeek: z.union([z.string(), z.number(), z.null()]).default(""),
+        formats: z.array(z.string()).max(20).default([]),
+      })
+      .nullish(),
   })
   .superRefine((v, ctx) => {
     if (v.kind !== "schedule" && !v.hasFile && !v.sourceUrl) ctx.addIssue({ code: "custom", path: ["sourceUrl"], message: "Add a file or a link to the example." });
     if (v.kind === "voice" && !v.transcript) ctx.addIssue({ code: "custom", path: ["transcript"], message: "Write what is said in the recording." });
     if (v.kind === "actor" && !v.consentGiven) ctx.addIssue({ code: "custom", path: ["consentGiven"], message: "Only add an actor who agreed to be used: tick the consent box." });
     if (v.consentGiven && !v.consentName) ctx.addIssue({ code: "custom", path: ["consentName"], message: "Write the name of the person who agreed." });
-  });
+    if (v.kind === "schedule") {
+      const { problem } = buildScheduleNotes(v.schedule);
+      if (problem) ctx.addIssue({ code: "custom", path: ["schedule"], message: problem });
+    }
+  })
+  .transform((v) => (v.kind === "schedule" ? { ...v, notes: buildScheduleNotes(v.schedule).notes as Record<string, unknown> | null } : v));
 
 export type ExampleInput = z.output<typeof exampleInputSchema>;
 

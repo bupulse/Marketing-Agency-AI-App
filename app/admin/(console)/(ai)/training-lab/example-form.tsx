@@ -4,6 +4,8 @@ import { useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
+import { NETWORKS, type Network } from "@/lib/social/types";
+import { NETWORK_NAMES, WEEKDAY_NAMES, hoursText, parseScheduleNotes } from "@/lib/training-lab/schedule";
 import { DEFAULT_ENGINES, ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, LANGUAGES, MAX_FILE_BYTES, exampleInputSchema, fileProblem, type TrainingEngine, type TrainingKind } from "@/lib/training-lab/types";
 import { confirmExampleFileAction, createExampleAction, startExampleUploadAction, updateExampleAction } from "./actions";
 
@@ -30,6 +32,8 @@ export type EditableExample = {
   engines: string[];
   transcript: string | null;
   path: string | null;
+  /** A posting habit's notes (its schedule). */
+  notes?: unknown;
 };
 
 const ACCEPT: Record<TrainingKind, string> = {
@@ -65,6 +69,12 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
   const [consent, setConsent] = useState(example?.consentGiven ?? false);
   const [file, setFile] = useState<File | null>(null);
   const editing = !!example;
+  // A posting habit (kind "schedule"): its fields, and what we read from the hours as the owner types them.
+  const saved = example?.kind === "schedule" ? parseScheduleNotes(example.notes) : null;
+  const [network, setNetwork] = useState<string>(saved?.network ?? "");
+  const [hours, setHours] = useState(saved?.hours ? saved.hours.join(", ") : "");
+  const [days, setDays] = useState<number[]>(saved?.weekdays ?? []);
+  const readHours = hours.trim() ? parseScheduleNotes({ hours })?.hours : undefined;
 
   function changeKind(next: string) {
     if (!isKind(next)) return;
@@ -108,6 +118,7 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
       consentName: String(form.get("consentName") ?? ""),
       consentNote: String(form.get("consentNote") ?? ""),
       engines,
+      schedule: kind === "schedule" ? { network, country: String(form.get("country") ?? ""), hours, weekdays: days, postsPerWeek: String(form.get("postsPerWeek") ?? ""), formats: list(form.get("formats")) } : null,
     };
     const fileInfo = file ? { name: file.name, type: typeOf(file), size: file.size } : null;
     // The same checks the server makes, so a mistake shows next to its field before anything is sent.
@@ -168,6 +179,9 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
       setFile(null);
       setConsent(false);
       setKind("reel");
+      setNetwork("");
+      setHours("");
+      setDays([]);
       setEngines(DEFAULT_ENGINES.reel);
       setDone("Example added. It is at the top of the list below.");
     });
@@ -207,10 +221,55 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
         </Field>
       </div>
 
-      <Field label="How it was made" hint="In your own words: who filmed it, with what, the shots, the edit, the music." required error={fieldErrors.howMade}>
+      {kind === "schedule" && (
+        <fieldset className="flex min-w-0 flex-col gap-4 rounded-2xl border border-line p-4">
+          <legend className="px-1 text-sm font-medium">When to post</legend>
+          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+            <Field label="Network">
+              <Select name="network" value={network} onChange={(e) => setNetwork(e.target.value)}>
+                <option value="">All networks</option>
+                {NETWORKS.map((n: Network) => (
+                  <option key={n} value={n}>{NETWORK_NAMES[n]}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Country" hint="Where the customers are.">
+              <Input name="country" maxLength={60} defaultValue={saved?.country ?? (editing ? "" : "Rwanda")} />
+            </Field>
+            <Field label="Best hours" hint="Local time, for example: 7, 12:30, 19h. The planner only uses the times the business allowed.">
+              <Input name="hours" inputMode="text" maxLength={200} value={hours} onChange={(e) => setHours(e.target.value)} placeholder="7, 12:30, 19h" />
+              {hours.trim() && (
+                <p role="status" className={`mt-1 text-[13px] ${readHours ? "text-muted" : "font-medium text-danger"}`}>
+                  {readHours ? `We read: ${hoursText(readHours)}` : "We could not read that. Write the hours like 7, 12:30, 19h."}
+                </p>
+              )}
+            </Field>
+            <Field label="Posts per week" hint="Optional. Only shown on the Team page; the business's own settings decide how often it posts.">
+              <Input name="postsPerWeek" type="number" inputMode="numeric" min={1} max={21} defaultValue={saved?.postsPerWeek ?? ""} />
+            </Field>
+          </div>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <p className="text-sm font-medium">Best days</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {WEEKDAY_NAMES.map((name, i) => (
+                <label key={name} className="flex min-h-11 items-center gap-2 text-[14px]">
+                  <input type="checkbox" className="size-5" checked={days.includes(i)} onChange={(ev) => setDays((cur) => (ev.target.checked ? [...cur, i].sort() : cur.filter((d) => d !== i)))} />
+                  {name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <Field label="Formats" hint="Optional, separate with commas: reel, photo, carousel.">
+            <Input name="formats" maxLength={200} defaultValue={saved?.formats?.join(", ") ?? ""} />
+          </Field>
+          {fieldErrors.schedule && <p role="alert" className="text-[13px] font-medium text-danger">{fieldErrors.schedule}</p>}
+        </fieldset>
+      )}
+
+      <Field label={kind === "schedule" ? "Where this comes from" : "How it was made"} hint={kind === "schedule" ? "For example: what the owner saw on Facebook Insights, or a client's habit." : "In your own words: who filmed it, with what, the shots, the edit, the music."} required error={fieldErrors.howMade}>
         <Textarea name="howMade" rows={4} maxLength={5000} defaultValue={example?.howMade} />
       </Field>
-      <Field label="What is good about it" hint="What the engines should learn from it: the hook, the pace, the words, the look." required error={fieldErrors.whatIsGood}>
+      <Field label={kind === "schedule" ? "Why these times" : "What is good about it"} hint={kind === "schedule" ? "What the engines should know: who is online then, what worked." : "What the engines should learn from it: the hook, the pace, the words, the look."} required error={fieldErrors.whatIsGood}>
         <Textarea name="whatIsGood" rows={3} maxLength={5000} defaultValue={example?.whatIsGood} />
       </Field>
       <Field label="Never this" hint="What the engines must never copy from it (optional)." error={fieldErrors.neverThis}>

@@ -103,3 +103,43 @@ export function labHoursByNetwork(examples: readonly ScheduleExample[], opts: { 
   }
   return out;
 }
+
+// ---- The owner's form and how a schedule example reads in the list
+
+export const NETWORK_NAMES: Record<Network, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube", twitter: "X (Twitter)" };
+export const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+/** What the owner types in the form, all as text. `network` empty or "all": every network. */
+export type ScheduleForm = { network?: string; country?: string; hours?: string; weekdays?: number[]; postsPerWeek?: string | number | null; formats?: string[] | string };
+
+/** "07:00, 12:00, 19:00". */
+export const hoursText = (hours: readonly number[]) => hours.map((h) => `${String(h).padStart(2, "0")}:00`).join(", ");
+
+/**
+ * The form's fields as the notes parseScheduleNotes accepts, or a plain-English problem. The owner must give at least
+ * one hour or one day; everything they typed has to be readable (nothing is guessed).
+ */
+export function buildScheduleNotes(form: ScheduleForm | null | undefined): { notes: ScheduleNotes | null; problem: string | null } {
+  const f = form ?? {};
+  const network = (f.network ?? "").trim();
+  if (network && parseNetwork(network) === null) return { notes: null, problem: "Choose a network from the list." };
+  const hours = (f.hours ?? "").trim();
+  if (hours && !parseHours(hours)) return { notes: null, problem: "We could not read the hours. Write them like 7, 12:30, 19h." };
+  const days = f.weekdays ?? [];
+  if (days.length && !parseWeekdays(days)) return { notes: null, problem: "Choose the days from the list." };
+  const per = typeof f.postsPerWeek === "string" ? f.postsPerWeek.trim() : f.postsPerWeek;
+  if (per !== "" && per !== null && per !== undefined && !(Number.isInteger(Number(per)) && Number(per) >= 1 && Number(per) <= 21)) return { notes: null, problem: "Posts per week: a whole number from 1 to 21, or leave it empty." };
+  if (!hours && !days.length) return { notes: null, problem: "Give at least one hour or one day." };
+  const notes = parseScheduleNotes({ network: network || undefined, country: f.country, hours: hours || undefined, weekdays: days.length ? days : undefined, postsPerWeek: per === "" || per === null ? undefined : per, formats: f.formats });
+  return notes ? { notes, problem: null } : { notes: null, problem: "Give at least one hour or one day." };
+}
+
+/** "Facebook, Rwanda: 07:00, 12:00, 19:00 on Tue, Thu, about 5 posts a week (reel, photo)"; null when the notes say nothing. */
+export function describeSchedule(notes: unknown): string | null {
+  const n = parseScheduleNotes(notes);
+  if (!n) return null;
+  const where = [n.network ? NETWORK_NAMES[n.network] : "All networks", n.country].filter(Boolean).join(", ");
+  const when = [n.hours ? hoursText(n.hours) : "", n.weekdays ? `on ${n.weekdays.map((d) => WEEKDAY_NAMES[d]).join(", ")}` : ""].filter(Boolean).join(" ");
+  const extra = [n.postsPerWeek ? `about ${n.postsPerWeek} posts a week` : "", n.formats ? `(${n.formats.join(", ")})` : ""].filter(Boolean).join(" ");
+  return `${where}: ${[when, extra].filter(Boolean).join(", ")}`;
+}
