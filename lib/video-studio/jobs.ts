@@ -11,6 +11,8 @@ import type { ViralRecipe } from "@/lib/video-engine/brain/viral";
 import { isViralStyle } from "@/lib/video-engine/templates";
 import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
 import type { MotionSpec, Ratio } from "@/lib/video-engine/spec";
+import { labViralRows } from "@/lib/training-lab/reader";
+import { labLanguage } from "@/lib/training-lab/language-reader";
 import { BriefError, choosePhotos, loadBriefFacts, readPhotos, type StoredPhoto } from "./brief";
 import { VideoStudioError, recipeOf, view, type StudioOwner, type VideoJobView } from "./job-view";
 
@@ -127,6 +129,13 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
   const changing = input.mode === "edit" || input.mode === "extend";
   const viral = isViralStyle(input.templateId);
   const recent = viral && !changing ? await recentRecipes(owner.businessId) : [];
+  // The owner's Training Lab, read once per request: its reels join the viral pool and the ones rated 1 or 2 stars are
+  // never copied (lib/training-lab/reader.ts), and its Kinyarwanda words feed the language check. An empty Lab or an
+  // error changes nothing.
+  const labViral = viral && !changing ? await labViralRows() : null;
+  const labAvoid = labViral ? [...labViral.avoidIds, ...labViral.avoidHooks] : [];
+  const labRecipe = { ...(labViral?.rows.length ? { lab: labViral.rows } : {}), ...(labAvoid.length ? { avoid: labAvoid } : {}) };
+  const languageExtra = await labLanguage(facts.business.language);
   // Credits first: a blocked company leaves nothing behind (no job, no call).
   const reservation = await consumeUsage(owner.userId, "videoCredits", CLAUDE_VIDEO_CREDITS * versions);
 
@@ -151,7 +160,7 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
   // A viral video: one recipe per version, each avoiding the business's recent ones and the versions before it. An
   // edit or extend keeps its parent's recipe for "Why this video" but designs from the parent itself.
   const recipes: ViralRecipe[] = [];
-  if (viral && !changing) for (let i = 0; i < versions; i++) recipes.push(i === 0 && input.aiClipRecipe ? input.aiClipRecipe : recipeForBrief(brief, { seed: globalThis.crypto.randomUUID(), recent: [...recipes.slice().reverse(), ...recent], aiClips: input.aiClips }));
+  if (viral && !changing) for (let i = 0; i < versions; i++) recipes.push(i === 0 && input.aiClipRecipe ? input.aiClipRecipe : recipeForBrief(brief, { seed: globalThis.crypto.randomUUID(), recent: [...recipes.slice().reverse(), ...recent], aiClips: input.aiClips, ...labRecipe }));
   // The opening line the owner picked: the Brain's context for it goes in as research (Claude follows it), as in the lab.
   if (input.chosenHook && !changing) brief.research = brainContext(brainBriefFromDesign({ ...brief, recipe: recipes[0] ?? null }), { chosenHook: input.chosenHook, viral: viral });
   // The caption formula the Brain picks for this brief (the one its research block gives Claude): kept with the
@@ -177,7 +186,7 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
   const done = await Promise.all(
     jobs.map(async ({ id }, i) => {
       try {
-        const result = await designVideo({ ...brief, recipe: recipes[i] ?? null, variation: versions > 1 ? { index: i + 1, of: versions } : null }, { transport, model });
+        const result = await designVideo({ ...brief, recipe: recipes[i] ?? null, variation: versions > 1 ? { index: i + 1, of: versions } : null }, { transport, model, languageExtra });
         const captionScore = scoreCaption(result.spec.caption, result.spec.hashtags, { business: brief.business, product: brief.product, styleId: brief.styleId, seconds: brief.seconds, platform: brief.platform ?? null, note: brief.note ?? null }, { platform: brief.platform ?? null, purpose: brief.purpose ?? "ad" });
         // Finished only if still ours: once the lease passed, the sweep may have failed and refunded it (then it stays so).
         await prisma.videoJob.updateMany({
