@@ -9,7 +9,9 @@ import { buildVoiceExtras, describeExtras, extrasText, languageExtraFrom, parseA
 import { labLanguage } from "@/lib/training-lab/language-reader";
 import { exampleInputProblem, exampleInputSchema } from "@/lib/training-lab/types";
 import { checkLanguage } from "@/lib/video-engine/brain/language";
+import { planSeries } from "@/lib/video-engine/brain/series";
 import { suggestHooks } from "@/lib/video-engine/brain/suggest";
+import { designVideo, type DesignBrief } from "@/lib/video-engine/designer";
 
 beforeEach(() => {
   findMany.mockReset();
@@ -113,5 +115,31 @@ describe("the checks use it", () => {
     const today = suggestHooks(brief, { count: 5 });
     expect(suggestHooks(brief, { count: 5, languageExtra: {} })).toEqual(today);
     expect(suggestHooks(brief, { count: 5, languageExtra: { words: ["x"] } })).toEqual(today);
+  });
+});
+
+describe("the designer and the series pass the extras", () => {
+  const brief: DesignBrief = { business: { name: "Shop", language: "Kinyarwanda", phone: "+250 788 123 456" }, product: { name: "Kitenge dress", price: "25,000 RWF" }, photos: [], styleId: "kigali-price-first", ratio: "9:16", seconds: 6 } as unknown as DesignBrief;
+  const raw = {
+    palette: {},
+    caption: "Ikanzu nziza ya kitenge",
+    scenes: [
+      { seconds: 3, background: {}, layers: [{ kind: "text", text: "Ikanzu nziza, igiciro kiri hasi", font: "inter", size: 0.06, color: "#fff", x: 0.5, y: 0.5, w: 0.8, h: 0.1 }] },
+      { seconds: 3, background: {}, layers: [{ kind: "text", text: "Murakaza neza", font: "inter", size: 0.06, color: "#fff", x: 0.5, y: 0.3, w: 0.8, h: 0.1 }] },
+    ],
+  };
+  const fetchImpl = () => vi.fn(async () => new Response(JSON.stringify({ model: "claude-sonnet-5-5", content: [{ type: "text", text: JSON.stringify(raw) }], usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200 })) as unknown as typeof fetch;
+  it("designVideo adds the owner's spelling warnings and is unchanged without them", async () => {
+    const plain = await designVideo(brief, { apiKey: "k", fetchImpl: fetchImpl() });
+    const empty = await designVideo(brief, { apiKey: "k", fetchImpl: fetchImpl(), languageExtra: {} });
+    expect(empty.warnings).toEqual(plain.warnings);
+    const taught = await designVideo(brief, { apiKey: "k", fetchImpl: fetchImpl(), languageExtra: { wrong: [{ word: "igiciro", fix: "igiciro:" }] } });
+    const extra = taught.warnings.filter((w) => !plain.warnings.some((p) => p.where === w.where && p.found === w.found));
+    expect(extra).toEqual([expect.objectContaining({ where: "scene 1 text", found: "igiciro", problem: "language", suggestion: "igiciro:" })]);
+  });
+  it("planSeries gives its openings the same extras and is unchanged without them", () => {
+    const phone = { business: { name: "Nova", language: "Kinyarwanda", phone: "+250 788 300 400" }, product: { name: "Galaxy A56", summary: "A phone", price: "420,000 RWF" }, styleId: null, seconds: 15 } as never;
+    const today = planSeries(phone, { platform: "any" });
+    expect(planSeries(phone, { platform: "any", languageExtra: {} })).toEqual(today);
   });
 });

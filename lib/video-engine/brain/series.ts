@@ -4,6 +4,7 @@
 // open with the price, clinics and schools with trust; a before/after or a list sits in the middle; a presenter-led
 // post only when the business has a presenter. Pure and deterministic.
 import { formatById, hookById, sectorById } from "./database";
+import type { LanguageExtra } from "./language";
 import { brainFor } from "./select";
 import { briefFacts, briefSector, suggestHooks, type SuggestBrief } from "./suggest";
 import { VIDEO_TEMPLATES, VIRAL_STYLE_ID } from "../templates";
@@ -45,6 +46,8 @@ export type SeriesOptions = {
   businessId?: string | null;
   /** ISO date of the first post (each post one day later). */
   startDay?: string | null;
+  /** The owner's Training Lab words for the language check of each opening line (training-lab/language-reader.ts). */
+  languageExtra?: LanguageExtra;
   /** The sector to plan for, when the caller knows it better than the words of the brief. */
   sector?: SectorId | null;
   /** The business has a presenter (an AI influencer or a cartoon presenter): presenter-led templates are allowed. */
@@ -75,7 +78,7 @@ export function planSeries(brief: SuggestBrief, opts: SeriesOptions = {}): Serie
   const sector = opts.sector ?? briefSector(brief);
   const sectorInfo = sectorById(sector)!;
   const facts = briefFacts(brief);
-  const ask = (wide: boolean) => suggestHooks(brief, { platform: opts.platform ?? "any", count: 60, outcomes: opts.outcomes, businessId: opts.businessId, sector, presenter, wide }).filter((s, i, all) => all.findIndex((x) => x.hookId === s.hookId) === i);
+  const ask = (wide: boolean) => suggestHooks(brief, { platform: opts.platform ?? "any", count: 60, outcomes: opts.outcomes, businessId: opts.businessId, sector, presenter, wide, languageExtra: opts.languageExtra }).filter((s, i, all) => all.findIndex((x) => x.hookId === s.hookId) === i);
   // The sector's own hooks first; when they are fewer than the days (a sector with few usable hooks for these facts),
   // the other sectors' hooks that the facts allow follow, best first.
   let pool = ask(false);

@@ -6,6 +6,7 @@ import { isOwnedLicence } from "@/lib/music/tracks";
 import { consumeDailyVideo, consumeUsage, getUsageSummary, refundDailyVideo, refundUsage, UsageLimitError } from "@/lib/usage";
 import { createFolder, finalizeUpload, MediaError, prepareUploads, signedUrls, type MediaItem, type UploadTarget } from "@/lib/media/service";
 import { suggestHooks, type HookSuggestion } from "@/lib/video-engine/brain/suggest";
+import { labLanguage } from "@/lib/training-lab/language-reader";
 import type { Platform } from "@/lib/video-engine/designer";
 import type { MotionSpec } from "@/lib/video-engine/spec";
 import { loadBriefFacts, type StoredPhoto } from "./brief";
@@ -60,7 +61,7 @@ export async function studioTracks(): Promise<StudioTrack[]> {
 export async function openingLines(businessId: string, input: { productId: string; templateId: string; seconds: number; platform: Platform | null }): Promise<HookSuggestion[]> {
   const facts = await loadBriefFacts(businessId, input.productId);
   // The Brain calls YouTube Shorts "shorts".
-  return suggestHooks({ business: facts.business, product: facts.product, styleId: input.templateId, seconds: input.seconds }, { platform: input.platform === "youtube" ? "shorts" : (input.platform ?? "any") });
+  return suggestHooks({ business: facts.business, product: facts.product, styleId: input.templateId, seconds: input.seconds }, { platform: input.platform === "youtube" ? "shorts" : (input.platform ?? "any"), languageExtra: await labLanguage(facts.business.language) });
 }
 
 /** The engines whose MP4 is saved here: Motion (made in the browser), and the clips made by a provider or a renderer. */

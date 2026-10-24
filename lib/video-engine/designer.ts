@@ -14,6 +14,7 @@ import { factCheck, type FactWarning } from "./factcheck";
 import { brainBriefFromDesign, brainContext } from "./brain/select";
 import { STYLE_LIMITS, scoreDesign, templateStyle, type DesignScore } from "./brain/score";
 import { PREFERRED_PHRASES, checkLanguage, languageTextsOf } from "./brain";
+import type { LanguageExtra } from "./brain/language";
 import { recipeText, viralRecipe, type RecipePlatform, type ViralRecipe, type ViralVideo } from "./brain/viral";
 import { withShortPrice } from "./price";
 
@@ -392,7 +393,7 @@ export const apiTransport = (apiKey: string, fetchImpl: typeof fetch = fetch): C
 const briefFacts = (b: DesignBrief): string =>
   [b.product.name, b.product.summary, b.product.description, b.product.price, b.product.priceNotes, ...(b.product.usps ?? []), ...(b.product.features ?? []), b.business.description, b.note].filter(Boolean).join("\n");
 
-export async function designVideo(given: DesignBrief, opts: { apiKey?: string; model?: string; fetchImpl?: typeof fetch; transport?: ClaudeTransport }): Promise<DesignResult> {
+export async function designVideo(given: DesignBrief, opts: { apiKey?: string; model?: string; fetchImpl?: typeof fetch; transport?: ClaudeTransport; languageExtra?: LanguageExtra }): Promise<DesignResult> {
   const model = opts.model || DESIGNER_MODEL;
   const fetchImpl = opts.fetchImpl ?? fetch;
   const apiKey = opts.apiKey;
@@ -427,7 +428,7 @@ export async function designVideo(given: DesignBrief, opts: { apiKey?: string; m
       const seconds = brief.mode === "edit" && brief.base ? answered || totalMs(brief.base) / 1000 : brief.mode === "extend" && brief.base ? totalMs(brief.base) / 1000 + brief.seconds : brief.seconds;
       const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens, photos: brief.photos.map((p) => ({ width: p.width, height: p.height, subject: p.subject ?? null })), platform: brief.platform ?? null, phone: brief.business.phone ?? null, productMin: productMinHeight(brief.styleId), facts: briefFacts(brief), maxLines: STYLE_LIMITS[templateStyle(brief.styleId)].maxLines, purpose: brief.purpose ?? "ad" });
       // Facts first, then the language: price forms, English calls to action in a Kinyarwanda video, word-for-word lines.
-      const language = checkLanguage(languageTextsOf(spec), brief.business.language).map((i) => ({ where: i.where, found: i.found, problem: "language" as const, message: i.message, suggestion: i.suggestion }));
+      const language = checkLanguage(languageTextsOf(spec), brief.business.language, opts.languageExtra).map((i) => ({ where: i.where, found: i.found, problem: "language" as const, message: i.message, suggestion: i.suggestion }));
       const warnings = [...factCheck(spec, brief), ...language];
       const score = scoreDesign(spec, brief, { platform: brief.platform ?? null, voice: brief.voice ?? true, purpose: brief.purpose ?? "ad" });
       return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt, warnings, score, ...(brief.recipe && isViralStyle(brief.styleId) ? { recipe: brief.recipe } : {}) };
