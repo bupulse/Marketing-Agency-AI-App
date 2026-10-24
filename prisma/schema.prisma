@@ -1321,7 +1321,7 @@ model ImageConcept {
   aspectRatio   String
   credits       Int
   creditPeriod  DateTime? // the usage period the credits were reserved in
-  status        String    @default("planned") // planned | painting | done | failed
+  status        String    @default("planned") // planned | painting | painted | fixing | edited | done | failed (lib/image-engine WORKING_STATUSES)
   paintingUntil DateTime?
   designId      String?
   path          String?
