@@ -29,10 +29,14 @@ import { downloadVeo, getVeoOperation, submitVeo, veoClipUsd, veoLedgerUsage, ve
 import { CLIP_SECONDS, directMontage, reelCostUsd, variantOf, veoClipPrompt, type ReelClip, type ReelLanguage, type ReelPlan, type ReelTier } from "./story";
 import { readReel, reelPrompt, REEL_SCHEMA, REEL_SYSTEM, ruleReel, type ReelInput } from "./writer";
 import { checkClip } from "./checker";
+import { labFor } from "@/lib/training-lab/reader";
 import { sectorFromText } from "@/lib/video-engine/brain/select";
 import { viralRecipe, type ViralRecipe } from "@/lib/video-engine/brain/viral";
 
 export class ReelError extends Error {}
+
+/** What startReel keeps in the plan from the Training Lab: the examples read (so a rating finds them) and the notes for the checker. */
+export type LabPlan = { labExampleIds?: string[]; labAvoid?: string[] };
 
 type Owner = { userId: string; businessId: string };
 const json = (v: unknown) => v as Prisma.InputJsonValue;
@@ -138,8 +142,11 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     } catch {
       recipe = null;
     }
-    const plan = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean), sector, recipe });
-    await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null, refilms: 0, sources: recipe?.sources.map((s) => s.id) ?? [] }), stepUntil: null } });
+    // What the owner's Training Lab teaches for this sector and language; an empty Lab or an error changes nothing. The
+    // checker gets only the owner's own "never this" notes (a low-rated example's description would refilm clips for nothing).
+    const lab = await labFor({ engine: "reel", kinds: ["reel", "video", "voice"], sector, language: request.language });
+    const plan = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean), sector, recipe, lab });
+    await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null, refilms: 0, sources: recipe?.sources.map((s) => s.id) ?? [], labExampleIds: lab.exampleIds, labAvoid: lab.avoid.filter((line) => line.startsWith("Never")) }), stepUntil: null } });
     return job.id;
   } catch (error) {
     await prisma.reelJob.update({ where: { id: job.id }, data: { status: "failed", stepUntil: null, error: "The reel could not be planned. Please try again." } });
@@ -276,7 +283,7 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
       await addCost(job.id, veoClipUsd(clip.seconds ?? CLIP_SECONDS, model));
       // The Checker watches the clip for broken physics and AI slop; a bad one is filmed again with what went wrong,
       // while the reel's refilms and the test budget allow.
-      const verdict = await checkClip(owner, bytes, plan.setting ?? null);
+      const verdict = await checkClip(owner, bytes, plan.setting ?? null, { avoid: (plan as ReelPlan & LabPlan).labAvoid });
       clip.problems = verdict.problems;
       if (!verdict.ok) {
         const room = (await reelTestSpentUsd()) + veoClipUsd(clip.seconds ?? CLIP_SECONDS, model) <= reelTestCapUsd();

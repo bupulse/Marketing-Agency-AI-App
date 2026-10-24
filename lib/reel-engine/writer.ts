@@ -22,6 +22,8 @@ export type ReelInput = {
   sector: SectorId;
   /** The viral recipe the reel borrows its techniques from (lib/video-engine/brain/viral.ts), when there is one. */
   recipe?: ViralRecipe | null;
+  /** What the owner's Training Lab teaches for this reel (lib/training-lab/reader.ts); empty lists print nothing. */
+  lab?: { examples: string[]; avoid: string[]; phrases: string[] } | null;
 };
 
 /**
@@ -55,6 +57,18 @@ export function recipeLines(r: ViralRecipe | null | undefined): string | null {
     `- Caption: ${r.caption.question ? "end with a question that invites comments" : "short and direct"}${r.caption.dm ? ", invite a DM" : ""}${r.caption.emoji ? ", a few emojis" : ""}.`,
     `- Sound: ${clean(r.sound.mood)} music; ${clean(r.sound.voice)}.`,
   ].join("\n");
+}
+
+/** The Training Lab's examples, "never this" notes and (for Kinyarwanda) phrases as prompt blocks; null when the Lab has nothing. */
+export function labBlock(lab: ReelInput["lab"], language: ReelLanguage): string | null {
+  if (!lab) return null;
+  const list = (title: string, lines: string[]) => (lines.length ? `${title}\n${lines.map((l) => `- ${l}`).join("\n")}` : null);
+  const blocks = [
+    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples),
+    list("NEVER (the owner's notes):", lab.avoid),
+    language === "Kinyarwanda" ? list("KINYARWANDA THE OWNER USES (spelling and natural phrases):", lab.phrases) : null,
+  ].filter(Boolean);
+  return blocks.length ? blocks.join("\n\n") : null;
 }
 
 export const REEL_SYSTEM = [
@@ -115,6 +129,7 @@ export function reelPrompt(input: ReelInput): string {
     `The presenter: ${input.presenter}`,
     `SETTING: ${SECTOR_SETTINGS[input.sector] ?? SECTOR_SETTINGS.shop}.`,
     recipeLines(input.recipe),
+    labBlock(input.lab, input.language),
     `Language of the lines, the title and the caption: ${input.language}.`,
     input.recent.length ? `RECENT reels (do not repeat these ideas): ${input.recent.slice(0, 10).join(" | ")}` : null,
     clips.join("\n"),

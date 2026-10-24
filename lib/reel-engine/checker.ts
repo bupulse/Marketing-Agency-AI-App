@@ -33,12 +33,18 @@ export function readClipVerdict(raw: unknown): ClipVerdict {
   return { ok: !(r.ok === false && problems.length), problems, ran: true };
 }
 
-export async function checkClip(owner: { userId: string; businessId: string }, mp4: Uint8Array, setting: string | null, opts: { fetchImpl?: typeof fetch } = {}): Promise<ClipVerdict> {
+/** The check prompt with the owner's visual "never this" notes (Training Lab) as extra FAIL lines: at most 6, 160 letters each. */
+export function clipCheckPrompt(avoid: readonly string[] = []): string {
+  const extra = avoid.map((a) => a.replace(/\s+/g, " ").trim().slice(0, 160)).filter(Boolean).slice(0, 6);
+  return extra.length ? `${CLIP_CHECK_PROMPT}\nAlso FAIL the clip for these, the owner's notes:\n${extra.map((a) => `- ${a}`).join("\n")}` : CLIP_CHECK_PROMPT;
+}
+
+export async function checkClip(owner: { userId: string; businessId: string }, mp4: Uint8Array, setting: string | null, opts: { fetchImpl?: typeof fetch; avoid?: readonly string[] } = {}): Promise<ClipVerdict> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return { ok: true, problems: [], ran: false };
   const model = process.env.REEL_CHECK_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_TEXT_MODEL;
   const body = {
-    contents: [{ parts: [{ inline_data: { mime_type: "video/mp4", data: Buffer.from(mp4).toString("base64") } }, { text: `${CLIP_CHECK_PROMPT}\nSETTING: ${setting || "where the product is really used"}.` }] }],
+    contents: [{ parts: [{ inline_data: { mime_type: "video/mp4", data: Buffer.from(mp4).toString("base64") } }, { text: `${clipCheckPrompt(opts.avoid)}\nSETTING: ${setting || "where the product is really used"}.` }] }],
     generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA, maxOutputTokens: 600 },
   };
   try {
