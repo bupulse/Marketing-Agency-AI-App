@@ -26,9 +26,17 @@ bupulse.com.
 **How to start:** read docs/TRAINING_LAB_GUIDE.md (one page), then drop your 3 best reels, rate them 5 stars, and add
 one "Never this".
 
+**Before anything goes to bupulse.com (open items):**
+1. **Actors as presenters:** test site only (your decision). Before launch it stays off until each actor's consent
+   covers appearing for any business (the code already keeps it off on bupulse.com).
+2. **Claude subscription:** the Script writer and the Designer run on your Claude subscription today (no Anthropic
+   key on the test site). Before production, set the Anthropic API key and move every member off "Your
+   subscription" on the Team page; the subscription never runs on bupulse.com.
+3. **AI notes settings:** `TRAINING_LAB_ANALYSIS=1` and `TRAINING_LAB_ANALYSIS_CAP_USD=2` are set on the test site
+   only. For production, choose a budget and set both there (or leave them off: then you fill the card yourself).
+
 **Waiting for you (docs/TRAINING_LAB.md):** whether clients' reels may teach the Lab for everyone (check the terms);
-actors as presenters stay test-site only until their consent covers any business (your decision); a paid Kinyarwanda
-voice later.
+a paid Kinyarwanda voice later.
 
 ## Loop log
 - **Start:** Saturday 24 October 2026, 11:47 CAT. Owner away about 8 hours; the loop stops about 19:45 CAT.
