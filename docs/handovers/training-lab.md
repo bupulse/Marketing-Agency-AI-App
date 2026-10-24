@@ -31,7 +31,7 @@
 - 12:25: video-engine approved 0e4fd8e0. Before wiring: (1) recipeText (viral.ts ~581) and the why-text (~631) must
   credit `lab:` sources to "your Training Lab" (pass the Lab through); (2) when checkLanguage gets `extra`, pass it in
   both callers, designer.ts:427 and suggest.ts:300. Send them the wiring commit for a quick review. NEXT TASK QUEUED.
-- 12:40: video-engine approved d0f42915 (viral wiring), asking that a low rating penalise only `lab:<id>` (an opening
+- 12:32: video-engine approved d0f42915 (viral wiring), asking that a low rating penalise only `lab:<id>` (an opening
   type only by an explicit `never_hook` note or `never:<hook>` tag) and giving the go-ahead to wire
   lib/video-studio/jobs.ts. Send them the hashes of that fix, jobs.ts and the checkLanguage commits (4659930f, baa00bd9).
 
