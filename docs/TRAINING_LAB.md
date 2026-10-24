@@ -62,7 +62,7 @@ Status: Todo / Doing / Done / Waiting (owner). Keep it current; any round resume
    use it) with a new migration. Files in a private bucket path under the owner.
 3. **Done** Admin page `Training Lab`: upload (file or link), the "how it was made" form in plain words, list, filter,
    rate, switch an example on or off for each engine. Phone width works.
-4. **Todo** Analysis on upload (free or cheap, within caps): Gemini watches a video and drafts the notes (shots, cuts per
+4. **Done** (AI draft off until the owner sets a budget; notes by hand always) Analysis on upload (free or cheap, within caps): Gemini watches a video and drafts the notes (shots, cuts per
    second, beat sync, stickers, captions, hook, setting, music), which the owner corrects.
 
 ### Phase 1b: the agent team
@@ -77,7 +77,7 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 ### Phase 2: the engines learn from it
 5. **Doing** (the Lab reader is done: lib/training-lab/reader.ts) Video: the reel writer and `viralRecipe` take the best matching Lab examples (sector, language, technique)
    as references; the checker uses the owner's "never this" notes.
-6. **Todo** Image and posts: the image planner and post writer take Lab examples (layouts, wording, style) the same way.
+6. **Doing** Image and posts: the image planner and post writer take Lab examples (layouts, wording, style) the same way.
 7. **Todo** Posting and scheduling: Lab notes on best times, frequency and formats per network feed Autopilot and
    daily posts' plans.
 8. **Todo** Kinyarwanda: recordings plus text become a phrase and pronunciation list used by the writers (spelling,
@@ -93,3 +93,5 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
 - Any paid AI spend beyond the caps in docs/AI_COSTS.md.
+- A small budget for the Lab's AI notes (Gemini watching an uploaded video, about a cent each): set
+  `TRAINING_LAB_ANALYSIS=1` and `TRAINING_LAB_ANALYSIS_CAP_USD` (for example 1) when the owner approves.
