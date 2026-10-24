@@ -3,7 +3,7 @@
 // fails), every change kept as a version, and any version restored as a new one. Everything is scoped to the
 // business; Members may do all of it (the `content` permission, checked by the actions).
 import { labBlock } from "@/lib/image-engine/prompter";
-import { fixSpellings } from "@/lib/training-lab/fix-spelling";
+import { polishText } from "@/lib/training-lab/fix-spelling";
 import { labLanguage } from "@/lib/training-lab/language-reader";
 import { labFor } from "@/lib/training-lab/reader";
 import { sectorFromText } from "@/lib/video-engine/brain/select";
@@ -178,11 +178,11 @@ async function writingContext(businessId: string, content: LoadedContent, networ
 
 /**
  * The owner's spellings (Training Lab recordings) applied to what the pack writer wrote: each post's caption, video script and
- * ad headlines. No AI call; the same posts come back when the owner marked no wrong spelling with a fix. Pure.
+ * ad headlines, never inside links, hashtags, @handles or the names in `protect`; sentences that print a hidden-detail
+ * placeholder from a Lab example are dropped. No AI call. Pure.
  */
-export function fixWrittenPosts<T extends { caption: string; videoScript: string; adHeadlines: string[] }>(posts: readonly T[], extra: LanguageExtra | null | undefined): T[] {
-  if (!extra?.wrong?.some((w) => w.fix?.trim())) return [...posts];
-  const fix = (t: string) => fixSpellings(t, extra).text;
+export function fixWrittenPosts<T extends { caption: string; videoScript: string; adHeadlines: string[] }>(posts: readonly T[], extra: LanguageExtra | null | undefined, protect: readonly (string | null | undefined)[] = []): T[] {
+  const fix = (t: string) => polishText(t, extra, protect);
   return posts.map((p) => ({ ...p, caption: fix(p.caption), videoScript: fix(p.videoScript), adHeadlines: p.adHeadlines.map(fix) }));
 }
 
@@ -263,7 +263,7 @@ export async function rewritePost(actor: Actor, postId: string, part: RewritePar
       ].filter(Boolean);
       const note = showsPrice ? `State the price exactly as given: ${item.price}.` : NO_PRICE;
       const written = await withLedger(ledger, model, () => writePack(getTextProvider(), writer, { ...promotion, previousCaption: caption }, [{ angle, network, format, note }], null, extra), usage);
-      const p = fixWrittenPosts(written.posts, languageExtra)[0];
+      const p = fixWrittenPosts(written.posts, languageExtra, [brand.businessName, item.title])[0];
       const text = p ? clean(p.caption) : "";
       if (!p || !text.trim()) throw failed(written, "The AI left the post empty");
       const fitted = fitToNetwork(network, text, showsPrice ? p.hashtags : p.hashtags.filter((h) => !isPriceLike(h.replace(/^#/, ""), item.price)));
@@ -301,7 +301,7 @@ export async function rewritePost(actor: Actor, postId: string, part: RewritePar
           }),
         usage,
       );
-      const script = clean(fixSpellings(written.script, languageExtra).text);
+      const script = clean(polishText(written.script, languageExtra, [brand.businessName, item.title]));
       if (!script.trim()) throw failed(written, "The AI left the video script empty");
       next.videoScript = script;
       contentData.videoScript = script;
@@ -322,7 +322,7 @@ export async function rewritePost(actor: Actor, postId: string, part: RewritePar
           }),
         usage,
       );
-      const headlines = exactlyThreeHeadlines(written.headlines.map((h) => clean(fixSpellings(h, languageExtra).text)));
+      const headlines = exactlyThreeHeadlines(written.headlines.map((h) => clean(polishText(h, languageExtra, [brand.businessName, item.title]))));
       if (!headlines) throw failed(written, "The AI's headlines were not usable");
       next.adHeadlines = headlines;
       contentData.adHeadlines = headlines;

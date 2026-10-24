@@ -151,7 +151,7 @@ describe("daily posts learn from the Training Lab", () => {
     lab.labFor.mockResolvedValue({ examples: ['Image "Price first": made like this: a big price. Good because: it is clear.'], avoid: ['Never (from "A"): stock smiles.'], phrases: [], exampleIds: ["e1"] });
     await run();
     const prompt = ai.generate.mock.calls[0][0].prompt as string;
-    expect(prompt).toContain("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):\nThese are other businesses' examples: never use their names, products, prices or contact details.\n- Image \"Price first\"");
+    expect(prompt).toContain("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):\nThese are other businesses' examples: never use their names, products, prices or contact details. Words in braces such as {price} or {phone} are hidden details: never write braces or those words.\n- Image \"Price first\"");
     expect(prompt).toContain("NEVER (the owner's notes):\n- Never (from \"A\"): stock smiles.");
     expect(prompt.indexOf("THE OWNER'S EXAMPLES")).toBeGreaterThan(prompt.indexOf("These posts are for"));
   });

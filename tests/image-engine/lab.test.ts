@@ -68,7 +68,7 @@ describe("the Prompter's request with the Lab", () => {
     const today = plannerPrompt(planner);
     const p = plannerPrompt({ ...planner, lab });
     const block = labBlock(lab, "English")!;
-    expect(block).toBe(`THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):\nThese are other businesses' examples: never use their names, products, prices or contact details.\n- ${lab.examples[0]}\n\nNEVER (the owner's notes):\n- Never: stock smiles.`);
+    expect(block).toBe(`THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):\nThese are other businesses' examples: never use their names, products, prices or contact details. Words in braces such as {price} or {phone} are hidden details: never write braces or those words.\n- ${lab.examples[0]}\n\nNEVER (the owner's notes):\n- Never: stock smiles.`);
     expect(p.indexOf(block)).toBeGreaterThan(p.indexOf("RECENT pictures"));
     expect(p.indexOf(block)).toBeLessThan(p.indexOf("Write 2 concepts"));
     expect(p.replace(`\n\n${block}`, "")).toBe(today);
@@ -96,7 +96,7 @@ describe("the Captioner's request with the Lab", () => {
     expect(english).not.toContain("KINYARWANDA THE OWNER USES");
     expect(english.replace(`\n\n${labBlock(lab, "English")}`, "")).toBe(captionPrompt(caption));
     const kinyarwanda = captionPrompt({ ...caption, language: "Kinyarwanda", lab });
-    expect(kinyarwanda).toContain("KINYARWANDA THE OWNER USES (spelling and natural phrases):\n- Murakaza neza");
+    expect(kinyarwanda).toContain("KINYARWANDA THE OWNER USES (spelling and natural phrases):\nThese are other businesses' examples: never use their names, products, prices or contact details.\n- Murakaza neza");
   });
 });
 

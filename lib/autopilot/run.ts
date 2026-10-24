@@ -224,6 +224,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
             (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
           ),
           languageExtra,
+          [business.name, group.project?.title],
         );
 
         // Gallery first: a video idea about a product or campaign with its own album video posts that video as it is.

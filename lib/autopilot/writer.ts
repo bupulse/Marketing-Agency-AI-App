@@ -10,7 +10,7 @@ import { normalizeHashtags, truncateSmart } from "@/lib/studio/variants";
 import { fitScript, SCRIPT_GUIDE } from "@/lib/visuals/script";
 import type { AutopilotAngle } from "@/lib/content-flow/autopilot";
 import { labBlock } from "@/lib/image-engine/prompter";
-import { fixSpellings } from "@/lib/training-lab/fix-spelling";
+import { polishText } from "@/lib/training-lab/fix-spelling";
 import type { LanguageExtra } from "@/lib/video-engine/brain/language";
 import type { Trend } from "./learning";
 import type { AutopilotFormat, Idea } from "./playbook";
@@ -173,16 +173,15 @@ export function buildPrompt(req: WriteRequest): string {
 
 /**
  * The owner's spellings (Training Lab recordings) applied to what the writer wrote: the posts' texts, titles and video
- * scripts and the image's words. No AI call; unchanged when the owner marked no wrong spelling with a fix.
+ * scripts and the image's words, never inside links, hashtags, @handles or the names in `protect`; and any sentence that
+ * prints a hidden-detail placeholder ({price}, {phone}...) from a Lab example is dropped. No AI call; the same object comes
+ * back when there is nothing to change.
  */
-export function fixWrittenSpellings<T extends { image: ImageText; versions: WrittenVersion[] }>(written: T, extra: LanguageExtra | null | undefined): T {
-  if (!extra?.wrong?.some((w) => w.fix?.trim())) return written;
-  const fix = (t: string) => fixSpellings(t, extra).text;
-  return {
-    ...written,
-    image: { ...written.image, kicker: fix(written.image.kicker), headline: fix(written.image.headline), subline: fix(written.image.subline) },
-    versions: written.versions.map((v) => ({ ...v, text: fix(v.text), title: v.title === null ? null : fix(v.title), ...(v.videoScript !== undefined ? { videoScript: fix(v.videoScript) } : {}) })),
-  };
+export function fixWrittenSpellings<T extends { image: ImageText; versions: WrittenVersion[] }>(written: T, extra: LanguageExtra | null | undefined, protect: readonly (string | null | undefined)[] = []): T {
+  const fix = (t: string) => polishText(t, extra, protect);
+  const image = { ...written.image, kicker: fix(written.image.kicker), headline: fix(written.image.headline), subline: fix(written.image.subline) };
+  const versions = written.versions.map((v) => ({ ...v, text: fix(v.text), title: v.title === null ? null : fix(v.title), ...(v.videoScript !== undefined ? { videoScript: fix(v.videoScript) } : {}) }));
+  return JSON.stringify(image) === JSON.stringify(written.image) && JSON.stringify(versions) === JSON.stringify(written.versions) ? written : { ...written, image, versions };
 }
 
 export interface ImageText {

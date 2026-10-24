@@ -128,7 +128,7 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
       lab: { examples: captionLab.examples, avoid: captionLab.avoid, phrases: captionLab.phrases },
     }, { exampleIds: captionLab.exampleIds, resultRef: `batch:${batchId}` });
     // The owner's Kinyarwanda spellings fixed in the words on the picture and in the captions (free: no rewrite, no retry).
-    const polished = fixImageWords(concepts, captions, languageExtra);
+    const polished = fixImageWords(concepts, captions, languageExtra, [loaded.facts.name, loaded.subject?.name]);
     await prisma.imageConcept.createMany({
       data: slots.map((slot, i) => ({
         businessId: owner.businessId,

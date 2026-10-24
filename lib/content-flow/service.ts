@@ -406,7 +406,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
         : { type: item.type, title: item.title, price: null, features: item.features.filter((f) => !isPriceLike(f, item.price)), context: priceFreeLines(withoutPriceLines(item.context), item.price) };
       const writerBrand: BrandContext = allPriced ? brand : { ...brand, knowledgeBase: priceFreeLines(brand.knowledgeBase, item.price), profile: priceFreeLines(brand.profile, item.price), description: brand.description && stripPriceLike(brand.description, item.price) };
       const pack = await withLedger(ledger, model, () => writePack(getTextProvider(), writerBrand, promotion, slots, facts!.moment ?? null, extra), usage);
-      written = fixWrittenPosts(pack.posts, languageExtra).flatMap((p): typeof written => {
+      written = fixWrittenPosts(pack.posts, languageExtra, [business.name, item0.title]).flatMap((p): typeof written => {
         const slot = slots.findIndex((s) => s.angle === p.angle && s.network === p.network);
         if (slot < 0) return [];
         if (showsPrice[slot]) return [{ ...p, ...fitToNetwork(p.network, p.caption, p.hashtags), slot, showsPrice: true, provider: pack.provider, model: pack.model }];

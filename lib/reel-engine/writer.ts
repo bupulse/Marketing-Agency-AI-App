@@ -6,6 +6,7 @@
 import { MOODS } from "@/lib/music/tracks";
 import type { SectorId } from "@/lib/video-engine/brain/types";
 import type { ViralRecipe } from "@/lib/video-engine/brain/viral";
+import { OTHER_BUSINESSES_NOTE, PLACEHOLDER_NOTE } from "@/lib/training-lab/fix-spelling";
 import { allowedNumbers, hasInventedNumber, type BusinessFacts, type SubjectFacts } from "@/lib/image-engine/prompter";
 import { stripSlop } from "@/lib/image-engine/realism";
 import { variantOf, type ReelClip, type ReelLanguage, type ReelPlan } from "./story";
@@ -64,9 +65,9 @@ export function labBlock(lab: ReelInput["lab"], language: ReelLanguage): string 
   if (!lab) return null;
   const list = (title: string, lines: string[], note?: string) => (lines.length ? `${title}\n${note ? `${note}\n` : ""}${lines.map((l) => `- ${l}`).join("\n")}` : null);
   const blocks = [
-    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples, "These are other businesses' examples: never use their names, products, prices or contact details."),
+    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples, `${OTHER_BUSINESSES_NOTE} ${PLACEHOLDER_NOTE}`),
     list("NEVER (the owner's notes):", lab.avoid),
-    language === "Kinyarwanda" ? list("KINYARWANDA THE OWNER USES (spelling and natural phrases):", lab.phrases) : null,
+    language === "Kinyarwanda" ? list("KINYARWANDA THE OWNER USES (spelling and natural phrases):", lab.phrases, OTHER_BUSINESSES_NOTE) : null,
   ].filter(Boolean);
   return blocks.length ? blocks.join("\n\n") : null;
 }

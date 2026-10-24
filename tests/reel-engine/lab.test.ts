@@ -30,7 +30,7 @@ describe("the Lab in the reel prompt", () => {
     expect(block).toBe(
       [
         "THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):",
-        "These are other businesses' examples: never use their names, products, prices or contact details.",
+        "These are other businesses' examples: never use their names, products, prices or contact details. Words in braces such as {price} or {phone} are hidden details: never write braces or those words.",
         '- Reel "Car seller": made like this: phone. Good because: price first.',
         "",
         "NEVER (the owner's notes):",
@@ -42,7 +42,7 @@ describe("the Lab in the reel prompt", () => {
   it("adds the Kinyarwanda phrases only for a Kinyarwanda reel", () => {
     const lab = { examples: [], avoid: [], phrases: ["Murakaza neza", "Duhamagare kuri WhatsApp"] };
     expect(labBlock(lab, "English")).toBeNull();
-    expect(labBlock(lab, "Kinyarwanda")).toBe("KINYARWANDA THE OWNER USES (spelling and natural phrases):\n- Murakaza neza\n- Duhamagare kuri WhatsApp");
+    expect(labBlock(lab, "Kinyarwanda")).toBe("KINYARWANDA THE OWNER USES (spelling and natural phrases):\nThese are other businesses' examples: never use their names, products, prices or contact details.\n- Murakaza neza\n- Duhamagare kuri WhatsApp");
   });
 });
 

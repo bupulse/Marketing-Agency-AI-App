@@ -253,7 +253,7 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     const written = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean), sector, recipe, lab }, { exampleIds: lab.exampleIds, resultRef: `reel:${job.id}` });
     // The owner's spellings are fixed in the title, the caption and the spoken lines, and the language check runs on them. Only text
     // changes: nothing is filmed at planning time, so a fixed line costs nothing, and there is no rewrite or retry.
-    const { plan, fixes, issues } = polishReelTexts(written, request.language, languageExtra);
+    const { plan, fixes, issues } = polishReelTexts(written, request.language, languageExtra, [loaded.facts.name, loaded.subject?.name].filter((n): n is string => !!n));
     await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null, refilms: 0, sources: recipe?.sources.map((s) => s.id) ?? [], ...(fixes.length ? { labSpellingFixes: fixes } : {}), ...(issues.length ? { languageIssues: issues } : {}), labExampleIds: lab.exampleIds, labAvoid: clipAvoid(lab.rows ?? []) }), stepUntil: null } });
     return job.id;
   } catch (error) {

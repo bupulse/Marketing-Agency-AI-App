@@ -24,7 +24,7 @@ describe("the Post writer's prompt with the Lab", () => {
   it("prints the same blocks as the other writers, before the post idea, and nothing else changes", () => {
     const today = buildPrompt(request());
     const p = buildPrompt(request({ labExamples: lab }));
-    expect(p).toContain(`THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):\nThese are other businesses' examples: never use their names, products, prices or contact details.\n- ${lab.examples[0]}`);
+    expect(p).toContain(`THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):\nThese are other businesses' examples: never use their names, products, prices or contact details. Words in braces such as {price} or {phone} are hidden details: never write braces or those words.\n- ${lab.examples[0]}`);
     expect(p).toContain("NEVER (the owner's notes):\n- Never: stock photos.");
     expect(p.indexOf("THE OWNER'S EXAMPLES")).toBeGreaterThan(p.indexOf("KNOWLEDGE"));
     expect(p.indexOf("THE OWNER'S EXAMPLES")).toBeLessThan(p.indexOf("Post idea:"));
@@ -34,7 +34,7 @@ describe("the Post writer's prompt with the Lab", () => {
   });
 
   it("adds the owner's Kinyarwanda phrases for a Kinyarwanda business", () => {
-    expect(buildPrompt(request({ contentLanguage: "Kinyarwanda", labExamples: lab }))).toContain("KINYARWANDA THE OWNER USES (spelling and natural phrases):\n- Murakaza neza");
+    expect(buildPrompt(request({ contentLanguage: "Kinyarwanda", labExamples: lab }))).toContain("KINYARWANDA THE OWNER USES (spelling and natural phrases):\nThese are other businesses' examples: never use their names, products, prices or contact details.\n- Murakaza neza");
   });
 });
 

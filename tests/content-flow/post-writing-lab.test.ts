@@ -70,7 +70,7 @@ beforeEach(() => {
 
 
 const LAB = { examples: ['Image "Price first": made like this: a big price. Good because: it is clear.'], avoid: ['Never (from "A"): stock smiles.'], phrases: ["Murakaza neza"], exampleIds: ["e1"] };
-const NOTE = "These are other businesses' examples: never use their names, products, prices or contact details.";
+const NOTE = "These are other businesses' examples: never use their names, products, prices or contact details. Words in braces such as {price} or {phone} are hidden details: never write braces or those words.";
 const answers = {
   headlines: { adHeadlines: ["Amashu ku ishuri", "Igiciro kiri hasi", "Twandikire uyu munsi"] },
   script: { scenes: ["[Tower] Igiciro nziza.", "[Kids] Fresh.", "[Logo] Ask us."] },
@@ -104,7 +104,7 @@ describe("Generate again learns from the Training Lab", () => {
       const withLab = await promptOf(part);
       expect(withLab).toContain(`THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):\n${NOTE}\n- Image "Price first"`);
       expect(withLab).toContain("NEVER (the owner's notes):\n- Never (from \"A\"): stock smiles.");
-      expect(withLab).toContain("KINYARWANDA THE OWNER USES (spelling and natural phrases):\n- Murakaza neza");
+      expect(withLab).toContain("KINYARWANDA THE OWNER USES (spelling and natural phrases):\nThese are other businesses' examples: never use their names, products, prices or contact details.\n- Murakaza neza");
       // After the language line, never in the facts.
       expect(withLab.indexOf("THE OWNER'S EXAMPLES")).toBeGreaterThan(withLab.indexOf("Write in Kinyarwanda."));
     });

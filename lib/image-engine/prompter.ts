@@ -2,7 +2,7 @@
 // words (headline, small line, button) and its own image prompt. This file is the pure part: the instructions, the
 // answer's schema and the checks every answer passes (planner.ts calls Gemini and Claude). Pure, so it is tested.
 import { patternById } from "./patterns";
-import { fixSpellings } from "@/lib/training-lab/fix-spelling";
+import { OTHER_BUSINESSES_NOTE, PLACEHOLDER_NOTE, dropPlaceholderSentences, fixSpellings } from "@/lib/training-lab/fix-spelling";
 import type { LanguageExtra } from "@/lib/video-engine/brain/language";
 import { stripSlop } from "./realism";
 import type { Slot } from "./director";
@@ -52,12 +52,12 @@ export type Concept = {
  * The owner's Kinyarwanda spellings (Training Lab) applied to the words that go on the picture (headline, small line, button)
  * and to each caption: free, no rewrite and no retry. Nothing changes when the Lab has no spellings to fix. Pure.
  */
-export function fixImageWords<T extends Concept>(concepts: readonly T[], captions: readonly (string | null)[], extra: LanguageExtra | null | undefined): { concepts: T[]; captions: (string | null)[]; fixes: number } {
+export function fixImageWords<T extends Concept>(concepts: readonly T[], captions: readonly (string | null)[], extra: LanguageExtra | null | undefined, protect: readonly (string | null | undefined)[] = []): { concepts: T[]; captions: (string | null)[]; fixes: number } {
   let fixes = 0;
   const fix = (text: string) => {
-    const r = fixSpellings(text, extra);
+    const r = fixSpellings(text, extra, protect);
     fixes += r.changes.length;
-    return r.text;
+    return dropPlaceholderSentences(r.text);
   };
   const fixedConcepts = concepts.map((c) => ({ ...c, headline: fix(c.headline), subline: fix(c.subline), cta: fix(c.cta) }));
   const fixedCaptions = captions.map((c) => (c === null ? null : fix(c)));
@@ -113,9 +113,9 @@ export function labBlock(lab: { examples: string[]; avoid: string[]; phrases?: s
   if (!lab) return null;
   const list = (title: string, lines: readonly string[] | undefined, note?: string) => (lines?.length ? `${title}\n${note ? `${note}\n` : ""}${lines.map((l) => `- ${l}`).join("\n")}` : null);
   const blocks = [
-    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples, "These are other businesses' examples: never use their names, products, prices or contact details."),
+    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples, `${OTHER_BUSINESSES_NOTE} ${PLACEHOLDER_NOTE}`),
     list("NEVER (the owner's notes):", lab.avoid),
-    language === "Kinyarwanda" ? list("KINYARWANDA THE OWNER USES (spelling and natural phrases):", lab.phrases) : null,
+    language === "Kinyarwanda" ? list("KINYARWANDA THE OWNER USES (spelling and natural phrases):", lab.phrases, OTHER_BUSINESSES_NOTE) : null,
   ].filter(Boolean);
   return blocks.length ? blocks.join("\n\n") : null;
 }
