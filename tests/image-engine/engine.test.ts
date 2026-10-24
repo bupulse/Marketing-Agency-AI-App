@@ -7,6 +7,7 @@ const h = vi.hoisted(() => {
   const match = (r: Row, where: Record<string, unknown>): boolean =>
     Object.entries(where).every(([k, v]) => {
       if (k === "OR") return (v as Record<string, unknown>[]).some((w) => match(r, w));
+      if (v && typeof v === "object" && "in" in (v as object)) return (v as { in: unknown[] }).in.includes(r[k]);
       if (v && typeof v === "object" && !(v instanceof Date) && "lt" in (v as object)) return r[k] instanceof Date && (r[k] as Date) < (v as { lt: Date }).lt;
       if (v instanceof Date) return r[k] instanceof Date && (r[k] as Date).getTime() === v.getTime();
       return r[k] === v;
@@ -44,6 +45,7 @@ vi.mock("@/lib/usage", () => ({
 }));
 vi.mock("@/lib/designs/service", () => ({ createEngineDesign: h.design, deleteDesign: h.del, DesignError: class DesignError extends Error {} }));
 vi.mock("@/lib/image-engine/check", () => ({ checkPicture: h.check }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => ({ download: async () => ({ data: new Blob([new Uint8Array([0x89, 1])]), error: null }) }) } }) }));
 vi.mock("@/lib/image-engine/captioner", () => ({ captionBatch: async (_o: unknown, input: { concepts: unknown[] }) => input.concepts.map((_, i) => `Caption ${i}`) }));
 vi.mock("@/lib/image-engine/planner", () => ({
   writeConcepts: async (_o: unknown, input: { slots: unknown[] }) => input.slots.map((_, i) => ({ title: `Idea ${i}`, scene: `Scene ${i}`, headline: `Headline ${i}`, subline: "", cta: "Order now", prompt: `Prompt ${i}`, planner: i % 2 ? "gemini" : "claude" })),
@@ -96,11 +98,36 @@ describe("painting a batch", () => {
   it("lets the Editor fix a picture that fails the check once, keeping the better one", async () => {
     const { batchId } = await planBatch(owner, { source: "designs", subjectId: "p1", count: 4, quality: "lite", aspectRatio: "4:5" });
     h.check.mockResolvedValueOnce({ ok: false, problems: ["The headline is not written correctly."], fix: 'Write the headline exactly as: "Headline 0". Keep everything else exactly the same.', ran: true });
-    await paintNext(owner, batchId);
+    // One AI call per step: paint, check, fix, check the fix.
+    const steps: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      await paintNext(owner, batchId);
+      steps.push(h.rows[0].status);
+    }
+    expect(steps).toEqual(["painted", "fixing", "edited", "done"]);
     expect(h.design).toHaveBeenCalledTimes(2);
     expect(h.design.mock.calls[1][0]).toMatchObject({ editOf: "u1/designs/d1.png" });
     expect(h.del).toHaveBeenCalledWith("u1", "d1");
     expect(h.rows[0]).toMatchObject({ status: "done", path: "u1/designs/d2.png", fixed: true });
+  });
+  it("takes one step per call and carries on from the database, even after a call that stopped half way", async () => {
+    const { batchId } = await planBatch(owner, { source: "designs", subjectId: "p1", count: 1, quality: "lite", aspectRatio: "4:5" });
+    expect(await paintNext(owner, batchId)).toMatchObject({ status: "working" });
+    expect(h.rows[0]).toMatchObject({ status: "painted", paintingUntil: null, path: "u1/designs/d1.png" });
+    expect(h.check).not.toHaveBeenCalled();
+    // A call that died while checking leaves the row held; once its hold runs out, the next call checks again.
+    h.rows[0].paintingUntil = new Date(Date.now() + 60_000);
+    expect(await paintNext(owner, batchId)).toBeNull();
+    expect(await paintNext(owner, batchId, new Date(Date.now() + 120_000))).toMatchObject({ status: "done" });
+    expect(h.design).toHaveBeenCalledTimes(1);
+    expect(h.rows[0]).toMatchObject({ status: "done", path: "u1/designs/d1.png", check: { ok: true, problems: [], ran: true } });
+  });
+  it("keeps the first picture when the Editor's fix is worse", async () => {
+    const { batchId } = await planBatch(owner, { source: "designs", subjectId: "p1", count: 1, quality: "lite", aspectRatio: "4:5" });
+    h.check.mockResolvedValueOnce({ ok: false, problems: ["A typo."], fix: "Fix the typo.", ran: true }).mockResolvedValueOnce({ ok: false, problems: ["A typo.", "A warped hand."], fix: null, ran: true });
+    while (await paintNext(owner, batchId));
+    expect(h.del).toHaveBeenCalledWith("u1", "d2");
+    expect(h.rows[0]).toMatchObject({ status: "done", path: "u1/designs/d1.png", fixed: false });
   });
   it("gives a failed picture's credits back", async () => {
     const { batchId } = await planBatch(owner, { source: "designs", subjectId: "p1", count: 4, quality: "auto", aspectRatio: "4:5" });

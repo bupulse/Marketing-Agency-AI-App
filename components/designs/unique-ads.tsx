@@ -21,6 +21,15 @@ const SHAPES = [
 ] as const;
 /** Pictures painted at the same time. */
 const PARALLEL = 2;
+/** How long a painter waits when every unfinished picture is held by the other one. */
+const IDLE_WAIT_MS = 3000;
+/** What a picture shows while it is being made (lib/image-engine WORKING_STATUSES). */
+const STEP_LABEL: Record<string, string> = {
+  painting: "Painting…",
+  painted: "Checking the words and details…",
+  fixing: "Fixing a small mistake…",
+  edited: "Checking the fix…",
+};
 
 /**
  * "Unique AI ads" (docs/IMAGE_ENGINE.md): the image engine's team of agents makes 4, 10 or 20 finished adverts, each a
@@ -67,6 +76,8 @@ export function UniqueAds({ subjectId, subjectName, credits }: { subjectId: stri
         }
         setPictures(step.pictures);
         more = step.left;
+        // Nothing free to work on: the other painters hold the last pictures, so wait a little before asking again.
+        if (more && step.idle) await new Promise((r) => setTimeout(r, IDLE_WAIT_MS));
       }
     };
     await Promise.all(Array.from({ length: PARALLEL }, worker));
@@ -206,7 +217,7 @@ function PictureCard({ picture: p, onChange, onToast }: { picture: PictureView; 
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-[14px] text-muted">
             <LoaderCircle aria-hidden className="size-5 animate-spin" />
-            {p.status === "painting" ? "Painting and checking…" : "Waiting for its turn…"}
+            {STEP_LABEL[p.status] ?? "Waiting for its turn…"}
           </div>
         )}
       </div>
