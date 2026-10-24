@@ -7,6 +7,12 @@
 ## Decisions made while the owner was away (local, reversible)
 - Owner (11:55): Claude in Chrome may be used for testing; the owner leaves Admin logged in. Use it read-only on the test
   site and my own check server (port 3004); never publish, post or send anything from the browser.
+- 12:00: the TrainingExample migration (and its private `training-lab` bucket) applied to TEST with `prisma migrate
+  deploy`; it was the only pending one. Additive, nothing else changed.
+- 12:02: owner asked for an agent team inside BuPulse (one job per member, on Gemini, the Anthropic key or the Claude
+  subscription while hosted on the Mac). Designed it as a registry plus a brain router and an Admin Team page
+  (docs/TRAINING_LAB.md, "The agent team"); tasks A1 to A4 on the board. The subscription stays local-only, as
+  lib/image-engine/claude-cli.ts already enforces.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small
@@ -88,4 +94,5 @@ data; the engines get it as a new optional parameter, so nothing changes when th
 (3) `scoreViral` bonus/avoid; (4) `preferredHours` merge; (5) `checkLanguage` extras and wiring into reel/image.
 
 ## Rounds
-- Round 1 (11:47): task 1 map (helper, done 11:49 and reviewed), task 2 data model (helper, running).
+- Round 1 (11:47): task 1 map (helper, done 11:49 and reviewed), task 2 data model (helper, done 12:00, committed 3f511afb).
+- Round 2 (12:03): task 3 Admin page (model-helper), task 10 step 1 editor ops (map-helper).
