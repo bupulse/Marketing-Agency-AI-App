@@ -4,6 +4,7 @@
 import { NEIGHBOURS } from "@/lib/video-engine/brain/viral";
 import { SECTORS, type SectorId } from "@/lib/video-engine/brain/types";
 import { KIND_LABELS, type TrainingEngine, type TrainingKind } from "./types";
+import { voiceLanguage } from "@/lib/video-engine/voice-language";
 
 /** The fields of a TrainingExample the matcher reads. */
 export type ExampleRow = {
@@ -36,6 +37,12 @@ const AVOID_LIMIT = 8;
 const DAY = 86_400_000;
 const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
 
+/** One name per language for comparing ("rw", "Ikinyarwanda" and "Kinyarwanda (Rwanda)" are all Kinyarwanda); "" for none. */
+export function sameLanguageKey(language: string | null | undefined): string {
+  const bare = (language ?? "").replace(/\(.*?\)/g, "").trim();
+  return bare ? voiceLanguage(bare).captionLanguage.toLowerCase() : "";
+}
+
 /** May this example be used by this engine at all? */
 export function usable(e: ExampleRow, want: Pick<Want, "engine" | "kinds">): boolean {
   if (!e.engines.includes(want.engine)) return false;
@@ -57,8 +64,8 @@ function sectorScore(example: string | null, wanted: string | null | undefined):
 
 export function scoreExample(e: ExampleRow, want: Want, now: Date): number {
   let score = sectorScore(e.sector, want.sector);
-  const lang = norm(want.language);
-  if (lang && norm(e.language)) score += norm(e.language) === lang ? 25 : -15;
+  const lang = sameLanguageKey(want.language);
+  if (lang && sameLanguageKey(e.language)) score += sameLanguageKey(e.language) === lang ? 25 : -15;
   const wanted = (want.techniques ?? []).map(norm).filter(Boolean);
   const techniques = new Set(e.technique.map(norm));
   const tags = new Set(e.tags.map(norm));

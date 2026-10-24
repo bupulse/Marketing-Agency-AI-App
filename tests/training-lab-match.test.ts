@@ -21,6 +21,13 @@ beforeEach(() => {
 });
 
 describe("rankExamples", () => {
+  it("matches the language by its aliases (rw, Ikinyarwanda, Kinyarwanda (Rwanda))", () => {
+    const rw = ex({ language: "rw" });
+    const fr = ex({ language: "fr" });
+    const r = rankExamples([fr, rw], { engine: "reel", language: "Kinyarwanda (Rwanda)" }, now);
+    expect(r.examples[0].example.id).toBe(rw.id);
+    expect(r.examples[0].score).toBeGreaterThan(r.examples[1].score);
+  });
   it("uses only examples switched on for the engine and the wanted kinds", () => {
     const a = ex();
     const b = ex({ engines: ["image"] });
