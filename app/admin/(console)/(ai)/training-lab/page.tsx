@@ -17,7 +17,8 @@ import { describeExtras } from "@/lib/training-lab/language";
 import { exampleUsage, usageLine, type ExampleUse } from "@/lib/training-lab/usage";
 import { describeSchedule } from "@/lib/training-lab/schedule";
 import { chipHref, galleryItem, KIND_CHIPS } from "@/lib/training-lab/gallery";
-import { EditExample, ExampleForm } from "./example-form";
+import { EditExample } from "./example-form";
+import { DropZone } from "./drop/drop-zone";
 import { Gallery } from "./gallery";
 import { LabTabs } from "./lab-tabs";
 import { PortraitFromVideo } from "./portrait-from-video";
@@ -73,9 +74,7 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
 
       {health && <LabHealth issues={health} />}
 
-      <Panel title="Add an example" description="A file or a link, then the plain-words form. Files stay private: only this page shows them, with links that expire after an hour.">
-        <ExampleForm />
-      </Panel>
+      <DropZone />
 
       <Panel title={`Examples (${examples.length}${examples.length === LIST_MAX ? "+" : ""})`} description="Newest first. Tap an example to see everything about it and change it.">
         <nav aria-label="Filter by kind" className="flex min-w-0 flex-wrap gap-2">
