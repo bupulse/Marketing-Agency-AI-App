@@ -91,9 +91,13 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 11. **Done** "Teach from an edit": an edit the owner makes is saved as a Lab example (what was changed and why).
 
 ### Phase 4: the loop closes (added 24 October, while the owner was away)
-12. **Doing** Ratings feed back: the Team page rates what each member made, and "More like this" or "Never this" on a
+12. **Done** Ratings feed back: the Team page rates what each member made, and "More like this" or "Never this" on a
     finished reel turns it into a Lab example (its MP4 copied privately into the Lab).
-13. **Doing** Actors with only a video: take a still frame for the presenter portrait.
+13. **Done** (the owner picks the moment in the browser) Actors with only a video: take a still frame for the presenter portrait.
+
+14. **Doing** The Editor opens a reel from a link (Team page, finished reels) and shows what the Lab did to it.
+15. **Doing** A Words tab: every Kinyarwanda spelling, right word and phrase the Lab teaches, in one place.
+16. **Done** The owner's guide (docs/TRAINING_LAB_GUIDE.md).
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
