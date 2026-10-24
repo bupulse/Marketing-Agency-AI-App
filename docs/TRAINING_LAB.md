@@ -70,7 +70,7 @@ A1. **Done** The registry and the brain router (`lib/training-lab/agents.ts`, `b
     brain choice saved in the database (a small `AgentSetting` table), fallback order, tests. No engine changes yet.
 A2. **Done** Admin, Training Lab, Team: a card per member (job, examples it reads, brain switch, last runs and cost
     from the AI ledger). Phone width works.
-A3. **Doing** (the reel script writer done; the designer and caption writer next) The engines ask the router: the reel script writer, the designer and the caption writer use the member's
+A3. **Done** (the script writer, the designer, the caption writer; the director and checker stay rules or fixed for now) The engines ask the router: the reel script writer, the designer and the caption writer use the member's
     chosen brain (they already choose between Claude and Gemini; this makes it the owner's switch).
 A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records which Lab examples it used, so a rating on the result goes back to them.
 
@@ -89,6 +89,11 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
     marks, export through `encodeSpecMp4` in the browser. Start with editing a finished reel (its spec), then any
     uploaded clip. Coordinate with video-engine before touching shared encoder code (it is theirs: ask, do not edit).
 11. **Done** "Teach from an edit": an edit the owner makes is saved as a Lab example (what was changed and why).
+
+### Phase 4: the loop closes (added 24 October, while the owner was away)
+12. **Doing** Ratings feed back: the Team page rates what each member made, and "More like this" or "Never this" on a
+    finished reel turns it into a Lab example (its MP4 copied privately into the Lab).
+13. **Todo** Actors with only a video: take a still frame for the presenter portrait.
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
