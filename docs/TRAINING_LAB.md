@@ -28,9 +28,9 @@ outcomes), the reel engine's writer and checker (`lib/reel-engine/*`), the image
 Status: Todo / Doing / Done / Waiting (owner). Keep it current; any round resumes from here.
 
 ### Phase 1: the library (foundation)
-1. **Todo** Map: one page in `docs/handovers/training-lab.md` on what each engine reads today and where a Lab example
+1. **Done** Map: one page in `docs/handovers/training-lab.md` on what each engine reads today and where a Lab example
    would plug in (video brain, reel writer/checker, image planner/checker, posting times).
-2. **Todo** Data model: a `TrainingExample` (kind: reel, video, image/post, voice, actor, schedule; the file in Storage;
+2. **Doing** Data model: a `TrainingExample` (kind: reel, video, image/post, voice, actor, schedule; the file in Storage;
    how it was made; what is good; tags such as sector, language, technique; rating; consent for people; which engines
    use it) with a new migration. Files in a private bucket path under the owner.
 3. **Todo** Admin page `Training Lab`: upload (file or link), the "how it was made" form in plain words, list, filter,
