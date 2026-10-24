@@ -104,6 +104,9 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 19. **Done** Images get the free Kinyarwanda spelling fixes (words on the picture and captions).
 20. **Done** The reel Director leans toward the best-rated examples' hooks, shots and camera moves, never the "never" ones.
 21. **Done** A Lab health list at the top of the Library.
+22. **Done** The editor keeps a draft of each edit in the browser.
+23. **Done** Autopilot's post writer and the daily posts read the Lab and fix the owner's spellings for free
+    ("regenerate this post" does not read it yet).
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
