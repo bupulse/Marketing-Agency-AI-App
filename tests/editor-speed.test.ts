@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { describeEdit } from "@/lib/editor/describe";
-import { setClipSound, setSpeed, snapCutsToBeats, splitShot, trimShot } from "@/lib/editor/ops";
+import { maxSpeed, setClipSound, setSpeed, snapCutsToBeats, splitShot, trimShot } from "@/lib/editor/ops";
 import { CLIP_FADE_MAX, CLIP_RATE, type Layer, type MotionSpec, type Scene } from "@/lib/video-engine/spec";
 
 const clip = (url: string, start: number, over: Partial<Layer> = {}): Layer => ({ kind: "video", url, fit: "cover", start, sound: true, x: 0.5, y: 0.5, w: 1, h: 1, ...over }) as Layer;
@@ -130,5 +130,34 @@ describe("describeEdit names speed and sound", () => {
   });
   it("says nothing when the speed and sound are as they were", () => {
     expect(describeEdit(reel(), setSpeed(setSpeed(reel(), 3, 2), 3, 1))).toEqual([]);
+  });
+});
+
+describe("the fastest speed a shot can have", () => {
+  it("is held to what is left of the clip: (clip length - start) / seconds", () => {
+    // Shot 4 starts 1 s into a clip of 4.5 s and is 3 s long: 3.5 s left, so at most 1.16x.
+    expect(maxSpeed(reel(), 3, 4.5)).toBe(1.16);
+    expect(maxSpeed(reel(), 3, 100)).toBe(CLIP_RATE.max);
+    expect(maxSpeed(reel(), 3, 1.2)).toBe(CLIP_RATE.min);
+  });
+  it("is not known without a clip or a length", () => {
+    expect(maxSpeed(reel(), 3, undefined)).toBeNull();
+    expect(maxSpeed(reel(), 3, 0)).toBeNull();
+    expect(maxSpeed(reel(), 9, 5)).toBeNull();
+    expect(maxSpeed({ ...reel(), scenes: [scene(3, [])] }, 0, 5)).toBeNull();
+  });
+  it("setSpeed does not go past it, and without a length it is as before", () => {
+    expect(vid(setSpeed(reel(), 3, 2, { clipSeconds: 4.5 }), 3).rate).toBe(1.16);
+    expect(vid(setSpeed(reel(), 3, 1.1, { clipSeconds: 4.5 }), 3).rate).toBe(1.1);
+    expect(vid(setSpeed(reel(), 3, 2), 3).rate).toBe(2);
+    expect(vid(setSpeed(reel(), 3, 2, { clipSeconds: null }), 3).rate).toBe(2);
+  });
+  it("changes nothing when the cap leaves the speed as it is", () => {
+    const s = setSpeed(reel(), 3, 1.16, { clipSeconds: 4.5 });
+    expect(setSpeed(s, 3, 2, { clipSeconds: 4.5 })).toBe(s);
+  });
+  it("a shot read to the very end of its clip is allowed at 1x", () => {
+    expect(maxSpeed(reel(), 3, 4)).toBe(1);
+    expect(setSpeed(reel(), 3, 1.5, { clipSeconds: 4 })).toEqual(reel());
   });
 });

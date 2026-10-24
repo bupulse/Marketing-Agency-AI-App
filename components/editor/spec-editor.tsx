@@ -16,6 +16,7 @@ import { reelSource, type ReelBrand } from "./reel-spec";
 import { SavePanel, type Source } from "./save-panel";
 import type { ReelView } from "@/lib/reel-engine/engine";
 import { Timeline } from "./timeline";
+import { useClipDurations } from "./use-clip-durations";
 import { useDraftSaver } from "./use-draft";
 import { useSpecHistory } from "./use-spec-history";
 
@@ -48,6 +49,9 @@ export function SpecEditor({ initial, initialReel, reels = [], openReel, createE
   // The draft kept in this browser: the spec the page started from, and an older edit waiting to be chosen or dropped.
   const [baseline, setBaseline] = useState(initial);
   const [offer, setOffer] = useState<{ spec: MotionSpec; savedAt: number } | null>(null);
+  // How long each clip is (from its header), so a trim or a faster speed never reads past its end.
+  const durations = useClipDurations(spec.scenes.flatMap((sc) => sc.layers.flatMap((l) => (l.kind === "video" ? [l.url] : []))));
+  const clipLength = (url: string | undefined) => (url ? durations.get(url) : undefined);
   const key = draftKey(source?.id);
   // Nothing is saved while an older edit is waiting to be chosen, so working on does not silently replace it.
   useDraftSaver(key, spec, baseline, !offer);
@@ -227,11 +231,11 @@ export function SpecEditor({ initial, initialReel, reels = [], openReel, createE
                 run((s) => moveShot(s, from, to));
                 setSelected(to);
               }}
-              onTrim={(i, seconds) => run((s) => trimShot(s, i, { seconds }))}
+              onTrim={(i, seconds) => run((s) => trimShot(s, i, { seconds }, { clipSeconds: clipLength(s.scenes[i]?.layers.find((l) => l.kind === "video")?.url) }))}
             />
           </Panel>
           <Panel title="Change this shot">
-            <Inspector spec={spec} selected={index} tMs={tMs} run={run} onSelect={setSelected} />
+            <Inspector spec={spec} selected={index} tMs={tMs} run={run} onSelect={setSelected} clipLength={clipLength} />
           </Panel>
           <ExportPanel spec={spec} musicUrl={musicUrl} title={title} onMade={setMade} />
           {source && createExample && confirmFile && <SavePanel spec={spec} source={source} made={made} onMade={setMade} onSaved={() => { removeDraft(browserStorage(), key); setBaseline(spec); }} createExample={createExample} confirmFile={confirmFile} />}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Field, Input, Select } from "@/components/ui";
-import { addSticker, deleteShot, removeSticker, setCaptionText, setClipSound, setLook, setSpeed, setTransition, setZoom, splitShot, textSticker, trimShot, type Op } from "@/lib/editor/ops";
+import { addSticker, deleteShot, maxSpeed, removeSticker, setCaptionText, setClipSound, setLook, setSpeed, setTransition, setZoom, splitShot, textSticker, trimShot, type Op } from "@/lib/editor/ops";
 import { isAiClipUrl } from "@/lib/video-engine/video-frames";
 import { CLIP_FADE_MAX, GRADES, SPEC_LIMITS, TRANSITIONS, type Grade, type Layer, type MotionSpec, type ShapeLayer, type Transition, type VideoLayer } from "@/lib/video-engine/spec";
 
@@ -38,22 +38,24 @@ function TextBox({ value, label, onCommit }: { value: string; label: string; onC
 const SPEEDS = [0.5, 0.75, 1, 1.5, 2];
 
 /** Speed and the clip's own sound for a shot that has a clip. The sound is heard in the exported video, not in the preview. */
-function ClipControls({ layer, selected, run }: { layer: VideoLayer; selected: number; run: (op: Op) => void }) {
+function ClipControls({ spec, layer, selected, clipSeconds, run }: { spec: MotionSpec; layer: VideoLayer; selected: number; clipSeconds?: number; run: (op: Op) => void }) {
   const rate = layer.rate ?? 1;
   const ai = isAiClipUrl(layer.url);
   const silent = ai || layer.sound !== true || rate !== 1;
   const speeds = SPEEDS.includes(rate) ? SPEEDS : [...SPEEDS, rate].sort((a, b) => a - b);
   const volume = layer.volume ?? 1;
+  const cap = maxSpeed(spec, selected, clipSeconds);
   return (
     <fieldset className="flex min-w-0 flex-col gap-3">
       <legend className="mb-1 text-sm font-medium">Clip speed and sound</legend>
       <Field label="Speed" hint="Below 1x is slow motion, above 1x is faster. The shot keeps its length; a faster shot shows more of the clip.">
-        <Select value={String(rate)} onChange={(e) => run((s) => setSpeed(s, selected, Number(e.target.value)))}>
+        <Select value={String(rate)} onChange={(e) => run((s) => setSpeed(s, selected, Number(e.target.value), { clipSeconds }))}>
           {speeds.map((r) => (
-            <option key={r} value={String(r)}>{r}x</option>
+            <option key={r} value={String(r)} disabled={cap !== null && r > cap && r !== rate}>{r}x</option>
           ))}
         </Select>
       </Field>
+      {cap !== null && cap < 2 && <p className="text-[13px] text-muted">This clip is {Math.round((clipSeconds ?? 0) * 10) / 10} s long, so this shot can go up to {cap}x without running past its end.</p>}
       {ai && <p className="text-[13px] text-muted">AI clips have no sound of their own.</p>}
       {!ai && layer.sound !== true && <p className="text-[13px] text-muted">This clip has no sound of its own.</p>}
       {!ai && layer.sound === true && rate !== 1 && <p className="text-[13px] text-muted">Sound is off while the speed is not 1x.</p>}
@@ -79,7 +81,7 @@ const zoomOf = (layers: Layer[]) => {
 };
 
 /** Everything you can change about the selected shot, and the colour look of the whole video. */
-export function Inspector({ spec, selected, tMs, run, onSelect }: { spec: MotionSpec; selected: number; tMs: number; run: (op: Op) => void; onSelect: (i: number) => void }) {
+export function Inspector({ spec, selected, tMs, run, onSelect, clipLength }: { spec: MotionSpec; selected: number; tMs: number; run: (op: Op) => void; onSelect: (i: number) => void; clipLength?: (url: string) => number | undefined }) {
   const scene = spec.scenes[selected];
   if (!scene) return <p className="text-sm text-muted">Select a shot to change it.</p>;
   const startMs = spec.scenes.slice(0, selected).reduce((t, s) => t + s.seconds * 1000, 0);
@@ -95,7 +97,7 @@ export function Inspector({ spec, selected, tMs, run, onSelect }: { spec: Motion
       <h3 className="text-base font-semibold">Shot {selected + 1}</h3>
       <div className="grid min-w-0 gap-4 sm:grid-cols-2">
         <Field label="Length (seconds)" hint={`Between ${SPEC_LIMITS.minSceneSeconds} and ${SPEC_LIMITS.maxSceneSeconds}.`}>
-          <Input type="number" inputMode="decimal" step={0.1} min={SPEC_LIMITS.minSceneSeconds} max={SPEC_LIMITS.maxSceneSeconds} value={scene.seconds} onChange={(e) => e.target.value !== "" && run((s) => trimShot(s, selected, { seconds: Number(e.target.value) }))} />
+          <Input type="number" inputMode="decimal" step={0.1} min={SPEC_LIMITS.minSceneSeconds} max={SPEC_LIMITS.maxSceneSeconds} value={scene.seconds} onChange={(e) => e.target.value !== "" && run((s) => trimShot(s, selected, { seconds: Number(e.target.value) }, { clipSeconds: clip ? clipLength?.(clip.url) : undefined }))} />
         </Field>
         <Field label="How it comes in" hint={selected === 0 ? "The first shot has nothing before it." : undefined}>
           <Select value={scene.transition ?? "fade"} disabled={selected === 0} onChange={(e) => run((s) => setTransition(s, selected, e.target.value as Transition))}>
@@ -109,7 +111,7 @@ export function Inspector({ spec, selected, tMs, run, onSelect }: { spec: Motion
         <input type="range" min={1} max={2} step={0.05} disabled={!hasPicture} value={zoomOf(scene.layers)} onChange={(e) => run((s) => setZoom(s, selected, Number(e.target.value)))} className="min-h-11 w-full" />
       </Field>
 
-      {clip && <ClipControls layer={clip} selected={selected} run={run} />}
+      {clip && <ClipControls spec={spec} layer={clip} selected={selected} clipSeconds={clipLength?.(clip.url)} run={run} />}
 
       <fieldset className="flex min-w-0 flex-col gap-3">
         <legend className="mb-1 text-sm font-medium">Words on this shot</legend>

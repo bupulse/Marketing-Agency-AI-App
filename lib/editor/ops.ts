@@ -203,16 +203,29 @@ const withRate = (l: Layer & { kind: "video" }, rate: number): Layer => {
 };
 
 /**
+ * The fastest speed shot `i` can have without reading past the end of its clip: `(clipSeconds − start) / seconds` (down to a
+ * hundredth), at most CLIP_RATE.max. Null when the shot has no clip or the clip's length is not known.
+ */
+export function maxSpeed(spec: MotionSpec, i: number, clipSeconds: number | null | undefined): number | null {
+  const scene = has(spec, i) ? spec.scenes[i] : null;
+  const video = scene?.layers.find((l) => l.kind === "video");
+  if (!scene || !video || video.kind !== "video" || !clipSeconds || !(clipSeconds > 0)) return null;
+  return Math.min(CLIP_RATE.max, Math.max(CLIP_RATE.min, Math.floor(((clipSeconds - video.start) / scene.seconds) * 100) / 100));
+}
+
+/**
  * The speed of shot `i` (0.5 slow motion to 2, to 0.01): the shot keeps its length and reads `seconds × rate` of its clip. When
  * the shots after it carry on the same clip, their starts move by the same amount so the clip still plays straight through.
+ * With `clipSeconds` (the clip's real length) the speed is held to `maxSpeed`, so the shot never reads past the clip's end.
  * A clip that is not at 1 plays without its own sound.
  */
-export function setSpeed(spec: MotionSpec, i: number, rate: number): MotionSpec {
+export function setSpeed(spec: MotionSpec, i: number, rate: number, opts: { clipSeconds?: number | null } = {}): MotionSpec {
   if (!has(spec, i) || !Number.isFinite(rate)) return spec;
   const scene = spec.scenes[i];
   const video = scene.layers.find((l) => l.kind === "video");
   if (!video || video.kind !== "video") return spec;
-  const next = r2(clamp(rate, CLIP_RATE.min, CLIP_RATE.max));
+  const cap = maxSpeed(spec, i, opts.clipSeconds);
+  const next = r2(clamp(cap === null ? rate : Math.min(rate, cap), CLIP_RATE.min, CLIP_RATE.max));
   if (next === rateOf(video)) return spec;
   const delta = r2(scene.seconds * (next - rateOf(video)));
   const scenes = spec.scenes.map((s, k) => (k === i ? { ...s, layers: s.layers.map((l) => (l.kind === "video" ? withRate(l, next) : l)) } : s));
