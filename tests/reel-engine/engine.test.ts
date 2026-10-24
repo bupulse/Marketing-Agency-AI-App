@@ -6,6 +6,7 @@ const h = vi.hoisted(() => {
     jobs,
     switchOn: { value: true },
     spent: { value: 0 },
+    photos: { value: ["u1/gallery/a.jpg"] },
     design: vi.fn(),
     submit: vi.fn(),
     poll: vi.fn(),
@@ -44,14 +45,14 @@ vi.mock("@/lib/designs/service", () => ({ createEngineDesign: h.design, designUr
 vi.mock("@/lib/image-engine/check", () => ({ checkPicture: async () => ({ ok: true, problems: [], fix: null, ran: true }) }));
 vi.mock("@/lib/image-engine/planner", () => ({ claudeJson: async () => null }));
 vi.mock("@/lib/image-engine/engine", () => ({
-  loadFacts: async () => ({ business: { audience: null }, facts: { name: "LEAF", industry: null, description: "Towers", audience: null, place: "Kigali", language: "English", voice: null, colors: [] }, subject: { name: "Tower", description: null, price: null, sellingPoints: [] }, photos: ["u1/gallery/a.jpg"], reviews: [], hasPrice: false }),
+  loadFacts: async () => ({ business: { audience: null }, facts: { name: "LEAF", industry: null, description: "Towers", audience: null, place: "Kigali", language: "English", voice: null, colors: [] }, subject: { name: "Tower", description: null, price: null, sellingPoints: [] }, photos: h.photos.value, reviews: [], hasPrice: false }),
 }));
 vi.mock("@/lib/music/service", () => ({ musicUrl: (p: string) => p, trackForVideo: async () => null }));
 vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => ({ download: async () => ({ data: new Blob([new Uint8Array([0x89, 1, 2])]), error: null }), upload: h.upload, createSignedUrls: async () => ({ data: [] }) }) } }) }));
 vi.mock("@/lib/video-engine/veo", async (orig) => ({ ...(await orig<typeof import("@/lib/video-engine/veo")>()), submitVeo: h.submit, getVeoOperation: h.poll, veoClipBytes: undefined, downloadVeo: async () => Buffer.from([0, 0, 0, 24]) }));
 
-import { latestReel, reelEngineOn, retryReel, startReel, stepReel } from "@/lib/reel-engine/engine";
+import { framePhotos, latestReel, reelEngineOn, retryReel, startReel, stepReel } from "@/lib/reel-engine/engine";
 import { veoClipUsd, veoModel } from "@/lib/video-engine/veo";
 
 const owner = { userId: "u1", businessId: "b1" };
@@ -65,6 +66,7 @@ beforeEach(() => {
   h.jobs.clear();
   h.switchOn.value = true;
   h.spent.value = 0;
+  h.photos.value = ["u1/gallery/a.jpg"];
   process.env.REEL_ENGINE_BUSINESSES = "b1";
   process.env.GEMINI_API_KEY = "test-key";
   let n = 0;
@@ -80,6 +82,20 @@ describe("the reel engine (test only)", () => {
     expect(await reelEngineOn("b2")).toBe(false);
     h.switchOn.value = false;
     expect(await reelEngineOn("b1")).toBe(false);
+  });
+
+  it("paints every frame of a reel from the same product photo (an album can show several models)", async () => {
+    h.photos.value = ["u1/gallery/spiral.jpg", "u1/gallery/pots.jpg", "u1/gallery/tree.jpg"];
+    const id = await startReel(owner, { language: "English", tier: "lite", subjectId: "p1" });
+    for (let i = 0; i < 7; i++) await stepReel(owner, id);
+    expect(h.design).toHaveBeenCalledTimes(7);
+    expect(new Set(h.design.mock.calls.map((c) => (c[0] as { usePhotoPath: string }).usePhotoPath))).toEqual(new Set(["u1/gallery/spiral.jpg"]));
+    expect((h.jobs.get(id)!.plan as { productPhoto: string }).productPhoto).toBe("u1/gallery/spiral.jpg");
+  });
+
+  it("tries the reel's own photo first, then the rest of the album", () => {
+    expect(framePhotos(["a", "b", "c"], null)).toEqual(["a", "b", "c"]);
+    expect(framePhotos(["a", "b", "c"], "b")).toEqual(["b", "a", "c"]);
   });
 
   it("refuses a reel that would pass the test budget", async () => {

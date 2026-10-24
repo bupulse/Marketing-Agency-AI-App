@@ -141,6 +141,12 @@ export type ReelPlan = {
   sources?: string[];
   /** The product's name as a big sticker in the montage, at most 3 words ("LEAF TOWER"). */
   tag?: string | null;
+  /**
+   * The one product photo every start frame is painted from (a Storage path in "media"). A product's album can show
+   * several models (LEAF's Hydro Tower album has 8 different towers), and one reel shows one of them: the round-3
+   * montage took the next photo for each clip and showed a different tower in every shot.
+   */
+  productPhoto?: string | null;
 };
 
 /** Least used first, ties broken by the seed; never twice in a reel. */
