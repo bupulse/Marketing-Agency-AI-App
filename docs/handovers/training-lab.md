@@ -34,7 +34,7 @@
 - 12:32: video-engine approved d0f42915 (viral wiring), asking that a low rating penalise only `lab:<id>` (an opening
   type only by an explicit `never_hook` note or `never:<hook>` tag) and giving the go-ahead to wire
   lib/video-studio/jobs.ts. Send them the hashes of that fix, jobs.ts and the checkLanguage commits (4659930f, baa00bd9).
-- 12:52: video-engine approved everything on this branch that touches its code (up to 669b9d92). Full vitest 5523
+- 12:46: video-engine approved everything on this branch that touches its code (up to 669b9d92). Full vitest 5523
   passed after fixing .env.example (settings must be empty). Main asked to merge up to 6bad0208.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
