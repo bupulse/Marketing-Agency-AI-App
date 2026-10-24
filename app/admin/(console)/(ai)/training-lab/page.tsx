@@ -12,6 +12,7 @@ import { ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, type TrainingKind } from "@
 import { deleteExampleAction, draftNotesAction, moreLikeThisAction, neverThisAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
 import { finishedReels, type FinishedReel } from "@/lib/training-lab/from-result";
 import { describeExtras } from "@/lib/training-lab/language";
+import { exampleUsage, usageLine, type ExampleUse } from "@/lib/training-lab/usage";
 import { describeSchedule } from "@/lib/training-lab/schedule";
 import { EditExample, ExampleForm } from "./example-form";
 import { LabTabs } from "./lab-tabs";
@@ -37,7 +38,7 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
   const sp = await searchParams;
   const filter = parseFilter(sp);
   const [examples, choices, analysis] = await Promise.all([listExamples(filter), filterChoices(), analysisStatus().catch((): AnalysisStatus => ({ allowed: false, reason: "AI notes cannot be checked right now. You can write the notes yourself below.", spentUsd: 0, capUsd: 0 }))]);
-  const [links, reels] = await Promise.all([previewLinks(examples.map((e) => e.path)), finishedReels().catch((): FinishedReel[] => [])]);
+  const [links, reels, usage] = await Promise.all([previewLinks(examples.map((e) => e.path)), finishedReels().catch((): FinishedReel[] => []), exampleUsage(examples.map((e) => e.id))]);
   const filtered = Object.keys(filter).length > 0;
   const back = query(filter);
 
@@ -71,7 +72,7 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
         ) : (
           <ul className="flex min-w-0 flex-col gap-4">
             {examples.map((e) => (
-              <ExampleCard key={e.id} example={e} link={e.path ? links.get(e.path) : undefined} back={back} analysis={analysis} />
+              <ExampleCard key={e.id} example={e} link={e.path ? links.get(e.path) : undefined} back={back} analysis={analysis} use={usage.get(e.id)} />
             ))}
           </ul>
         )}
@@ -158,7 +159,7 @@ function Text({ label, children }: { label: string; children: string | null }) {
   );
 }
 
-function ExampleCard({ example: e, link, back, analysis }: { example: Example; link?: string; back: string; analysis: AnalysisStatus }) {
+function ExampleCard({ example: e, link, back, analysis, use }: { example: Example; link?: string; back: string; analysis: AnalysisStatus; use?: ExampleUse }) {
   const here = `${back}#ex-${e.id}`;
   const noFile = !e.path && !e.sourceUrl && e.kind !== "schedule";
   return (
@@ -174,6 +175,7 @@ function ExampleCard({ example: e, link, back, analysis }: { example: Example; l
         </div>
       </div>
 
+      <p className="text-[13px] text-muted">{usageLine(use)}</p>
       <Preview example={e} link={link} />
       {e.kind === "actor" && e.consentGiven && e.mime?.startsWith("video/") && link && <PortraitFromVideo id={e.id} url={link} title={e.title} />}
       {e.sourceUrl && (
