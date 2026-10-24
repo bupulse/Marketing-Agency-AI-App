@@ -1,14 +1,16 @@
 // The brain router for the agent team (agents.ts): which brain a member runs on now, and one text call on it that falls
 // back to the next brain when one fails. It reuses the engines' own callers: the Gemini and Claude text providers, the
-// owner's Claude subscription (image-engine/claude-cli.ts) and the cost ledger. API calls are recorded under the feature
-// the caller gives (the ledger has no field for the member's name and its schema is not changed). Keys are never logged.
+// owner's Claude subscription (image-engine/claude-cli.ts) and the cost ledger. API calls are recorded in the ledger under the
+// feature the caller gives (its schema is not changed) and every attempt in our own run log (runs.ts). Keys are never logged.
 import "server-only";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 import { ClaudeTextProvider } from "@/lib/ai/claude-text";
 import { DEFAULT_GEMINI_TEXT_FALLBACK, DEFAULT_GEMINI_TEXT_MODEL, GeminiTextProvider } from "@/lib/ai/gemini-text";
 import { withLedger } from "@/lib/ai/ledger";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { claudeBySubscription, SUBSCRIPTION_MODEL, subscriptionAllowed } from "@/lib/image-engine/claude-cli";
+import { recordRun } from "./runs";
 import { agentById, brainChain, chooseBrain, isBrain, type Agent, type AgentId, type Brain } from "./agents";
 
 const CLAUDE_API_MODEL = "claude-sonnet-5-5";
@@ -52,8 +54,12 @@ export async function brainFor(agentId: AgentId): Promise<Brain | null> {
   return chooseBrain(agent, await savedBrain(agentId), brainAvailable);
 }
 
-export type TextCall = { system: string; prompt: string; jsonSchema?: Record<string, unknown>; maxOutputTokens?: number; feature: string; owner?: { userId?: string | null; businessId?: string | null } };
-export type TextRun = { text: string; brain: Brain; model: string };
+export type TextCall = { system: string; prompt: string; jsonSchema?: Record<string, unknown>; maxOutputTokens?: number; feature: string; owner?: { userId?: string | null; businessId?: string | null };
+  /** The TrainingExample ids the member read for this call, and what it makes ("reel:<id>"), for the run log. */
+  exampleIds?: string[];
+  resultRef?: string | null;
+};
+export type TextRun = { text: string; brain: Brain; model: string; costUsd: number };
 
 async function runOn(brain: "gemini" | "anthropic" | "claude-subscription", call: TextCall): Promise<TextRun> {
   const request = { system: call.system, prompt: call.prompt, jsonSchema: call.jsonSchema, maxOutputTokens: call.maxOutputTokens ?? 4000 };
@@ -61,17 +67,17 @@ async function runOn(brain: "gemini" | "anthropic" | "claude-subscription", call
   if (brain === "claude-subscription") {
     // The subscription bills nothing per call, so there is no ledger row (as in the image engine's Prompter).
     const r = await claudeBySubscription(call.system, call.prompt, call.jsonSchema ?? { type: "object" });
-    return { text: r.text, brain, model: SUBSCRIPTION_MODEL };
+    return { text: r.text, brain, model: SUBSCRIPTION_MODEL, costUsd: 0 };
   }
   if (brain === "anthropic") {
     const provider = new ClaudeTextProvider(process.env.ANTHROPIC_API_KEY!, CLAUDE_API_MODEL, "low");
     const r = await withLedger(context, { provider: "claude", model: CLAUDE_API_MODEL }, () => provider.generate(request), (x) => ({ provider: x.provider, model: x.model, usage: x.usage }));
-    return { text: r.text, brain, model: r.model };
+    return { text: r.text, brain, model: r.model, costUsd: estimateCostUsd(r.model, r.usage) };
   }
   const model = process.env.GEMINI_TEXT_MODEL ?? DEFAULT_GEMINI_TEXT_MODEL;
   const provider = new GeminiTextProvider(process.env.GEMINI_API_KEY!, model, process.env.GEMINI_TEXT_FALLBACK_MODEL ?? DEFAULT_GEMINI_TEXT_FALLBACK);
   const r = await withLedger(context, { provider: "gemini", model }, () => provider.generate(request), (x) => ({ provider: x.provider, model: x.model, usage: x.usage }));
-  return { text: r.text, brain, model: r.model };
+  return { text: r.text, brain, model: r.model, costUsd: estimateCostUsd(r.model, r.usage) };
 }
 
 /**
@@ -84,10 +90,15 @@ export async function runText(agentId: AgentId, call: TextCall): Promise<TextRun
   for (const brain of brainChain(agent, await savedBrain(agentId))) {
     if (brain === "rules") return null;
     if (!brainAvailable(brain)) continue;
+    const started = Date.now();
+    const log = { agentId, brain, feature: call.feature, businessId: call.owner?.businessId ?? null, exampleIds: call.exampleIds, resultRef: call.resultRef };
     try {
-      return await runOn(brain, call);
+      const run = await runOn(brain, call);
+      await recordRun({ ...log, model: run.model, ok: true, ms: Date.now() - started, costUsd: run.costUsd });
+      return run;
     } catch (error) {
       await logError(error, { source: `training-lab.agent.${agentId}.${brain}`, level: "warn", businessId: call.owner?.businessId ?? undefined });
+      await recordRun({ ...log, ok: false, ms: Date.now() - started, error: error instanceof Error ? error.message : String(error) });
     }
   }
   return null;

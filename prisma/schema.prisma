@@ -1416,6 +1416,29 @@ model AgentSetting {
   updatedAt   DateTime @updatedAt
 }
 
+// Our own log of what each member of the agent team did (lib/training-lab/runs.ts): one row per attempt on a brain, with
+// the Lab examples it read and what it made (resultRef, e.g. "reel:<ReelJob id>"), so a rating on the result finds its
+// runs. The shared AiCall ledger is not changed; costUsd is its estimate (0 for the subscription and rules).
+model AgentRun {
+  id         String   @id @default(cuid())
+  agentId    String
+  brain      String // gemini | anthropic | claude-subscription | rules
+  model      String?
+  feature    String
+  businessId String?
+  ok         Boolean
+  ms         Int      @default(0)
+  costUsd    Decimal  @default(0) @db.Decimal(12, 6)
+  exampleIds String[] @default([]) // the TrainingExample ids it read
+  resultRef  String? // reel:<id> | design:<id> ...
+  rating     Int? // 1-5, set later
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([agentId, createdAt])
+  @@index([resultRef])
+}
+
 // Outgoing webhooks (Phase 7), on every plan. One business can have a few endpoints, each with its own
 // signing secret and the events it wants.
 model WebhookEndpoint {
