@@ -107,6 +107,9 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 22. **Done** The editor keeps a draft of each edit in the browser.
 23. **Done** Autopilot's post writer and the daily posts read the Lab and fix the owner's spellings for free
     (and "Generate again").
+24. **Done** Fixes from the second review (24 October): the clip checker gets only visual never-notes; the brain
+    router stops on a budget or a switched-off service and never pays twice; the spelling fixer leaves links,
+    hashtags and the business's own names alone; placeholders never reach a post.
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
