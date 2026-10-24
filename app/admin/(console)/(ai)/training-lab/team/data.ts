@@ -5,35 +5,16 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
-import { AGENTS, BRAIN_LABELS, agentById, chooseBrain, isAgentId, isBrain, type Agent, type AgentId, type Brain } from "@/lib/training-lab/agents";
+import { AGENTS, BRAIN_LABELS, agentById, chooseBrain, isAgentId, isBrain, type Agent, type Brain } from "@/lib/training-lab/agents";
 import { brainAvailable, saveBrain } from "@/lib/training-lab/brains";
 import { assertLabOwner, type LabOwner } from "@/lib/training-lab/examples";
-import type { TrainingEngine } from "@/lib/training-lab/types";
-
-/**
- * The Lab engines (the switches on each example) whose examples a member reads, alongside its kinds. Matches what each
- * member's engine asks reader.ts for: the writers read Kinyarwanda phrases through "language", the painter actors
- * through "presenter".
- */
-export const AGENT_ENGINES: Record<AgentId, TrainingEngine[]> = {
-  researcher: [],
-  director: ["video", "reel", "image"],
-  "script-writer": ["reel", "video", "language"],
-  designer: ["image", "post"],
-  "caption-writer": ["post", "language"],
-  painter: ["image", "presenter"],
-  filmmaker: [],
-  editor: ["reel", "video"],
-  checker: ["reel", "video", "image", "language"],
-  scheduler: ["schedule"],
-};
 
 /** One group of identical examples (same kind, engines and consent) and how many there are. */
 export type ExampleGroup = { kind: string; engines: string[]; consentGiven: boolean; count: number };
 
-/** The examples a member can read now: of its kinds, switched on for one of its engines, and an actor only with consent. */
+/** The examples a member can read now: of its kinds, switched on for one of its Lab engines (agent.engines), and an actor only with consent. */
 export function examplesFor(agent: Agent, groups: ExampleGroup[]): number {
-  const engines = AGENT_ENGINES[agent.id] as string[];
+  const engines = agent.engines as string[];
   return groups
     .filter((g) => (agent.reads as string[]).includes(g.kind) && g.engines.some((e) => engines.includes(e)) && (g.kind !== "actor" || g.consentGiven))
     .reduce((sum, g) => sum + g.count, 0);

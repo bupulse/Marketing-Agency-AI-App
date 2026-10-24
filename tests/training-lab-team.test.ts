@@ -24,7 +24,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 const team = await import("@/app/admin/(console)/(ai)/training-lab/team/data");
-const { AGENTS, AGENT_IDS, agentById } = await import("@/lib/training-lab/agents");
+const { AGENT_IDS, agentById } = await import("@/lib/training-lab/agents");
 const ctx = { actor: "admin", ip: null, viaApi: false };
 const OWNER = { id: "0b6f3c1e-1111-4222-8333-444455556666", isOwner: true, staffId: null };
 const agent = (id: string) => agentById(id)!;
@@ -63,10 +63,6 @@ describe("examples a member can read", () => {
     expect(team.examplesFor(agent("painter"), groups)).toBe(4 + 1);
   });
 
-  it("has Lab engines for every member", () => {
-    for (const id of AGENT_IDS) expect(team.AGENT_ENGINES[id]).toBeDefined();
-    for (const a of AGENTS) if (a.reads.length) expect(team.AGENT_ENGINES[a.id].length).toBeGreaterThan(0);
-  });
 });
 
 describe("brains here", () => {

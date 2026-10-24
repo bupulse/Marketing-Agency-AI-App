@@ -30,6 +30,10 @@ import { CLIP_SECONDS, directMontage, reelCostUsd, variantOf, veoClipPrompt, typ
 import { readReel, reelPrompt, REEL_SCHEMA, REEL_SYSTEM, ruleReel, type ReelInput } from "./writer";
 import { checkClip } from "./checker";
 import { labFor } from "@/lib/training-lab/reader";
+import { runText, savedBrain } from "@/lib/training-lab/brains";
+import { recordRun } from "@/lib/training-lab/runs";
+import type { Brain } from "@/lib/training-lab/agents";
+import { estimateCostUsd } from "@/lib/ai/pricing";
 import { sectorFromText } from "@/lib/video-engine/brain/select";
 import { viralRecipe, type ViralRecipe } from "@/lib/video-engine/brain/viral";
 
@@ -98,7 +102,13 @@ export async function ensurePresenter(owner: Owner, jobId: string | null, audien
   return prisma.reelPresenter.upsert({ where: { businessId: owner.businessId }, create: { businessId: owner.businessId, path: made.path, description }, update: {} });
 }
 
-async function writeReel(owner: Owner, input: ReelInput): Promise<ReelPlan> {
+/**
+ * The script writer (Training Lab team, lib/training-lab/agents.ts "script-writer"). With no brain saved by the owner it
+ * works as it always has: English to Claude when it is there, else (and Kinyarwanda) the text provider, ledger feature
+ * "reelEngine"; that language split is not a single brain, so it stays here. With a saved brain it asks the router
+ * (runText, which logs its own runs). The default path logs one AgentRun so the Team page shows its work. Rules last.
+ */
+export async function writeReel(owner: Owner, input: ReelInput, team: { exampleIds?: string[]; resultRef?: string | null } = {}): Promise<ReelPlan> {
   const parse = (t: string) => {
     try {
       return JSON.parse(t.trim().replace(/^```(?:json)?\s*|\s*```$/g, ""));
@@ -106,17 +116,44 @@ async function writeReel(owner: Owner, input: ReelInput): Promise<ReelPlan> {
       return null;
     }
   };
+  const exampleIds = team.exampleIds ?? [];
+  const resultRef = team.resultRef ?? null;
+  if (await savedBrain("script-writer")) {
+    try {
+      const run = await runText("script-writer", { system: REEL_SYSTEM, prompt: reelPrompt(input), jsonSchema: REEL_SCHEMA, maxOutputTokens: 4000, feature: "reelEngine", owner, exampleIds, resultRef });
+      if (run) return readReel(parse(run.text), input) ?? ruleReel(input);
+      await recordRun({ agentId: "script-writer", brain: "rules", feature: "reelEngine", businessId: owner.businessId, ok: true, exampleIds, resultRef });
+    } catch (error) {
+      await logError(error, { source: "reel-engine.writer", level: "warn", businessId: owner.businessId });
+    }
+    return ruleReel(input);
+  }
+  const started = Date.now();
+  let brain: Brain = "rules";
+  let model: string | null = null;
+  const log = (ok: boolean, costUsd = 0, error: string | null = null) =>
+    recordRun({ agentId: "script-writer", brain, model, feature: "reelEngine", businessId: owner.businessId, ok, ms: Date.now() - started, costUsd, exampleIds, resultRef, error });
   try {
     // Gemini writes Kinyarwanda; English goes to Claude when it is there.
     const claude = input.language === "English" ? await claudeJson(owner, REEL_SYSTEM, reelPrompt(input), REEL_SCHEMA, "reelEngine") : null;
+    if (claude) brain = process.env.ANTHROPIC_API_KEY ? "anthropic" : "claude-subscription";
     const fromClaude = claude ? readReel(parse(claude), input) : null;
-    if (fromClaude) return fromClaude;
+    if (fromClaude) {
+      // claudeJson does not hand back its usage; the ledger has the API call's real cost.
+      await log(true);
+      return fromClaude;
+    }
     const provider = getTextProvider();
-    const model = provider.name === "claude" ? (process.env.CLAUDE_TEXT_MODEL ?? "claude-opus-5-5") : (process.env.GEMINI_TEXT_MODEL ?? DEFAULT_GEMINI_TEXT_MODEL);
+    model = provider.name === "claude" ? (process.env.CLAUDE_TEXT_MODEL ?? "claude-opus-5-5") : (process.env.GEMINI_TEXT_MODEL ?? DEFAULT_GEMINI_TEXT_MODEL);
+    brain = provider.name === "claude" ? "anthropic" : "gemini";
     const result = await withLedger({ ...owner, feature: "reelEngine" }, { provider: provider.name, model }, () => provider.generate({ system: REEL_SYSTEM, prompt: reelPrompt(input), jsonSchema: REEL_SCHEMA, maxOutputTokens: 4000 }), (r) => ({ provider: r.provider, model: r.model, usage: r.usage }));
-    return readReel(parse(result.text), input) ?? ruleReel(input);
+    model = result.model;
+    const plan = readReel(parse(result.text), input);
+    await log(!!plan, estimateCostUsd(result.model, result.usage), plan ? null : "The answer was not a usable script; the rules wrote it.");
+    return plan ?? ruleReel(input);
   } catch (error) {
     await logError(error, { source: "reel-engine.writer", level: "warn", businessId: owner.businessId });
+    await log(false, 0, error instanceof Error ? error.message : String(error));
     return ruleReel(input);
   }
 }
@@ -145,7 +182,7 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     // What the owner's Training Lab teaches for this sector and language; an empty Lab or an error changes nothing. The
     // checker gets only the owner's own "never this" notes (a low-rated example's description would refilm clips for nothing).
     const lab = await labFor({ engine: "reel", kinds: ["reel", "video", "voice"], sector, language: request.language });
-    const plan = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean), sector, recipe, lab });
+    const plan = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean), sector, recipe, lab }, { exampleIds: lab.exampleIds, resultRef: `reel:${job.id}` });
     await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null, refilms: 0, sources: recipe?.sources.map((s) => s.id) ?? [], labExampleIds: lab.exampleIds, labAvoid: lab.avoid.filter((line) => line.startsWith("Never")) }), stepUntil: null } });
     return job.id;
   } catch (error) {

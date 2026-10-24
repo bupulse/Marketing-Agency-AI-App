@@ -9,7 +9,7 @@ vi.mock("@/lib/image-engine/claude-cli", () => ({ subscriptionAllowed: () => sub
 
 import { AGENTS, AGENT_IDS, BRAINS, brainChain, chooseBrain } from "@/lib/training-lab/agents";
 import { brainAvailable, brainFor, runText } from "@/lib/training-lab/brains";
-import { KINDS } from "@/lib/training-lab/types";
+import { ENGINES, KINDS } from "@/lib/training-lab/types";
 
 beforeEach(() => {
   findUnique.mockReset().mockResolvedValue(null);
@@ -34,7 +34,15 @@ describe("registry", () => {
       expect(a.brains).toContain(a.defaultBrain);
       expect(a.fallback[0]).toBe(a.defaultBrain);
       expect(a.fallback.every((b) => a.brains.includes(b))).toBe(true);
+      expect(a.engines.every((e) => (ENGINES as readonly string[]).includes(e))).toBe(true);
+      // A member that reads Lab kinds reads them through at least one engine switch, and one that reads none has none.
+      expect(a.engines.length > 0).toBe(a.reads.length > 0);
     }
+  });
+  it("reads Kinyarwanda phrases through the language switch and actors through the presenter switch", () => {
+    for (const a of AGENTS) if (a.reads.includes("voice")) expect(a.engines).toContain("language");
+    expect(AGENTS.find((a) => a.id === "painter")?.engines).toContain("presenter");
+    expect(AGENTS.find((a) => a.id === "script-writer")?.engines).toEqual(["reel", "video", "language"]);
   });
   it("keeps the free members on rules and never gives the paid painter or filmmaker a free brain", () => {
     for (const id of ["researcher", "editor", "scheduler"]) expect(AGENTS.find((a) => a.id === id)).toMatchObject({ defaultBrain: "rules", paid: false });
