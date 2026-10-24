@@ -19,16 +19,16 @@
   merges that part. Encoder changes (speed, audio fades, beats in the spec) stay theirs: ask first.
 - Admin login on the test site does not carry to my check server (port 3004), so browser checks happen on the test
   site after main merges.
-- 12:35: main merged up to b235f858 to test.bupulse.com (full vitest 5390 passed). Chrome check (read-only, no forms):
+- 12:18: main merged up to b235f858 to test.bupulse.com (full vitest 5390 passed). Chrome check (read-only, no forms):
   the Library and Team pages load as the owner, no console errors. Team page findings to fix: (1) it says "Your
   choice ... is not available" for a default the owner never chose; (2) only the script writer asks the router so far,
   so the other members' switches do nothing yet and must say so; (3) the script writer's default sends Kinyarwanda to
   Gemini, which the card should say. Phone width not checked: the window resize did not apply in this Chrome.
   Main asked whether this session signed in on the test site (its session lands on /welcome since about 11:15): no.
-- 12:50: brain hooks (viral.ts, language.ts) committed 0e4fd8e0 and sent to video-engine for review; they are not wired
+- 12:23: brain hooks (viral.ts, language.ts) committed 0e4fd8e0 and sent to video-engine for review; they are not wired
   into any engine until video-engine says OK. Team page imported claude-cli directly (a guard failure); it now asks
   brains.ts (37940095).
-- 12:55: video-engine approved 0e4fd8e0. Before wiring: (1) recipeText (viral.ts ~581) and the why-text (~631) must
+- 12:25: video-engine approved 0e4fd8e0. Before wiring: (1) recipeText (viral.ts ~581) and the why-text (~631) must
   credit `lab:` sources to "your Training Lab" (pass the Lab through); (2) when checkLanguage gets `extra`, pass it in
   both callers, designer.ts:427 and suggest.ts:300. Send them the wiring commit for a quick review. NEXT TASK QUEUED.
 
