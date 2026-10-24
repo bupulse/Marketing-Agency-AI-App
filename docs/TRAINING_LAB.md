@@ -80,7 +80,7 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 6. **Done** (no place yet to keep which examples an image batch read) Image and posts: the image planner and post writer take Lab examples (layouts, wording, style) the same way.
 7. **Done** (posts per week stays the owner's setting) Posting and scheduling: Lab notes on best times, frequency and formats per network feed Autopilot and
    daily posts' plans.
-8. **Doing** (the form, the extras, every checkLanguage caller and the Studio jobs done; the reel's own lines next) Kinyarwanda: recordings plus text become a phrase and pronunciation list used by the writers (spelling,
+8. **Done** (the form, the extras in every checkLanguage caller, the Studio jobs, and the reel's own lines with free spelling fixes) Kinyarwanda: recordings plus text become a phrase and pronunciation list used by the writers (spelling,
    natural phrases, words to avoid) and by caption checks; keep the audio for a future voice.
 9. **Done** (portraits; actors with only a video wait for frames from video) Actors: consented clips and portraits become presenter options for the reel engine (`ReelPresenter`).
 
@@ -93,7 +93,7 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 ### Phase 4: the loop closes (added 24 October, while the owner was away)
 12. **Doing** Ratings feed back: the Team page rates what each member made, and "More like this" or "Never this" on a
     finished reel turns it into a Lab example (its MP4 copied privately into the Lab).
-13. **Todo** Actors with only a video: take a still frame for the presenter portrait.
+13. **Doing** Actors with only a video: take a still frame for the presenter portrait.
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
