@@ -56,6 +56,7 @@ export function brainOptions(agent: Agent): BrainOption[] {
 /** What a wired member does with no saved choice, when that is not a single brain (the engine's own split). */
 export const DEFAULT_NOTES: Partial<Record<AgentId, string>> = {
   "script-writer": "By default: English reels on Claude, Kinyarwanda reels on Gemini. Choosing a brain sends every language to it.",
+  designer: "By default: Claude and Gemini each write half of a batch's ideas, and the rules fill any gap. Choosing a brain sends every idea to it.",
 };
 
 export type MemberCard = { agent: Agent; examples: number; saved: Brain | null; chosen: Brain; using: Brain | null; options: BrainOption[]; defaultNote: string | null };

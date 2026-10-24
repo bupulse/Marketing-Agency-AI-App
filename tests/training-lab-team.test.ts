@@ -104,8 +104,15 @@ describe("teamCards", () => {
     expect(writer).toMatchObject({ examples: 2, saved: null, chosen: "anthropic", using: "gemini", defaultNote: team.DEFAULT_NOTES["script-writer"] });
     expect(writer.defaultNote).toBe("By default: English reels on Claude, Kinyarwanda reels on Gemini. Choosing a brain sends every language to it.");
     expect(cards.find((c) => c.agent.id === "designer")).toMatchObject({ saved: "gemini", chosen: "gemini", using: "gemini", defaultNote: null });
+    // The caption writer runs on one brain (the site's text provider), so it needs no default note.
+    expect(cards.find((c) => c.agent.id === "caption-writer")).toMatchObject({ saved: null, defaultNote: null });
     expect(cards.find((c) => c.agent.id === "checker")).toMatchObject({ saved: null, chosen: "gemini" });
     expect(m.queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the designer's default split in words", async () => {
+    m.queryRaw.mockResolvedValue([]);
+    expect((await team.teamCards()).find((c) => c.agent.id === "designer")?.defaultNote).toBe("By default: Claude and Gemini each write half of a batch's ideas, and the rules fill any gap. Choosing a brain sends every idea to it.");
   });
 
   it("drops the default note once a brain is saved", async () => {
@@ -119,11 +126,12 @@ describe("who runs on the subscription", () => {
   it("names only wired members whose brain now is the subscription", async () => {
     vi.stubEnv("IMAGE_ENGINE_CLAUDE_SUBSCRIPTION", "1");
     m.queryRaw.mockResolvedValue([]);
-    m.settings = [{ agentId: "script-writer", brain: "claude-subscription" }, { agentId: "designer", brain: "claude-subscription" }];
+    m.settings = [{ agentId: "script-writer", brain: "claude-subscription" }, { agentId: "designer", brain: "claude-subscription" }, { agentId: "checker", brain: "gemini" }];
     const cards = await team.teamCards();
-    expect(cards.find((c) => c.agent.id === "designer")?.using).toBe("claude-subscription");
-    // The designer is not wired: its engine works as it always has, whatever the switch says.
-    expect(team.subscriptionUse(cards).members).toEqual(["Script writer"]);
+    expect(team.subscriptionUse(cards).members).toEqual(["Script writer", "Designer"]);
+    // An unwired member on the subscription would not count: its engine works as it always has, whatever the switch says.
+    const unwired = cards.map((c) => (c.agent.id === "designer" ? { ...c, agent: { ...c.agent, wired: false } } : c));
+    expect(team.subscriptionUse(unwired).members).toEqual(["Script writer"]);
   });
 
   it("says when the image engine's Prompter uses the subscription: allowed here and no Anthropic key", () => {
@@ -142,7 +150,7 @@ describe("setAgentBrain", () => {
 
   it("refuses an unknown member, one not connected to the switch, or a brain it cannot use", async () => {
     await expect(team.setAgentBrain(ctx, OWNER, "boss", "gemini")).rejects.toThrow("That team member does not exist.");
-    await expect(team.setAgentBrain(ctx, OWNER, "designer", "gemini")).rejects.toThrow("Designer is not connected to the switch yet: it works as it always has.");
+    await expect(team.setAgentBrain(ctx, OWNER, "checker", "gemini")).rejects.toThrow("Checker is not connected to the switch yet: it works as it always has.");
     await expect(team.setAgentBrain(ctx, OWNER, "painter", "anthropic")).rejects.toThrow("Painter cannot use that brain.");
     expect(m.upsert).not.toHaveBeenCalled();
   });

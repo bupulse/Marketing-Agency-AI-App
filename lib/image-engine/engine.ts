@@ -115,7 +115,8 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
       labFor({ engine: "post", kinds: ["image", "voice"], sector, language: loaded.facts.language }),
     ]);
     const input: PlannerInput = { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, reviews: loaded.reviews, slots, recent: recent.slice(0, 30).map((r) => `${r.title}: ${r.scene}`.slice(0, 200)), lab: { examples: lab.examples, avoid: lab.avoid } };
-    const concepts = await writeConcepts(owner, input);
+    // The run log keeps which Lab examples each writer read and the batch they were for (the Team page, ratings).
+    const concepts = await writeConcepts(owner, input, { exampleIds: lab.exampleIds, resultRef: `batch:${batchId}` });
     const captions = await captionBatch(owner, {
       businessName: loaded.facts.name,
       language: loaded.facts.language,
@@ -123,7 +124,7 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
       facts: [loaded.subject?.price, loaded.subject?.description, ...(loaded.subject?.sellingPoints ?? []), loaded.facts.description, request.brief],
       concepts,
       lab: { examples: captionLab.examples, avoid: captionLab.avoid, phrases: captionLab.phrases },
-    });
+    }, { exampleIds: captionLab.exampleIds, resultRef: `batch:${batchId}` });
     await prisma.imageConcept.createMany({
       data: slots.map((slot, i) => ({
         businessId: owner.businessId,

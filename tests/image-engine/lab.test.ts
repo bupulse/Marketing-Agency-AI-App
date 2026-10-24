@@ -4,6 +4,8 @@ const h = vi.hoisted(() => ({
   labFor: vi.fn(),
   plannerInput: { value: null as unknown },
   captionInput: { value: null as unknown },
+  plannerTeam: { value: null as unknown },
+  captionTeam: { value: null as unknown },
   prisma: {
     business: { findUnique: vi.fn(async () => ({ id: "b1", userId: "u1", name: "LEAF", industry: "Agriculture", description: "Hydroponic towers for farms", audience: null, tone: null, contentLanguage: "Kinyarwanda", country: "Rwanda", knowledge: null, brandColors: [], logoUrl: null })) },
     product: { findFirst: vi.fn(async () => null) },
@@ -21,14 +23,16 @@ vi.mock("@/lib/designs/service", () => ({ createEngineDesign: vi.fn(), deleteDes
 vi.mock("@/lib/image-engine/check", () => ({ checkPicture: vi.fn() }));
 vi.mock("@/lib/training-lab/reader", () => ({ labFor: h.labFor }));
 vi.mock("@/lib/image-engine/captioner", () => ({
-  captionBatch: async (_o: unknown, input: { concepts: unknown[] }) => {
+  captionBatch: async (_o: unknown, input: { concepts: unknown[] }, team: unknown) => {
     h.captionInput.value = input;
+    h.captionTeam.value = team;
     return input.concepts.map(() => null);
   },
 }));
 vi.mock("@/lib/image-engine/planner", () => ({
-  writeConcepts: async (_o: unknown, input: { slots: unknown[] }) => {
+  writeConcepts: async (_o: unknown, input: { slots: unknown[] }, options: unknown) => {
     h.plannerInput.value = input;
+    h.plannerTeam.value = options;
     return input.slots.map((_, i) => ({ title: `Idea ${i}`, scene: "s", headline: "h", subline: "", cta: "", prompt: "p", planner: "gemini" }));
   },
 }));
@@ -111,6 +115,12 @@ describe("planBatch reads the Lab", () => {
     expect(h.labFor).toHaveBeenCalledWith({ engine: "post", kinds: ["image", "voice"], sector: "agriculture", language: "Kinyarwanda" });
     expect((h.plannerInput.value as PlannerInput).lab).toEqual({ examples: ["image example"], avoid: ["Never: image"] });
     expect((h.captionInput.value as CaptionInput).lab).toEqual({ examples: ["post example"], avoid: [], phrases: ["Murakaza neza"] });
+  });
+
+  it("hands each writer the Lab examples it read and the batch, for the run log", async () => {
+    const { batchId } = await planBatch({ userId: "u1", businessId: "b1" }, { source: "designs", count: 2, quality: "auto", aspectRatio: "1:1" });
+    expect(h.plannerTeam.value).toEqual({ exampleIds: ["e1"], resultRef: `batch:${batchId}` });
+    expect(h.captionTeam.value).toEqual({ exampleIds: ["e2", "e3"], resultRef: `batch:${batchId}` });
   });
 
   it("plans as before with an empty Lab", async () => {
