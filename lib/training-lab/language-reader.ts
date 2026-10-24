@@ -4,7 +4,8 @@ import "server-only";
 import type { LanguageExtra } from "@/lib/video-engine/brain/language";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
-import { languageExtraFrom } from "./language";
+import { languageExtraFrom, wordsOverview, type WordsOverview } from "./language";
+import { phrasesOf, type ExampleRow } from "./match";
 import { sameLanguageKey } from "./match";
 
 export { sameLanguageKey };
@@ -21,4 +22,12 @@ export async function labLanguage(language?: string | null): Promise<LanguageExt
     await logError(error, { source: "training-lab.language", level: "warn" });
     return {};
   }
+}
+
+const OVERVIEW_ROWS = 300;
+
+/** Every recording's spellings, words and phrases for the Words tab (read only). Throws if the database cannot be read. */
+export async function labWords(): Promise<WordsOverview> {
+  const rows = await prisma.trainingExample.findMany({ where: { kind: "voice" }, orderBy: { createdAt: "desc" }, take: OVERVIEW_ROWS });
+  return wordsOverview(rows, (r) => phrasesOf({ examples: [{ example: r as unknown as ExampleRow, score: 0 }], avoid: [] }));
 }

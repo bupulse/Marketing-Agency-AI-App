@@ -101,3 +101,37 @@ export function languageExtraFrom(examples: readonly LanguageExample[]): Languag
   const words = [...new Set([...approved, ...spoken])].filter((w) => !bad.has(w));
   return { ...(words.length ? { words } : {}), ...(wrong.length ? { wrong } : {}) };
 }
+
+// ---- Everything the Lab teaches about the language, in one place (the Words tab)
+
+export type WordSource = { id: string; title: string; on: boolean };
+export type WordsOverview = {
+  wrong: (Wrong & WordSource)[];
+  words: ({ word: string } & WordSource)[];
+  phrases: ({ phrase: string } & WordSource)[];
+  recordings: number;
+};
+type OverviewRow = LanguageExample & { id: string; title: string };
+
+/**
+ * The owner's spellings to avoid, right words and phrases from every recording, each with the recording it came from
+ * (and whether it is switched on for the language engine). The first of each is kept; newest recordings first.
+ */
+export function wordsOverview(rows: readonly OverviewRow[], phrasesOf: (row: OverviewRow) => string[]): WordsOverview {
+  const voice = rows.filter((r) => r.kind === "voice");
+  const seen = { wrong: new Set<string>(), words: new Set<string>(), phrases: new Set<string>() };
+  const out: WordsOverview = { wrong: [], words: [], phrases: [], recordings: voice.length };
+  for (const r of voice) {
+    const src: WordSource = { id: r.id, title: r.title, on: r.engines.includes("language") };
+    const extras = readVoiceExtras(r.notes);
+    const fresh = (set: Set<string>, key: string) => {
+      if (set.has(key)) return false;
+      set.add(key);
+      return true;
+    };
+    for (const w of extras.wrong) if (fresh(seen.wrong, w.word.toLowerCase())) out.wrong.push({ ...w, ...src });
+    for (const word of extras.words) if (fresh(seen.words, word.toLowerCase())) out.words.push({ word, ...src });
+    for (const phrase of phrasesOf(r)) if (fresh(seen.phrases, phrase)) out.phrases.push({ phrase, ...src });
+  }
+  return out;
+}
