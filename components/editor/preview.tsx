@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui";
-import { drawSpecFrame } from "@/lib/video-engine/draw";
+import { drawSpecFrame, type Photos } from "@/lib/video-engine/draw";
 import { canvasSize, totalMs, type MotionSpec } from "@/lib/video-engine/spec";
 import { secondsText } from "./layout";
 
@@ -12,24 +12,74 @@ export function Preview({ spec, tMs, playing, onToggle, onSeek }: { spec: Motion
   const ref = useRef<HTMLCanvasElement>(null);
   const size = canvasSize(spec, "480p");
   const total = totalMs(spec);
+  // What to draw next, and the clips' decoders: a frame is drawn one at a time, and only the latest request is kept.
+  const latest = useRef({ spec, t: 0 });
+  const wanted = useRef(false);
+  const running = useRef(false);
+  const frames = useRef<Photos>(new Map());
+  const clips = useRef<{ prepare(tMs: number, photos: Photos): Promise<void>; close(): void } | null>(null);
+
+  async function pump() {
+    if (running.current) return;
+    running.current = true;
+    try {
+      while (wanted.current) {
+        wanted.current = false;
+        const ctx = ref.current?.getContext("2d");
+        if (!ctx) continue;
+        const { spec: s, t } = latest.current;
+        // A clip that cannot be read leaves its layer black, as in the export.
+        await clips.current?.prepare(t, frames.current).catch(() => undefined);
+        drawSpecFrame(ctx, s, frames.current, t, { quality: "480p" });
+      }
+    } finally {
+      running.current = false;
+    }
+  }
+  function redraw() {
+    wanted.current = true;
+    void pump();
+  }
+
+  // Every render: draw the frame at the playhead.
+  useEffect(() => {
+    latest.current = { spec, t: Math.min(tMs, Math.max(0, total - 1)) };
+    redraw();
+  });
 
   // The fonts the spec uses, loaded once per set of fonts; the frame is drawn again when they arrive.
   const fonts = [...new Set(spec.scenes.flatMap((s) => s.layers.flatMap((l) => (l.kind === "text" ? [l.font] : []))))].sort().join(",");
   useEffect(() => {
     let alive = true;
-    void import("@/lib/video-engine/encode").then(({ loadSpecFonts }) => loadSpecFonts(spec).then(() => alive && draw()));
+    void import("@/lib/video-engine/encode").then(({ loadSpecFonts }) => loadSpecFonts(latest.current.spec).then(() => alive && redraw()));
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the fonts change
   }, [fonts]);
 
-  function draw() {
-    const ctx = ref.current?.getContext("2d");
-    if (!ctx) return;
-    drawSpecFrame(ctx, spec, new Map(), Math.min(tMs, Math.max(0, total - 1)), { quality: "480p" });
-  }
-  useEffect(draw);
+  // The clips of a real reel: opened once per set of clips (the decoders read the latest scenes, so edits need no reopening).
+  const urls = [...new Set(spec.scenes.flatMap((s) => s.layers.flatMap((l) => (l.kind === "video" ? [l.url] : []))))].join("|");
+  useEffect(() => {
+    if (!urls) return;
+    let alive = true;
+    void import("@/lib/video-engine/video-frames").then(async ({ openVideoFrames }) => {
+      const handle = await openVideoFrames({
+        get scenes() {
+          return latest.current.spec.scenes;
+        },
+      });
+      if (!alive) return handle.close();
+      clips.current = handle;
+      redraw();
+    });
+    return () => {
+      alive = false;
+      clips.current?.close();
+      clips.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the clips change
+  }, [urls]);
 
   return (
     <div className="flex min-w-0 flex-col items-center gap-3">

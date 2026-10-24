@@ -2,19 +2,33 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Redo2, Undo2 } from "lucide-react";
-import { Button } from "@/components/ui";
+import { Button, Select } from "@/components/ui";
 import { Panel } from "@/components/admin/ui";
 import { moveShot, totalSeconds, trimShot } from "@/lib/editor/ops";
 import { totalMs, type MotionSpec } from "@/lib/video-engine/spec";
+import { ExportPanel } from "./export-panel";
 import { Inspector } from "./inspector";
 import { shotAt, shotStarts, secondsText } from "./layout";
 import { Preview } from "./preview";
+import { reelSource, type ReelBrand } from "./reel-spec";
+import type { ReelView } from "@/lib/reel-engine/engine";
 import { Timeline } from "./timeline";
 import { useSpecHistory } from "./use-spec-history";
 
-/** The timeline editor: the preview, the shots, what you can change about one shot, and undo and redo. The state is the spec. */
-export function SpecEditor({ initial }: { initial: MotionSpec }) {
-  const { spec, run, undo, redo, canUndo, canRedo } = useSpecHistory(initial);
+export type ReelChoice = { id: string; business: string; title: string; createdAt: string };
+export type OpenReel = (id: string) => Promise<({ ok: true; view: ReelView; brand: ReelBrand } | { ok: false; error: string })>;
+
+/**
+ * The timeline editor: the preview, the shots, what you can change about one shot, undo and redo, and export. The state
+ * is the spec. It starts on `initial` (an example); with `reels` and `openReel` the owner can open a finished reel instead.
+ */
+export function SpecEditor({ initial, reels = [], openReel }: { initial: MotionSpec; reels?: ReelChoice[]; openReel?: OpenReel }) {
+  const { spec, run, undo, redo, canUndo, canRedo, reset } = useSpecHistory(initial);
+  const [musicUrl, setMusicUrl] = useState<string | null>(null);
+  const [title, setTitle] = useState(initial.title);
+  const [pick, setPick] = useState(reels[0]?.id ?? "");
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [tMs, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -74,10 +88,53 @@ export function SpecEditor({ initial }: { initial: MotionSpec }) {
     seek(Math.round((shotStarts(spec)[i] ?? 0) * 1000));
   }
 
+  function load(next: MotionSpec, music: string | null, name: string) {
+    setPlaying(false);
+    reset(next);
+    setMusicUrl(music);
+    setTitle(name);
+    setSelected(0);
+    seek(0);
+  }
+
+  // Fresh signed links every time: the clips' links expire after an hour.
+  async function open() {
+    if (!openReel || !pick || opening) return;
+    setOpening(true);
+    setOpenError(null);
+    try {
+      const res = await openReel(pick);
+      if (!res.ok) return setOpenError(res.error);
+      const source = await reelSource(res.view, res.brand);
+      load(source.spec, source.musicUrl, source.title);
+    } catch {
+      setOpenError("The reel could not be opened. Try again.");
+    } finally {
+      setOpening(false);
+    }
+  }
+
   const playheadShot = shotAt(spec, tMs / 1000);
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
+      {openReel && (
+        <Panel title="Open a finished reel" description="Loads the reel as it was put together, so you can change it. Your changes are not saved until you export.">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1">
+              <Select value={pick} onChange={(e) => setPick(e.target.value)} disabled={!reels.length || opening} aria-label="Finished reel">
+                {reels.length === 0 && <option value="">No finished reels yet</option>}
+                {reels.map((r) => (
+                  <option key={r.id} value={r.id}>{r.business}: {r.title} ({new Date(r.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })})</option>
+                ))}
+              </Select>
+            </div>
+            <Button type="button" onClick={open} disabled={!pick || opening}>{opening ? "Opening…" : "Open"}</Button>
+            <Button type="button" variant="outline" onClick={() => load(initial, null, initial.title)} disabled={opening}>Back to the example</Button>
+          </div>
+          {openError && <p role="alert" className="text-sm font-medium text-danger">{openError}</p>}
+        </Panel>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" disabled={!canUndo} onClick={undo} aria-label="Undo">
           <Undo2 className="size-4" aria-hidden /> Undo
@@ -108,6 +165,7 @@ export function SpecEditor({ initial }: { initial: MotionSpec }) {
           <Panel title="Change this shot">
             <Inspector spec={spec} selected={index} tMs={tMs} run={run} onSelect={setSelected} />
           </Panel>
+          <ExportPanel spec={spec} musicUrl={musicUrl} title={title} />
         </div>
       </div>
     </div>
