@@ -13,7 +13,7 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-// Every 10 minutes from Friday to Sunday (AUTOPILOT_VISUALS_CRON in worker-crons.ts): the AI pictures Autopilot left
+// Every 30 minutes from Friday to Sunday (AUTOPILOT_VISUALS_CRON in worker-crons.ts): the AI pictures Autopilot left
 // for later on Netlify are made one step at a time and replace the owner's photo on their posts (docs/CONTENT_VISUALS.md
 // "Autopilot on Netlify"). Answers at once when none are waiting; `nextCursor` while some are left, and the caller calls
 // again with ?cursor= (the cursor itself means nothing: the oldest waiting pictures go first).

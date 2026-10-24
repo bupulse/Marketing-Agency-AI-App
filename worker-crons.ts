@@ -8,8 +8,8 @@ export const PUBLISH_CRON = "* * * * *";
 export const METRICS_CRON = "23 * * * *";
 /** Autopilot plans next week on Fridays and Saturdays. */
 export const AUTOPILOT_CRON = "11 */3 * * 5,6";
-/** Every 10 minutes from Friday to Sunday: Autopilot's AI pictures left for later (on Netlify's 60 s; idle here). */
-export const AUTOPILOT_VISUALS_CRON = "*/10 * * * 5,6,0";
+/** Every 30 minutes from Friday to Sunday: Autopilot's AI pictures left for later (on Netlify's 60 s; idle here). */
+export const AUTOPILOT_VISUALS_CRON = "*/30 * * * 5,6,0";
 /** Hourly; the route only sends the leads summary to businesses where it is 08:00. */
 export const LEADS_DIGEST_CRON = "37 * * * *";
 /** Daily at 03:47 UTC: re-sync imported Shopify and WooCommerce products (a few stores per call, with a cursor). */

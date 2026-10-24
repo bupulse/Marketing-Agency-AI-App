@@ -38,7 +38,7 @@
     // Daily (UTC): analytics roll-up 02:17, media cleanup 03:19, store sync 03:47, plan price changes 04:29, Mobile
     // Money renewals and offer reminders 05:41. Every 3 hours on Fridays and Saturdays: Autopilot. Every 4 minutes: the
     // Video Studio's sweep. Hourly at :13: daily posts. 13 triggers; Workers Paid allows 250 per account.
-    "crons": ["* * * * *", "23 * * * *", "11 */3 * * 5,6", "*/10 * * * 5,6,0", "37 * * * *", "47 3 * * *", "17 2 * * *", "29 4 * * *", "41 5 * * *", "53 * * * *", "19 3 * * *", "7 * * * *", "*/4 * * * *", "13 * * * *", "31 */6 * * *"]
+    "crons": ["* * * * *", "23 * * * *", "11 */3 * * 5,6", "*/30 * * * 5,6,0", "37 * * * *", "47 3 * * *", "17 2 * * *", "29 4 * * *", "41 5 * * *", "53 * * * *", "19 3 * * *", "7 * * * *", "*/4 * * * *", "13 * * * *", "31 */6 * * *"]
   },
   "observability": { "enabled": true }
   // Custom domains (bupulse.com, staging.bupulse.com) are added later, see docs/DEPLOY.md.

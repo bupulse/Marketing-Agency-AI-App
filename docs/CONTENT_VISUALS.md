@@ -87,7 +87,7 @@ paint:
   lists those photo pictures (`deferredFrom`, `recordLatePicture` in lib/autopilot/visuals.ts). It counts against the
   run's AI pictures like one painted at once. A carousel uses the owner's photos (its AI cover would be painted in the
   call).
-- `cron-autopilot-visuals` (every 10 minutes from Friday to Sunday, `/api/cron/autopilot-visuals`,
+- `cron-autopilot-visuals` (every 30 minutes from Friday to Sunday, `/api/cron/autopilot-visuals`,
   lib/autopilot/late-pictures.ts) takes one AI step of each waiting picture within 25 s (`renderImageStep`: plan, paint,
   check, fix) and asks to be called again while some are left. It answers at once, after one small read, when none
   wait. A finished picture replaces only the photo pictures it stood in for (`attachToGroup` with `onlyFrom`), on posts
