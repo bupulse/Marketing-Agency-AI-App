@@ -30,6 +30,8 @@ export type EditableExample = {
   consentGiven: boolean;
   consentName: string | null;
   consentNote: string | null;
+  /** An actor: how many businesses have it as their reel presenter now (consent.ts presenterUses), for the confirm. */
+  presenterUses?: number;
   engines: string[];
   transcript: string | null;
   path: string | null;
@@ -57,7 +59,15 @@ const isKind = (v: string): v is TrainingKind => (KINDS as readonly string[]).in
  * "Add an example" (no `example`) or the edit form of one. The row is saved first; a file then goes straight from the
  * browser to the private bucket with the signed address the server gave, and the server checks it before using it.
  */
-export function ExampleForm({ example, onDone }: { example?: EditableExample; onDone?: () => void }) {
+/** What the owner is told before and after withdrawing an actor's consent. */
+export function withdrawText(uses: number): { confirm: string; done: string } {
+  const businesses = `${uses} business${uses === 1 ? "" : "es"}`;
+  return uses > 0
+    ? { confirm: `This also removes them as the presenter of ${businesses}. Reels already made are not changed.`, done: `Consent withdrawn: removed from ${businesses}' presenters. Reels already made are not changed.` }
+    : { confirm: "They stay in the Lab but are never used again. Reels already made are not changed.", done: "Consent withdrawn: this actor stays in the Lab but is never used." };
+}
+
+export function ExampleForm({ example, onDone }: { example?: EditableExample; onDone?: (message?: string) => void }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, start] = useTransition();
@@ -70,6 +80,10 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
   const [consent, setConsent] = useState(example?.consentGiven ?? false);
   const [file, setFile] = useState<File | null>(null);
   const editing = !!example;
+  // Unticking an actor's consent asks first (it also removes them as presenters); the second Save goes ahead.
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
+  const withdrawing = editing && example?.kind === "actor" && example.consentGiven && !consent;
+  const withdraw = withdrawText(example?.presenterUses ?? 0);
   // A posting habit (kind "schedule"): its fields, and what we read from the hours as the owner types them.
   const saved = example?.kind === "schedule" ? parseScheduleNotes(example.notes) : null;
   const [network, setNetwork] = useState<string>(saved?.network ?? "");
@@ -125,7 +139,7 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
     };
     const fileInfo = file ? { name: file.name, type: typeOf(file), size: file.size } : null;
     // The same checks the server makes, so a mistake shows next to its field before anything is sent.
-    const parsed = exampleInputSchema.safeParse({ ...input, hasFile: !!fileInfo || !!example?.path });
+    const parsed = exampleInputSchema.safeParse({ ...input, existing: editing, hasFile: !!fileInfo || !!example?.path });
     if (!parsed.success) {
       const byField: Record<string, string> = {};
       for (const issue of parsed.error.issues) {
@@ -139,6 +153,7 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
       const problem = fileProblem(fileInfo, kind);
       if (problem) return setError(problem);
     }
+    if (withdrawing && !confirmWithdraw) return setConfirmWithdraw(true);
     start(async () => {
       setStage("Saving…");
       let id: string;
@@ -177,7 +192,7 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
       setStage(null);
       router.refresh();
       if (uploadError) return setError(uploadError);
-      if (editing) return onDone?.();
+      if (editing) return onDone?.(withdrawing ? withdraw.done : undefined);
       formRef.current?.reset();
       setFile(null);
       setConsent(false);
@@ -325,10 +340,16 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
       <fieldset className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line p-4">
         <legend className="px-1 text-sm font-medium">People in it{needsConsent && <span aria-hidden className="ml-0.5 text-pulse-violet">*</span>}</legend>
         <label className="flex items-start gap-2 text-[14px]">
-          <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+          <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={consent} onChange={(e) => { setConsent(e.target.checked); setConfirmWithdraw(false); }} />
           <span>{needsConsent ? "This person agreed to be used as a presenter or actor." : "There are people in it, and they agreed to it being used."}</span>
         </label>
         {fieldErrors.consentGiven && <p role="alert" className="text-[13px] font-medium text-danger">{fieldErrors.consentGiven}</p>}
+        {withdrawing && (
+          <p role={confirmWithdraw ? "alert" : "status"} className={`rounded-xl px-3 py-2 text-[13px] ${confirmWithdraw ? "bg-danger-bg font-medium text-danger" : "bg-soft text-muted"}`}>
+            Withdrawing consent. {withdraw.confirm}
+            {confirmWithdraw && " Press the button again to confirm."}
+          </p>
+        )}
         {consent && (
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
             <Field label="Their name" required error={fieldErrors.consentName}>
@@ -354,7 +375,7 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
       </fieldset>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Button type="submit" disabled={pending}>{pending ? (stage ?? "Working…") : editing ? "Save changes" : "Add the example"}</Button>
+        <Button type="submit" disabled={pending}>{pending ? (stage ?? "Working…") : withdrawing && confirmWithdraw ? "Withdraw consent and save" : editing ? "Save changes" : "Add the example"}</Button>
         {editing && (
           <Button type="button" variant="outline" disabled={pending} onClick={() => onDone?.()}>Cancel</Button>
         )}
@@ -369,14 +390,19 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
 /** The Edit button of one example, opening its form in place. */
 export function EditExample({ example }: { example: EditableExample }) {
   const [open, setOpen] = useState(false);
+  // What the last save said (an actor's consent withdrawn), shown beside the Edit button once the form closes.
+  const [note, setNote] = useState<string | null>(null);
   if (!open) {
     return (
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>Edit</Button>
+      <>
+        <Button type="button" size="sm" variant="outline" onClick={() => { setNote(null); setOpen(true); }}>Edit</Button>
+        {note && <p role="status" className="w-full basis-full text-sm font-medium text-success">{note}</p>}
+      </>
     );
   }
   return (
     <div className="w-full basis-full rounded-2xl border border-line p-4">
-      <ExampleForm example={example} onDone={() => setOpen(false)} />
+      <ExampleForm example={example} onDone={(message) => { setOpen(false); setNote(message ?? null); }} />
     </div>
   );
 }

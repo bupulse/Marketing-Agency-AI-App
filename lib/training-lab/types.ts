@@ -71,6 +71,28 @@ const sourceUrl = z
   .transform((v) => v || null)
   .refine((v) => v === null || /^https?:\/\/\S+$/i.test(v), "Use a full link starting with https://");
 
+export const NOTES_MAX_BYTES = 20 * 1024;
+export const NOTES_MAX_DEPTH = 3;
+
+/** How deeply objects and lists nest (a flat record is 1). */
+function depthOf(v: unknown): number {
+  if (!v || typeof v !== "object") return 0;
+  const children = Array.isArray(v) ? v : Object.values(v as Record<string, unknown>);
+  return 1 + children.reduce<number>((max, c) => Math.max(max, depthOf(c)), 0);
+}
+
+/** The notes fit: at most 20 KB of JSON and 3 levels deep (none at all is fine). */
+export function notesFit(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  let json: string;
+  try {
+    json = JSON.stringify(v);
+  } catch {
+    return false;
+  }
+  return new TextEncoder().encode(json).length <= NOTES_MAX_BYTES && depthOf(v) <= NOTES_MAX_DEPTH;
+}
+
 export const exampleInputSchema = z
   .object({
     kind: z.enum(KINDS, { error: "Choose what kind of example this is." }),
@@ -78,10 +100,16 @@ export const exampleInputSchema = z
     sourceUrl,
     /** True when a file is (or will be) uploaded with it; the file itself is checked by fileProblem. */
     hasFile: z.boolean().default(false),
+    /** True when an example already saved is edited: an actor's consent may then be withdrawn (consent.ts). */
+    existing: z.boolean().default(false),
     howMade: text(TEXT_MAX, "That is too long: keep how it was made to a few paragraphs.").min(1, "Say how it was made, in your own words."),
     whatIsGood: text(TEXT_MAX, "That is too long: keep what is good to a few paragraphs.").min(1, "Say what is good about it."),
     neverThis: optionalText(TEXT_MAX, "That is too long: keep what to never copy to a few paragraphs."),
-    notes: z.record(z.string(), z.unknown()).nullish().transform((v) => v ?? null),
+    notes: z
+      .record(z.string(), z.unknown())
+      .nullish()
+      .refine((v) => notesFit(v), `The notes are too big: keep them under ${NOTES_MAX_BYTES / 1024} KB and at most ${NOTES_MAX_DEPTH} levels deep.`)
+      .transform((v) => v ?? null),
     tags: labelList("tag"),
     sector: optionalText(TAG_MAX, `Keep the sector under ${TAG_MAX} letters.`),
     language: optionalText(TAG_MAX, `Keep the language under ${TAG_MAX} letters.`),
@@ -118,7 +146,8 @@ export const exampleInputSchema = z
   .superRefine((v, ctx) => {
     if (v.kind !== "schedule" && !v.hasFile && !v.sourceUrl) ctx.addIssue({ code: "custom", path: ["sourceUrl"], message: "Add a file or a link to the example." });
     if (v.kind === "voice" && !v.transcript) ctx.addIssue({ code: "custom", path: ["transcript"], message: "Write what is said in the recording." });
-    if (v.kind === "actor" && !v.consentGiven) ctx.addIssue({ code: "custom", path: ["consentGiven"], message: "Only add an actor who agreed to be used: tick the consent box." });
+    // A new actor needs consent; an existing one may have it withdrawn (it is kept, but never used: match.ts usable).
+    if (v.kind === "actor" && !v.consentGiven && !v.existing) ctx.addIssue({ code: "custom", path: ["consentGiven"], message: "Only add an actor who agreed to be used: tick the consent box." });
     if (v.consentGiven && !v.consentName) ctx.addIssue({ code: "custom", path: ["consentName"], message: "Write the name of the person who agreed." });
     if (v.kind === "schedule") {
       const { problem } = buildScheduleNotes(v.schedule);

@@ -92,7 +92,7 @@ function actorDescription(e: ActorRow): string {
 
 /**
  * The owner's consented actors for the reel presenter: actor examples with the consent box ticked, switched on for
- * the "presenter" engine, with a portrait (an image) or a video file. Best first: the owner's rating, then the business's
+ * the "presenter" engine, with a portrait (an image) or a video file, not rated 1 or 2 stars. Best first: the owner's rating, then the business's
  * sector, then tags that the audience names. Empty on any error.
  */
 export async function labPresenters(want: { sector?: string | null; audience?: string | null } = {}): Promise<LabPresenter[]> {
@@ -108,7 +108,8 @@ export async function labPresenters(want: { sector?: string | null; audience?: s
       (e.rating ?? 3) * 100 + (sector && e.sector?.trim().toLowerCase() === sector ? 20 : 0) + e.tags.filter((t) => t.length > 2 && audience.includes(t.toLowerCase())).length * 5;
     return rows
       // The consent box again, here too: an actor who did not agree is never a presenter.
-      .filter((e) => e.consentGiven && usable(e, { engine: "presenter" }) && e.path && /^(image|video)\//.test(e.mime ?? ""))
+      // An actor the owner rated 1 or 2 stars is never a presenter either.
+      .filter((e) => e.consentGiven && usable(e, { engine: "presenter" }) && e.path && /^(image|video)\//.test(e.mime ?? "") && !(e.rating !== null && e.rating <= LOW_RATING))
       .sort((a, z) => score(z) - score(a) || z.createdAt.getTime() - a.createdAt.getTime())
       .map((e) => ({ id: e.id, path: e.path!, mime: e.mime!, bytes: e.bytes, description: actorDescription(e), consentName: e.consentName }));
   } catch (error) {

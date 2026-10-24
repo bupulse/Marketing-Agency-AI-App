@@ -11,6 +11,7 @@ import { filterChoices, LIST_MAX, listExamples, NOTE_FIELDS, NOTE_LABELS, parseF
 import { ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, type TrainingKind } from "@/lib/training-lab/types";
 import { deleteExampleAction, draftNotesAction, moreLikeThisAction, neverThisAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
 import { finishedReels, type FinishedReel } from "@/lib/training-lab/from-result";
+import { presenterUses } from "@/lib/training-lab/consent";
 import { describeExtras } from "@/lib/training-lab/language";
 import { exampleUsage, usageLine, type ExampleUse } from "@/lib/training-lab/usage";
 import { describeSchedule } from "@/lib/training-lab/schedule";
@@ -38,7 +39,14 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
   const sp = await searchParams;
   const filter = parseFilter(sp);
   const [examples, choices, analysis] = await Promise.all([listExamples(filter), filterChoices(), analysisStatus().catch((): AnalysisStatus => ({ allowed: false, reason: "AI notes cannot be checked right now. You can write the notes yourself below.", spentUsd: 0, capUsd: 0 }))]);
-  const [links, reels, usage] = await Promise.all([previewLinks(examples.map((e) => e.path)), finishedReels().catch((): FinishedReel[] => []), exampleUsage(examples.map((e) => e.id))]);
+  const actors = examples.filter((e) => e.kind === "actor");
+  const [links, reels, usage, presenterCounts] = await Promise.all([
+    previewLinks(examples.map((e) => e.path)),
+    finishedReels().catch((): FinishedReel[] => []),
+    exampleUsage(examples.map((e) => e.id)),
+    // How many businesses have each actor as their presenter, for the confirm before consent goes (consent.ts).
+    Promise.all(actors.map(async (a) => [a.id, await presenterUses(a)] as const)).then((pairs) => new Map(pairs)),
+  ]);
   const filtered = Object.keys(filter).length > 0;
   const back = query(filter);
 
@@ -72,7 +80,7 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
         ) : (
           <ul className="flex min-w-0 flex-col gap-4">
             {examples.map((e) => (
-              <ExampleCard key={e.id} example={e} link={e.path ? links.get(e.path) : undefined} back={back} analysis={analysis} use={usage.get(e.id)} />
+              <ExampleCard key={e.id} example={e} link={e.path ? links.get(e.path) : undefined} back={back} analysis={analysis} use={usage.get(e.id)} presenterUses={presenterCounts.get(e.id) ?? 0} />
             ))}
           </ul>
         )}
@@ -159,7 +167,7 @@ function Text({ label, children }: { label: string; children: string | null }) {
   );
 }
 
-function ExampleCard({ example: e, link, back, analysis, use }: { example: Example; link?: string; back: string; analysis: AnalysisStatus; use?: ExampleUse }) {
+function ExampleCard({ example: e, link, back, analysis, use, presenterUses: uses }: { example: Example; link?: string; back: string; analysis: AnalysisStatus; use?: ExampleUse; presenterUses: number }) {
   const here = `${back}#ex-${e.id}`;
   const noFile = !e.path && !e.sourceUrl && e.kind !== "schedule";
   return (
@@ -259,13 +267,14 @@ function ExampleCard({ example: e, link, back, analysis, use }: { example: Examp
             consentGiven: e.consentGiven,
             consentName: e.consentName,
             consentNote: e.consentNote,
+            presenterUses: uses,
             engines: e.engines,
             transcript: e.transcript,
             path: e.path,
             notes: e.notes,
           }}
         />
-        <ConfirmButton action={deleteExampleAction} fields={{ id: e.id }} label="Delete" title={`Delete “${e.title}”?`} description="The example and its file are deleted, and the engines stop learning from it. This cannot be undone." confirmLabel="Delete example" pendingLabel="Deleting…" />
+        <ConfirmButton action={deleteExampleAction} fields={{ id: e.id }} label="Delete" title={`Delete “${e.title}”?`} description={`The example and its file are deleted, and the engines stop learning from it.${e.kind === "actor" && uses > 0 ? ` This also removes them as the presenter of ${uses} business${uses === 1 ? "" : "es"}. Reels already made are not changed.` : ""} This cannot be undone.`} confirmLabel="Delete example" pendingLabel="Deleting…" />
       </div>
     </li>
   );

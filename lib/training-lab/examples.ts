@@ -11,6 +11,7 @@ import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import type { AdminIdentity } from "@/lib/admin/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { withdrawActorConsent } from "./consent";
 import { createUploadSlot, exampleFolder, examplePath, isExamplePath, removeObjects, DOWNLOAD_SECONDS, TRAINING_BUCKET } from "./storage";
 import { readVoiceExtras, withVoiceExtras } from "./language";
 import { ENGINES, KINDS, exampleInputSchema, fileProblem, type ExampleInput, type TrainingEngine, type TrainingKind } from "./types";
@@ -200,11 +201,15 @@ export async function confirmExampleFile(ctx: AdminContext, identity: LabOwner, 
   if (row.path && row.path !== path) await removeObjects([row.path]).catch(() => {});
 }
 
-/** Saves the owner's edits. The kind stays (it goes with the file) and the AI notes are left alone (a posting habit's notes are its schedule). */
-export async function updateExample(ctx: AdminContext, identity: LabOwner, id: string, raw: unknown) {
+/**
+ * Saves the owner's edits. The kind stays (it goes with the file) and the AI notes are left alone (a posting habit's notes
+ * are its schedule). An actor's consent may be withdrawn here: the example stays, never used, and its presenter copies go
+ * (consent.ts); `removedFrom` is how many businesses lost it as their presenter.
+ */
+export async function updateExample(ctx: AdminContext, identity: LabOwner, id: string, raw: unknown): Promise<{ removedFrom: number }> {
   assertLabOwner(ctx, identity);
   const row = await found(id);
-  const input = parse({ ...(raw as object), kind: row.kind, hasFile: !!row.path || (raw as { hasFile?: unknown })?.hasFile === true });
+  const input = parse({ ...(raw as object), kind: row.kind, existing: true, hasFile: !!row.path || (raw as { hasFile?: unknown })?.hasFile === true });
   // A posting habit's notes are the schedule the owner typed; for every other kind the AI notes are left alone.
   // A recording keeps its AI-drafted note fields and gets the spellings the owner typed.
   const voiceNotes = row.kind === "voice" && input.voiceExtras ? withVoiceExtras(row.notes, input.voiceExtras) : undefined;
@@ -215,6 +220,8 @@ export async function updateExample(ctx: AdminContext, identity: LabOwner, id: s
     await tx.trainingExample.update({ where: { id: row.id }, data: { ...data, consentAt } });
     await writeAudit(tx, ctx, "update_training_example", `training:${row.id}`, { title: row.title, engines: row.engines, consentGiven: row.consentGiven }, { title: data.title, engines: data.engines, consentGiven: data.consentGiven });
   });
+  if (row.kind === "actor" && row.consentGiven && !input.consentGiven) return { removedFrom: (await withdrawActorConsent(ctx, row)).businesses.length };
+  return { removedFrom: 0 };
 }
 
 /** 1 to 5 stars, or null to clear. */
@@ -241,10 +248,14 @@ export async function setExampleEngine(ctx: AdminContext, identity: LabOwner, id
   return { engines };
 }
 
-/** Deletes the example and every file in its folder (the file, and any upload that was never confirmed). */
-export async function deleteExample(ctx: AdminContext, identity: LabOwner, id: string) {
+/**
+ * Deletes the example and every file in its folder (the file, and any upload that was never confirmed). An actor's
+ * presenter copies go first, while its file is still there to compare (consent.ts).
+ */
+export async function deleteExample(ctx: AdminContext, identity: LabOwner, id: string): Promise<{ removedFrom: number }> {
   assertLabOwner(ctx, identity);
   const row = await found(id);
+  const removedFrom = row.kind === "actor" ? (await withdrawActorConsent(ctx, row)).businesses.length : 0;
   await prisma.$transaction(async (tx) => {
     await tx.trainingExample.delete({ where: { id: row.id } });
     await writeAudit(tx, ctx, "delete_training_example", `training:${row.id}`, { kind: row.kind, title: row.title, path: row.path }, null);
@@ -258,6 +269,7 @@ export async function deleteExample(ctx: AdminContext, identity: LabOwner, id: s
     /* the row's own file is still removed below */
   }
   if (paths.size) await removeObjects([...paths]).catch(() => {});
+  return { removedFrom };
 }
 
 // ---- Notes (the AI-drafted analysis the owner corrects; drafting is in analyse.ts) ----------------------------------
