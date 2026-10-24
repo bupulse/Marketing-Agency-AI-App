@@ -1,5 +1,28 @@
 # Training Lab handover
 
+## For the owner (draft at 15:22; the final version replaces it when the loop stops)
+**What you have now (on branch training-lab; the main session puts it on test.bupulse.com):**
+- **Admin, AI, Training Lab**, only for you, with four tabs:
+  - **Library:** add a reel, video, image or post, a Kinyarwanda recording, an actor (consent first) or a posting
+    schedule, and say in your own words how it was made, what is good and what to never do. Rate it, switch which
+    engines may learn from it, write notes (or let Gemini draft them once you set a budget). Finished reels can be
+    added with "More like this" or "Never this". A health list says what to fix.
+  - **Team:** BuPulse's 10 helpers, each with one job. For the Script writer, Designer and Caption writer you choose
+    the brain: Gemini, Claude on the API key, Claude on your subscription (only on your Mac), or free rules.
+  - **Editor:** open a finished reel, change the shots, words, stickers and look, export the MP4, or save the edit
+    as an example so the engines learn from it.
+  - **Words:** every Kinyarwanda spelling to avoid, right word and phrase the Lab teaches.
+- **The engines now learn from it:** reels (script, shots, viral style, checker, presenters), images and captions,
+  posting times, and the Kinyarwanda checks, which also fix your marked spellings for free. With an empty Lab
+  everything works exactly as before.
+- **How to start:** docs/TRAINING_LAB_GUIDE.md (one page, plain English).
+
+**Waiting for you (on the board in docs/TRAINING_LAB.md):** a small budget for AI notes; whether one consenting actor
+may present for many businesses; whether clients' reels may teach the Lab for everyone (check the terms); a paid
+Kinyarwanda voice later.
+
+**No money was spent and nothing was published.** All checks pass (5,631 tests).
+
 ## Loop log
 - **Start:** Saturday 24 October 2026, 11:47 CAT. Owner away about 8 hours; the loop stops about 19:45 CAT.
 - Lead: Opus 5.5; at most 2 helpers (Opus 5.5 or smaller), one small task each.
