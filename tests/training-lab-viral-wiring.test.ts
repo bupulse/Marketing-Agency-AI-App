@@ -171,6 +171,14 @@ describe("startReel passes the Lab to the recipe", () => {
     expect(h.recipeInputs[0]).not.toHaveProperty("lab");
     expect(h.recipeInputs[0]).not.toHaveProperty("avoid");
   });
+
+  it("lets the Director lean towards the shots of the owner's best-rated reels, from the same Lab read", async () => {
+    h.examples = [example({ technique: ["question hook"], notes: { shots: "a result shot of the harvest" } })];
+    await startReel({ userId: "u1", businessId: "b1" }, { language: "English", tier: "lite" });
+    const variants = ((h.jobs.get("job1")!.plan as { clips: { variant: string }[] }).clips ?? []).map((c) => c.variant);
+    expect(variants[0]).toBe("hook:question");
+    expect(variants).toContain("broll:result");
+  });
 });
 
 describe("recipeForBrief passes the Lab through", () => {

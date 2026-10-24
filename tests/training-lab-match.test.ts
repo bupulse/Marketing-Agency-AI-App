@@ -146,11 +146,13 @@ describe("labFor", () => {
     expect(findMany.mock.calls[0][0]).toMatchObject({ where: { engines: { has: "reel" }, kind: { in: ["reel", "video"] } }, orderBy: { createdAt: "desc" }, take: 300 });
     expect(lab.exampleIds).toEqual([a.id]);
     expect(lab.examples[0]).toContain("Good one");
+    // The matched rows too, for rules that read their fields (the reel Director, lib/training-lab/director.ts).
+    expect(lab.rows.map((r) => r.id)).toEqual([a.id]);
   });
   it("gives empty lists for an empty Lab and on a database error", async () => {
     findMany.mockResolvedValue([]);
-    expect(await labFor({ engine: "reel" })).toEqual({ examples: [], avoid: [], phrases: [], exampleIds: [] });
+    expect(await labFor({ engine: "reel" })).toEqual({ examples: [], avoid: [], phrases: [], exampleIds: [], rows: [] });
     findMany.mockRejectedValue(new Error("down"));
-    expect(await labFor({ engine: "reel" })).toEqual({ examples: [], avoid: [], phrases: [], exampleIds: [] });
+    expect(await labFor({ engine: "reel" })).toEqual({ examples: [], avoid: [], phrases: [], exampleIds: [], rows: [] });
   });
 });

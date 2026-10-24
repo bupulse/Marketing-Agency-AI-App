@@ -10,8 +10,9 @@ import type { TrainingEngine } from "./types";
 import { viralRowsFrom } from "./viral-rows";
 
 export const READ_ROWS = 300;
-export type Lab = LabLines & { exampleIds: string[] };
-const EMPTY = (): Lab => ({ examples: [], avoid: [], phrases: [], exampleIds: [] });
+/** `rows`: the matched examples themselves (best first, then the low-rated ones), for rules that read their fields. */
+export type Lab = LabLines & { exampleIds: string[]; rows: ExampleRow[] };
+const EMPTY = (): Lab => ({ examples: [], avoid: [], phrases: [], exampleIds: [], rows: [] });
 
 /** The best matching examples for an engine, the "never this" notes and the phrases, and the ids that were read. */
 export async function labFor(want: Want, opts: { maxChars?: number; now?: Date } = {}): Promise<Lab> {
@@ -23,7 +24,7 @@ export async function labFor(want: Want, opts: { maxChars?: number; now?: Date }
     });
     if (!rows.length) return EMPTY();
     const ranked = rankExamples(rows as ExampleRow[], want, opts.now);
-    return { ...labLines(ranked, { maxChars: opts.maxChars }), exampleIds: exampleIdsOf(ranked) };
+    return { ...labLines(ranked, { maxChars: opts.maxChars }), exampleIds: exampleIdsOf(ranked), rows: [...ranked.examples.map((x) => x.example), ...ranked.avoid] };
   } catch (error) {
     await logError(error, { source: "training-lab.reader", level: "warn" });
     return EMPTY();

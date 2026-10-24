@@ -32,6 +32,7 @@ import { checkClip } from "./checker";
 import { polishReelTexts, type LanguageNote, type SpellingFixNote } from "@/lib/training-lab/fix-spelling";
 import { labLanguage } from "@/lib/training-lab/language-reader";
 import { labFor, labPresenters, labViralRows } from "@/lib/training-lab/reader";
+import { labPreferences } from "@/lib/training-lab/director";
 import { TRAINING_BUCKET } from "@/lib/training-lab/storage";
 import { labCopyPath } from "@/lib/training-lab/consent";
 import { runText, savedBrain } from "@/lib/training-lab/brains";
@@ -220,8 +221,12 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     const presenter = await ensurePresenter(owner, job.id, loaded.business.audience, sector);
     const recentJobs = await prisma.reelJob.findMany({ where: { businessId: owner.businessId, id: { not: job.id } }, orderBy: { createdAt: "desc" }, take: 10, select: { plan: true } });
     const recentClips = recentJobs.flatMap((j) => ((j.plan as unknown as ReelPlan).clips ?? []).map((c) => ({ variant: c.variant, camera: c.camera })));
-    // The viral montage: 3 talking clips and 4 product shots cut between them (the owner's example reel).
-    const beats = directMontage(recentClips, job.id);
+    // What the owner's Training Lab teaches for this sector and language; an empty Lab or an error changes nothing. The
+    // checker gets only the owner's own "never this" notes (a low-rated example's description would refilm clips for nothing).
+    const [lab, languageExtra] = await Promise.all([labFor({ engine: "reel", kinds: ["reel", "video", "voice"], sector, language: request.language }), labLanguage(request.language)]);
+    // The viral montage: 3 talking clips and 4 product shots cut between them (the owner's example reel). The Director
+    // leans towards the shots and moves the owner's best-rated Lab reels use, and never what they marked never.
+    const beats = directMontage(recentClips, job.id, labPreferences((lab.rows ?? []).filter((e) => e.kind === "reel" || e.kind === "video")));
     let recipe: ViralRecipe | null = null;
     // The owner's Lab reels join the viral pool, and the ones rated 1 or 2 stars are never copied (empty Lab: as before).
     const labViral = await labViralRows();
@@ -231,9 +236,6 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     } catch {
       recipe = null;
     }
-    // What the owner's Training Lab teaches for this sector and language; an empty Lab or an error changes nothing. The
-    // checker gets only the owner's own "never this" notes (a low-rated example's description would refilm clips for nothing).
-    const [lab, languageExtra] = await Promise.all([labFor({ engine: "reel", kinds: ["reel", "video", "voice"], sector, language: request.language }), labLanguage(request.language)]);
     const written = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean), sector, recipe, lab }, { exampleIds: lab.exampleIds, resultRef: `reel:${job.id}` });
     // The owner's spellings are fixed in the title, the caption and the spoken lines, and the language check runs on them. Only text
     // changes: nothing is filmed at planning time, so a fixed line costs nothing, and there is no rewrite or retry.

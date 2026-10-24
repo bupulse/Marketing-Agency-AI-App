@@ -159,15 +159,35 @@ function hash(seed: string): number {
   return h >>> 0;
 }
 
-/** The Director: one variant per beat and a camera move per clip, those the company had least (recent: newest first). */
-export function directReel(recent: readonly { variant: string; camera: string }[], seed: string): Pick<ReelClip, "beat" | "variant" | "camera" | "presenter">[] {
+/**
+ * The owner's taste from the Training Lab (lib/training-lab/director.ts labPreferences): variant keys ("hook:walk-up",
+ * "broll:spin") and REEL_CAMERAS entries to lean towards, and ones never to use.
+ */
+export type DirectorTaste = { prefer?: readonly string[]; avoid?: readonly string[] };
+
+/** The options without the avoided ones, unless that leaves none (then all of them). */
+const allowed = <T>(options: T[], id: (o: T) => string, avoid: ReadonlySet<string>): T[] => {
+  const kept = avoid.size ? options.filter((o) => !avoid.has(id(o))) : options;
+  return kept.length ? kept : options;
+};
+
+/**
+ * The Director: one variant per beat and a camera move per clip, those the company had least (recent: newest first).
+ * With the owner's taste, a tie on "least used" goes to a preferred one, and an avoided one is never picked while
+ * another is left. Without it the plan is the same as ever for the same seed.
+ */
+export function directReel(recent: readonly { variant: string; camera: string }[], seed: string, taste: DirectorTaste = {}): Pick<ReelClip, "beat" | "variant" | "camera" | "presenter">[] {
   const used = (key: "variant" | "camera", v: string) => recent.reduce((s, r, i) => s + (r[key] === v ? Math.pow(0.9, i) : 0), 0);
+  const prefer = new Set(taste.prefer ?? []);
+  const avoid = new Set(taste.avoid ?? []);
+  const liked = (id: string) => (prefer.has(id) ? 1 : 0);
   const cams: string[] = [];
   return BEATS.map((beat, i) => {
-    const variant = [...beat.variants].sort((a, b) => used("variant", `${beat.id}:${a.id}`) - used("variant", `${beat.id}:${b.id}`) || hash(`${seed}:${i}:${a.id}`) - hash(`${seed}:${i}:${b.id}`))[0];
-    const camera = [...REEL_CAMERAS].filter((c) => !cams.includes(c)).sort((a, b) => used("camera", a) - used("camera", b) || hash(`${seed}:c${i}:${a}`) - hash(`${seed}:c${i}:${b}`))[0];
+    const key = (v: { id: string }) => `${beat.id}:${v.id}`;
+    const variant = allowed([...beat.variants], key, avoid).sort((a, b) => used("variant", key(a)) - used("variant", key(b)) || liked(key(b)) - liked(key(a)) || hash(`${seed}:${i}:${a.id}`) - hash(`${seed}:${i}:${b.id}`))[0];
+    const camera = allowed([...REEL_CAMERAS].filter((c) => !cams.includes(c)), (c) => c, avoid).sort((a, b) => used("camera", a) - used("camera", b) || liked(b) - liked(a) || hash(`${seed}:c${i}:${a}`) - hash(`${seed}:c${i}:${b}`))[0];
     cams.push(camera);
-    return { beat: beat.id, variant: `${beat.id}:${variant.id}`, camera, presenter: variant.presenter };
+    return { beat: beat.id, variant: key(variant), camera, presenter: variant.presenter };
   });
 }
 
@@ -184,13 +204,21 @@ export const BROLL_SECONDS = 4;
 
 /**
  * The montage Director (the owner's viral example): 3 talking clips (the hook, how it works, the call to action) and
- * 4 product shots between them, each the variant and camera the company had least. Clip order is story order: hook, 2
- * shots, how it works, 2 shots, call to action.
+ * 4 product shots between them, each the variant and camera the company had least (with the owner's Lab taste: ties
+ * go to preferred ones, avoided ones only when nothing else is left). Clip order is story order: hook, 2 shots, how it
+ * works, 2 shots, call to action.
  */
-export function directMontage(recent: readonly { variant: string; camera: string }[], seed: string): Pick<ReelClip, "beat" | "variant" | "camera" | "presenter" | "kind" | "seconds">[] {
-  const talk = directReel(recent, seed).filter((b) => b.beat !== "result").map((b) => ({ ...b, kind: "talk" as const, seconds: CLIP_SECONDS }));
+export function directMontage(recent: readonly { variant: string; camera: string }[], seed: string, taste: DirectorTaste = {}): Pick<ReelClip, "beat" | "variant" | "camera" | "presenter" | "kind" | "seconds">[] {
+  const talk = directReel(recent, seed, taste).filter((b) => b.beat !== "result").map((b) => ({ ...b, kind: "talk" as const, seconds: CLIP_SECONDS }));
   const used = (v: string) => recent.reduce((s, r, i) => s + (r.variant === v ? Math.pow(0.9, i) : 0), 0);
-  const shots = [...BROLL_SHOTS].sort((a, b) => used(`broll:${a.id}`) - used(`broll:${b.id}`) || hash(`${seed}:b:${a.id}`) - hash(`${seed}:b:${b.id}`)).slice(0, 4);
+  const prefer = new Set(taste.prefer ?? []);
+  const liked = (id: string) => (prefer.has(id) ? 1 : 0);
+  // Four of the five shots: an avoided one only when fewer than four are left without it.
+  const avoid = new Set(taste.avoid ?? []);
+  const free = BROLL_SHOTS.filter((b) => !avoid.has(`broll:${b.id}`));
+  const pool = free.length >= 4 ? [...free] : [...free, ...BROLL_SHOTS.filter((b) => avoid.has(`broll:${b.id}`))];
+  const order = (list: typeof pool) => list.sort((a, b) => used(`broll:${a.id}`) - used(`broll:${b.id}`) || liked(`broll:${b.id}`) - liked(`broll:${a.id}`) || hash(`${seed}:b:${a.id}`) - hash(`${seed}:b:${b.id}`));
+  const shots = (free.length >= 4 ? order(pool) : [...order([...free]), ...order(pool.slice(free.length))]).slice(0, 4);
   const broll = shots.map((s) => ({ beat: "broll" as const, variant: `broll:${s.id}`, camera: "a bold, smooth move as described", presenter: false, kind: "broll" as const, seconds: BROLL_SECONDS }));
   return [talk[0], broll[0], broll[1], talk[1], broll[2], broll[3], talk[2]];
 }
