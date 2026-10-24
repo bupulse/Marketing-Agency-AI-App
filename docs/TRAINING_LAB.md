@@ -70,25 +70,25 @@ A1. **Done** The registry and the brain router (`lib/training-lab/agents.ts`, `b
     brain choice saved in the database (a small `AgentSetting` table), fallback order, tests. No engine changes yet.
 A2. **Done** Admin, Training Lab, Team: a card per member (job, examples it reads, brain switch, last runs and cost
     from the AI ledger). Phone width works.
-A3. **Doing** (the reel script writer first) The engines ask the router: the reel script writer, the designer and the caption writer use the member's
+A3. **Doing** (the reel script writer done; the designer and caption writer next) The engines ask the router: the reel script writer, the designer and the caption writer use the member's
     chosen brain (they already choose between Claude and Gemini; this makes it the owner's switch).
 A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records which Lab examples it used, so a rating on the result goes back to them.
 
 ### Phase 2: the engines learn from it
-5. **Doing** (the reel writer and checker read the Lab; the viral-recipe hook is in, 0e4fd8e0, waiting for video-engine's review before it is wired) Video: the reel writer and `viralRecipe` take the best matching Lab examples (sector, language, technique)
+5. **Done** (reel writer, clip checker, viral recipes in the reel engine, designer and Studio jobs; reviewed by video-engine) Video: the reel writer and `viralRecipe` take the best matching Lab examples (sector, language, technique)
    as references; the checker uses the owner's "never this" notes.
 6. **Done** (no place yet to keep which examples an image batch read) Image and posts: the image planner and post writer take Lab examples (layouts, wording, style) the same way.
 7. **Done** (posts per week stays the owner's setting) Posting and scheduling: Lab notes on best times, frequency and formats per network feed Autopilot and
    daily posts' plans.
-8. **Doing** (the form, the extras and every checkLanguage caller done; the Studio job and the reel lines next) Kinyarwanda: recordings plus text become a phrase and pronunciation list used by the writers (spelling,
+8. **Doing** (the form, the extras, every checkLanguage caller and the Studio jobs done; the reel's own lines next) Kinyarwanda: recordings plus text become a phrase and pronunciation list used by the writers (spelling,
    natural phrases, words to avoid) and by caption checks; keep the audio for a future voice.
-9. **Doing** Actors: consented clips and portraits become presenter options for the reel engine (`ReelPresenter`).
+9. **Done** (portraits; actors with only a video wait for frames from video) Actors: consented clips and portraits become presenter options for the reel engine (`ReelPresenter`).
 
 ### Phase 3: the editor
-10. **Doing** (edit operations done, lib/editor/ops.ts; the UI in components/editor next) A timeline editor on the MotionSpec: trim, reorder, captions, stickers, transitions, music with beat
+10. **Done** (v1: demo or a finished reel, preview, timeline, inspector, undo, export in the browser; encoder items in docs/research/EDITOR.md wait for video-engine) A timeline editor on the MotionSpec: trim, reorder, captions, stickers, transitions, music with beat
     marks, export through `encodeSpecMp4` in the browser. Start with editing a finished reel (its spec), then any
     uploaded clip. Coordinate with video-engine before touching shared encoder code (it is theirs: ask, do not edit).
-11. **Todo** "Teach from an edit": an edit the owner makes is saved as a Lab example (what was changed and why).
+11. **Done** "Teach from an edit": an edit the owner makes is saved as a Lab example (what was changed and why).
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
