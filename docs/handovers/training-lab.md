@@ -19,6 +19,12 @@
   merges that part. Encoder changes (speed, audio fades, beats in the spec) stay theirs: ask first.
 - Admin login on the test site does not carry to my check server (port 3004), so browser checks happen on the test
   site after main merges.
+- 12:35: main merged up to b235f858 to test.bupulse.com (full vitest 5390 passed). Chrome check (read-only, no forms):
+  the Library and Team pages load as the owner, no console errors. Team page findings to fix: (1) it says "Your
+  choice ... is not available" for a default the owner never chose; (2) only the script writer asks the router so far,
+  so the other members' switches do nothing yet and must say so; (3) the script writer's default sends Kinyarwanda to
+  Gemini, which the card should say. Phone width not checked: the window resize did not apply in this Chrome.
+  Main asked whether this session signed in on the test site (its session lands on /welcome since about 11:15): no.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small
