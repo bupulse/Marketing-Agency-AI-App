@@ -315,3 +315,46 @@ export async function saveExampleNotes(ctx: AdminContext, identity: LabOwner, id
   await saveNotes(ctx, row, notes, "update_training_notes");
   return notes;
 }
+
+// ---- A portrait from an actor's video (docs/TRAINING_LAB.md, task 13) -------------------------------------------------
+
+/**
+ * A new actor example made from one frame of an actor's video: same person and consent as the video's example, switched on
+ * for the presenters only, with `from_video` and `at_seconds` in its notes. The source must be an actor with consent. The
+ * still itself goes up the usual way (the slot returned here, then confirmExampleFile). Audited.
+ */
+export async function createPortraitFromVideo(ctx: AdminContext, identity: LabOwner, sourceId: string, atSeconds: number, rawFile: unknown): Promise<{ id: string; upload: UploadSlot | null; uploadError?: string }> {
+  assertLabOwner(ctx, identity);
+  const source = await found(sourceId);
+  if (source.kind !== "actor") throw new AdminError("invalid", "Only an actor's video can give a portrait.");
+  if (!source.consentGiven) throw new AdminError("invalid", "This actor has no consent recorded, so no portrait can be made from it.");
+  if (!String(source.mime ?? "").startsWith("video/")) throw new AdminError("invalid", "This example is not a video.");
+  const at = Math.max(0, Math.round((Number.isFinite(Number(atSeconds)) ? Number(atSeconds) : 0) * 10) / 10);
+  const made = await createExample(
+    ctx,
+    identity,
+    {
+      kind: "actor",
+      title: `${source.title} (portrait)`.slice(0, 120),
+      howMade: `A still taken ${at} s into the video "${source.title}".`,
+      whatIsGood: source.whatIsGood,
+      neverThis: source.neverThis ?? "",
+      sector: source.sector ?? "",
+      language: source.language ?? "",
+      tags: source.tags,
+      technique: [],
+      consentGiven: true,
+      consentName: source.consentName ?? "",
+      consentNote: source.consentNote ?? "",
+      engines: ["presenter"],
+      notes: { from_video: source.id, at_seconds: at },
+    },
+    rawFile,
+  );
+  // The same person agreed on the same day: the consent date is the video's, not today's.
+  await prisma.$transaction(async (tx) => {
+    if (source.consentAt) await tx.trainingExample.update({ where: { id: made.id }, data: { consentAt: source.consentAt } });
+    await writeAudit(tx, ctx, "create_training_portrait", `training:${made.id}`, null, { from_video: source.id, at_seconds: at, consentName: source.consentName });
+  });
+  return made;
+}
