@@ -9,6 +9,23 @@ test.bupulse.com like a small Rwandan business owner, and fixes what it finds.
 - Read the guide, QUIZ_MODE, BUSINESS_INFO and PLANS docs.
 - The new browser tab was signed out (login page); the owner signs in a test client for me (I never type passwords).
 
+### 2026-10-24 (session 2, owner away; the main session decides)
+- Reel 5 (round-3 montage, Kinyarwanda) finished after Google's daily quota reset: 6/10 from Gemini, the product changed
+  between shots (LEAF's album has 8 different towers) — fixed: one product photo a reel. Reels: $16.63 of $20 spent.
+- Netlify's 60 s, all live on the test site:
+  - image engine in steps of one AI call (migration `20261031200400_image_concept_steps`);
+  - Create post's picture stepped across render calls;
+  - reel engine: quick start, one heavy thing a step, paid work saved at once, Google's limit shared across
+    businesses, a 30-minute give-up;
+  - Autopilot's AI pictures left for later on Netlify (`/api/cron/autopilot-visuals`, every 30 minutes Fri to Sun),
+    1 a run there (`AUTOPILOT_NETLIFY_AI_PICTURES`).
+- Set up the Training Lab agent (`/Users/macbook1/BuPulse-training`, branch `training-lab`) at the owner's request.
+- Waiting for the owner:
+  - Chrome on the test site is signed in as "BuPulse Admin" on /welcome: LEAF needs signing in again before browser
+    walk-throughs (and the Designs guide screenshot);
+  - more reel budget ($3.37 left; a reel is about $4.50);
+  - the Netlify proposals in docs/DEPLOY_NETLIFY.md (AI pictures in plan prices, late pictures on GitHub's runner).
+
 ## Problems found
 
 Format: where (URL) · steps · what happened / what should happen · severity (blocker / annoying / polish) · screenshot.
