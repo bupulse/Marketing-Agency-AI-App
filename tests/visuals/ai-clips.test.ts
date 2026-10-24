@@ -225,6 +225,16 @@ describe("AI clips: falling back before anything is paid", () => {
     expect(usage.consumeUsage).not.toHaveBeenCalled();
   });
 
+  it("a daily limit of 0 (overnight clips paused): the note says paused, not busy; no credits, no call", async () => {
+    addVisual("v1");
+    const g = veo();
+    await runAiClips(T0, { env: { ...env, VEO_CLIPS_PER_DAY: "0" }, fetchImpl: g.fetchImpl });
+    expect(row("v1").clipState).toBe("fallback");
+    expect(rowPlan("v1").aiNote).toBe(CLIP_NOTES.off);
+    expect(usage.consumeUsage).not.toHaveBeenCalled();
+    expect(g.calls).toHaveLength(0);
+  });
+
   it("a video made meanwhile (no longer pending): left alone, nothing taken", async () => {
     addVisual("v1", { status: "ready" });
     await runAiClips(T0, { env, fetchImpl: veo().fetchImpl });

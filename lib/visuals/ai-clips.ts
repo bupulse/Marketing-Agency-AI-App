@@ -174,7 +174,10 @@ async function startClips(id: string, now: Date, deps: ClipDeps, result: AiClips
   if (!(await isServiceEnabled("veo").catch(() => false)) || !veoOpts(deps).apiKey) return fallback(CLIP_NOTES.off);
   const picks = pickClipScenes(plan, AI_CLIPS_PER_VIDEO);
   if (picks.length === 0) return fallback(CLIP_NOTES.noPhoto);
-  if ((await submittedToday(now)) + picks.length > clipsPerDay(env)) return fallback(CLIP_NOTES.busy);
+  // A limit of 0 is the admin pausing overnight clips (not a busy day): the note says they are paused.
+  const perDay = clipsPerDay(env);
+  if (perDay === 0) return fallback(CLIP_NOTES.off);
+  if ((await submittedToday(now)) + picks.length > perDay) return fallback(CLIP_NOTES.busy);
   // Google is making as many clips as it takes at once: this video waits for the next sweep, nothing taken.
   if (slots.free <= 0) return;
 
