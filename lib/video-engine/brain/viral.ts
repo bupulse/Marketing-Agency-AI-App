@@ -241,7 +241,7 @@ export function scoreViral(input: RecipeInput, rng: () => number = seededRandom(
     if (post && !v.isAd && v.kind !== "creator") score += 6;
     if (v.kind === "creator") score -= 4;
     if (recentSources.has(v.id)) add(-25, "used recently");
-    if (v.id.startsWith("lab:")) add(LAB_BONUS, "your Training Lab");
+    if (v.id.startsWith("lab:")) add(LAB_BONUS, "BuPulse's Training Lab");
     if (avoid.has(v.id) || avoid.has(v.hookType)) add(-AVOID_PENALTY, "the owner said never");
     // A Lab reel's chance comes from its own seed, so the draws for the curated videos stay as they were without a Lab.
     score += 28 * (v.id.startsWith("lab:") ? seededRandom(`${input.seed}:${v.id}`)() : rng());
@@ -577,9 +577,22 @@ export function describeViral(v: ViralVideo): string {
 }
 
 const fmt = (n: number) => String(Math.round(n * 10) / 10);
+/**
+ * A Training Lab reel (lib/training-lab/viral-rows.ts): the recipe credits BuPulse's Training Lab, not its research. The
+ * Lab is the BuPulse owner's, never the client's, so client-facing text never says "your".
+ */
+const isLab = (id: string | null | undefined) => !!id?.startsWith("lab:");
 const ref = (id: string | null) => {
+  if (isLab(id)) return `${id}, BuPulse's Training Lab`;
   const v = id ? viralById(id) : null;
   return v ? `${v.id}, ${describeViral(v)} (${v.reach})` : "BuPulse's research";
+};
+/** "4 viral videos BuPulse studied", or with Lab reels among them "3 viral videos BuPulse studied and 1 from BuPulse's Training Lab". */
+const studied = (r: ViralRecipe) => {
+  const lab = r.sources.filter((s) => isLab(s.id)).length;
+  const curated = r.sources.length - lab;
+  if (!lab) return `${r.sources.length} viral videos BuPulse studied`;
+  return curated ? `${curated} viral video${curated === 1 ? "" : "s"} BuPulse studied and ${lab} from BuPulse's Training Lab` : `${lab} video${lab === 1 ? "" : "s"} from BuPulse's Training Lab`;
 };
 
 /**
@@ -588,7 +601,7 @@ const ref = (id: string | null) => {
  */
 export function recipeText(r: ViralRecipe, opts: { clips?: number } = {}): string {
   const lines = [
-    `Viral recipe: an original mix of techniques from ${r.sources.length} viral videos BuPulse studied (ids in brackets). It sets the opening, the beats, the pace, where the text, price and number go, the camera and the loop. Use the techniques, never the other videos' words, products, prices or numbers: every fact comes from the brief.`,
+    `Viral recipe: an original mix of techniques from ${studied(r)} (ids in brackets). It sets the opening, the beats, the pace, where the text, price and number go, the camera and the loop. Use the techniques, never the other videos' words, products, prices or numbers: every fact comes from the brief.`,
     `- Opening (0 to ${fmt(r.beats[0].to)} s, from ${ref(r.opening.source)}): ${r.opening.idea}. Seen there: ${withoutFigures(r.opening.seen)}`,
     `- Beats (${r.seconds} s, from ${r.beats[1]?.source ?? r.opening.source}):`,
     ...r.beats.map((b, i) => `  ${i + 1}. ${fmt(b.from)}-${fmt(b.to)} s ${b.role}: ${b.what}${i > 0 && b.seen ? ` (there: ${b.seen})` : ""}${b.footage !== "photo" && opts.clips ? ` [${b.footage === "phone" ? "a phone clip" : "an AI clip"}]` : ""}`),
@@ -613,7 +626,7 @@ export function seedanceRecipeText(r: ViralRecipe, seconds: number): string {
   const k = seconds / r.seconds;
   const t = (n: number) => fmt(Math.round(n * k * 2) / 2);
   return [
-    `Viral recipe: an original mix of techniques from ${r.sources.length} viral videos BuPulse studied (ids in brackets). Follow its opening, its shots and its camera; never the other videos' products, people, words or prices.`,
+    `Viral recipe: an original mix of techniques from ${studied(r)} (ids in brackets). Follow its opening, its shots and its camera; never the other videos' products, people, words or prices.`,
     `- Opening (0 to ${t(r.beats[0].to)} s, from ${ref(r.opening.source)}): ${r.opening.idea}. Seen there: ${withoutFigures(r.opening.seen)}`,
     `- Shots (from ${r.beats[1]?.source ?? r.opening.source}): ${r.beats.map((b, i) => `${t(b.from)}-${i === r.beats.length - 1 ? fmt(seconds) : t(b.to)} s ${b.role}: ${b.what}`).join("; ")}.`,
     `- Camera: feels like "${r.camera.feel}" (from ${r.camera.source}).`,
@@ -628,6 +641,7 @@ export function seedanceRecipeText(r: ViralRecipe, seconds: number): string {
 /** "Why this video" for the client, in plain English: what each technique was borrowed from (no names, no frames). */
 export function recipeWhy(r: ViralRecipe): string[] {
   const d = (id: string | null) => {
+    if (isLab(id)) return "a reel from BuPulse's own example library";
     const v = id ? viralById(id) : null;
     return v ? `${describeViral(v)} with ${v.reach}` : null;
   };

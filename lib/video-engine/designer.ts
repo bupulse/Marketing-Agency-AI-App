@@ -14,7 +14,7 @@ import { factCheck, type FactWarning } from "./factcheck";
 import { brainBriefFromDesign, brainContext } from "./brain/select";
 import { STYLE_LIMITS, scoreDesign, templateStyle, type DesignScore } from "./brain/score";
 import { PREFERRED_PHRASES, checkLanguage, languageTextsOf } from "./brain";
-import { recipeText, viralRecipe, type RecipePlatform, type ViralRecipe } from "./brain/viral";
+import { recipeText, viralRecipe, type RecipePlatform, type ViralRecipe, type ViralVideo } from "./brain/viral";
 import { withShortPrice } from "./price";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
@@ -318,9 +318,10 @@ export const LARGE_PRODUCT = /\b(tower|growing system|hydroponic system|machine|
 /**
  * The viral recipe for a brief (brain/viral.ts): its sector, facts, platform, length and footage. `seed`: one per job
  * (two jobs for one product get different recipes); `recent`: the business's last recipes, newest first;
- * `aiClips`: the AI clip step is on, so beats that want filmed footage may get one.
+ * `aiClips`: the AI clip step is on, so beats that want filmed footage may get one; `lab` and `avoid`: the owner's
+ * Training Lab reels and what never to copy (lib/training-lab/reader.ts labViralRows); none given, the recipe is as before.
  */
-export function recipeForBrief(brief: DesignBrief, opts: { seed: string; recent?: ViralRecipe[]; aiClips?: boolean }): ViralRecipe {
+export function recipeForBrief(brief: DesignBrief, opts: { seed: string; recent?: ViralRecipe[]; aiClips?: boolean; lab?: ViralVideo[]; avoid?: string[] }): ViralRecipe {
   const b = brainBriefFromDesign(brief);
   const phoneClips = (brief.clips ?? []).filter((c) => c.source === "phone").length;
   // AI clips already made (the Veo step runs before the design): that many beats take one.
@@ -341,6 +342,8 @@ export function recipeForBrief(brief: DesignBrief, opts: { seed: string; recent?
     footage: { phoneClips, aiClips: !!opts.aiClips || aiCount > 0, ...(aiCount ? { aiCount } : {}) },
     recent: opts.recent ?? [],
     seed: opts.seed,
+    ...(opts.lab?.length ? { lab: opts.lab } : {}),
+    ...(opts.avoid?.length ? { avoid: opts.avoid } : {}),
   });
 }
 

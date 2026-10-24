@@ -29,7 +29,7 @@ import { downloadVeo, getVeoOperation, submitVeo, veoClipUsd, veoLedgerUsage, ve
 import { CLIP_SECONDS, directMontage, reelCostUsd, variantOf, veoClipPrompt, type ReelClip, type ReelLanguage, type ReelPlan, type ReelTier } from "./story";
 import { readReel, reelPrompt, REEL_SCHEMA, REEL_SYSTEM, ruleReel, type ReelInput } from "./writer";
 import { checkClip } from "./checker";
-import { labFor } from "@/lib/training-lab/reader";
+import { labFor, labViralRows } from "@/lib/training-lab/reader";
 import { runText, savedBrain } from "@/lib/training-lab/brains";
 import { recordRun } from "@/lib/training-lab/runs";
 import type { Brain } from "@/lib/training-lab/agents";
@@ -174,8 +174,11 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     // What kind of business it is decides where the product is filmed, and which viral videos the reel learns from.
     const sector = sectorFromText([loaded.facts.industry, loaded.facts.description, loaded.subject?.name, loaded.subject?.description].filter(Boolean).join(" "));
     let recipe: ViralRecipe | null = null;
+    // The owner's Lab reels join the viral pool, and the ones rated 1 or 2 stars are never copied (empty Lab: as before).
+    const labViral = await labViralRows();
+    const avoid = [...labViral.avoidIds, ...labViral.avoidHooks];
     try {
-      recipe = viralRecipe({ sector, product: loaded.subject?.name ?? loaded.facts.name, platform: "instagram", country: "Rwanda", language: request.language, purpose: "ad", seconds: 30, hasPrice: !!loaded.subject?.price, hasPhone: true, footage: { generated: true }, seed: job.id });
+      recipe = viralRecipe({ sector, product: loaded.subject?.name ?? loaded.facts.name, platform: "instagram", country: "Rwanda", language: request.language, purpose: "ad", seconds: 30, hasPrice: !!loaded.subject?.price, hasPhone: true, footage: { generated: true }, seed: job.id, ...(labViral.rows.length ? { lab: labViral.rows } : {}), ...(avoid.length ? { avoid } : {}) });
     } catch {
       recipe = null;
     }

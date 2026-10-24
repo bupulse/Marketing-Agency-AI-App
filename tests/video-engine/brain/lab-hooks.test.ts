@@ -24,7 +24,7 @@ describe("a Lab reel in the pool", () => {
   it("scores with a bonus of at most 15, and keeps feasible and the opening rules", () => {
     expect(LAB_BONUS).toBeLessThanOrEqual(15);
     const plain = scoreViral(input({ lab: [labRow()] })).find((s) => s.v.id === "lab:one")!;
-    expect(plain.why).toContain("your Training Lab");
+    expect(plain.why).toContain("BuPulse's Training Lab");
     const person = labRow({ id: "lab:two", group: "lab:two", needs: ["person"] });
     const out = pickViral(input({ footage: { phoneClips: 0 }, lab: [person] }), seededRandom("job-1"));
     expect(out.some((s) => s.v.id === "lab:two")).toBe(false);
