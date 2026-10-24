@@ -9,6 +9,8 @@ import { DEFAULT_GEMINI_TEXT_FALLBACK, DEFAULT_GEMINI_TEXT_MODEL, GeminiTextProv
 import { withLedger } from "@/lib/ai/ledger";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { AIBudgetExceededError } from "@/lib/ai/budget";
+import { isServiceEnabled, ServiceDisabledError } from "@/lib/admin/switch";
 import { claudeBySubscription, SUBSCRIPTION_MODEL, subscriptionAllowed } from "@/lib/image-engine/claude-cli";
 
 // The Team page asks this too; only this file and the image engine's planner may import claude-cli
@@ -84,16 +86,31 @@ async function runOn(brain: "gemini" | "anthropic" | "claude-subscription", call
   return { text: r.text, brain, model: r.model, costUsd: estimateCostUsd(r.model, r.usage) };
 }
 
+/** The brains that cost money per call. */
+const PAID: ReadonlySet<Brain> = new Set(["gemini", "anthropic"]);
+
+/** A stop that applies to the whole request, not to one brain: the AI budget (platform or company) or a provider switched off. */
+const isStop = (error: unknown) => error instanceof AIBudgetExceededError || error instanceof ServiceDisabledError;
+
 /**
  * One text answer for a member, on its brain; on an error (or a brain that is not available) the next brain in its
  * order. Null when it reaches "rules" or runs out of brains: the caller then uses its own rules.
+ * - A budget stop (AIBudgetExceededError, CompanyBudgetExceededError) or a switched-off provider (ServiceDisabledError) is
+ *   rethrown, not passed to another provider: every caller (the reel writer, the Designer, the Caption writer) already
+ *   catches errors from here and falls back to its own rules, and a budget stays a stop.
+ * - After a paid brain fails for any other reason, only free brains are tried (the subscription, then rules), so one
+ *   request is never paid for twice.
+ * - The subscription is used only while the admin "claude" switch is on, as the image engine's claudeRoute does.
  */
 export async function runText(agentId: AgentId, call: TextCall): Promise<TextRun | null> {
   const agent: Agent | null = agentById(agentId);
   if (!agent) return null;
+  let paidFailed = false;
   for (const brain of brainChain(agent, await savedBrain(agentId))) {
     if (brain === "rules") return null;
     if (!brainAvailable(brain)) continue;
+    if (paidFailed && PAID.has(brain)) continue;
+    if (brain === "claude-subscription" && !(await isServiceEnabled("claude").catch(() => false))) continue;
     const started = Date.now();
     const log = { agentId, brain, feature: call.feature, businessId: call.owner?.businessId ?? null, exampleIds: call.exampleIds, resultRef: call.resultRef };
     try {
@@ -103,6 +120,8 @@ export async function runText(agentId: AgentId, call: TextCall): Promise<TextRun
     } catch (error) {
       await logError(error, { source: `training-lab.agent.${agentId}.${brain}`, level: "warn", businessId: call.owner?.businessId ?? undefined });
       await recordRun({ ...log, ok: false, ms: Date.now() - started, error: error instanceof Error ? error.message : String(error) });
+      if (isStop(error)) throw error;
+      if (PAID.has(brain)) paidFailed = true;
     }
   }
   return null;

@@ -8,7 +8,10 @@ const findUnique = vi.fn();
 vi.mock("@/lib/db", () => ({ prisma: { agentRun: { create: (...a: unknown[]) => create(...a), updateMany: (...a: unknown[]) => updateMany(...a), findMany: (...a: unknown[]) => findMany(...a) }, agentSetting: { findUnique: (...a: unknown[]) => findUnique(...a) } } }));
 const logError = vi.fn();
 vi.mock("@/lib/errors", () => ({ logError: (...a: unknown[]) => logError(...a) }));
-vi.mock("@/lib/image-engine/claude-cli", () => ({ subscriptionAllowed: () => false, claudeBySubscription: vi.fn(), SUBSCRIPTION_MODEL: "claude-sonnet-5-5" }));
+const subscription = { allowed: false, claudeOn: true };
+const claudeBySubscription = vi.fn();
+vi.mock("@/lib/image-engine/claude-cli", () => ({ subscriptionAllowed: () => subscription.allowed, claudeBySubscription: (...a: unknown[]) => claudeBySubscription(...a), SUBSCRIPTION_MODEL: "claude-sonnet-5-5" }));
+vi.mock("@/lib/admin/switch", async (orig) => ({ ...(await orig<typeof import("@/lib/admin/switch")>()), isServiceEnabled: async (service: string) => (service === "claude" ? subscription.claudeOn : true) }));
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: (_c: unknown, _m: unknown, call: () => Promise<unknown>) => call() }));
 const geminiGenerate = vi.fn();
 const claudeGenerate = vi.fn();
@@ -19,7 +22,9 @@ import { recordRun, rateResult, teamSummary } from "@/lib/training-lab/runs";
 import { runText } from "@/lib/training-lab/brains";
 
 beforeEach(() => {
-  for (const m of [create, updateMany, findMany, findUnique, logError, geminiGenerate, claudeGenerate]) m.mockReset();
+  for (const m of [create, updateMany, findMany, findUnique, logError, geminiGenerate, claudeGenerate, claudeBySubscription]) m.mockReset();
+  subscription.allowed = false;
+  subscription.claudeOn = true;
   create.mockResolvedValue({ id: "run1" });
   findUnique.mockResolvedValue(null);
   vi.stubEnv("GEMINI_API_KEY", "g");
@@ -83,14 +88,43 @@ describe("runText records its attempts", () => {
     expect(create.mock.calls[0][0].data).toMatchObject({ agentId: "script-writer", brain: "anthropic", ok: true, exampleIds: ["e1"], resultRef: "reel:1", feature: "reelEngine" });
     expect(Number(create.mock.calls[0][0].data.costUsd)).toBeCloseTo(0.018, 5);
   });
-  it("logs the failure, then the next brain's success", async () => {
+  it("logs a paid brain's failure, and then tries no other paid brain (one request is never paid twice)", async () => {
     claudeGenerate.mockRejectedValue(new Error("overloaded"));
     geminiGenerate.mockResolvedValue({ text: "ok", provider: "gemini", model: "gemini-3.5-flash", usage: { inputTokens: 10, outputTokens: 10 } });
     const out = await runText("script-writer", { system: "s", prompt: "p", feature: "reelEngine" });
-    expect(out?.brain).toBe("gemini");
-    expect(create).toHaveBeenCalledTimes(2);
+    expect(out).toBeNull();
+    expect(geminiGenerate).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0][0].data).toMatchObject({ brain: "anthropic", ok: false, error: "overloaded" });
-    expect(create.mock.calls[1][0].data).toMatchObject({ brain: "gemini", ok: true });
+  });
+  it("after a paid failure, still tries the free subscription when it is allowed and Claude is on", async () => {
+    subscription.allowed = true;
+    claudeGenerate.mockRejectedValue(new Error("overloaded"));
+    claudeBySubscription.mockResolvedValue({ text: "from the subscription" });
+    const out = await runText("script-writer", { system: "s", prompt: "p", feature: "reelEngine" });
+    expect(out).toMatchObject({ brain: "claude-subscription", costUsd: 0, text: "from the subscription" });
+    expect(geminiGenerate).not.toHaveBeenCalled();
+  });
+  it("never runs the subscription while the admin Claude switch is off", async () => {
+    subscription.allowed = true;
+    subscription.claudeOn = false;
+    findUnique.mockResolvedValue({ agentId: "script-writer", brain: "claude-subscription" });
+    claudeGenerate.mockResolvedValue({ text: "ok", provider: "claude", model: "claude-sonnet-5-5", usage: { inputTokens: 1, outputTokens: 1 } });
+    const out = await runText("script-writer", { system: "s", prompt: "p", feature: "reelEngine" });
+    expect(claudeBySubscription).not.toHaveBeenCalled();
+    // It falls on to the next brain in its order as if the subscription were not there (the API key, then Gemini).
+    expect(out?.brain).toBe("anthropic");
+  });
+  it("stops on a budget or a switched-off provider: rethrown, never sent to another provider", async () => {
+    const { AIBudgetExceededError, CompanyBudgetExceededError } = await import("@/lib/ai/budget");
+    const { ServiceDisabledError } = await import("@/lib/admin/switch");
+    findUnique.mockResolvedValue({ agentId: "caption-writer", brain: "gemini" });
+    for (const stop of [new AIBudgetExceededError("gemini"), new CompanyBudgetExceededError("gemini"), new ServiceDisabledError("gemini")]) {
+      geminiGenerate.mockReset().mockRejectedValue(stop);
+      claudeGenerate.mockReset();
+      await expect(runText("caption-writer", { system: "s", prompt: "p", feature: "imageEngine" })).rejects.toBe(stop);
+      expect(claudeGenerate).not.toHaveBeenCalled();
+    }
   });
   it("still answers when the log fails", async () => {
     create.mockRejectedValue(new Error("db down"));

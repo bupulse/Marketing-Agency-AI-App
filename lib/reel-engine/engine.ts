@@ -35,6 +35,7 @@ import { labFor, labPresenters, labViralRows } from "@/lib/training-lab/reader";
 import { labPreferences } from "@/lib/training-lab/director";
 import { TRAINING_BUCKET } from "@/lib/training-lab/storage";
 import { labCopyPath } from "@/lib/training-lab/consent";
+import { scrubText } from "@/lib/training-lab/scrub";
 import { runText, savedBrain } from "@/lib/training-lab/brains";
 import { recordRun } from "@/lib/training-lab/runs";
 import type { Brain } from "@/lib/training-lab/agents";
@@ -207,6 +208,19 @@ export async function writeReel(owner: Owner, input: ReelInput, team: { exampleI
   }
 }
 
+/** Words that mark a "never" note as about sound or text, not about what is seen (the clip checker only watches). */
+const NOT_VISUAL = /\b(word|words|say|says|saying|said|speak|spoken|line|lines|price|prices|priced|caption|captions|subtitle|subtitles|music|song|sound|sounds|voice|voices|accent|spelling|spell|text|hashtag|hashtags)\b|amagambo|kuvuga|igiciro|indirimbo|ijwi/i;
+
+/**
+ * The owner's "never" notes the clip checker fails a clip for: only reel and video examples' own neverThis (never a
+ * recording's, never a low-rated example's description), and only notes about what is seen, so a note about the words,
+ * the price, the captions or the music never sends a clean clip back to be filmed again (each refilm is a paid clip).
+ */
+export function clipAvoid(rows: readonly { kind: string; neverThis: string | null }[]): string[] {
+  const notes = rows.filter((e) => (e.kind === "reel" || e.kind === "video") && e.neverThis?.trim()).map((e) => scrubText(e.neverThis!.replace(/\s+/g, " ").trim()));
+  return [...new Set(notes.filter((n) => !NOT_VISUAL.test(n)))].slice(0, 6);
+}
+
 /** Plans a reel: the presenter, the Director's beats and the Prompter's clips. Throws ReelError the owner can read. */
 export async function startReel(owner: Owner, request: { subjectId?: string | null; brief?: string | null; language: ReelLanguage; tier: ReelTier }): Promise<string> {
   if (!(await reelEngineOn(owner.businessId))) throw new ReelError("AI reels are being tested and are not on for your business yet.");
@@ -240,7 +254,7 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
     // The owner's spellings are fixed in the title, the caption and the spoken lines, and the language check runs on them. Only text
     // changes: nothing is filmed at planning time, so a fixed line costs nothing, and there is no rewrite or retry.
     const { plan, fixes, issues } = polishReelTexts(written, request.language, languageExtra);
-    await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null, refilms: 0, sources: recipe?.sources.map((s) => s.id) ?? [], ...(fixes.length ? { labSpellingFixes: fixes } : {}), ...(issues.length ? { languageIssues: issues } : {}), labExampleIds: lab.exampleIds, labAvoid: lab.avoid.filter((line) => line.startsWith("Never")) }), stepUntil: null } });
+    await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null, refilms: 0, sources: recipe?.sources.map((s) => s.id) ?? [], ...(fixes.length ? { labSpellingFixes: fixes } : {}), ...(issues.length ? { languageIssues: issues } : {}), labExampleIds: lab.exampleIds, labAvoid: clipAvoid(lab.rows ?? []) }), stepUntil: null } });
     return job.id;
   } catch (error) {
     await prisma.reelJob.update({ where: { id: job.id }, data: { status: "failed", stepUntil: null, error: "The reel could not be planned. Please try again." } });
