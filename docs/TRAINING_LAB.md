@@ -110,14 +110,17 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 24. **Done** Fixes from the second review (24 October): the clip checker gets only visual never-notes; the brain
     router stops on a budget or a switched-off service and never pays twice; the spelling fixer leaves links,
     hashtags and the business's own names alone; placeholders never reach a post.
+25. **Todo** Editor: speed (0.5x to 2x), clip sound level and fades, now that video-engine built them (81a02e83 on
+    video-engine: `VideoLayer.rate`, `volume`, `fadeIn`, `fadeOut`). Waits for main to merge that batch into
+    quiz-mode, then merge quiz-mode into training-lab. Ops must carry the next scene's `start` when a scene is slowed,
+    and the UI says "Sound is off while the speed is not 1x".
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
 - Any paid AI spend beyond the caps in docs/AI_COSTS.md.
-- **Actor consent scope** (raised by main, 24 Oct): a consented Lab actor switched on for "presenter" becomes the
-  presenter of every business that has none yet, so many client businesses could show the same real person. Does the
-  actor's consent cover that, or should an actor present for one business, or a few? Kept as built on TEST until the
-  owner decides; not widened.
+- **Actor consent scope: decided (owner, 24 October): test site only for now.** Lab actors become presenters only on
+  the test site (code: `labPresentersAllowed`, off on Netlify and Cloudflare). Before any launch it stays off until the
+  actors' consent covers appearing for any business.
 - **Clients' reels in the Lab** (from the review): "More like this", "Never this" and "Save as a Lab example" copy a
   client's finished reel into the Lab, where its style then teaches the engines for every business (phones, links and
   prices are scrubbed, and the prompts say never to use other businesses' names). Check this against BuPulse's terms
