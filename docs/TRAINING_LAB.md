@@ -102,5 +102,9 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
 - Any paid AI spend beyond the caps in docs/AI_COSTS.md.
+- **Actor consent scope** (raised by main, 24 Oct): a consented Lab actor switched on for "presenter" becomes the
+  presenter of every business that has none yet, so many client businesses could show the same real person. Does the
+  actor's consent cover that, or should an actor present for one business, or a few? Kept as built on TEST until the
+  owner decides; not widened.
 - A small budget for the Lab's AI notes (Gemini watching an uploaded video, about a cent each): set
   `TRAINING_LAB_ANALYSIS=1` and `TRAINING_LAB_ANALYSIS_CAP_USD` (for example 1) when the owner approves.
