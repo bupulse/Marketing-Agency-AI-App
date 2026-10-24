@@ -115,6 +115,15 @@ describe("teamCards", () => {
     expect((await team.teamCards()).find((c) => c.agent.id === "designer")?.defaultNote).toBe("By default: Claude and Gemini each write half of a batch's ideas, and the rules fill any gap. Choosing a brain sends every idea to it.");
   });
 
+  it("says how the Director follows the Lab, though it is not connected to the switch", async () => {
+    m.queryRaw.mockResolvedValue([]);
+    const director = (await team.teamCards()).find((c) => c.agent.id === "director")!;
+    expect(director.agent.wired).toBe(false);
+    expect(director.defaultNote).toBe("Follows your Lab: shot and camera choices lean toward your best-rated examples and never use what you marked never.");
+    // A member with no note says nothing extra.
+    expect((await team.teamCards()).find((c) => c.agent.id === "checker")?.defaultNote).toBeNull();
+  });
+
   it("drops the default note once a brain is saved", async () => {
     m.queryRaw.mockResolvedValue([]);
     m.settings = [{ agentId: "script-writer", brain: "gemini" }];

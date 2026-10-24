@@ -67,7 +67,7 @@ function MemberPanel({ card, step, summary, labels }: { card: MemberCard; step: 
         <dt className="text-muted">Works on now</dt>
         <dd className="min-w-0 break-words">
           {unwired ? (
-            <span className="font-semibold">As it always has</span>
+            <span className="font-semibold">{card.defaultNote ?? "As it always has"}</span>
           ) : card.defaultNote ? (
             <span className="font-semibold">{card.defaultNote}</span>
           ) : (
@@ -95,7 +95,7 @@ function MemberPanel({ card, step, summary, labels }: { card: MemberCard; step: 
               </li>
             ))}
           </ul>
-          <p className="text-[13px] text-muted">Not connected to the switch yet: it works as it always has.</p>
+          <p className="text-[13px] text-muted">{card.defaultNote ? "Not connected to the switch yet: its brain cannot be changed for now." : "Not connected to the switch yet: it works as it always has."}</p>
         </div>
       ) : (
         <form action={setBrainAction} className="flex min-w-0 flex-col gap-2">
