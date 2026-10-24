@@ -138,7 +138,7 @@ input tokens and priced per second in `lib/ai/pricing.ts`) for a client.
 | - | 23 Oct 2026 | the overnight clip maker's first try (`lib/visuals/ai-clips.ts`, LEAF Hydro Tower video on TEST) | Google refused both submits: Veo 3.1 Lite shut down the day before (404). Not billed; the video fell back to the slideshow and its 190 credits came back once | 0.00 | 1.80 |
 | 10-11 | 23 Oct 2026 | 2 Gemini Omni Flash clips of 6 s by the overnight clip maker (same LEAF video, owner-approved paid test), both made in about 85 s, 6.0 s each (3.2 and 4.7 MB) | scene 1 from the tower photo: push-in, an adult's hand picks basil, the product unchanged; scene 2: slow move over the terracotta tower. Rendered by the robot's renderer into a 20 s MP4 (4.9 MB, 11 s to make) with the clips under the captions and the music | 1.20 | 3.00 |
 
-**Reel engine test reels** (owner-approved test budget: $10 in total for all reels, docs/REEL_ENGINE.md; LEAF Hydro
+**Reel engine test reels** (owner-approved test budget: $10 in total for all reels, raised to $20 on 23 Oct, docs/REEL_ENGINE.md; LEAF Hydro
 Tower, TEST database, Gemini Omni Flash at about $0.10 a second; refused clips cost nothing):
 
 | # | Date | What | Provider cost (USD) | Running total |
@@ -148,6 +148,8 @@ Tower, TEST database, Gemini Omni Flash at about $0.10 a second; refused clips c
 | 3 | 23 Oct 2026 | Gemini transcript of the 3 filmed clips (what is said, which language) | < 0.01 | 3.80 |
 | 4 | 23 Oct 2026 | Reel 1's call to action filmed again without the price ("Try the failed clips again"); the reel joined in the browser, 30.07 s; Gemini's review of it | 0.81 | 4.61 |
 | 5 | 23 Oct 2026 | Reel `cmvldpn6s0003ug45xymta9pk`, English: 4 start frames, 4 clips of 8 s all filmed at the first try (no price spoken), joined, 30.07 s; Gemini's review of it. Veo switched off after it | 3.61 | 8.22 |
+| 6 | 23 Oct 2026 | Round 2 (owner raised the budget to $20 and asked to keep Veo on): reel in Kinyarwanda with the clip Checker, start frames, 4 clips with the Checker's refilms, joined and re-cut for free; Gemini's reviews | 3.47 | 11.69 |
+| 7 | 24 Oct 2026 | Round 3, the viral montage `cmvlld9s30005l6458d9cthux`: 7 start frames and 1 product shot filmed; the other 6 clips refused with RESOURCE_EXHAUSTED (the project's daily Omni quota, free) | 0.94 | 12.63 |
 
 **What the margins say:**
 - **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to
