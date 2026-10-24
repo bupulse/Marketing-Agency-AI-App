@@ -67,6 +67,12 @@ Kinyarwanda voice later.
 - 13:03: full vitest 5588 passed; main asked to merge up to 588da03a. A read-only review of the Lab's server side
   (helper): owner checks, private storage and spend are fine; fixes under way for consent withdrawal and for a client's
   phone, link or price reaching other businesses' prompts. The policy point on clients' reels is on Waiting.
+- 17:38: main put 488853cb on the test site. Owner decision (through main): Lab actors as presenters on the test
+  site only; enforced in code (b51a38ce, `labPresentersAllowed`). Chrome (read-only, about 17:45): Library with the
+  health line and the 4 finished LEAF reels, Words (empty state), Team (the Director's note, the default notes, the
+  subscription warning), and the Editor opened by link with "Loading the clips… 0 of 7" and the Lab notes panel: all
+  render, no errors. video-engine built speed and clip sound for the editor (81a02e83, theirs): task 25 waits for it
+  to reach quiz-mode.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small
