@@ -160,17 +160,25 @@ function base64(bytes: Uint8Array): string {
 }
 
 /** The start frame of one clip: the presenter's portrait and the product photo as references, checked for slop once. */
-async function frameFor(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhotos: string[]): Promise<string> {
+/**
+ * The product photos to try for a frame, best first: the reel's own photo once a frame has used one (every shot shows
+ * the same model), else the album's first photo, the product's main one.
+ */
+export function framePhotos(albumPhotos: string[], chosen: string | null | undefined): string[] {
+  return chosen ? [chosen, ...albumPhotos.filter((p) => p !== chosen)] : albumPhotos;
+}
+
+async function frameFor(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhotos: string[]): Promise<{ path: string; photo: string | null }> {
   // The product's photos in turn: one that cannot be read (too big, a type the model cannot take) is skipped, and with
   // none the frame is painted from the words (a LEAF photo that would not load failed the first round-2 reel).
   for (const photo of productPhotos.slice(0, 3)) {
     try {
-      return await paintFrame(owner, job, plan, clip, presenterPath, photo);
+      return { path: await paintFrame(owner, job, plan, clip, presenterPath, photo), photo };
     } catch (error) {
       if (!(error instanceof DesignError)) throw error;
     }
   }
-  return paintFrame(owner, job, plan, clip, presenterPath, null);
+  return { path: await paintFrame(owner, job, plan, clip, presenterPath, null), photo: null };
 }
 
 async function paintFrame(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhoto: string | null): Promise<string> {
@@ -178,7 +186,7 @@ async function paintFrame(owner: Owner, job: { id: string; subjectId: string | n
     `A tall vertical (9:16) photograph, the first frame of a video clip. ${clip.frame}`,
     plan.setting ? `The place: ${plan.setting}. Nowhere else.` : null,
     clip.presenter ? `The presenter is ${plan.presenter}: the same person as in the first attached portrait (take only the face, hair and clothes from it, never its place or background).` : null,
-    productPhoto ? "The product is exactly the one in the last attached photo: one of it, its real shape and size." : null,
+    productPhoto ? "The product is exactly the one in the last attached photo: one of it, its real shape, colour and size. Take only the product from that photo, never its place or background: it stands in the place above." : null,
     "At most two people, no crowd behind them; hands rest naturally or hold things firmly.",
     realismBlock("a photo taken on a modern phone (main camera, natural light, handheld at eye level), like a friend took it"),
     "No words, letters, captions or logos anywhere in the picture.",
@@ -211,9 +219,9 @@ export async function stepReel(owner: Owner, jobId: string, now: Date = new Date
     if (toFrame) {
       const presenter = await ensurePresenter(owner, job.id, null);
       const loaded = await loadFacts(owner, job.subjectId);
-      const at = plan.clips.indexOf(toFrame);
-      const photos = loaded.photos.map((_, k) => loaded.photos[(at + k) % loaded.photos.length]);
-      toFrame.framePath = await frameFor(owner, job, plan, toFrame, presenter.path, photos);
+      const framed = await frameFor(owner, job, plan, toFrame, presenter.path, framePhotos(loaded.photos, plan.productPhoto));
+      toFrame.framePath = framed.path;
+      plan.productPhoto = framed.photo ?? plan.productPhoto ?? null;
       toFrame.status = "framed";
       await save();
       return;

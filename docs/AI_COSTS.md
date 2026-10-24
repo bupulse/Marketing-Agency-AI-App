@@ -150,6 +150,7 @@ Tower, TEST database, Gemini Omni Flash at about $0.10 a second; refused clips c
 | 5 | 23 Oct 2026 | Reel `cmvldpn6s0003ug45xymta9pk`, English: 4 start frames, 4 clips of 8 s all filmed at the first try (no price spoken), joined, 30.07 s; Gemini's review of it. Veo switched off after it | 3.61 | 8.22 |
 | 6 | 23 Oct 2026 | Round 2 (owner raised the budget to $20 and asked to keep Veo on): reel in Kinyarwanda with the clip Checker, start frames, 4 clips with the Checker's refilms, joined and re-cut for free; Gemini's reviews | 3.47 | 11.69 |
 | 7 | 24 Oct 2026 | Round 3, the viral montage `cmvlld9s30005l6458d9cthux`: 7 start frames and 1 product shot filmed; the other 6 clips refused with RESOURCE_EXHAUSTED (the project's daily Omni quota, free) | 0.94 | 12.63 |
+| 8 | 24 Oct 2026 | The montage finished after the quota reset ("Try the failed clips again"): 6 clips filmed, 1 product shot filmed again for the checker, joined in the browser, 30.07 s; Gemini's review | 4.00 | 16.63 |
 
 **What the margins say:**
 - **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to

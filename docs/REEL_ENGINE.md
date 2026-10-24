@@ -141,3 +141,13 @@ flames, "+25M RWF" in green), flashes, all on the song's beat.
   the video engine's tests), even a single clip sent alone is answered `RESOURCE_EXHAUSTED`. That is the project's
   quota for Gemini Omni video, not clips sent at the same time. Google resets daily quotas at midnight Pacific time
   (about 09:00 in Kigali); a higher quota is asked for in Google AI Studio (paid tier limits). Until then a reel waits.
+- **The montage reel, finished** (24 October 2026, 09:56 to 11:08 CAT, after the quota reset): "Try the failed clips
+  again" filmed the 6 clips (3 at a time), the checker sent one product shot back once (a hard cut where people
+  vanished), and the browser joined it: 30.07 s, about 21 shots, $4.94 for the reel. Gemini's review, 6/10: physics
+  natural, no AI artifacts, fast cuts and stickers "mirror effective direct-to-consumer Reels pacing", voice clear and
+  the Kinyarwanda captions follow it. What it lost points for: **a different tower in almost every shot**, and the
+  place going between the rooftop and a greenhouse.
+- **Why: the product album.** LEAF's Hydro Tower album holds 8 photos of 8 different towers (a steel spiral, terracotta
+  pots, a white "tree", a fluted column, grey blocks, a tube rack…), and each clip's frame took the next photo, with
+  that photo's greenhouse. Now a reel keeps one product photo for every frame (`plan.productPhoto`: the album's first,
+  the product's main photo, unless it cannot be read), and the frame takes only the product from it, never its place.
