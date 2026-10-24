@@ -1,27 +1,34 @@
 # Training Lab handover
 
-## For the owner (draft at 15:22; the final version replaces it when the loop stops)
-**What you have now (on branch training-lab; the main session puts it on test.bupulse.com):**
-- **Admin, AI, Training Lab**, only for you, with four tabs:
-  - **Library:** add a reel, video, image or post, a Kinyarwanda recording, an actor (consent first) or a posting
-    schedule, and say in your own words how it was made, what is good and what to never do. Rate it, switch which
-    engines may learn from it, write notes (or let Gemini draft them once you set a budget). Finished reels can be
-    added with "More like this" or "Never this". A health list says what to fix.
-  - **Team:** BuPulse's 10 helpers, each with one job. For the Script writer, Designer and Caption writer you choose
-    the brain: Gemini, Claude on the API key, Claude on your subscription (only on your Mac), or free rules.
-  - **Editor:** open a finished reel, change the shots, words, stickers and look, export the MP4, or save the edit
-    as an example so the engines learn from it.
-  - **Words:** every Kinyarwanda spelling to avoid, right word and phrase the Lab teaches.
-- **The engines now learn from it:** reels (script, shots, viral style, checker, presenters), images and captions,
-  posting times, and the Kinyarwanda checks, which also fix your marked spellings for free. With an empty Lab
-  everything works exactly as before.
-- **How to start:** docs/TRAINING_LAB_GUIDE.md (one page, plain English).
+## For the owner (24 October 2026, 11:47 to 19:00 CAT)
+**What you have now, live on test.bupulse.com, in Admin under AI, Training Lab (only you can open it):**
+- **Library:** one big box, "Drop a reel, video, photo or voice note here". The AI watches it and fills in everything
+  (what it is, how it was made, why it works, the techniques, the business type, the language, and its notes: hook,
+  shots, cuts, beat, stickers, music, words). You check one card, tap the stars, add "Never copy this" if needed, and
+  save. Your examples show as a gallery; tap one to see or change it. At the bottom, your finished reels have
+  "More like this" and "Never this". A health line says what needs fixing.
+- **Team:** BuPulse's 10 helpers, each with one job, shown as a picture of how a reel or post is made. For the Script
+  writer, Designer and Caption writer you choose the brain with one tap: Gemini, Claude on the API key, Claude on your
+  subscription (only on your Mac) or free rules. Each shows its work, its cost and your stars.
+- **Editor:** open a finished reel, change the shots, words, stickers, look, speed (slow motion) and sound, export
+  the MP4, or save your edit as an example so the engines learn from it.
+- **Words:** every Kinyarwanda spelling to avoid, right word and phrase you have taught.
 
-**Waiting for you (on the board in docs/TRAINING_LAB.md):** a small budget for AI notes; whether one consenting actor
-may present for many businesses; whether clients' reels may teach the Lab for everyone (check the terms); a paid
-Kinyarwanda voice later.
+**The engines now learn from it:** reels (script, shots, viral style, presenters, the clip checker), images and
+captions, Autopilot and daily posts, posting times, and every Kinyarwanda check, which also fixes your marked spellings
+for free. With an empty Lab everything works exactly as before. Two careful reviews were done and their fixes are in:
+no client's phone, link or price can reach another business's prompt, an actor's consent can be withdrawn (it
+removes them everywhere), and a budget stop is never bypassed.
 
-**No money was spent and nothing was published.** All checks pass (5,631 tests).
+**Money:** $0.0022 of your $2 AI test budget spent (one test read of the BuPulse logo). Nothing published, nothing on
+bupulse.com.
+
+**How to start:** read docs/TRAINING_LAB_GUIDE.md (one page), then drop your 3 best reels, rate them 5 stars, and add
+one "Never this".
+
+**Waiting for you (docs/TRAINING_LAB.md):** whether clients' reels may teach the Lab for everyone (check the terms);
+actors as presenters stay test-site only until their consent covers any business (your decision); a paid Kinyarwanda
+voice later.
 
 ## Loop log
 - **Start:** Saturday 24 October 2026, 11:47 CAT. Owner away about 8 hours; the loop stops about 19:45 CAT.
