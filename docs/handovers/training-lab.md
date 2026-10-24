@@ -95,4 +95,5 @@ data; the engines get it as a new optional parameter, so nothing changes when th
 
 ## Rounds
 - Round 1 (11:47): task 1 map (helper, done 11:49 and reviewed), task 2 data model (helper, done 12:00, committed 3f511afb).
-- Round 2 (12:03): task 3 Admin page (model-helper), task 10 step 1 editor ops (map-helper).
+- Round 2 (12:03): task 3 Admin page (model-helper), task 10 step 1 editor ops (map-helper, committed faaaa63f), A1 registry and router (map-helper, committed 5dad45ad, migration applied to TEST).
+- Round 3 (12:08): A4 run log `AgentRun` (map-helper); the agent id is kept in our own table, not in the shared AiCall ledger.

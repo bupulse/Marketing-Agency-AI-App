@@ -60,19 +60,19 @@ Status: Todo / Doing / Done / Waiting (owner). Keep it current; any round resume
 2. **Done** Data model: a `TrainingExample` (kind: reel, video, image/post, voice, actor, schedule; the file in Storage;
    how it was made; what is good; tags such as sector, language, technique; rating; consent for people; which engines
    use it) with a new migration. Files in a private bucket path under the owner.
-3. **Todo** Admin page `Training Lab`: upload (file or link), the "how it was made" form in plain words, list, filter,
+3. **Doing** Admin page `Training Lab`: upload (file or link), the "how it was made" form in plain words, list, filter,
    rate, switch an example on or off for each engine. Phone width works.
 4. **Todo** Analysis on upload (free or cheap, within caps): Gemini watches a video and drafts the notes (shots, cuts per
    second, beat sync, stickers, captions, hook, setting, music), which the owner corrects.
 
 ### Phase 1b: the agent team
-A1. **Todo** The registry and the brain router (`lib/training-lab/agents.ts`, `brains.ts`): members, jobs, Lab kinds,
+A1. **Done** The registry and the brain router (`lib/training-lab/agents.ts`, `brains.ts`): members, jobs, Lab kinds,
     brain choice saved in the database (a small `AgentSetting` table), fallback order, tests. No engine changes yet.
 A2. **Todo** Admin, Training Lab, Team: a card per member (job, examples it reads, brain switch, last runs and cost
     from the AI ledger). Phone width works.
 A3. **Todo** The engines ask the router: the reel script writer, the designer and the caption writer use the member's
     chosen brain (they already choose between Claude and Gemini; this makes it the owner's switch).
-A4. **Todo** Each member's run records which Lab examples it used, so a rating on the result goes back to them.
+A4. **Doing** Each member's run records which Lab examples it used, so a rating on the result goes back to them.
 
 ### Phase 2: the engines learn from it
 5. **Todo** Video: the reel writer and `viralRecipe` take the best matching Lab examples (sector, language, technique)
@@ -85,7 +85,7 @@ A4. **Todo** Each member's run records which Lab examples it used, so a rating o
 9. **Todo** Actors: consented clips and portraits become presenter options for the reel engine (`ReelPresenter`).
 
 ### Phase 3: the editor
-10. **Todo** A timeline editor on the MotionSpec: trim, reorder, captions, stickers, transitions, music with beat
+10. **Doing** (edit operations done, lib/editor/ops.ts) A timeline editor on the MotionSpec: trim, reorder, captions, stickers, transitions, music with beat
     marks, export through `encodeSpecMp4` in the browser. Start with editing a finished reel (its spec), then any
     uploaded clip. Coordinate with video-engine before touching shared encoder code (it is theirs: ask, do not edit).
 11. **Todo** "Teach from an edit": an edit the owner makes is saved as a Lab example (what was changed and why).
