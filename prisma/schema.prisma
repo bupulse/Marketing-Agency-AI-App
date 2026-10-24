@@ -1369,6 +1369,43 @@ model ReelJob {
   @@index([businessId, createdAt])
 }
 
+// One example in the owner-only Training Lab (docs/TRAINING_LAB.md, lib/training-lab): a reel, video, image or post,
+// Kinyarwanda recording, actor clip or posting habit, with how it was made and what is good in the owner's words. The
+// engines listed in `engines` read it when they plan. Platform-wide, not per Business. The file is in the private
+// "training-lab" bucket (<adminUserId>/<exampleId>/<name>, lib/training-lab/storage.ts) or the example is a link (sourceUrl).
+// createdById is the admin's sign-in id (AdminIdentity.id); no foreign key, like AdminNote.
+model TrainingExample {
+  id           String    @id @default(cuid())
+  kind         String // reel | video | image | voice | actor | schedule
+  title        String
+  path         String? // the file in the training-lab bucket
+  mime         String?
+  bytes        Int?
+  sourceUrl    String? // an example given as a link instead of a file
+  howMade      String // how it was made, in the owner's words
+  whatIsGood   String
+  neverThis    String? // what the engines must never copy
+  notes        Json? // the AI-drafted analysis (shots, cuts per second, beat sync, stickers, captions, hook, setting, music), corrected by the owner
+  tags         String[]  @default([])
+  sector       String?
+  language     String? // Kinyarwanda | English | French ...
+  technique    String[]  @default([])
+  rating       Int? // 1-5
+  consentGiven Boolean   @default(false) // the people in it agreed to be used
+  consentName  String?
+  consentNote  String?
+  consentAt    DateTime?
+  engines      String[]  @default([]) // video | reel | image | post | schedule | language | presenter
+  transcript   String? // a voice example: what is said
+  createdById  String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([kind, createdAt])
+  @@index([sector])
+  @@index([language])
+}
+
 // Outgoing webhooks (Phase 7), on every plan. One business can have a few endpoints, each with its own
 // signing secret and the events it wants.
 model WebhookEndpoint {
