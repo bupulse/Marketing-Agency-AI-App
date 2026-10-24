@@ -2,13 +2,14 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, notice } from "@/components/admin/ui";
-import { Badge, Button, Field, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { analysisStatus, exampleProblem, type AnalysisStatus } from "@/lib/training-lab/analyse";
 import { filterChoices, LIST_MAX, listExamples, NOTE_FIELDS, NOTE_LABELS, parseFilter, previewLinks, readNotes, type ExampleFilter } from "@/lib/training-lab/examples";
 import { ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, type TrainingKind } from "@/lib/training-lab/types";
-import { deleteExampleAction, draftNotesAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
+import { deleteExampleAction, draftNotesAction, moreLikeThisAction, neverThisAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
+import { finishedReels, type FinishedReel } from "@/lib/training-lab/from-result";
 import { describeExtras } from "@/lib/training-lab/language";
 import { describeSchedule } from "@/lib/training-lab/schedule";
 import { EditExample, ExampleForm } from "./example-form";
@@ -34,7 +35,7 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
   const sp = await searchParams;
   const filter = parseFilter(sp);
   const [examples, choices, analysis] = await Promise.all([listExamples(filter), filterChoices(), analysisStatus().catch((): AnalysisStatus => ({ allowed: false, reason: "AI notes cannot be checked right now. You can write the notes yourself below.", spentUsd: 0, capUsd: 0 }))]);
-  const links = await previewLinks(examples.map((e) => e.path));
+  const [links, reels] = await Promise.all([previewLinks(examples.map((e) => e.path)), finishedReels().catch((): FinishedReel[] => [])]);
   const filtered = Object.keys(filter).length > 0;
   const back = query(filter);
 
@@ -73,7 +74,48 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
           </ul>
         )}
       </Panel>
+
+      <FinishedReels reels={reels} />
     </>
+  );
+}
+
+/** The newest finished reels: the owner's verdict on each becomes a Lab example (the client's reel is not changed). */
+function FinishedReels({ reels }: { reels: FinishedReel[] }) {
+  return (
+    <section id="finished-reels" className="scroll-mt-24">
+      <Panel title="Finished reels" description="The 20 newest reels the engine made, for every business. Your verdict becomes a Lab example with the video, so the reel engine makes more like it or never repeats it. The client's reel stays as it is.">
+        {reels.length === 0 ? (
+          <Empty>No finished reels yet.</Empty>
+        ) : (
+          <ul className="flex min-w-0 flex-col divide-y divide-line">
+            {reels.map((r) => (
+              <li key={r.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="break-words font-medium">{r.title}</p>
+                  <p className="text-[13px] text-muted">{r.business} · {r.language} · {dateTime(r.createdAt)}</p>
+                </div>
+                {r.inLab ? (
+                  <Badge tone="neutral">In the Lab</Badge>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <form action={moreLikeThisAction}>
+                      <input type="hidden" name="reelId" value={r.id} />
+                      <Button type="submit" size="sm" variant="outline">More like this</Button>
+                    </form>
+                    <ConfirmButton action={neverThisAction} fields={{ reelId: r.id }} label="Never this" title={`Never this: “${r.title}”?`} description="It becomes a 1-star example with your reason, and the engines never copy it." confirmLabel="Never this" pendingLabel="Saving…">
+                      <Field label="What must never happen again" hint="One line, for example: the presenter walks through the product." required>
+                        <Input name="reason" maxLength={300} required />
+                      </Field>
+                    </ConfirmButton>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+    </section>
   );
 }
 

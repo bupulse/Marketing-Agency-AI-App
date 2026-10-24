@@ -7,6 +7,7 @@ import { actionMessage, adminAction, finish } from "@/lib/admin/console";
 import { ENGINE_LABELS, type TrainingEngine } from "@/lib/training-lab/types";
 import { confirmExampleFile, createExample, deleteExample, NOTE_FIELDS, rateExample, saveExampleNotes, setExampleEngine, startExampleUpload, updateExample, type UploadSlot } from "@/lib/training-lab/examples";
 import { draftExampleNotes } from "@/lib/training-lab/analyse";
+import { exampleFromReel, type FromReel } from "@/lib/training-lab/from-result";
 
 // The Training Lab (docs/TRAINING_LAB.md). Each action re-checks the admin (allow-listed email, AAL2, the "ai" area)
 // and lib/training-lab/examples.ts then refuses anyone but the owner from ADMIN_EMAILS: server actions are public POST
@@ -107,4 +108,26 @@ export async function saveNotesAction(f: FormData) {
   const { ctx, identity } = await owner();
   const raw = Object.fromEntries(NOTE_FIELDS.map((field) => [field, text(f, `note_${field}`)]));
   await finish(backOf(f), (notes: unknown) => (notes ? "Notes saved." : "Notes cleared."), () => saveExampleNotes(ctx, identity, text(f, "id"), raw));
+}
+
+const fromReelMessage = (r: FromReel, verdict: "more" | "never") =>
+  `${verdict === "more" ? "Added as a 5-star example: the engines will make more like it." : "Added as a 1-star example with your reason: the engines will never copy it."}${r.copied ? "" : " The video could not be copied into the Lab, so the example has no file."}${r.runs ? ` The rating went on the ${r.runs} team run${r.runs === 1 ? "" : "s"} that made it.` : ""}`;
+
+/** "More like this" on a finished reel: a 5-star Lab example with the reel's MP4 (copied privately). */
+export async function moreLikeThisAction(f: FormData) {
+  const { ctx, identity } = await owner();
+  await finish(`${BACK}#finished-reels`, (r: FromReel) => fromReelMessage(r, "more"), () => exampleFromReel(ctx, identity, text(f, "reelId"), "more"));
+}
+
+/** "Never this" on a finished reel, with the owner's one-line reason (the dialog keeps it open on a refusal). */
+export async function neverThisAction(f: FormData): Promise<ConfirmResult> {
+  const { ctx, identity } = await owner();
+  let result: FromReel;
+  try {
+    result = await exampleFromReel(ctx, identity, text(f, "reelId"), "never", text(f, "reason"));
+  } catch (e) {
+    return { ok: false, error: actionMessage(e) };
+  }
+  refresh();
+  return { ok: true, message: fromReelMessage(result, "never") };
 }

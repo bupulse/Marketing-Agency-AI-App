@@ -7,7 +7,8 @@ import { dateTime, param } from "@/lib/admin/format";
 import { BRAIN_LABELS } from "@/lib/training-lab/agents";
 import { SUMMARY_DAYS, teamSummary, type AgentSummary } from "@/lib/training-lab/runs";
 import { LabTabs } from "../lab-tabs";
-import { setBrainAction } from "./actions";
+import { rateRunAction, setBrainAction } from "./actions";
+import { resultLabels } from "@/lib/training-lab/from-result";
 import { subscriptionUse, teamCards, type MemberCard } from "./data";
 
 export const metadata = { title: "Training Lab team" };
@@ -23,6 +24,7 @@ export default async function TrainingLabTeamPage({ searchParams }: PageProps<"/
   const sp = await searchParams;
   const [cards, summary] = await Promise.all([teamCards(), teamSummary()]);
   const byAgent = new Map(summary.map((s) => [s.agentId, s]));
+  const labels = await resultLabels(summary.flatMap((s) => s.last.map((r) => r.resultRef)));
   const subscription = subscriptionUse(cards);
   const onSubscription = subscription.members;
 
@@ -41,7 +43,7 @@ export default async function TrainingLabTeamPage({ searchParams }: PageProps<"/
       <ol className="flex min-w-0 flex-col gap-5">
         {cards.map((card, i) => (
           <li key={card.agent.id} id={`agent-${card.agent.id}`} className="min-w-0 scroll-mt-24">
-            <MemberPanel card={card} step={i + 1} summary={byAgent.get(card.agent.id)} />
+            <MemberPanel card={card} step={i + 1} summary={byAgent.get(card.agent.id)} labels={labels} />
           </li>
         ))}
       </ol>
@@ -49,7 +51,7 @@ export default async function TrainingLabTeamPage({ searchParams }: PageProps<"/
   );
 }
 
-function MemberPanel({ card, step, summary }: { card: MemberCard; step: number; summary?: AgentSummary }) {
+function MemberPanel({ card, step, summary, labels }: { card: MemberCard; step: number; summary?: AgentSummary; labels: Map<string, string> }) {
   const { agent } = card;
   const single = card.options.length === 1;
   // Several brains but its engine does not ask the router yet: the brains are information, there is nothing to save.
@@ -112,7 +114,7 @@ function MemberPanel({ card, step, summary }: { card: MemberCard; step: number; 
         </form>
       )}
 
-      <Runs summary={summary} />
+      <Runs summary={summary} agentId={agent.id} labels={labels} />
     </Panel>
   );
 }
@@ -128,7 +130,7 @@ function BrainLine({ option: o, isDefault }: { option: MemberCard["options"][num
   );
 }
 
-function Runs({ summary }: { summary?: AgentSummary }) {
+function Runs({ summary, agentId, labels }: { summary?: AgentSummary; agentId: string; labels: Map<string, string> }) {
   if (!summary || summary.runs === 0) return <Empty>No runs in the last {SUMMARY_DAYS} days.</Empty>;
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -147,13 +149,33 @@ function Runs({ summary }: { summary?: AgentSummary }) {
               <span className="font-medium">{BRAIN_LABELS[r.brain] ?? r.brain}</span>
               <span className="text-muted">{dateTime(r.createdAt)}</span>
               <span className="tabular-nums text-muted">{usd(r.costUsd)}</span>
-              {r.rating !== null && <span className="text-muted">{r.rating} of 5</span>}
+              {!r.resultRef && r.rating !== null && <span className="text-muted">{r.rating} of 5</span>}
               {!r.ok && r.error && <span className="block w-full break-words text-danger">{r.error.slice(0, 200)}</span>}
+              {r.resultRef && labels.has(r.resultRef) && <RateResult agentId={agentId} resultRef={r.resultRef} label={labels.get(r.resultRef)!} rating={r.rating} />}
             </li>
           ))}
         </ul>
       </div>
     </div>
+  );
+}
+
+/** What a run made, and 1-5 stars on it: the rating goes on every run that made it. */
+function RateResult({ agentId, resultRef, label, rating }: { agentId: string; resultRef: string; label: string; rating: number | null }) {
+  return (
+    <form action={rateRunAction} className="flex w-full min-w-0 flex-wrap items-center gap-1">
+      <input type="hidden" name="agentId" value={agentId} />
+      <input type="hidden" name="resultRef" value={resultRef} />
+      <span className="mr-1 min-w-0 break-words text-muted">Made: {label}</span>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button key={n} type="submit" name="rating" value={String(n)} aria-label={`Rate ${label} ${n} of 5`} aria-pressed={rating === n} className={`flex size-11 items-center justify-center rounded-full text-lg ${rating && n <= rating ? "text-amber-500" : "text-muted"} hover:bg-soft`}>
+          {rating && n <= rating ? "★" : "☆"}
+        </button>
+      ))}
+      {rating !== null && (
+        <button type="submit" name="rating" value="" className="min-h-11 rounded-full px-3 text-[13px] text-muted underline hover:bg-soft">Clear</button>
+      )}
+    </form>
   );
 }
 
