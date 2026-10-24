@@ -18,6 +18,7 @@ import { exampleUsage, usageLine, type ExampleUse } from "@/lib/training-lab/usa
 import { describeSchedule } from "@/lib/training-lab/schedule";
 import { chipHref, galleryItem, KIND_CHIPS } from "@/lib/training-lab/gallery";
 import { EditExample } from "./example-form";
+import { PendingButton } from "./pending-button";
 import { DropZone } from "./drop/drop-zone";
 import { Gallery } from "./gallery";
 import { LabTabs } from "./lab-tabs";
@@ -153,7 +154,7 @@ function FinishedReels({ reels }: { reels: FinishedReel[] }) {
                   <div className="flex flex-wrap gap-2">
                     <form action={moreLikeThisAction}>
                       <input type="hidden" name="reelId" value={r.id} />
-                      <Button type="submit" size="sm" variant="outline">More like this</Button>
+                      <PendingButton label="More like this" pendingLabel="Copying the reel…" />
                     </form>
                     <ConfirmButton action={neverThisAction} fields={{ reelId: r.id }} label="Never this" title={`Never this: “${r.title}”?`} description="It becomes a 1-star example with your reason, and the engines never copy it." confirmLabel="Never this" pendingLabel="Saving…">
                       <Field label="What must never happen again" hint="One line, for example: the presenter walks through the product." required>
