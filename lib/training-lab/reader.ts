@@ -34,17 +34,24 @@ export type LabViral = { rows: ViralVideo[]; avoidIds: string[]; avoidHooks: str
 const NO_VIRAL = (): LabViral => ({ rows: [], avoidIds: [], avoidHooks: [] });
 const VIRAL_ENGINES: TrainingEngine[] = ["video", "reel"];
 
-/** The opening type an example names itself (notes hook_type, or a technique or tag that is one), never a guess. */
-function namedHook(e: ExampleRow): string | null {
+/**
+ * The opening types the owner explicitly says never to use: notes.never_hook (a HOOK_IDEAS key or a list of them) or a
+ * tag "never:<hook>", on any example. A low rating alone never names one: it penalises only that reel (its lab: id).
+ */
+function neverHooks(e: ExampleRow): string[] {
   const notes = e.notes && typeof e.notes === "object" && !Array.isArray(e.notes) ? (e.notes as Record<string, unknown>) : {};
-  return [notes.hook_type, ...e.technique, ...e.tags].map((t) => (typeof t === "string" ? t.trim().toLowerCase() : "")).find((t) => !!t && Object.hasOwn(HOOK_IDEAS, t)) ?? null;
+  const given = notes.never_hook;
+  const fromNotes = typeof given === "string" ? [given] : Array.isArray(given) ? given : [];
+  const fromTags = e.tags.filter((t) => /^never:/i.test(t.trim())).map((t) => t.trim().slice("never:".length));
+  return [...fromNotes, ...fromTags].map((t) => (typeof t === "string" ? t.trim().toLowerCase() : "")).filter((t) => !!t && Object.hasOwn(HOOK_IDEAS, t));
 }
 
 /**
  * The owner's Lab reels and videos for the viral recipe (lib/video-engine/brain/viral.ts RecipeInput.lab and .avoid):
  * the examples switched on for the video or reel engine, as viral rows (viral-rows.ts), and what never to copy: the
- * "lab:<id>" of the ones rated 1 or 2 stars, and the opening types those name. The recipe ranks by sector and language
- * itself. Empty on any error, so a recipe is made exactly as before.
+ * "lab:<id>" of the ones rated 1 or 2 stars, and the opening types the owner explicitly says never to use (neverHooks;
+ * a low-rated reel's own opening type is never one, or it would penalise every curated video with it, for every
+ * business). The recipe ranks by sector and language itself. Empty on any error, so a recipe is made exactly as before.
  */
 export async function labViralRows(): Promise<LabViral> {
   try {
@@ -58,7 +65,7 @@ export async function labViralRows(): Promise<LabViral> {
     return {
       rows: viralRowsFrom(open),
       avoidIds: low.map((e) => `lab:${e.id}`),
-      avoidHooks: [...new Set(low.map(namedHook).filter((h): h is string => !!h))],
+      avoidHooks: [...new Set(open.flatMap(neverHooks))],
     };
   } catch (error) {
     await logError(error, { source: "training-lab.reader.viral", level: "warn" });

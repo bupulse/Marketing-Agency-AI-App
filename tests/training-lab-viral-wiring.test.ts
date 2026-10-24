@@ -118,18 +118,31 @@ describe("the recipe credits the owner's Lab", () => {
 describe("labViralRows", () => {
   it("reads reel and video examples on the video or reel engine, as rows, and what never to copy", async () => {
     h.examples = [
-      example(),
-      example({ id: "bad", rating: 1, technique: ["POV-local-find"] }),
-      example({ id: "meh", rating: 2, notes: { hook_type: "direct-question" } }),
+      example({ tags: ["never:direct-question"] }),
+      example({ id: "bad", rating: 1, technique: ["pov-local-find"], notes: { hook_type: "curiosity" } }),
+      example({ id: "meh", rating: 2, notes: { never_hook: ["POV-local-find", "not-a-hook"] } }),
       example({ id: "unnamed", rating: 1 }),
-      example({ id: "off", engines: ["image"] }),
+      example({ id: "off", engines: ["image"], tags: ["never:result-first"] }),
     ];
     const out = await labViralRows();
     expect(h.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { kind: { in: ["reel", "video"] }, engines: { hasSome: ["video", "reel"] } } }));
     expect(out.rows.map((r) => r.id)).toEqual(["lab:good"]);
     expect(out.avoidIds).toEqual(["lab:bad", "lab:meh", "lab:unnamed"]);
-    // Only opening types the bad examples name themselves; one with none named adds none (never a guess).
-    expect(out.avoidHooks).toEqual(["pov-local-find", "direct-question"]);
+    // Only what the owner says explicitly (never_hook, a never:<hook> tag), on any example; a low-rated reel's own
+    // opening type ("curiosity", "pov-local-find" above) is never one.
+    expect(out.avoidHooks).toEqual(["direct-question", "pov-local-find"]);
+  });
+
+  it("one low-rated curiosity reel penalises only itself, never the curated curiosity openings", async () => {
+    h.examples = [example({ id: "bad", rating: 1, notes: { hook_type: "curiosity" }, technique: ["curiosity"] })];
+    const out = await labViralRows();
+    expect(out.avoidHooks).toEqual([]);
+    const avoid = [...out.avoidIds, ...out.avoidHooks];
+    const base = viral.scoreViral(input());
+    const withAvoid = viral.scoreViral(input({ avoid }));
+    const curious = base.filter((s) => s.v.hookType === "curiosity");
+    expect(curious.length).toBeGreaterThan(0);
+    expect(withAvoid.map((s) => [s.v.id, s.score])).toEqual(base.map((s) => [s.v.id, s.score]));
   });
 
   it("is empty on an empty Lab or an error", async () => {
@@ -146,7 +159,7 @@ describe("startReel passes the Lab to the recipe", () => {
   });
 
   it("gives the recipe the Lab rows and the never-copy list", async () => {
-    h.examples = [example(), example({ id: "bad", rating: 1, technique: ["pov-local-find"] })];
+    h.examples = [example(), example({ id: "bad", rating: 1, tags: ["never:pov-local-find"] })];
     await startReel({ userId: "u1", businessId: "b1" }, { language: "English", tier: "lite" });
     expect(h.recipeInputs).toHaveLength(1);
     expect((h.recipeInputs[0].lab as ViralVideo[]).map((r) => r.id)).toEqual(["lab:good"]);
