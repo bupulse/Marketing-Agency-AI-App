@@ -26,7 +26,8 @@ import { chooseTiers, creditsOf, directBatch, patternsFromBrief, postTier, PRO_E
 import { painterPrompt } from "./painter-prompt";
 import { writeConcepts } from "./planner";
 import type { Treatment } from "./patterns";
-import type { BusinessFacts, PlannerInput, SubjectFacts } from "./prompter";
+import { fixImageWords, type BusinessFacts, type PlannerInput, type SubjectFacts } from "./prompter";
+import { labLanguage } from "@/lib/training-lab/language-reader";
 import { labFor } from "@/lib/training-lab/reader";
 import { sectorFromText } from "@/lib/video-engine/brain/select";
 
@@ -110,9 +111,10 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
     // posts and Kinyarwanda recordings for the Captioner. An empty Lab or an error changes nothing. The image engine has
     // no sector of its own; it is read from the facts the way the reel engine does.
     const sector = sectorFromText([loaded.facts.industry, loaded.facts.description, loaded.subject?.name, loaded.subject?.description].filter(Boolean).join(" "));
-    const [lab, captionLab] = await Promise.all([
+    const [lab, captionLab, languageExtra] = await Promise.all([
       labFor({ engine: "image", kinds: ["image"], sector, language: loaded.facts.language }),
       labFor({ engine: "post", kinds: ["image", "voice"], sector, language: loaded.facts.language }),
+      labLanguage(loaded.facts.language),
     ]);
     const input: PlannerInput = { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, reviews: loaded.reviews, slots, recent: recent.slice(0, 30).map((r) => `${r.title}: ${r.scene}`.slice(0, 200)), lab: { examples: lab.examples, avoid: lab.avoid } };
     // The run log keeps which Lab examples each writer read and the batch they were for (the Team page, ratings).
@@ -125,6 +127,8 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
       concepts,
       lab: { examples: captionLab.examples, avoid: captionLab.avoid, phrases: captionLab.phrases },
     }, { exampleIds: captionLab.exampleIds, resultRef: `batch:${batchId}` });
+    // The owner's Kinyarwanda spellings fixed in the words on the picture and in the captions (free: no rewrite, no retry).
+    const polished = fixImageWords(concepts, captions, languageExtra);
     await prisma.imageConcept.createMany({
       data: slots.map((slot, i) => ({
         businessId: owner.businessId,
@@ -137,19 +141,19 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
         layout: slot.layout,
         camera: slot.camera,
         treatment: slot.treatment,
-        title: concepts[i].title,
-        scene: concepts[i].scene,
-        headline: concepts[i].headline,
-        subline: concepts[i].subline,
-        cta: concepts[i].cta,
-        prompt: concepts[i].prompt,
-        planner: concepts[i].planner,
+        title: polished.concepts[i].title,
+        scene: polished.concepts[i].scene,
+        headline: polished.concepts[i].headline,
+        subline: polished.concepts[i].subline,
+        cta: polished.concepts[i].cta,
+        prompt: polished.concepts[i].prompt,
+        planner: polished.concepts[i].planner,
         photoPath: slot.photoIndex === null ? null : loaded.photos[slot.photoIndex],
         tier: slot.tier,
         aspectRatio: request.aspectRatio,
         credits: TIER_CREDITS[slot.tier],
         creditPeriod: periodStart,
-        caption: captions[i] ?? null,
+        caption: polished.captions[i] ?? null,
       })),
     });
   } catch (error) {

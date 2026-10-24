@@ -2,6 +2,8 @@
 // words (headline, small line, button) and its own image prompt. This file is the pure part: the instructions, the
 // answer's schema and the checks every answer passes (planner.ts calls Gemini and Claude). Pure, so it is tested.
 import { patternById } from "./patterns";
+import { fixSpellings } from "@/lib/training-lab/fix-spelling";
+import type { LanguageExtra } from "@/lib/video-engine/brain/language";
 import { stripSlop } from "./realism";
 import type { Slot } from "./director";
 
@@ -45,6 +47,22 @@ export type Concept = {
   cta: string;
   prompt: string;
 };
+
+/**
+ * The owner's Kinyarwanda spellings (Training Lab) applied to the words that go on the picture (headline, small line, button)
+ * and to each caption: free, no rewrite and no retry. Nothing changes when the Lab has no spellings to fix. Pure.
+ */
+export function fixImageWords<T extends Concept>(concepts: readonly T[], captions: readonly (string | null)[], extra: LanguageExtra | null | undefined): { concepts: T[]; captions: (string | null)[]; fixes: number } {
+  let fixes = 0;
+  const fix = (text: string) => {
+    const r = fixSpellings(text, extra);
+    fixes += r.changes.length;
+    return r.text;
+  };
+  const fixedConcepts = concepts.map((c) => ({ ...c, headline: fix(c.headline), subline: fix(c.subline), cta: fix(c.cta) }));
+  const fixedCaptions = captions.map((c) => (c === null ? null : fix(c)));
+  return { concepts: fixedConcepts, captions: fixedCaptions, fixes };
+}
 
 export const WORD_LIMITS = { title: 60, scene: 400, headline: 60, subline: 110, cta: 28, prompt: 1400 } as const;
 
