@@ -39,7 +39,7 @@ process.env.GEMINI_API_KEY = "test-key";
 delete process.env.VEO_MODEL;
 delete process.env.VEO_USD_PER_SECOND;
 
-const { aiClipsUnavailable, aiClipRecipe, getAiClip, resumeAiClips, aiClipRunView, aiClipsForBrief, aiClipsRecord, firstFrame, getAiClipRun, readNeeds, runMessage, startAiClips } = await import("@/video-lab/ai-clips");
+const { aiClipsUnavailable, aiClipRecipe, getAiClip, resumeAiClips, aiClipRunView, aiClipsForBrief, aiClipsRecord, firstFrame, getAiClipRun, readNeeds, runMessage, startAiClips, QUOTA_WAITS, QUOTA_WAIT_MS } = await import("@/video-lab/ai-clips");
 
 afterAll(() => fs.rm(dir, { recursive: true, force: true }));
 
@@ -53,7 +53,7 @@ const mp4 = () => {
 };
 
 /** A fake Google: `plan` says, per submitted clip in order, how its operation ends. */
-function google(plan: ("ok" | "blocked" | "busy" | "failed")[]) {
+function google(plan: ("ok" | "blocked" | "busy" | "failed" | "limit")[]) {
   let n = 0;
   const outcome = new Map<string, string>();
   const bodies: Record<string, unknown>[] = [];
@@ -63,6 +63,7 @@ function google(plan: ("ok" | "blocked" | "busy" | "failed")[]) {
       const what = plan[n] ?? "ok";
       n += 1;
       if (what === "busy") return json({ error: { status: "UNAVAILABLE", message: "busy" } }, 503);
+      if (what === "limit") return json({ error: { status: "RESOURCE_EXHAUSTED", message: "Too many requests" } }, 429);
       const name = `models/veo/operations/op${n}`;
       outcome.set(name, what);
       return json({ name });
@@ -129,6 +130,25 @@ describe("AI clips (Veo) in the studio", () => {
     expect(m.refund).toHaveBeenCalledTimes(1);
     expect(m.refund).toHaveBeenCalledWith(65, "AI clip failed", failed?.id, PAYER);
     expect(view.message).toBe("1 of 2 AI clips are ready; 1 could not be made (its credits are back).");
+  });
+
+  it("at Google's limit a clip waits a minute and is sent again (not a try); after QUOTA_WAITS waits it fails with its credits back", async () => {
+    const sleep = vi.fn(async () => {});
+    const g = google(["limit", "ok"]);
+    const run = await startAiClips(me, { businessId: "biz-1", productId: "p-1", count: 1 }, { fetchImpl: g.f as unknown as typeof fetch, sleep });
+    const view = await settle(run.id);
+    expect(view.clips[0]).toMatchObject({ status: "ready", tries: 1 });
+    expect(sleep).toHaveBeenCalledWith(QUOTA_WAIT_MS);
+    expect(m.refund).not.toHaveBeenCalled();
+
+    const stuck = vi.fn(async (ms: number) => void ms);
+    const busy = google(Array(QUOTA_WAITS + 1).fill("limit"));
+    const run2 = await startAiClips(me, { businessId: "biz-1", productId: "p-1", count: 1 }, { fetchImpl: busy.f as unknown as typeof fetch, sleep: stuck });
+    const view2 = await settle(run2.id);
+    expect(view2.clips[0].status).toBe("failed");
+    expect(view2.clips[0].error).toMatch(/at its limit/);
+    expect(stuck.mock.calls.filter(([ms]) => ms === QUOTA_WAIT_MS)).toHaveLength(QUOTA_WAITS);
+    expect(m.refund).toHaveBeenCalledTimes(1);
   });
 
   it("gives up after the second try and refunds", async () => {

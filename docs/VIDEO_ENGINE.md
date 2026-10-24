@@ -903,7 +903,9 @@ video), Google Veo (AI clips inside a Motion video).
   setting, a close detail.
 - **Flow:** `POST /api/ai-clips` checks (Gemini key, the **veo** switch in Admin -> Services, the product), takes the
   credits and returns a run at once; the clips are made in the background, at most 3 at once, each tried once more on
-  a temporary error (Google busy, timeout, network); a blocked or failed clip is refunded with a plain message. The
+  a temporary error (Google busy, timeout, network). At Google's limit (`RESOURCE_EXHAUSTED`, kind "quota"), a clip
+  waits a minute and is sent again, up to `QUOTA_WAITS` (3) times, without counting as a try. A blocked or failed clip
+  is refunded with a plain message. The
   page polls `GET /api/ai-clips/runs/<id>` ("Making AI clip 2 of 3…"), then designs with `aiClipIds`. A clip is kept in
   `video-lab/data/veo/` and served same-origin at `/videos/veo/<id>.mp4` (scoped to its business); a client's clip is
   also saved into their Gallery ("AI clips" folder). After a restart, a clip Google already accepted is picked up again

@@ -3,7 +3,8 @@
 // and the designer mixes them in as full-frame video layers (their own audio muted: the video's music and voice-over
 // are used). Flow: POST /api/ai-clips charges the credits (lib/video-engine/credits.ts veoClipCredits, from the plan's
 // video credits for a client, the test wallet for the owner) and returns a run at once; the clips are made in the
-// background, at most 3 at once, each tried once more on a temporary error; a failed or blocked clip gives its credits
+// background, at most 3 at once, each tried once more on a temporary error (and, at Google's limit, sent again after a
+// minute up to QUOTA_WAITS times, as the overnight clips do); a failed or blocked clip gives its credits
 // back. The page polls the run ("Making AI clip 2 of 3…"), then designs with the clips' ids (`aiClipIds`).
 // Each clip is kept here (video-lab/data/veo, like the Seedance clips) and served same-origin at /videos/veo/<id>.mp4,
 // scoped to its business; a client's clip is also saved into their BuPulse Gallery ("AI clips" folder) so they keep it.
@@ -59,6 +60,13 @@ export const AI_CLIPS_FOLDER = "AI clips";
 const AI_CLIP_NOTE = "AI clip (Google Veo)";
 /** Tries per clip: the first, and one more on a temporary error (Google busy, a timeout, the network). */
 const TRIES = 2;
+/**
+ * Google's limit (VeoError "quota": too many clips at once, or the day's quota; nothing made, nothing billed): the clip
+ * waits QUOTA_WAIT_MS and is sent again, up to QUOTA_WAITS times, without counting as a try. Then it fails with
+ * Google's limit message and its credits back.
+ */
+export const QUOTA_WAITS = 3;
+export const QUOTA_WAIT_MS = 60_000;
 
 export class AiClipError extends Error {
   constructor(
@@ -365,6 +373,7 @@ async function makeOne(clip: AiClip, who: StudioIdentity | null, deps: { fetchIm
     }
   }
   const request = { model: clip.model, prompt: clip.prompt, image: photo ? { base64: photo.toString("base64"), mimeType: "image/jpeg" as const } : null, ratio: clip.ratio, seconds: clip.seconds, resolution: clip.resolution };
+  let waits = 0;
   for (;;) {
     clip.tries += 1;
     clip.status = "making";
@@ -388,6 +397,14 @@ async function makeOne(clip: AiClip, who: StudioIdentity | null, deps: { fetchIm
     } catch (error) {
       const again = error instanceof VeoError && error.temporary && clip.tries < TRIES;
       console.log(`[lab] AI clip ${clip.id} try ${clip.tries} failed: ${error instanceof VeoError ? `${error.kind}${error.status ? ` ${error.status}` : ""}` : error instanceof Error ? error.name : "error"}`);
+      if (error instanceof VeoError && error.kind === "quota" && waits < QUOTA_WAITS) {
+        // Not a try: Google made nothing. The clip waits a minute and is sent again.
+        waits += 1;
+        clip.tries -= 1;
+        clip.operation = null;
+        await (deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(QUOTA_WAIT_MS);
+        continue;
+      }
       if (again) {
         clip.operation = null;
         continue;
