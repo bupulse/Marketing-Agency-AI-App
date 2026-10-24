@@ -150,7 +150,7 @@ export function SpecEditor({ initial, initialReel, reels = [], openReel, createE
   return (
     <div className="flex min-w-0 flex-col gap-5">
       {openReel && (
-        <Panel title="Open a finished reel" description="Loads the reel as it was put together, so you can change it. Your changes are not saved until you export.">
+        <Panel title="Open a finished reel" description="Loads the reel as it was put together, so you can change it. Your changes stay on this page until you export the MP4 or save the edit as a Lab example. The reel itself is never changed.">
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1">
               <Select value={pick} onChange={(e) => setPick(e.target.value)} disabled={!reels.length || opening} aria-label="Finished reel">

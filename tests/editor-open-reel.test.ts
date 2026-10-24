@@ -20,6 +20,8 @@ const { reelLab, openFinishedReel } = await import("@/app/admin/(console)/(ai)/t
 const { LabNotes } = await import("@/components/editor/lab-notes");
 const { SpecEditor } = await import("@/components/editor/spec-editor");
 const { default: EditorPage } = await import("@/app/admin/(console)/(ai)/training-lab/editor/page");
+const { Preview } = await import("@/components/editor/preview");
+const { DEMO_SPEC } = await import("@/components/editor/demo-spec");
 
 const plan = {
   title: "Grow at home",
@@ -96,5 +98,22 @@ describe("the editor page with ?reel=<id>", () => {
     expect((elements(tree).find((e) => e.type === SpecEditor)!.props as { initialReel: unknown }).initialReel).toBeNull();
     h.me.value = { isOwner: true, staffId: "s1" };
     await expect(EditorPage({ searchParams: Promise.resolve({ reel: "reel1" }), params: Promise.resolve({}) } as never)).rejects.toThrow("NOT_FOUND");
+  });
+});
+
+describe("the editor's words while a reel loads", () => {
+  it("shows how many clips are loading over the preview of a reel, and nothing for a spec without clips", () => {
+    const first = DEMO_SPEC.scenes[0];
+    const clip = (url: string) => ({ ...first.layers[0], kind: "video" as const, url, fit: "cover" as const, start: 0 });
+    const reel = { ...DEMO_SPEC, scenes: [{ ...first, layers: [clip("https://x/a.mp4"), ...first.layers] }, { ...DEMO_SPEC.scenes[1], layers: [clip("https://x/b.mp4")] }, { ...DEMO_SPEC.scenes[2], layers: [clip("https://x/a.mp4")] }] } as typeof DEMO_SPEC;
+    const props = { tMs: 0, playing: false, onToggle: () => {}, onSeek: () => {} };
+    expect(renderToStaticMarkup(createElement(Preview, { spec: reel, ...props }))).toContain("Loading the clips… 0 of 2");
+    expect(renderToStaticMarkup(createElement(Preview, { spec: DEMO_SPEC, ...props }))).not.toContain("Loading the clips");
+  });
+
+  it("says in the picker that changes stay on the page and the reel is never changed", () => {
+    const html = renderToStaticMarkup(createElement(SpecEditor, { initial: DEMO_SPEC, reels: [], openReel: async () => ({ ok: false as const, error: "x" }) }));
+    expect(html).toContain("Your changes stay on this page until you export the MP4 or save the edit as a Lab example. The reel itself is never changed.");
+    expect(html).not.toContain("are not saved until you export");
   });
 });

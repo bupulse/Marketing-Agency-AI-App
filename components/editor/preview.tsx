@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui";
 import { drawSpecFrame, type Photos } from "@/lib/video-engine/draw";
@@ -59,20 +59,34 @@ export function Preview({ spec, tMs, playing, onToggle, onSeek }: { spec: Motion
   }, [fonts]);
 
   // The clips of a real reel: opened once per set of clips (the decoders read the latest scenes, so edits need no reopening).
-  const urls = [...new Set(spec.scenes.flatMap((s) => s.layers.flatMap((l) => (l.kind === "video" ? [l.url] : []))))].join("|");
+  const clipUrls = [...new Set(spec.scenes.flatMap((s) => s.layers.flatMap((l) => (l.kind === "video" ? [l.url] : []))))];
+  const urls = clipUrls.join("|");
+  // How many clips have downloaded (they open one after the other, about 7 s for a reel): the words draw meanwhile.
+  // Set only from the loading callbacks; a new set of clips counts from 0 until its first one arrives.
+  const [progress, setProgress] = useState<{ urls: string; done: number; ready: boolean } | null>(null);
   useEffect(() => {
     if (!urls) return;
     let alive = true;
-    void import("@/lib/video-engine/video-frames").then(async ({ openVideoFrames }) => {
-      const handle = await openVideoFrames({
-        get scenes() {
-          return latest.current.spec.scenes;
-        },
-      });
-      if (!alive) return handle.close();
-      clips.current = handle;
-      redraw();
-    });
+    let done = 0;
+    void Promise.all([import("@/lib/video-engine/video-frames"), import("@/lib/video-engine/video-source")])
+      .then(async ([{ openVideoFrames }, { VideoSource }]) => {
+        const handle = await openVideoFrames(
+          {
+            get scenes() {
+              return latest.current.spec.scenes;
+            },
+          },
+          (url) =>
+            VideoSource.open(url).finally(() => {
+              if (alive) setProgress({ urls, done: ++done, ready: false });
+            }),
+        );
+        if (!alive) return handle.close();
+        clips.current = handle;
+        setProgress({ urls, done, ready: true });
+        redraw();
+      })
+      .catch(() => alive && setProgress({ urls, done, ready: true }));
     return () => {
       alive = false;
       clips.current?.close();
@@ -80,10 +94,18 @@ export function Preview({ spec, tMs, playing, onToggle, onSeek }: { spec: Motion
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the clips change
   }, [urls]);
+  const loadingNow = !urls ? null : progress?.urls !== urls ? { done: 0 } : progress.ready ? null : progress;
 
   return (
     <div className="flex min-w-0 flex-col items-center gap-3">
-      <canvas ref={ref} width={size.width} height={size.height} role="img" aria-label="Preview of the video at the playhead" className="h-auto max-h-[60vh] w-full max-w-[280px] rounded-xl bg-black" />
+      <div className="relative w-full max-w-[280px]">
+        <canvas ref={ref} width={size.width} height={size.height} role="img" aria-label="Preview of the video at the playhead" className="h-auto max-h-[60vh] w-full rounded-xl bg-black" />
+        {loadingNow && (
+          <p role="status" className="absolute inset-x-3 top-3 rounded-lg bg-black/70 px-3 py-2 text-center text-[13px] font-medium text-white">
+            Loading the clips… {Math.min(loadingNow.done, clipUrls.length)} of {clipUrls.length}
+          </p>
+        )}
+      </div>
       <div className="flex w-full max-w-[280px] items-center gap-3">
         <Button type="button" size="sm" variant="outline" onClick={onToggle} aria-label={playing ? "Pause" : "Play"}>
           {playing ? <Pause className="size-4" aria-hidden /> : <Play className="size-4" aria-hidden />}
