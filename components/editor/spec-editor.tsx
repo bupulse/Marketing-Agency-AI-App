@@ -10,11 +10,13 @@ import { ExportPanel } from "./export-panel";
 import { LabNotes, type ReelLab } from "./lab-notes";
 import { Inspector } from "./inspector";
 import { shotAt, shotStarts, secondsText } from "./layout";
+import { browserStorage, draftKey, freshenUrls, readDraft, removeDraft, sameSpec, timeAgo } from "./draft";
 import { Preview } from "./preview";
 import { reelSource, type ReelBrand } from "./reel-spec";
 import { SavePanel, type Source } from "./save-panel";
 import type { ReelView } from "@/lib/reel-engine/engine";
 import { Timeline } from "./timeline";
+import { useDraftSaver } from "./use-draft";
 import { useSpecHistory } from "./use-spec-history";
 
 export type ReelChoice = { id: string; business: string; title: string; createdAt: string };
@@ -43,6 +45,13 @@ export function SpecEditor({ initial, initialReel, reels = [], openReel, createE
   const [openError, setOpenError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [tMs, setT] = useState(0);
+  // The draft kept in this browser: the spec the page started from, and an older edit waiting to be chosen or dropped.
+  const [baseline, setBaseline] = useState(initial);
+  const [offer, setOffer] = useState<{ spec: MotionSpec; savedAt: number } | null>(null);
+  const key = draftKey(source?.id);
+  // Nothing is saved while an older edit is waiting to be chosen, so working on does not silently replace it.
+  useDraftSaver(key, spec, baseline, !offer);
+
   const [playing, setPlaying] = useState(false);
   const tRef = useRef(0);
   const total = totalMs(spec);
@@ -105,6 +114,12 @@ export function SpecEditor({ initial, initialReel, reels = [], openReel, createE
     setSource(from);
     setMade(null);
     reset(next);
+    setBaseline(next);
+    // An edit kept in this browser for this reel (or the example) that differs from what was just built is offered back,
+    // with the fresh clip links put in. Reading storage is wrapped; no storage means no offer.
+    const draft = readDraft(browserStorage(), draftKey(from?.id));
+    const restored = draft ? freshenUrls(draft.spec, next) : null;
+    setOffer(draft && restored && !sameSpec(restored, next) ? { spec: restored, savedAt: draft.savedAt } : null);
     setMusicUrl(music);
     setTitle(name);
     setSelected(0);
@@ -145,6 +160,18 @@ export function SpecEditor({ initial, initialReel, reels = [], openReel, createE
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on the first render
   }, []);
 
+  // The example's own draft is offered when the page opens (storage is read here, not while rendering).
+  useEffect(() => {
+    if (initialReel) return;
+    // After the first paint, so the server's page and the browser's first render match.
+    const timer = setTimeout(() => {
+      const draft = readDraft(browserStorage(), draftKey(null));
+      if (draft && !sameSpec(draft.spec, initial)) setOffer({ spec: draft.spec, savedAt: draft.savedAt });
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on the first render
+  }, []);
+
   const playheadShot = shotAt(spec, tMs / 1000);
 
   return (
@@ -166,6 +193,15 @@ export function SpecEditor({ initial, initialReel, reels = [], openReel, createE
           {openError && <p role="alert" className="text-sm font-medium text-danger">{openError}</p>}
           {source && lab && <LabNotes lab={lab} />}
         </Panel>
+      )}
+      {offer && (
+        <div role="status" className="flex min-w-0 flex-col gap-2 rounded-2xl bg-soft px-4 py-3 sm:flex-row sm:items-center">
+          <p className="min-w-0 flex-1 text-sm">You have an unsaved edit of this {source ? "reel" : "example"} from {timeAgo(offer.savedAt)}.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={() => { const draft = offer.spec; run(() => draft); setOffer(null); }}>Continue your edit from {timeAgo(offer.savedAt)}</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => { removeDraft(browserStorage(), key); setOffer(null); }}>Start again from the {source ? "reel" : "example"}</Button>
+          </div>
+        </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" disabled={!canUndo} onClick={undo} aria-label="Undo">
@@ -198,7 +234,7 @@ export function SpecEditor({ initial, initialReel, reels = [], openReel, createE
             <Inspector spec={spec} selected={index} tMs={tMs} run={run} onSelect={setSelected} />
           </Panel>
           <ExportPanel spec={spec} musicUrl={musicUrl} title={title} onMade={setMade} />
-          {source && createExample && confirmFile && <SavePanel spec={spec} source={source} made={made} onMade={setMade} createExample={createExample} confirmFile={confirmFile} />}
+          {source && createExample && confirmFile && <SavePanel spec={spec} source={source} made={made} onMade={setMade} onSaved={() => { removeDraft(browserStorage(), key); setBaseline(spec); }} createExample={createExample} confirmFile={confirmFile} />}
         </div>
       </div>
     </div>

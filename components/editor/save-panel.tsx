@@ -23,7 +23,7 @@ type Step = { ok: true } | { ok: false; error: string };
  * with what you changed and why. It uses the same steps as the Library: the example is saved, the MP4 goes to its slot
  * in the private bucket, and the server checks the file. The client's own reel and gallery are never touched.
  */
-export function SavePanel({ spec, source, made, onMade, createExample, confirmFile }: { spec: MotionSpec; source: Source; made: Made; onMade: (made: { blob: Blob; spec: MotionSpec }) => void; createExample: (input: unknown, file: unknown) => Promise<Created>; confirmFile: (id: string, path: string) => Promise<Step> }) {
+export function SavePanel({ spec, source, made, onMade, onSaved, createExample, confirmFile }: { spec: MotionSpec; source: Source; made: Made; onMade: (made: { blob: Blob; spec: MotionSpec }) => void; onSaved?: () => void; createExample: (input: unknown, file: unknown) => Promise<Created>; confirmFile: (id: string, path: string) => Promise<Step> }) {
   const changes = describeEdit(source.spec, spec);
   const [title, setTitle] = useState(`Edit of ${source.title || "reel"}`);
   const [why, setWhy] = useState("");
@@ -75,6 +75,7 @@ export function SavePanel({ spec, source, made, onMade, createExample, confirmFi
       const confirmed = await confirmFile(created.id, created.upload.path);
       if (!confirmed.ok) return setError(`The example is saved, but ${confirmed.error.charAt(0).toLowerCase()}${confirmed.error.slice(1)}`);
       setSaved(created.id);
+      onSaved?.();
     } catch (e) {
       setError(exportProblem(e));
     } finally {
