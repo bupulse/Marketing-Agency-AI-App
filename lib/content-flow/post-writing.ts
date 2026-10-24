@@ -2,6 +2,8 @@
 // headlines, written again whole or piece by piece ("Generate again": one text generation each, given back when it
 // fails), every change kept as a version, and any version restored as a new one. Everything is scoped to the
 // business; Members may do all of it (the `content` permission, checked by the actions).
+import { fixSpellings } from "@/lib/training-lab/fix-spelling";
+import type { LanguageExtra } from "@/lib/video-engine/brain/language";
 import "server-only";
 import { ServiceDisabledError } from "@/lib/admin/switch";
 import { getTextProvider } from "@/lib/ai";
@@ -168,6 +170,16 @@ async function writingContext(businessId: string, content: LoadedContent, networ
   };
   const language = languageLine(business.contentLanguage, languageMixOf(readMarketingProfile(business.marketingProfile)), network);
   return { item, brand, language, hasSubject: found !== null };
+}
+
+/**
+ * The owner's spellings (Training Lab recordings) applied to what the pack writer wrote: each post's caption, video script and
+ * ad headlines. No AI call; the same posts come back when the owner marked no wrong spelling with a fix. Pure.
+ */
+export function fixWrittenPosts<T extends { caption: string; videoScript: string; adHeadlines: string[] }>(posts: readonly T[], extra: LanguageExtra | null | undefined): T[] {
+  if (!extra?.wrong?.some((w) => w.fix?.trim())) return [...posts];
+  const fix = (t: string) => fixSpellings(t, extra).text;
+  return posts.map((p) => ({ ...p, caption: fix(p.caption), videoScript: fix(p.videoScript), adHeadlines: p.adHeadlines.map(fix) }));
 }
 
 /** Words the post's app cannot take (length, hashtags), for a post on its way out; drafts may hold anything. */
