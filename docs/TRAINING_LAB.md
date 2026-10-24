@@ -75,10 +75,10 @@ A3. **Doing** (the reel script writer first) The engines ask the router: the ree
 A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records which Lab examples it used, so a rating on the result goes back to them.
 
 ### Phase 2: the engines learn from it
-5. **Doing** (the Lab reader is done: lib/training-lab/reader.ts) Video: the reel writer and `viralRecipe` take the best matching Lab examples (sector, language, technique)
+5. **Doing** (the reel writer and checker read the Lab; the viral-recipe hook is in, 0e4fd8e0, waiting for video-engine's review before it is wired) Video: the reel writer and `viralRecipe` take the best matching Lab examples (sector, language, technique)
    as references; the checker uses the owner's "never this" notes.
 6. **Doing** Image and posts: the image planner and post writer take Lab examples (layouts, wording, style) the same way.
-7. **Todo** Posting and scheduling: Lab notes on best times, frequency and formats per network feed Autopilot and
+7. **Doing** (the logic; the form fields for a schedule example come next) Posting and scheduling: Lab notes on best times, frequency and formats per network feed Autopilot and
    daily posts' plans.
 8. **Todo** Kinyarwanda: recordings plus text become a phrase and pronunciation list used by the writers (spelling,
    natural phrases, words to avoid) and by caption checks; keep the audio for a future voice.

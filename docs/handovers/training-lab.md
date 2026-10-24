@@ -25,6 +25,9 @@
   so the other members' switches do nothing yet and must say so; (3) the script writer's default sends Kinyarwanda to
   Gemini, which the card should say. Phone width not checked: the window resize did not apply in this Chrome.
   Main asked whether this session signed in on the test site (its session lands on /welcome since about 11:15): no.
+- 12:50: brain hooks (viral.ts, language.ts) committed 0e4fd8e0 and sent to video-engine for review; they are not wired
+  into any engine until video-engine says OK. Team page imported claude-cli directly (a guard failure); it now asks
+  brains.ts (37940095).
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small
