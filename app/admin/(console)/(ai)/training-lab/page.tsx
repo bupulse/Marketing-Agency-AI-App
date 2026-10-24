@@ -12,6 +12,7 @@ import { ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, type TrainingKind } from "@
 import { deleteExampleAction, draftNotesAction, moreLikeThisAction, neverThisAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
 import { finishedReels, type FinishedReel } from "@/lib/training-lab/from-result";
 import { presenterUses } from "@/lib/training-lab/consent";
+import { HEALTH_SHOWN, healthRows, labHealth, type HealthIssue } from "@/lib/training-lab/health";
 import { describeExtras } from "@/lib/training-lab/language";
 import { exampleUsage, usageLine, type ExampleUse } from "@/lib/training-lab/usage";
 import { describeSchedule } from "@/lib/training-lab/schedule";
@@ -40,13 +41,18 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
   const filter = parseFilter(sp);
   const [examples, choices, analysis] = await Promise.all([listExamples(filter), filterChoices(), analysisStatus().catch((): AnalysisStatus => ({ allowed: false, reason: "AI notes cannot be checked right now. You can write the notes yourself below.", spentUsd: 0, capUsd: 0 }))]);
   const actors = examples.filter((e) => e.kind === "actor");
-  const [links, reels, usage, presenterCounts] = await Promise.all([
+  const [links, reels, usage, presenterCounts, forHealth] = await Promise.all([
     previewLinks(examples.map((e) => e.path)),
     finishedReels().catch((): FinishedReel[] => []),
     exampleUsage(examples.map((e) => e.id)),
     // How many businesses have each actor as their presenter, for the confirm before consent goes (consent.ts).
     Promise.all(actors.map(async (a) => [a.id, await presenterUses(a)] as const)).then((pairs) => new Map(pairs)),
+    healthRows(),
   ]);
+  // A file is missing when Storage would not sign its link; when it signed none at all, Storage is down, so say nothing.
+  const withFiles = examples.filter((e) => e.path);
+  const missing = new Set(links.size ? withFiles.filter((e) => !links.get(e.path!)).map((e) => e.id) : []);
+  const health = forHealth ? labHealth(forHealth, missing) : null;
   const filtered = Object.keys(filter).length > 0;
   const back = query(filter);
 
@@ -59,6 +65,8 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
       <LabTabs current="library" />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
+
+      {health && <LabHealth issues={health} />}
 
       <Panel title="Add an example" description="A file or a link, then the plain-words form. Files stay private: only this page shows them, with links that expire after an hour.">
         <ExampleForm />
@@ -88,6 +96,25 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
 
       <FinishedReels reels={reels} />
     </>
+  );
+}
+
+/** What makes examples useless or risky, at most 8 with how many more, each linked to its example. */
+function LabHealth({ issues }: { issues: HealthIssue[] }) {
+  if (!issues.length) return <p role="status" className={notice.ok}>Lab health: all examples are ready to use.</p>;
+  const shown = issues.slice(0, HEALTH_SHOWN);
+  return (
+    <section aria-label="Lab health" className="flex min-w-0 flex-col gap-2 rounded-2xl border border-line px-4 py-3">
+      <p className="text-[14px] font-medium">Lab health: {issues.length} thing{issues.length === 1 ? "" : "s"} to fix</p>
+      <ul className="flex min-w-0 flex-col gap-1 text-[14px]">
+        {shown.map((i, k) => (
+          <li key={`${i.id}-${k}`} className="min-w-0 break-words">
+            <a href={`${BASE}#ex-${i.id}`} className="font-medium text-pulse-blue underline">{i.title}</a>: {i.problem}
+          </li>
+        ))}
+      </ul>
+      {issues.length > shown.length && <p className="text-[13px] text-muted">and {issues.length - shown.length} more</p>}
+    </section>
   );
 }
 
