@@ -36,7 +36,7 @@
   lib/video-studio/jobs.ts. Send them the hashes of that fix, jobs.ts and the checkLanguage commits (4659930f, baa00bd9).
 - 12:46: video-engine approved everything on this branch that touches its code (up to 669b9d92). Full vitest 5523
   passed after fixing .env.example (settings must be empty). Main asked to merge up to 6bad0208.
-- 13:05: main put 6bad0208 on the test site. Chrome (read-only): the Library and Editor load; "Open" on a real LEAF
+- 12:53: main put 6bad0208 on the test site. Chrome (read-only): the Library and Editor load; "Open" on a real LEAF
   reel builds its 30 s, 20-shot spec with the Kinyarwanda captions, and the preview draws the clips after about 7 s
   of downloading (black until then, with no message: to fix). The editor's picker says "not saved until you export",
   which contradicts "Export alone saves nothing" (to fix). Main raised the actor consent scope with the owner (on the
