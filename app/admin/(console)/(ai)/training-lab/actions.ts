@@ -5,7 +5,8 @@ import type { ConfirmResult } from "@/components/admin/confirm-button";
 import { requireAdmin } from "@/lib/admin/auth";
 import { actionMessage, adminAction, finish } from "@/lib/admin/console";
 import { ENGINE_LABELS, type TrainingEngine } from "@/lib/training-lab/types";
-import { confirmExampleFile, createExample, deleteExample, rateExample, setExampleEngine, startExampleUpload, updateExample, type UploadSlot } from "@/lib/training-lab/examples";
+import { confirmExampleFile, createExample, deleteExample, NOTE_FIELDS, rateExample, saveExampleNotes, setExampleEngine, startExampleUpload, updateExample, type UploadSlot } from "@/lib/training-lab/examples";
+import { draftExampleNotes } from "@/lib/training-lab/analyse";
 
 // The Training Lab (docs/TRAINING_LAB.md). Each action re-checks the admin (allow-listed email, AAL2, the "ai" area)
 // and lib/training-lab/examples.ts then refuses anyone but the owner from ADMIN_EMAILS: server actions are public POST
@@ -93,4 +94,17 @@ export async function deleteExampleAction(f: FormData): Promise<ConfirmResult> {
   }
   refresh();
   return { ok: true, message: "Example and its file deleted." };
+}
+
+/** Gemini drafts the example's notes (only when the switch and the budget allow; lib/training-lab/analyse.ts). */
+export async function draftNotesAction(f: FormData) {
+  const { ctx, identity } = await owner();
+  await finish(backOf(f), "The AI drafted the notes. Correct anything it got wrong and save.", () => draftExampleNotes(ctx, identity, text(f, "id")));
+}
+
+/** The owner's corrected or hand-written notes; one box per field ("note_<field>"). */
+export async function saveNotesAction(f: FormData) {
+  const { ctx, identity } = await owner();
+  const raw = Object.fromEntries(NOTE_FIELDS.map((field) => [field, text(f, `note_${field}`)]));
+  await finish(backOf(f), (notes: unknown) => (notes ? "Notes saved." : "Notes cleared."), () => saveExampleNotes(ctx, identity, text(f, "id"), raw));
 }

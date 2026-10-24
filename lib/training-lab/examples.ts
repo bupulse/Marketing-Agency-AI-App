@@ -5,7 +5,7 @@ import "server-only";
 // goes straight from the browser to the private "training-lab" bucket: the row is made first, the server gives a
 // signed upload address in the example's folder, and the browser confirms once the file is there; the server then reads
 // its real size and type from Storage before the row points at it.
-import type { Prisma } from "@/lib/generated/prisma/client";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
@@ -247,4 +247,58 @@ export async function deleteExample(ctx: AdminContext, identity: LabOwner, id: s
     /* the row's own file is still removed below */
   }
   if (paths.size) await removeObjects([...paths]).catch(() => {});
+}
+
+// ---- Notes (the AI-drafted analysis the owner corrects; drafting is in analyse.ts) ----------------------------------
+
+export const NOTE_MAX = 600;
+
+/** The note fields, most useful first (the engines read the first few: lib/training-lab/match.ts notesText). */
+export const NOTE_FIELDS = ["hook", "shots", "cuts_per_second", "beat_sync", "music", "captions", "stickers", "setting", "people", "why_it_works"] as const;
+export type NoteField = (typeof NOTE_FIELDS)[number];
+export type LabNotes = Partial<Record<NoteField, string>>;
+
+export const NOTE_LABELS: Record<NoteField, string> = {
+  hook: "Hook (the first seconds)",
+  shots: "Shots",
+  cuts_per_second: "Cuts per second",
+  beat_sync: "Beat sync",
+  music: "Music",
+  captions: "Captions and words on screen",
+  stickers: "Stickers and effects",
+  setting: "Setting",
+  people: "People",
+  why_it_works: "What makes it work",
+};
+
+
+/** The notes from an answer or the owner's form: each field plain text (a number or a list becomes text), empty ones dropped. Null when nothing is left. */
+export function readNotes(raw: unknown): LabNotes | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const out: LabNotes = {};
+  for (const field of NOTE_FIELDS) {
+    const v = r[field];
+    const text = Array.isArray(v) ? v.filter((x) => typeof x === "string" || typeof x === "number").join(", ") : typeof v === "string" || typeof v === "number" ? String(v) : "";
+    const clean = text.replace(/\s+/g, " ").trim().slice(0, NOTE_MAX);
+    if (clean) out[field] = clean;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/** Writes an example's notes (null clears them) with an audit row. */
+export async function saveNotes(ctx: AdminContext, row: { id: string; notes: unknown }, notes: LabNotes | null, action: string, extra: Record<string, unknown> = {}) {
+  await prisma.$transaction(async (tx) => {
+    await tx.trainingExample.update({ where: { id: row.id }, data: { notes: notes ? (notes as Prisma.InputJsonValue) : Prisma.DbNull } });
+    await writeAudit(tx, ctx, action, `training:${row.id}`, { notes: row.notes ?? null }, { notes, ...extra });
+  });
+}
+
+/** The owner's corrected (or hand-written) notes; every field empty clears them. */
+export async function saveExampleNotes(ctx: AdminContext, identity: LabOwner, id: string, raw: unknown): Promise<LabNotes | null> {
+  assertLabOwner(ctx, identity);
+  const row = await found(id);
+  const notes = readNotes(raw);
+  await saveNotes(ctx, row, notes, "update_training_notes");
+  return notes;
 }

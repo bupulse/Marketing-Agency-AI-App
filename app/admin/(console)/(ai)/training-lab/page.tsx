@@ -2,12 +2,13 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, notice } from "@/components/admin/ui";
-import { Badge, Button, Select } from "@/components/ui";
+import { Badge, Button, Field, Select, Textarea } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
-import { filterChoices, LIST_MAX, listExamples, parseFilter, previewLinks, type ExampleFilter } from "@/lib/training-lab/examples";
+import { analysisStatus, exampleProblem, type AnalysisStatus } from "@/lib/training-lab/analyse";
+import { filterChoices, LIST_MAX, listExamples, NOTE_FIELDS, NOTE_LABELS, parseFilter, previewLinks, readNotes, type ExampleFilter } from "@/lib/training-lab/examples";
 import { ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, type TrainingKind } from "@/lib/training-lab/types";
-import { deleteExampleAction, rateExampleAction, setEngineAction } from "./actions";
+import { deleteExampleAction, draftNotesAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
 import { EditExample, ExampleForm } from "./example-form";
 import { LabTabs } from "./lab-tabs";
 
@@ -30,7 +31,7 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
   if (!me.isOwner || me.staffId) notFound();
   const sp = await searchParams;
   const filter = parseFilter(sp);
-  const [examples, choices] = await Promise.all([listExamples(filter), filterChoices()]);
+  const [examples, choices, analysis] = await Promise.all([listExamples(filter), filterChoices(), analysisStatus().catch((): AnalysisStatus => ({ allowed: false, reason: "AI notes cannot be checked right now. You can write the notes yourself below.", spentUsd: 0, capUsd: 0 }))]);
   const links = await previewLinks(examples.map((e) => e.path));
   const filtered = Object.keys(filter).length > 0;
   const back = query(filter);
@@ -65,7 +66,7 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
         ) : (
           <ul className="flex min-w-0 flex-col gap-4">
             {examples.map((e) => (
-              <ExampleCard key={e.id} example={e} link={e.path ? links.get(e.path) : undefined} back={back} />
+              <ExampleCard key={e.id} example={e} link={e.path ? links.get(e.path) : undefined} back={back} analysis={analysis} />
             ))}
           </ul>
         )}
@@ -110,7 +111,7 @@ function Text({ label, children }: { label: string; children: string | null }) {
   );
 }
 
-function ExampleCard({ example: e, link, back }: { example: Example; link?: string; back: string }) {
+function ExampleCard({ example: e, link, back, analysis }: { example: Example; link?: string; back: string; analysis: AnalysisStatus }) {
   const here = `${back}#ex-${e.id}`;
   const noFile = !e.path && !e.sourceUrl && e.kind !== "schedule";
   return (
@@ -148,11 +149,7 @@ function ExampleCard({ example: e, link, back }: { example: Example; link?: stri
         e.kind === "actor" && <p className={notice.bad}>No consent recorded: the presenters will not use this actor.</p>
       )}
 
-      {/* Board task 4 fills this: Gemini drafts the analysis on upload and the owner corrects it. */}
-      <section data-slot="ai-notes" aria-label="AI notes" className="rounded-xl border border-dashed border-line px-3 py-2.5 text-[13px] text-muted">
-        <p className="font-medium text-text">AI notes</p>
-        {e.notes ? <p>Notes are saved for this example. Showing and correcting them comes next.</p> : <p>Not yet. Soon the AI will watch the example and draft the shots, cuts per second, beat sync, stickers, captions, hook, setting and music for you to correct.</p>}
-      </section>
+      <Notes example={e} here={here} analysis={analysis} />
 
       <form action={rateExampleAction} className="flex flex-wrap items-center gap-1">
         <input type="hidden" name="id" value={e.id} />
@@ -217,5 +214,56 @@ function ExampleCard({ example: e, link, back }: { example: Example; link?: stri
         <ConfirmButton action={deleteExampleAction} fields={{ id: e.id }} label="Delete" title={`Delete “${e.title}”?`} description="The example and its file are deleted, and the engines stop learning from it. This cannot be undone." confirmLabel="Delete example" pendingLabel="Deleting…" />
       </div>
     </li>
+  );
+}
+
+/** The example's notes: drafted by the AI when the switch and the budget allow, always correctable or written by hand. */
+function Notes({ example: e, here, analysis }: { example: Example; here: string; analysis: AnalysisStatus }) {
+  const notes = readNotes(e.notes) ?? {};
+  const filled = NOTE_FIELDS.filter((f) => notes[f]).length;
+  const problem = exampleProblem(e);
+  const voice = e.kind === "voice";
+  // A recording's notes come from its transcript (no AI call), so the switch does not matter for it.
+  const canDraft = !problem && (voice || analysis.allowed);
+  const why = problem ?? analysis.reason;
+  const label = voice ? "Draft notes from what is said" : "Draft notes with AI";
+  return (
+    <section data-slot="ai-notes" aria-label="AI notes" className="flex min-w-0 flex-col gap-3 rounded-xl border border-dashed border-line px-3 py-3">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[14px] font-medium">AI notes</p>
+          <p className="text-[13px] text-muted">The shots, cuts, beat, captions, hook, setting and music, in plain words. The engines read them with the example.</p>
+        </div>
+        {canDraft &&
+          (filled > 0 ? (
+            <ConfirmButton action={draftNotesAction} fields={{ id: e.id, back: here }} label={voice ? label : "Draft again with AI"} title="Draft the notes again?" description="The new draft replaces the notes below, including your corrections." confirmLabel="Draft again" pendingLabel="Drafting…" />
+          ) : (
+            <form action={draftNotesAction}>
+              <input type="hidden" name="id" value={e.id} />
+              <input type="hidden" name="back" value={here} />
+              <Button type="submit" size="sm" variant="outline">{label}</Button>
+            </form>
+          ))}
+      </div>
+      {!canDraft && why && <p className="text-[13px] text-muted">{why}</p>}
+      {canDraft && !voice && <p className="text-[13px] text-muted">AI notes budget: ${analysis.spentUsd.toFixed(2)} of ${analysis.capUsd.toFixed(2)} used.</p>}
+      <details open={filled > 0} className="min-w-0">
+        <summary className="min-h-11 cursor-pointer py-2.5 text-[14px] font-medium">{filled > 0 ? `Notes (${filled} of ${NOTE_FIELDS.length} filled): read and correct` : "Write the notes yourself"}</summary>
+        <form key={JSON.stringify(notes)} action={saveNotesAction} className="flex min-w-0 flex-col gap-3 pt-2">
+          <input type="hidden" name="id" value={e.id} />
+          <input type="hidden" name="back" value={here} />
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+            {NOTE_FIELDS.map((f) => (
+              <Field key={f} label={NOTE_LABELS[f]}>
+                <Textarea name={`note_${f}`} rows={2} maxLength={600} defaultValue={notes[f] ?? ""} />
+              </Field>
+            ))}
+          </div>
+          <div>
+            <Button type="submit" size="sm">Save the notes</Button>
+          </div>
+        </form>
+      </details>
+    </section>
   );
 }
