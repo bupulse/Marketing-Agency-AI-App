@@ -35,8 +35,9 @@ Creatify does: docs/IMAGE_ENGINE_TEARDOWN.md.
 `paintNext` (one step of one picture per call, so no call runs long on Netlify's 60 s: the Painter ("painting" to
 "painted"), the Checker ("painted", then done or "fixing"), the Editor's one fix ("fixing" to "edited") and the
 Checker on the fix ("edited" to done, the better picture kept); each step saves the row, so any later call carries on;
-a failed picture's credits are given back), `paintOne` (a post's picture: the same steps one after another, because
-its callers wait for the picture), `batchPictures`,
+a failed picture's credits are given back), `startPicture` and `stepPicture` (a post's picture: planned and paid in one call, then one step per
+call; Create post's renderImageStep keeps the picture's id on the slide and the screen calls again while it is
+pending), `paintOne` (the same steps one after another, for Autopilot's nightly run, which waits for the picture), `batchPictures`,
 `ratePicture`, `editPicture`. Memory: the `ImageConcept` table (migration `20261030230000_image_concepts`).
 
 ## The whole flow (owner's design, 23 October 2026)

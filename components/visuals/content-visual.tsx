@@ -81,7 +81,9 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
     started.current = visual.id;
     let stop = false;
     void (async () => {
-      for (let i = 0; i < VISUAL_LIMITS.maxCarouselSlides + 2 && !stop; i++) {
+      // Each slide once, and an AI picture a few calls more (it is made one step per call).
+      const calls = VISUAL_LIMITS.maxCarouselSlides + VISUAL_LIMITS.maxAiPhotosPerVisual * VISUAL_LIMITS.aiPictureCalls + 2;
+      for (let i = 0; i < calls && !stop; i++) {
         const r = await renderVisual(visual.id);
         if (!r.ok) {
           toast(r.error, "error");

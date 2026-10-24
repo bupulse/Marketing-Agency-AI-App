@@ -19,6 +19,8 @@ export const VISUAL_LIMITS = {
   autopilotMaxSlides: 3,
   /** AI photos in one visual. */
   maxAiPhotosPerVisual: 1,
+  /** Calls one AI picture takes at most when drawn step by step: plan, paint, check, fix, check the fix. */
+  aiPictureCalls: 5,
   /** AI photos in one Autopilot run (on top of the plan's image credits and the company's AI allowance). */
   maxAiPhotosPerRun: 5,
   /** Template renders in one Autopilot run. */

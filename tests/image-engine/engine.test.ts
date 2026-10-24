@@ -23,6 +23,11 @@ const h = vi.hoisted(() => {
         return { count: data.length };
       }),
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => rows.find((r) => match(r, where)) ?? null),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        const row = { status: "planned", paintingUntil: null, fixed: false, rating: null, check: null, path: null, designId: null, error: null, ...data, id: `c${++n}`, createdAt: new Date(2026, 9, 23, 0, 0, n) } as unknown as Row;
+        rows.push(row);
+        return row;
+      }),
       updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
         const hit = rows.filter((r) => match(r, where));
         hit.forEach((r) => Object.assign(r, data));
@@ -51,7 +56,7 @@ vi.mock("@/lib/image-engine/planner", () => ({
   writeConcepts: async (_o: unknown, input: { slots: unknown[] }) => input.slots.map((_, i) => ({ title: `Idea ${i}`, scene: `Scene ${i}`, headline: `Headline ${i}`, subline: "", cta: "Order now", prompt: `Prompt ${i}`, planner: i % 2 ? "gemini" : "claude" })),
 }));
 
-import { batchPictures, paintNext, planBatch } from "@/lib/image-engine/engine";
+import { batchPictures, paintNext, paintOne, planBatch, startPicture, stepPicture } from "@/lib/image-engine/engine";
 
 const owner = { userId: "u1", businessId: "b1" };
 const period = new Date("2026-10-13T00:00:00Z");
@@ -135,5 +140,26 @@ describe("painting a batch", () => {
     expect(await paintNext(owner, batchId)).toMatchObject({ status: "failed" });
     expect(h.refund).toHaveBeenCalledWith("u1", "image", period, 4);
     expect(h.rows[0]).toMatchObject({ status: "failed", error: "This picture could not be made. Its credits were given back." });
+  });
+});
+
+describe("a post's picture", () => {
+  it("is planned and paid first, then made one AI call per step, so Create post never waits long", async () => {
+    const { id } = await startPicture(owner, { source: "content", subjectId: "p1", aspectRatio: "4:5", caption: "Grow more." });
+    expect(h.consume).toHaveBeenCalledTimes(1);
+    expect(h.design).not.toHaveBeenCalled();
+    expect(await stepPicture(owner, id)).toEqual({ status: "working" });
+    expect(h.design).toHaveBeenCalledTimes(1);
+    expect(h.check).not.toHaveBeenCalled();
+    expect(await stepPicture(owner, id)).toEqual({ status: "done", id, designId: "d1", path: "u1/designs/d1.png" });
+    // Asking again after it is done changes nothing and pays nothing.
+    expect(await stepPicture(owner, id)).toMatchObject({ status: "done", path: "u1/designs/d1.png" });
+    expect(h.design).toHaveBeenCalledTimes(1);
+  });
+  it("is made in one call for callers that wait (Autopilot), fix included", async () => {
+    h.check.mockResolvedValueOnce({ ok: false, problems: ["A typo."], fix: "Fix the typo.", ran: true });
+    const made = await paintOne(owner, { source: "autopilot", subjectId: "p1", aspectRatio: "4:5" });
+    expect(made).toMatchObject({ designId: "d2", path: "u1/designs/d2.png" });
+    expect(h.check).toHaveBeenCalledTimes(2);
   });
 });

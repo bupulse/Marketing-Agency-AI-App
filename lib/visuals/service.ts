@@ -9,7 +9,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { companyCallAllowed, companySpendThisMonth } from "@/lib/ai/budget";
 import { AIProviderError } from "@/lib/ai/types";
 import { createPhotoDesign, DesignError } from "@/lib/designs/service";
-import { EngineError, paintOne } from "@/lib/image-engine/engine";
+import { EngineError, paintOne, startPicture, stepPicture } from "@/lib/image-engine/engine";
 import { isOwnDesignPath, isOwnPhotoPath } from "@/lib/designs/assets";
 import { isPackId } from "@/lib/designs/packs";
 import { isTemplateId } from "@/lib/designs/templates/registry";
@@ -299,7 +299,17 @@ export const RENDER_LEASE_MS = 4 * 60 * 1000;
 export type DrawState = { aiAllowed: boolean; aiMade: number; maxAi: number };
 
 /** Where a picture's post comes from, for the image engine: its brief and caption guide the picture's idea. */
-export type DrawContext = { source: "content" | "autopilot"; brief?: string | null; caption?: string | null };
+export type DrawContext = {
+  source: "content" | "autopilot";
+  brief?: string | null;
+  caption?: string | null;
+  /**
+   * The AI picture is made one step per call (plan, paint, check, fix: lib/image-engine stepPicture), so no call runs
+   * past Netlify's 60 s: the slide keeps the picture's id and stays undrawn until it is done. Without it the picture is
+   * made in this call (Autopilot's nightly run waits for it).
+   */
+  stepwise?: boolean;
+};
 
 /**
  * Draws one slide (owner decision, 23 October 2026: no templates). An AI slide is a finished ad from the image engine
@@ -324,8 +334,26 @@ export async function drawSlide(
   if (slide.aiPhotoPath) return { ...next, designId: slide.designId, path: slide.aiPhotoPath };
 
   if (slide.source === "ai") {
-    if (state.aiAllowed && state.aiMade < state.maxAi) {
+    if (context?.stepwise && slide.conceptId) {
+      // A picture already started: its next step.
+      const step = await stepPicture(owner, slide.conceptId);
+      if (step.status === "working") return { ...next, conceptId: slide.conceptId };
+      if (step.status === "done") {
+        const done: VisualSlide = { ...next, source: "ai", conceptId: step.id, aiPhotoPath: step.path, designId: step.designId, path: step.path };
+        await onAiPhoto?.(done);
+        return done;
+      }
+      next.note = "The AI picture could not be made this time (its credits were given back), so your own photo is used.";
+    } else if (state.aiAllowed && state.aiMade < state.maxAi) {
       try {
+        if (context?.stepwise) {
+          // Planned and paid now, painted in the next calls; saved at once so it is never paid for twice.
+          const { id } = await startPicture({ ...owner, service: owner.service }, { source: context.source, subjectId, aspectRatio: plan.aspectRatio, photoPath: slide.photoPath, brief: context.brief ?? null, caption: context.caption ?? slide.headline });
+          state.aiMade += 1;
+          const started: VisualSlide = { ...next, source: "ai", conceptId: id };
+          await onAiPhoto?.(started);
+          return started;
+        }
         const made = await paintOne(
           { ...owner, service: owner.service },
           { source: context?.source ?? "content", subjectId, aspectRatio: plan.aspectRatio, photoPath: slide.photoPath, brief: context?.brief ?? null, caption: context?.caption ?? slide.headline },
@@ -413,7 +441,9 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
       await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(plan) } });
     };
     try {
-      plan.slides[i] = await drawSlide(owner, subjectId, plan, plan.slides[i], state, keepPhoto, context);
+      plan.slides[i] = await drawSlide(owner, subjectId, plan, plan.slides[i], state, keepPhoto, { ...context, stepwise: true });
+      // An AI picture still being made: one AI call per call, the screen asks again while the visual is pending.
+      if (!plan.slides[i].path && !plan.slides[i].skipped) break;
     } catch (e) {
       if (e instanceof RateLimitError) error = "You made a lot of designs this hour. Try again in a little while.";
       else if (e instanceof DesignError) error = e.message;

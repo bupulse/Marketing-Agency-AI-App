@@ -279,14 +279,17 @@ async function stepRow(owner: Owner, row: ConceptRow): Promise<{ outcome: "done"
   }
 }
 
+export type PictureRequest = { source: BatchSource; subjectId?: string | null; aspectRatio: AspectRatio; photoPath?: string | null; brief?: string | null; caption?: string | null };
+export type PictureStep = { status: "working" } | { status: "failed" } | { status: "done"; id: string; designId: string; path: string };
+
 /**
  * One finished picture for a post (Create post, Daily posts, Studio, Autopilot: lib/visuals drawSlide), no template:
  * the Director picks a pattern, shot, light, layout and camera the company has not had lately, the Prompter writes it
  * from the post (its brief and caption), then the Painter, Checker and Editor. Pro when the credits allow and none of
  * the company's last pictures was Pro, else Lite. Throws EngineError when it cannot start (not in the plan, no credits:
- * the caller then uses the owner's own photo); a picture that fails after that gives its credits back and returns null.
+ * the caller then uses the owner's own photo). This plans it and reserves its credits; stepPicture then makes it.
  */
-export async function paintOne(owner: Owner, request: { source: BatchSource; subjectId?: string | null; aspectRatio: AspectRatio; photoPath?: string | null; brief?: string | null; caption?: string | null }): Promise<{ id: string; designId: string; path: string } | null> {
+export async function startPicture(owner: Owner, request: PictureRequest): Promise<{ id: string }> {
   if ((await featureStatus(owner.businessId, "aiPhotos")) !== "ok") throw new EngineError("AI pictures are not in your plan.");
   const loaded = await loadFacts(owner, request.subjectId);
   const recent = await prisma.imageConcept.findMany({ where: { businessId: owner.businessId }, orderBy: { createdAt: "desc" }, take: 60, select: { pattern: true, shot: true, light: true, layout: true, camera: true, title: true, scene: true, tier: true, planner: true } });
@@ -326,18 +329,46 @@ export async function paintOne(owner: Owner, request: { source: BatchSource; sub
         aspectRatio: request.aspectRatio,
         credits,
         creditPeriod: periodStart,
-        status: "painting",
-        paintingUntil: new Date(Date.now() + PAINT_LEASE_MS),
       },
     });
-    // Every step in this call (the callers wait for the picture); each step still saves, so the row shows how far it got.
-    let step: Awaited<ReturnType<typeof stepRow>> = { outcome: "working", row };
-    while (step.outcome === "working") step = await stepRow(owner, { ...step.row, paintingUntil: new Date(Date.now() + PAINT_LEASE_MS) });
-    return step.outcome === "done" ? { id: row.id, designId: step.row.designId!, path: step.row.path! } : null;
+    return { id: row.id };
   } catch (error) {
-    // Only before the row exists (stepRow never throws and refunds on its own).
+    // Only before the row exists (from then on, a failed step refunds on its own).
     await refundUsage(owner.userId, "image", periodStart, credits).catch(() => undefined);
     throw error;
+  }
+}
+
+/**
+ * The next step of a post's picture (one AI call). "working" while it is being made or another call holds it; done
+ * with the picture; failed when it could not be made (its credits were given back).
+ */
+export async function stepPicture(owner: Owner, conceptId: string, now: Date = new Date()): Promise<PictureStep> {
+  const row = await prisma.imageConcept.findFirst({ where: { id: conceptId, businessId: owner.businessId } });
+  if (!row) return { status: "failed" };
+  if (row.status === "done") return { status: "done", id: row.id, designId: row.designId!, path: row.path! };
+  if (!isWorking(row.status)) return { status: "failed" };
+  const status = row.status === "planned" ? "painting" : row.status;
+  const { count: claimed } = await prisma.imageConcept.updateMany({
+    where: { id: row.id, status: row.status, paintingUntil: row.paintingUntil, OR: [{ paintingUntil: null }, { paintingUntil: { lt: now } }] },
+    data: { status, paintingUntil: new Date(now.getTime() + PAINT_LEASE_MS) },
+  });
+  if (claimed === 0) return { status: "working" };
+  const step = await stepRow(owner, { ...row, status });
+  if (step.outcome === "done") return { status: "done", id: row.id, designId: step.row.designId!, path: step.row.path! };
+  return { status: step.outcome };
+}
+
+/**
+ * A post's picture made in one call, every step one after another, for callers that wait for it (Autopilot's
+ * nightly run). Create post steps it across calls instead (startPicture, stepPicture), so no call runs long.
+ */
+export async function paintOne(owner: Owner, request: PictureRequest): Promise<{ id: string; designId: string; path: string } | null> {
+  const { id } = await startPicture(owner, request);
+  for (;;) {
+    const step = await stepPicture(owner, id);
+    if (step.status === "done") return { id: step.id, designId: step.designId, path: step.path };
+    if (step.status === "failed") return null;
   }
 }
 
