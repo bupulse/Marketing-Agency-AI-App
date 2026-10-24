@@ -185,6 +185,19 @@ describe("POST /api/video/design", () => {
     expect(prisma.videoJob.create).not.toHaveBeenCalled();
   });
 
+  it("503 on Netlify (60 s per request): designs are made in the Video Studio, nothing charged or called", async () => {
+    vi.stubEnv("PLATFORM", "netlify");
+    try {
+      const res = await call({ productId: "p1" });
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ error: "studio_only", message: expect.stringMatching(/Video Studio/) });
+      expect(usage.consumeUsage).not.toHaveBeenCalled();
+      expect(prisma.videoJob.create).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("503 when Claude is switched off in Admin → Services, before charging anything", async () => {
     switchState.off = true;
     const res = await call({ productId: "p1" });

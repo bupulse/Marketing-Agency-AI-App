@@ -89,6 +89,13 @@ describe("claiming videos", () => {
     expect(JSON.stringify(jobs[0])).not.toMatch(/"b1"|[/=]b1\b/);
   });
 
+  it("out of time (Netlify's 60 s): answers with the videos prepared so far, always at least one", async () => {
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ id: "v1", businessId: "b1", plan: plan() }, { id: "v2", businessId: "b1", plan: plan() }]);
+    const jobs = await claimRobotVideos({ max: 3, budgetMs: -1 }, NOW);
+    expect(jobs).toHaveLength(1);
+    expect(mocks.prepareVideoUpload).toHaveBeenCalledTimes(1);
+  });
+
   it("skips a video another run (or the owner's browser) leased first", async () => {
     mocks.prisma.contentVisual.findMany.mockResolvedValue([{ id: "v1", businessId: "b1", plan: plan() }, { id: "v2", businessId: "b1", plan: plan() }]);
     mocks.prisma.contentVisual.updateMany.mockResolvedValueOnce({ count: 0 });

@@ -352,6 +352,17 @@ describe("AI clips: made overnight", () => {
     expect(usage.refundUsage).not.toHaveBeenCalled();
   });
 
+  it("a sweep out of time leaves the videos for the next one, untouched (Netlify's 60 s)", async () => {
+    addVisual("v1");
+    const g = veo();
+    await runAiClips(T0, { env, fetchImpl: g.fetchImpl, budgetMs: -1 });
+    expect(row("v1").clipState).toBe("waiting");
+    expect(row("v1").clipLeaseUntil).toBeNull();
+    expect(usage.consumeUsage).not.toHaveBeenCalled();
+    await runAiClips(T0, { env, fetchImpl: g.fetchImpl });
+    expect(row("v1").clipState).toBe("making");
+  });
+
   it("at most VEO_PARALLEL clips at Google across videos: the rest wait, a video with no place takes no credits yet", async () => {
     addVisual("v1");
     addVisual("v2", { createdAt: later(1) });

@@ -23,6 +23,7 @@ import { isServiceEnabled, ServiceDisabledError } from "@/lib/admin/switch";
 import { recordAiCall, withLedger } from "@/lib/ai/ledger";
 import { isOwnDesignPath, isOwnPhotoPath } from "@/lib/designs/assets";
 import { logError } from "@/lib/errors";
+import { timeBudget } from "@/lib/platform/limits";
 import { bucketForPath } from "@/lib/publishing/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
@@ -55,7 +56,12 @@ const MAX_PHOTO_BYTES = 12 * 1024 * 1024;
 const MAX_CLIP_BYTES = 10 * 1024 * 1024;
 
 type Env = Record<string, string | undefined>;
-export type ClipDeps = { env?: Env; fetchImpl?: typeof fetch };
+export type ClipDeps = { env?: Env; fetchImpl?: typeof fetch; /** Wall-clock time this sweep may spend (CLIP_BUDGET_MS). */ budgetMs?: number };
+/**
+ * Time one sweep spends on clips before it leaves the rest for the next sweep. Netlify stops a function after 60 s and
+ * the sweep does other work first, so 25 s there; a video is never cut in half (the check is before each one).
+ */
+const clipBudgetMs = () => timeBudget(90_000, 25_000);
 export type AiClipsResult = { started: number; fallback: number; made: number; done: number; refunded: number; credits: number; retried: number };
 /** Places left this sweep among the clips Google makes at once (VEO_PARALLEL across all videos). */
 type Slots = { free: number };
@@ -96,10 +102,12 @@ export async function runAiClips(now = new Date(), deps: ClipDeps = {}): Promise
   const result: AiClipsResult = { started: 0, fallback: 0, made: 0, done: 0, refunded: 0, credits: 0, retried: 0 };
   const free = { OR: [{ clipLeaseUntil: null }, { clipLeaseUntil: { lt: now } }] };
   const slots: Slots = { free: VEO_PARALLEL - (await clipsAtGoogle()) };
+  const deadline = Date.now() + (deps.budgetMs ?? clipBudgetMs());
   // The videos already started first: their finished clips free places, and their waiting clips go before new videos.
   // Clips submitted in this sweep are checked from the next one (Google takes 11 s to 6 minutes a clip).
   const making = await prisma.contentVisual.findMany({ where: { clipState: "making", ...free }, orderBy: { updatedAt: "asc" }, take: CLIP_POLL_BATCH, select: { id: true } });
   for (const { id } of making) {
+    if (Date.now() > deadline) return result;
     if (!(await claim(id, "making", now))) continue;
     try {
       await checkClips(id, now, deps, result, slots);
@@ -111,6 +119,7 @@ export async function runAiClips(now = new Date(), deps: ClipDeps = {}): Promise
   }
   const waiting = await prisma.contentVisual.findMany({ where: { clipState: "waiting", ...free }, orderBy: { createdAt: "asc" }, take: CLIP_START_BATCH, select: { id: true } });
   for (const { id } of waiting) {
+    if (Date.now() > deadline) return result;
     if (!(await claim(id, "waiting", now))) continue;
     try {
       await startClips(id, now, deps, result, slots);
