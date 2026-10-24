@@ -136,6 +136,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { href: "/admin/ai", perm: "ai", label: "AI calls and spend", icon: Cpu, description: "AI spend against the monthly cap, by day, model, feature and client.", keywords: "gemini claude elevenlabs budget tokens" },
       { href: "/admin/approvals", perm: "approvals.decide", label: "Approvals", icon: BadgeCheck, badge: "approvals", description: "Money requests from Jarvis or the console, waiting for your OK." },
+      { href: "/admin/training-lab", perm: "ai", label: "Training Lab", icon: Sparkles, description: "Owner only: teach the engines by example, with reels, videos, posts, Kinyarwanda recordings and actors.", keywords: "examples teach train reels voice kinyarwanda actors consent" },
       { href: "/admin/jarvis", perm: "jarvis", label: "Jarvis", icon: Bot, description: "Jarvis API keys and what Jarvis may do.", keywords: "api mcp keys" },
     ],
   },
