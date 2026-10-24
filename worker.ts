@@ -33,7 +33,7 @@ export { BucketCachePurge, DOQueueHandler, DOShardedTagCache } from "./.open-nex
 
 type Env = CloudflareEnv & { CRON_SECRET?: string };
 
-import { AUTOPILOT_CRON, ANALYTICS_ROLLUP_CRON, CONTENT_SUMMARY_CRON, CREATOR_VIEWS_CRON, DAILY_POSTS_CRON, MOMO_RENEWALS_CRON, PLAN_PRICE_CRON, routeForCron, STORE_SYNC_CRON } from "./worker-crons";
+import { AUTOPILOT_CRON, AUTOPILOT_VISUALS_CRON, ANALYTICS_ROLLUP_CRON, CONTENT_SUMMARY_CRON, CREATOR_VIEWS_CRON, DAILY_POSTS_CRON, MOMO_RENEWALS_CRON, PLAN_PRICE_CRON, routeForCron, STORE_SYNC_CRON } from "./worker-crons";
 
 async function runCron(path: string, env: Env): Promise<string | null> {
   if (!env.CRON_SECRET) {
@@ -71,6 +71,7 @@ const worker = {
 
   async scheduled(controller: { cron: string }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }) {
     if (controller.cron === AUTOPILOT_CRON) return ctx.waitUntil(runAutopilotCron(env));
+    if (controller.cron === AUTOPILOT_VISUALS_CRON) return ctx.waitUntil(runCursorCron("/api/cron/autopilot-visuals", env));
     if (controller.cron === STORE_SYNC_CRON) return ctx.waitUntil(runCursorCron("/api/cron/store-sync", env));
     if (controller.cron === PLAN_PRICE_CRON) return ctx.waitUntil(runCursorCron("/api/cron/plan-price-changes", env));
     if (controller.cron === MOMO_RENEWALS_CRON) return ctx.waitUntil(runCursorCron("/api/cron/momo-renewals", env));

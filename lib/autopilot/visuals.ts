@@ -18,6 +18,7 @@ import { directionContext, drawSlide, itemsOf, recentVisualChoices, type DrawSta
 import { VISUAL_LIMITS, type ImagePlan } from "@/lib/visuals/types";
 import { buildVideoPlan } from "@/lib/visuals/video-plan";
 import { videoGetsAiClips, type VideoQuality } from "@/lib/visuals/video-quality";
+import { hasShortRequestLimit } from "@/lib/platform/limits";
 import { makeGroupImages, PHOTO_MARK, type GroupImages, type ImageContext } from "./images";
 import type { PlannedGroup } from "./planner";
 import type { WrittenGroup } from "./writer";
@@ -71,7 +72,8 @@ async function carouselFor(group: PlannedGroup, written: WrittenGroup, ctx: Visu
     business: ctx.business,
     photos: group.photos.map((p) => p.path),
     carouselAllowed,
-    aiAllowed: ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun,
+    // On Netlify (60 s a request) a carousel uses the owner's photos: its AI cover would be painted in this call.
+    aiAllowed: ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun && !hasShortRequestLimit(),
     maxSlides: VISUAL_LIMITS.autopilotMaxSlides,
     audience: ctx.audience,
   });
@@ -131,6 +133,36 @@ async function recordImage(group: PlannedGroup, written: WrittenGroup, ctx: Visu
   await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "image", status: "ready", plan: json(plan), items: json(itemsOf(plan)), renderedAt: new Date() } });
 }
 
+/**
+ * The group's AI picture, left for later (hosts with a short request limit: docs/CONTENT_VISUALS.md "Autopilot on
+ * Netlify"): a pending visual the late-pictures sweep makes one step at a time. `standIns` are the owner's photo pictures
+ * the posts got meanwhile; the AI picture replaces only those.
+ */
+async function recordLatePicture(group: PlannedGroup, written: WrittenGroup, ctx: VisualContext, standIns: string[]) {
+  const plan: ImagePlan = {
+    version: 1,
+    pack: recommendPack(ctx.business),
+    aspectRatio: "4:5",
+    directedBy: "rules",
+    notes: [],
+    deferredFrom: [...new Set(standIns)],
+    slides: [
+      {
+        template: group.idea.template ?? "announcement",
+        headline: written.image.headline || group.project?.title || ctx.businessName,
+        subline: written.image.subline,
+        chip: written.image.chip,
+        kicker: written.image.kicker,
+        source: "ai",
+        photoPath: group.photos[0]?.path ?? null,
+        designId: null,
+        path: null,
+      },
+    ],
+  };
+  await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "image", status: "pending", plan: json(plan), items: json([]) } });
+}
+
 /** A video plan for a group with a video idea (a SCRIPT post), from its script and photos. Made later in the browser. */
 async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: VisualContext) {
   const scriptPost = group.posts.find((p) => p.format === "SCRIPT");
@@ -169,8 +201,12 @@ export async function makeGroupVisuals(group: PlannedGroup, written: WrittenGrou
   // The single image is still made when a feed network has no carousels (in every size the networks need).
   const needsSingle = !carousel || group.posts.some((p) => FEED_FORMATS.has(p.format) && !getProvider(p.network).rules.formats.includes("CAROUSEL"));
   let images: GroupImages;
+  // On Netlify (60 s a request; one AI picture takes 40 to 100 s) the single image's AI picture is made later by the
+  // late-pictures sweep: the posts get the owner's photo now. The Mac and Cloudflare paint it at once.
+  const aiNow = ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun;
+  const later = !carousel && aiNow && hasShortRequestLimit();
   if (needsSingle) {
-    images = await makeGroupImages(group, written.image, { ...ctx, useAiImages: ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun }, { aiStopped: run.aiStopped, caption: feedText(written) });
+    images = await makeGroupImages(group, written.image, { ...ctx, useAiImages: aiNow && !later }, { aiStopped: run.aiStopped, caption: feedText(written) });
     run.renders += Object.keys(images.designs).length;
     if (images.aiUsed) run.aiMade += 1;
     if (images.aiStopped) run.aiStopped = true;
@@ -179,7 +215,10 @@ export async function makeGroupVisuals(group: PlannedGroup, written: WrittenGrou
   }
   try {
     const cover = images.designs["4:5"] ?? images.designs["1:1"];
-    if (!carousel && cover) await recordImage(group, written, ctx, cover);
+    if (later) {
+      await recordLatePicture(group, written, ctx, Object.values(images.designs).filter((p): p is string => !!p));
+      run.aiMade += 1;
+    } else if (!carousel && cover) await recordImage(group, written, ctx, cover);
     await planGroupVideo(group, written, ctx);
   } catch (error) {
     await logError(error, { source: "autopilot.visuals.record", level: "warn", businessId: ctx.businessId });

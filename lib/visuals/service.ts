@@ -465,8 +465,8 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
     where: { id: row.id },
     data: { plan: json(plan), items: json(items), kind: kindOf(plan), status, error, renderingUntil: null, ...(done ? { renderedAt: new Date() } : {}) },
   });
-  // An Autopilot group's posts take the redrawn picture.
-  if (done && row.groupId) await attachToGroup(owner.businessId, row.groupId, { feed: true }).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
+  // An Autopilot group's posts take the redrawn picture (a picture made later only replaces the photo it stood in for).
+  if (done && row.groupId) await attachToGroup(owner.businessId, row.groupId, { feed: true, ...(plan.deferredFrom ? { onlyFrom: plan.deferredFrom } : {}) }).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
   // Studio's drafted posts of this content take it too (docs/CONTENT.md).
   if (done && row.contentId) await attachToContent(owner.businessId, row.contentId, { feed: true }).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
   // A video planned without photos shows the AI photo once there is one.
@@ -930,7 +930,7 @@ export function withMusicCredit(text: string, credit: string | null | undefined)
  * Puts a group's ready visuals on its posts that have not gone out: carousels and images on feed posts, the video on
  * video ideas (a real video post on Instagram and Facebook, the script reminder's attachment on TikTok and YouTube).
  */
-export async function attachToGroup(businessId: string, groupId: string, options: { feed?: boolean } = {}) {
+export async function attachToGroup(businessId: string, groupId: string, options: { feed?: boolean; onlyFrom?: string[] } = {}) {
   await attachVisuals(businessId, { groupId }, { groupId, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] } }, options);
 }
 
@@ -946,11 +946,16 @@ export async function attachToContent(businessId: string, contentId: string, opt
   await retryAutoSchedule(businessId, { contentId });
 }
 
-async function attachVisuals(businessId: string, key: { contentId: string } | { groupId: string }, postWhere: Prisma.PostWhereInput, options: { feed?: boolean }) {
+/**
+ * `onlyFrom`: only posts whose pictures are all among these paths (the ones Autopilot gave them) change, so a picture
+ * the owner picked by hand after planning is never replaced.
+ */
+async function attachVisuals(businessId: string, key: { contentId: string } | { groupId: string }, postWhere: Prisma.PostWhereInput, options: { feed?: boolean; onlyFrom?: string[] }) {
   const { images, video: videoFile, videoCredit } = await readyMedia(businessId, key);
   const posts = await prisma.post.findMany({ where: { businessId, ...postWhere, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true, updatedAt: true, text: true } });
   for (const post of posts) {
     if (!isNetwork(post.network)) continue;
+    if (options.onlyFrom && !post.mediaPaths.every((m) => options.onlyFrom!.includes(m))) continue;
     const rules = getProvider(post.network).rules;
     const planned = post.format;
     // Feed posts change when their picture was redrawn (options.feed), or when they had none.
