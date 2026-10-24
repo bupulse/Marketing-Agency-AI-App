@@ -10,6 +10,10 @@ import { withLedger } from "@/lib/ai/ledger";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { claudeBySubscription, SUBSCRIPTION_MODEL, subscriptionAllowed } from "@/lib/image-engine/claude-cli";
+
+// The Team page asks this too; only this file and the image engine's planner may import claude-cli
+// (tests/video-engine/no-subscription-transport.test.ts).
+export { subscriptionAllowed };
 import { recordRun } from "./runs";
 import { agentById, brainChain, chooseBrain, isBrain, type Agent, type AgentId, type Brain } from "./agents";
 

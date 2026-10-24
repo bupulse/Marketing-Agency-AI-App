@@ -6,9 +6,8 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { AGENTS, BRAIN_LABELS, agentById, chooseBrain, isAgentId, isBrain, type Agent, type AgentId, type Brain } from "@/lib/training-lab/agents";
-import { brainAvailable, saveBrain } from "@/lib/training-lab/brains";
+import { brainAvailable, saveBrain, subscriptionAllowed } from "@/lib/training-lab/brains";
 import { assertLabOwner, type LabOwner } from "@/lib/training-lab/examples";
-import { subscriptionAllowed } from "@/lib/image-engine/claude-cli";
 
 /** One group of identical examples (same kind, engines and consent) and how many there are. */
 export type ExampleGroup = { kind: string; engines: string[]; consentGiven: boolean; count: number };
