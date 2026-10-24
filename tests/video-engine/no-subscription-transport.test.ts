@@ -8,8 +8,11 @@ import { describe, expect, it } from "vitest";
 // One exception, owner decision 23 October 2026 (docs/IMAGE_ENGINE.md): the image engine's Prompter may use the
 // subscription on the TEST SITE ONLY, through lib/image-engine/claude-cli.ts, which refuses unless
 // IMAGE_ENGINE_CLAUDE_SUBSCRIPTION=1 and the platform is neither Netlify nor Cloudflare (tested below).
+// A second, owner decision 24 October 2026 (docs/TRAINING_LAB.md, "The agent team"): the agent team's brain router
+// (lib/training-lab/brains.ts) may run a member on the subscription through the same file and the same lock.
 const IMAGE_ENGINE_CLI = path.join("lib", "image-engine", "claude-cli.ts");
 const IMAGE_ENGINE_PLANNER = path.join("lib", "image-engine", "planner.ts");
+const TEAM_BRAINS = path.join("lib", "training-lab", "brains.ts");
 const ROOTS = ["app", "lib", "components", "worker.ts", "worker-crons.ts", "middleware.ts", "proxy.ts"];
 const CODE = /\.(ts|tsx|js|mjs|cjs)$/;
 
@@ -30,7 +33,7 @@ describe("the app never uses the Claude subscription", () => {
 
   it("nothing in app/, lib/, components/ or the worker imports video-lab/claude-cli or calls the CLI transport", () => {
     const offenders = all.filter((f) => {
-      if (f === IMAGE_ENGINE_CLI || f === IMAGE_ENGINE_PLANNER) return false;
+      if (f === IMAGE_ENGINE_CLI || f === IMAGE_ENGINE_PLANNER || f === TEAM_BRAINS) return false;
       const text = fs.readFileSync(f, "utf8");
       return /from\s+["'][^"']*claude-cli["']|import\(\s*["'][^"']*claude-cli["']\s*\)|require\(\s*["'][^"']*claude-cli["']\s*\)|\bsubscriptionTransport\b/.test(text);
     });
@@ -42,9 +45,9 @@ describe("the app never uses the Claude subscription", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the image engine's exception is the only one and stays test-site only", async () => {
+  it("the image engine's and the agent team's exceptions are the only ones and stay test-site only", async () => {
     const importers = all.filter((f) => /from\s+["'][^"']*image-engine\/claude-cli["']|from\s+["']\.\/claude-cli["']/.test(fs.readFileSync(f, "utf8")));
-    expect(importers).toEqual([IMAGE_ENGINE_PLANNER]);
+    expect(importers.sort()).toEqual([IMAGE_ENGINE_PLANNER, TEAM_BRAINS].sort());
     const { subscriptionAllowed } = await import("@/lib/image-engine/claude-cli");
     expect(subscriptionAllowed({}, "node")).toBe(false);
     expect(subscriptionAllowed({ IMAGE_ENGINE_CLAUDE_SUBSCRIPTION: "1" }, "netlify")).toBe(false);
