@@ -9,6 +9,7 @@ import { filterChoices, LIST_MAX, listExamples, parseFilter, previewLinks, type 
 import { ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, type TrainingKind } from "@/lib/training-lab/types";
 import { deleteExampleAction, rateExampleAction, setEngineAction } from "./actions";
 import { EditExample, ExampleForm } from "./example-form";
+import { LabTabs } from "./lab-tabs";
 
 export const metadata = { title: "Training Lab" };
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
         title="Training Lab"
         description="Teach the engines by example. Add a reel, video, image or post, a Kinyarwanda recording, an actor who agreed to be used, or a posting habit, and say in your own words how it was made and what is good about it. The engines you switch on read it when they plan. Only you see this page."
       />
+      <LabTabs current="library" />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
 
