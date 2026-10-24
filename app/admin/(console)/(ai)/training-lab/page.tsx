@@ -14,6 +14,7 @@ import { describeExtras } from "@/lib/training-lab/language";
 import { describeSchedule } from "@/lib/training-lab/schedule";
 import { EditExample, ExampleForm } from "./example-form";
 import { LabTabs } from "./lab-tabs";
+import { PortraitFromVideo } from "./portrait-from-video";
 
 export const metadata = { title: "Training Lab" };
 export const dynamic = "force-dynamic";
@@ -172,6 +173,7 @@ function ExampleCard({ example: e, link, back, analysis }: { example: Example; l
       </div>
 
       <Preview example={e} link={link} />
+      {e.kind === "actor" && e.consentGiven && e.mime?.startsWith("video/") && link && <PortraitFromVideo id={e.id} url={link} title={e.title} />}
       {e.sourceUrl && (
         <a href={e.sourceUrl} target="_blank" rel="noreferrer noopener" className="break-all text-[14px] font-medium text-pulse-blue underline">{e.sourceUrl}</a>
       )}

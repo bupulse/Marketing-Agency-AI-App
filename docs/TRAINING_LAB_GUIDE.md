@@ -25,7 +25,7 @@ Say how it was made and what is good, in your own words. Add a sector and a lang
 - **Reel or video:** upload the file or paste a link. Describe the shots, the cuts, the music and the hook. Name the technique, for example "price sticker first".
 - **Image or post:** upload it. Say what makes the layout, the words or the light work.
 - **Kinyarwanda recording:** upload the audio and type exactly what is said, spelled the way it should be written. Then fill in two boxes. "Spellings to avoid": one per line, as "wrong -> right". "Words that are right": brand names, or Kinyarwanda words the checker wrongly flags. The team then fixes your spellings in new reels and flags them everywhere else.
-- **Actor:** consent comes first. Tick the box, write the person's name and how and when they agreed. Without consent, the team will not use the actor. If you have a video of the actor, pause on a clear face and use "Portrait from this video" to make a portrait example from it. If that button is not on the card yet, upload a photo instead.
+- **Actor:** consent comes first. Tick the box, write the person's name and how and when they agreed. Without consent, the team will not use the actor. If you have a video of the actor, pause on a clear face and use "Portrait from this video" to make a portrait example from it. If the browser cannot read the video, it says so; then upload a photo instead.
 - **Posting schedule:** pick the network, the country, the best hours (like "7, 12:30, 19h"; you see how it was read before you save) and the best days. The team only reorders the posting times the business already allows. How many posts a week stays in the business's own settings.
 
 ## Ratings and "never this"
@@ -33,6 +33,9 @@ Say how it was made and what is good, in your own words. Add a sector and a lang
 - A rating of 1 or 2 stars turns it into a warning. The team will not copy it.
 - "Never this" is a note on what to avoid. The team and the clip checker read it. Write it as one clear sentence.
 - Each example has switches for the engines that may use it. Turn one off and the engine ignores the example.
+- **Finished reels** (at the bottom of the Library): press "More like this" on a reel you love, or "Never this" with one
+  line on why. The reel becomes an example with that rating, and its video is copied privately into the Lab.
+- On the Team page, give stars to what a member made. The member's average shows how well it is doing.
 
 ## The Team page
 Each member has a card with its job, how many examples it learns from, its latest runs, their cost and your ratings. For the script writer, the designer and the caption writer you can choose the brain: Gemini, Claude on the Anthropic key, Claude on your subscription, or free rules. The other members have one fixed brain. If the chosen brain is not available, the member uses the next one.
