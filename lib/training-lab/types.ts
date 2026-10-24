@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { buildVoiceExtras } from "./language";
 import { buildScheduleNotes } from "./schedule";
 
 // The Training Lab's examples (docs/TRAINING_LAB.md, model TrainingExample): what kinds there are, which engines read
@@ -111,6 +112,8 @@ export const exampleInputSchema = z
         formats: z.array(z.string()).max(20).default([]),
       })
       .nullish(),
+    /** A recording's spellings to avoid ("wrong -> right" per line) and right words (commas), kept in `notes`. */
+    voice: z.object({ wrong: z.string().max(10_000).default(""), words: z.string().max(10_000).default("") }).nullish(),
   })
   .superRefine((v, ctx) => {
     if (v.kind !== "schedule" && !v.hasFile && !v.sourceUrl) ctx.addIssue({ code: "custom", path: ["sourceUrl"], message: "Add a file or a link to the example." });
@@ -121,8 +124,14 @@ export const exampleInputSchema = z
       const { problem } = buildScheduleNotes(v.schedule);
       if (problem) ctx.addIssue({ code: "custom", path: ["schedule"], message: problem });
     }
+    if (v.kind === "voice") {
+      const { problem } = buildVoiceExtras(v.voice);
+      if (problem) ctx.addIssue({ code: "custom", path: ["voice"], message: problem });
+    }
   })
-  .transform((v) => (v.kind === "schedule" ? { ...v, notes: buildScheduleNotes(v.schedule).notes as Record<string, unknown> | null } : v));
+  .transform((v) => (v.kind === "schedule" ? { ...v, notes: buildScheduleNotes(v.schedule).notes as Record<string, unknown> | null } : v))
+  // For a recording, the extras are kept apart; examples.ts merges them into the notes (the AI-drafted fields stay).
+  .transform((v) => ({ ...v, voiceExtras: v.kind === "voice" ? buildVoiceExtras(v.voice).extras : null }));
 
 export type ExampleInput = z.output<typeof exampleInputSchema>;
 

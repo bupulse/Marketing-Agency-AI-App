@@ -12,6 +12,7 @@ import { AdminError, type AdminContext } from "@/lib/admin/types";
 import type { AdminIdentity } from "@/lib/admin/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createUploadSlot, exampleFolder, examplePath, isExamplePath, removeObjects, DOWNLOAD_SECONDS, TRAINING_BUCKET } from "./storage";
+import { readVoiceExtras, withVoiceExtras } from "./language";
 import { ENGINES, KINDS, exampleInputSchema, fileProblem, type ExampleInput, type TrainingEngine, type TrainingKind } from "./types";
 
 export type LabOwner = Pick<AdminIdentity, "id" | "isOwner" | "staffId">;
@@ -110,6 +111,12 @@ const columns = (v: ExampleInput) => ({
   transcript: v.transcript,
 });
 
+/** The notes a new example starts with: a posting habit's schedule, or a recording's spellings; else what was given. */
+function notesForCreate(input: ExampleInput): Prisma.InputJsonValue | undefined {
+  const notes = input.voiceExtras ? withVoiceExtras(input.notes, input.voiceExtras) : input.notes;
+  return notes === null || notes === undefined ? undefined : (notes as Prisma.InputJsonValue);
+}
+
 function fileOf(raw: unknown): FileInfo | null {
   if (!raw || typeof raw !== "object") return null;
   const f = raw as Record<string, unknown>;
@@ -148,7 +155,7 @@ export async function createExample(ctx: AdminContext, identity: LabOwner, raw: 
   }
   const row = await prisma.$transaction(async (tx) => {
     const row = await tx.trainingExample.create({
-      data: { kind: input.kind, ...columns(input), notes: input.notes === null ? undefined : (input.notes as Prisma.InputJsonValue), consentAt: input.consentGiven ? new Date() : null, createdById: identity.id },
+      data: { kind: input.kind, ...columns(input), notes: notesForCreate(input), consentAt: input.consentGiven ? new Date() : null, createdById: identity.id },
     });
     await writeAudit(tx, ctx, "create_training_example", `training:${row.id}`, null, { kind: row.kind, title: row.title, engines: row.engines, consentGiven: row.consentGiven });
     return row;
@@ -199,7 +206,10 @@ export async function updateExample(ctx: AdminContext, identity: LabOwner, id: s
   const row = await found(id);
   const input = parse({ ...(raw as object), kind: row.kind, hasFile: !!row.path || (raw as { hasFile?: unknown })?.hasFile === true });
   // A posting habit's notes are the schedule the owner typed; for every other kind the AI notes are left alone.
-  const data = { ...columns(input), ...(row.kind === "schedule" ? { notes: input.notes === null ? Prisma.DbNull : (input.notes as Prisma.InputJsonValue) } : {}) };
+  // A recording keeps its AI-drafted note fields and gets the spellings the owner typed.
+  const voiceNotes = row.kind === "voice" && input.voiceExtras ? withVoiceExtras(row.notes, input.voiceExtras) : undefined;
+  const notes = row.kind === "schedule" ? input.notes : voiceNotes;
+  const data = { ...columns(input), ...(row.kind === "schedule" || row.kind === "voice" ? { notes: notes === null || notes === undefined ? Prisma.DbNull : (notes as Prisma.InputJsonValue) } : {}) };
   const consentAt = input.consentGiven ? (row.consentGiven && row.consentAt ? row.consentAt : new Date()) : null;
   await prisma.$transaction(async (tx) => {
     await tx.trainingExample.update({ where: { id: row.id }, data: { ...data, consentAt } });
@@ -289,8 +299,10 @@ export function readNotes(raw: unknown): LabNotes | null {
 
 /** Writes an example's notes (null clears them) with an audit row. */
 export async function saveNotes(ctx: AdminContext, row: { id: string; notes: unknown }, notes: LabNotes | null, action: string, extra: Record<string, unknown> = {}) {
+  // A recording's spellings to avoid and right words live in the same notes: drafting or correcting the AI fields keeps them.
+  const kept = withVoiceExtras(notes, readVoiceExtras(row.notes));
   await prisma.$transaction(async (tx) => {
-    await tx.trainingExample.update({ where: { id: row.id }, data: { notes: notes ? (notes as Prisma.InputJsonValue) : Prisma.DbNull } });
+    await tx.trainingExample.update({ where: { id: row.id }, data: { notes: kept ? (kept as Prisma.InputJsonValue) : Prisma.DbNull } });
     await writeAudit(tx, ctx, action, `training:${row.id}`, { notes: row.notes ?? null }, { notes, ...extra });
   });
 }

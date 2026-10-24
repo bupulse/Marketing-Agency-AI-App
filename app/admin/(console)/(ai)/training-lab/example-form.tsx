@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { NETWORKS, type Network } from "@/lib/social/types";
+import { extrasText } from "@/lib/training-lab/language";
 import { NETWORK_NAMES, WEEKDAY_NAMES, hoursText, parseScheduleNotes } from "@/lib/training-lab/schedule";
 import { DEFAULT_ENGINES, ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, LANGUAGES, MAX_FILE_BYTES, exampleInputSchema, fileProblem, type TrainingEngine, type TrainingKind } from "@/lib/training-lab/types";
 import { confirmExampleFileAction, createExampleAction, startExampleUploadAction, updateExampleAction } from "./actions";
@@ -74,6 +75,7 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
   const [network, setNetwork] = useState<string>(saved?.network ?? "");
   const [hours, setHours] = useState(saved?.hours ? saved.hours.join(", ") : "");
   const [days, setDays] = useState<number[]>(saved?.weekdays ?? []);
+  const spellings = example?.kind === "voice" ? extrasText(example.notes) : { wrong: "", words: "" };
   const readHours = hours.trim() ? parseScheduleNotes({ hours })?.hours : undefined;
 
   function changeKind(next: string) {
@@ -118,6 +120,7 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
       consentName: String(form.get("consentName") ?? ""),
       consentNote: String(form.get("consentNote") ?? ""),
       engines,
+      voice: kind === "voice" ? { wrong: String(form.get("wrong") ?? ""), words: String(form.get("words") ?? "") } : null,
       schedule: kind === "schedule" ? { network, country: String(form.get("country") ?? ""), hours, weekdays: days, postsPerWeek: String(form.get("postsPerWeek") ?? ""), formats: list(form.get("formats")) } : null,
     };
     const fileInfo = file ? { name: file.name, type: typeOf(file), size: file.size } : null;
@@ -279,6 +282,16 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
         <Field label="What is said" hint="The words in the recording, spelled the way they should be written." required error={fieldErrors.transcript}>
           <Textarea name="transcript" rows={4} maxLength={10000} defaultValue={example?.transcript ?? ""} />
         </Field>
+      )}
+      {kind === "voice" && (
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+          <Field label="Spellings to avoid" hint={'One per line: "wrong -> right", or just the wrong one. The check will flag them.'} error={fieldErrors.voice}>
+            <Textarea name="wrong" rows={3} maxLength={10000} defaultValue={spellings.wrong} placeholder={"igiciro -> igiciro:\nmurakoze cyane"} />
+          </Field>
+          <Field label="Words that are right" hint="Separate with commas: brand names, or Kinyarwanda words the check wrongly flags.">
+            <Textarea name="words" rows={3} maxLength={10000} defaultValue={spellings.words} />
+          </Field>
+        </div>
       )}
 
       <div className="grid min-w-0 gap-4 sm:grid-cols-2">

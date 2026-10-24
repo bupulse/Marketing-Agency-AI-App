@@ -4,7 +4,7 @@
 // a fact the brief lacks is skipped. Pure, no I/O.
 import { shortPrice } from "../price";
 import { BRAIN, evidenceById, formatById, hookById, sectorById } from "./database";
-import { checkLanguage } from "./language";
+import { checkLanguage, type LanguageExtra } from "./language";
 import { rankWithOutcomes } from "./outcomes";
 import { formatFromTemplate, rankHooks, sectorFromText } from "./select";
 import type { Evidence, Hook, Outcome, Platform, Purpose, SectorId } from "./types";
@@ -270,7 +270,7 @@ function whyOf(h: Hook, sector: SectorId): { why: string; evidence: string[] } {
  * MAX_HOOK_WORDS words and passing checkLanguage. Clinics and schools never get a price hook (they lead with trust).
  * Pure and deterministic.
  */
-export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | "any" | null; count?: number; outcomes?: Outcome[] | null; businessId?: string | null; sector?: SectorId | null; presenter?: boolean; purpose?: Purpose | null; wide?: boolean } = {}): HookSuggestion[] {
+export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | "any" | null; count?: number; outcomes?: Outcome[] | null; businessId?: string | null; sector?: SectorId | null; presenter?: boolean; purpose?: Purpose | null; wide?: boolean; languageExtra?: LanguageExtra } = {}): HookSuggestion[] {
   const count = opts.count ?? 3;
   const f = briefFacts(brief);
   const sector = opts.sector ?? briefSector(brief);
@@ -297,7 +297,7 @@ export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | 
     const options = [(lang === "rw" ? t.rw : lang === "fr" ? t.fr : t.en) ?? t.any ?? []].flat();
     const line = options
       .map((o) => fill(o, f))
-      .find((l): l is string => !!l && wordCount(l) <= MAX_HOOK_WORDS && !checkLanguage([{ where: "hook", text: l, kind: "screen" }], brief.business.language).length && !out.some((x) => x.line === l));
+      .find((l): l is string => !!l && wordCount(l) <= MAX_HOOK_WORDS && !checkLanguage([{ where: "hook", text: l, kind: "screen" }], brief.business.language, opts.languageExtra).length && !out.some((x) => x.line === l));
     if (!line) continue;
     // A post keeps the price and the number in the caption, never in the opening line.
     if (post && ((f.price && line.includes(f.price)) || (f.phone && line.includes(f.phone)))) continue;

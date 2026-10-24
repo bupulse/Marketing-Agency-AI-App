@@ -9,6 +9,7 @@ import { analysisStatus, exampleProblem, type AnalysisStatus } from "@/lib/train
 import { filterChoices, LIST_MAX, listExamples, NOTE_FIELDS, NOTE_LABELS, parseFilter, previewLinks, readNotes, type ExampleFilter } from "@/lib/training-lab/examples";
 import { ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, type TrainingKind } from "@/lib/training-lab/types";
 import { deleteExampleAction, draftNotesAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
+import { describeExtras } from "@/lib/training-lab/language";
 import { describeSchedule } from "@/lib/training-lab/schedule";
 import { EditExample, ExampleForm } from "./example-form";
 import { LabTabs } from "./lab-tabs";
@@ -139,6 +140,8 @@ function ExampleCard({ example: e, link, back, analysis }: { example: Example; l
       <Text label={e.kind === "schedule" ? "Why these times" : "What is good"}>{e.whatIsGood}</Text>
       <Text label="Never this">{e.neverThis}</Text>
       {e.kind === "voice" && <Text label="What is said">{e.transcript}</Text>}
+      {e.kind === "voice" && <Text label="Spellings to avoid">{describeExtras(e.notes).wrong}</Text>}
+      {e.kind === "voice" && <Text label="Words that are right">{describeExtras(e.notes).words}</Text>}
       {(e.technique.length > 0 || e.tags.length > 0) && (
         <div className="flex flex-wrap gap-1.5">
           {e.technique.map((t) => (<Badge key={`t-${t}`} tone="blue">{t}</Badge>))}
