@@ -100,35 +100,61 @@ describe("teamCards", () => {
     const cards = await team.teamCards();
     expect(cards.map((c) => c.agent.id)).toEqual([...AGENT_IDS]);
     const writer = cards.find((c) => c.agent.id === "script-writer")!;
-    // Its default is the Anthropic key, which is not set here: it falls back to Gemini.
-    expect(writer).toMatchObject({ examples: 2, saved: null, chosen: "anthropic", using: "gemini" });
-    expect(cards.find((c) => c.agent.id === "designer")).toMatchObject({ saved: "gemini", chosen: "gemini", using: "gemini" });
+    // No saved choice: the reel engine's own language split, said in words.
+    expect(writer).toMatchObject({ examples: 2, saved: null, chosen: "anthropic", using: "gemini", defaultNote: team.DEFAULT_NOTES["script-writer"] });
+    expect(writer.defaultNote).toBe("By default: English reels on Claude, Kinyarwanda reels on Gemini. Choosing a brain sends every language to it.");
+    expect(cards.find((c) => c.agent.id === "designer")).toMatchObject({ saved: "gemini", chosen: "gemini", using: "gemini", defaultNote: null });
     expect(cards.find((c) => c.agent.id === "checker")).toMatchObject({ saved: null, chosen: "gemini" });
     expect(m.queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the default note once a brain is saved", async () => {
+    m.queryRaw.mockResolvedValue([]);
+    m.settings = [{ agentId: "script-writer", brain: "gemini" }];
+    expect((await team.teamCards()).find((c) => c.agent.id === "script-writer")).toMatchObject({ saved: "gemini", using: "gemini", defaultNote: null });
+  });
+});
+
+describe("who runs on the subscription", () => {
+  it("names only wired members whose brain now is the subscription", async () => {
+    vi.stubEnv("IMAGE_ENGINE_CLAUDE_SUBSCRIPTION", "1");
+    m.queryRaw.mockResolvedValue([]);
+    m.settings = [{ agentId: "script-writer", brain: "claude-subscription" }, { agentId: "designer", brain: "claude-subscription" }];
+    const cards = await team.teamCards();
+    expect(cards.find((c) => c.agent.id === "designer")?.using).toBe("claude-subscription");
+    // The designer is not wired: its engine works as it always has, whatever the switch says.
+    expect(team.subscriptionUse(cards).members).toEqual(["Script writer"]);
+  });
+
+  it("says when the image engine's Prompter uses the subscription: allowed here and no Anthropic key", () => {
+    expect(team.subscriptionUse([], { IMAGE_ENGINE_CLAUDE_SUBSCRIPTION: "1", PLATFORM: "node" }).prompter).toBe(true);
+    expect(team.subscriptionUse([], { IMAGE_ENGINE_CLAUDE_SUBSCRIPTION: "1", PLATFORM: "node", ANTHROPIC_API_KEY: "k" }).prompter).toBe(false);
+    expect(team.subscriptionUse([], { PLATFORM: "node" }).prompter).toBe(false);
   });
 });
 
 describe("setAgentBrain", () => {
   it("is for the owner only", async () => {
-    await expect(team.setAgentBrain(ctx, { ...OWNER, staffId: "s1" }, "designer", "gemini")).rejects.toMatchObject({ code: "forbidden" });
-    await expect(team.setAgentBrain({ ...ctx, viaApi: true }, OWNER, "designer", "gemini")).rejects.toMatchObject({ code: "forbidden" });
+    await expect(team.setAgentBrain(ctx, { ...OWNER, staffId: "s1" }, "script-writer", "gemini")).rejects.toMatchObject({ code: "forbidden" });
+    await expect(team.setAgentBrain({ ...ctx, viaApi: true }, OWNER, "script-writer", "gemini")).rejects.toMatchObject({ code: "forbidden" });
     expect(m.upsert).not.toHaveBeenCalled();
   });
 
-  it("refuses an unknown member or a brain it cannot use", async () => {
+  it("refuses an unknown member, one not connected to the switch, or a brain it cannot use", async () => {
     await expect(team.setAgentBrain(ctx, OWNER, "boss", "gemini")).rejects.toThrow("That team member does not exist.");
+    await expect(team.setAgentBrain(ctx, OWNER, "designer", "gemini")).rejects.toThrow("Designer is not connected to the switch yet: it works as it always has.");
     await expect(team.setAgentBrain(ctx, OWNER, "painter", "anthropic")).rejects.toThrow("Painter cannot use that brain.");
     expect(m.upsert).not.toHaveBeenCalled();
   });
 
   it("saves, audits the change and says what it runs on", async () => {
-    m.settings = [{ agentId: "designer", brain: "anthropic" }];
-    expect(await team.setAgentBrain(ctx, OWNER, "designer", "gemini")).toBe("Designer now works on Gemini (API key).");
-    expect(m.upsert).toHaveBeenCalledWith({ where: { agentId: "designer" }, create: { agentId: "designer", brain: "gemini", updatedById: OWNER.id }, update: { brain: "gemini", updatedById: OWNER.id } });
-    expect(m.audits).toEqual([{ action: "set_agent_brain", target: "agent:designer", before: { brain: "anthropic" }, after: { brain: "gemini" } }]);
+    m.settings = [{ agentId: "script-writer", brain: "anthropic" }];
+    expect(await team.setAgentBrain(ctx, OWNER, "script-writer", "gemini")).toBe("Script writer now works on Gemini (API key).");
+    expect(m.upsert).toHaveBeenCalledWith({ where: { agentId: "script-writer" }, create: { agentId: "script-writer", brain: "gemini", updatedById: OWNER.id }, update: { brain: "gemini", updatedById: OWNER.id } });
+    expect(m.audits).toEqual([{ action: "set_agent_brain", target: "agent:script-writer", before: { brain: "anthropic" }, after: { brain: "gemini" } }]);
   });
 
   it("says when the chosen brain is not available here", async () => {
-    expect(await team.setAgentBrain(ctx, OWNER, "designer", "claude-subscription")).toBe("Saved. Claude (your subscription, this Mac only) is not available here, so Designer uses Gemini (API key) for now.");
+    expect(await team.setAgentBrain(ctx, OWNER, "script-writer", "claude-subscription")).toBe("Saved. Claude (your subscription, this Mac only) is not available here, so Script writer uses Gemini (API key) for now.");
   });
 });

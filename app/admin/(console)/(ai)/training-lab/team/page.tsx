@@ -8,7 +8,7 @@ import { BRAIN_LABELS } from "@/lib/training-lab/agents";
 import { SUMMARY_DAYS, teamSummary, type AgentSummary } from "@/lib/training-lab/runs";
 import { LabTabs } from "../lab-tabs";
 import { setBrainAction } from "./actions";
-import { teamCards, type MemberCard } from "./data";
+import { subscriptionUse, teamCards, type MemberCard } from "./data";
 
 export const metadata = { title: "Training Lab team" };
 export const dynamic = "force-dynamic";
@@ -23,7 +23,8 @@ export default async function TrainingLabTeamPage({ searchParams }: PageProps<"/
   const sp = await searchParams;
   const [cards, summary] = await Promise.all([teamCards(), teamSummary()]);
   const byAgent = new Map(summary.map((s) => [s.agentId, s]));
-  const onSubscription = cards.filter((c) => c.chosen === "claude-subscription" || c.using === "claude-subscription").map((c) => c.agent.name);
+  const subscription = subscriptionUse(cards);
+  const onSubscription = subscription.members;
 
   return (
     <>
@@ -35,6 +36,7 @@ export default async function TrainingLabTeamPage({ searchParams }: PageProps<"/
         The Claude subscription is for your own use on your Mac. Before anything goes to bupulse.com, move every member on it to the Anthropic key.
         {onSubscription.length > 0 && ` On it now: ${onSubscription.join(", ")}.`}
       </p>
+      {subscription.prompter && <p className="rounded-2xl bg-soft px-4 py-3 text-sm text-muted">The image engine&apos;s Prompter uses your subscription when there is no Anthropic key, as it does here now.</p>}
 
       <ol className="flex min-w-0 flex-col gap-5">
         {cards.map((card, i) => (
@@ -50,6 +52,8 @@ export default async function TrainingLabTeamPage({ searchParams }: PageProps<"/
 function MemberPanel({ card, step, summary }: { card: MemberCard; step: number; summary?: AgentSummary }) {
   const { agent } = card;
   const single = card.options.length === 1;
+  // Several brains but its engine does not ask the router yet: the brains are information, there is nothing to save.
+  const unwired = !agent.wired && !single;
   return (
     <Panel title={`${step}. ${agent.name}`} description={agent.job} action={agent.paid ? <Badge tone="violet">Paid</Badge> : <Badge tone="success">Free</Badge>}>
       <dl className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-1.5 text-[14px] sm:grid-cols-[auto_1fr]">
@@ -59,13 +63,37 @@ function MemberPanel({ card, step, summary }: { card: MemberCard; step: number; 
         <dd>{agent.reads.length === 0 ? "Reads none: it works from the business's own facts." : `${card.examples} it can read now`}</dd>
         <dt className="text-muted">Works on now</dt>
         <dd className="min-w-0 break-words">
-          {card.using ? <span className="font-semibold">{BRAIN_LABELS[card.using]}</span> : <span className="font-semibold text-danger">No brain is available here</span>}
-          {card.using && card.using !== card.chosen && <span className="block text-[13px] text-muted">Your choice, {BRAIN_LABELS[card.chosen]}, is not available here, so it falls back.</span>}
+          {unwired ? (
+            <span className="font-semibold">As it always has</span>
+          ) : card.defaultNote ? (
+            <span className="font-semibold">{card.defaultNote}</span>
+          ) : (
+            <>
+              {card.using ? <span className="font-semibold">{BRAIN_LABELS[card.using]}</span> : <span className="font-semibold text-danger">No brain is available here</span>}
+              {card.using && card.using !== card.chosen && (
+                <span className="block text-[13px] text-muted">
+                  {card.saved ? `Your choice, ${BRAIN_LABELS[card.chosen]}, is not available here, so it works on ${BRAIN_LABELS[card.using]}.` : `Its default, ${BRAIN_LABELS[card.chosen]}, is not available here, so it works on ${BRAIN_LABELS[card.using]}.`}
+                </span>
+              )}
+            </>
+          )}
         </dd>
       </dl>
 
       {single ? (
         <p className="text-[13px] text-muted">It has one brain: {card.options[0].label}{card.options[0].note ? ` (${card.options[0].note})` : ""}.</p>
+      ) : unwired ? (
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-[13px] font-medium text-muted">The brains it can use</p>
+          <ul className="flex min-w-0 flex-col gap-1">
+            {card.options.map((o) => (
+              <li key={o.brain} className="min-w-0 px-2 py-1.5 text-[14px]">
+                <BrainLine option={o} isDefault={o.brain === agent.defaultBrain} />
+              </li>
+            ))}
+          </ul>
+          <p className="text-[13px] text-muted">Not connected to the switch yet: it works as it always has.</p>
+        </div>
       ) : (
         <form action={setBrainAction} className="flex min-w-0 flex-col gap-2">
           <input type="hidden" name="agentId" value={agent.id} />
@@ -74,12 +102,7 @@ function MemberPanel({ card, step, summary }: { card: MemberCard; step: number; 
             {card.options.map((o) => (
               <label key={o.brain} className="flex min-h-11 min-w-0 items-start gap-2.5 rounded-xl px-2 py-2 text-[14px] hover:bg-soft">
                 <input type="radio" name="brain" value={o.brain} defaultChecked={o.brain === card.chosen} className="mt-0.5 size-5 shrink-0" />
-                <span className="min-w-0">
-                  <span className="font-medium">{o.label}</span>
-                  {o.brain === agent.defaultBrain && <span className="text-muted"> (default)</span>}
-                  {o.paid ? <Badge tone="violet" className="ml-2">paid</Badge> : <Badge tone="success" className="ml-2">{o.brain === "rules" ? "free" : "no cost per call"}</Badge>}
-                  {o.note ? <span className="block text-[13px] text-danger">{o.note}</span> : <span className="block text-[13px] text-success">Available here</span>}
-                </span>
+                <BrainLine option={o} isDefault={o.brain === agent.defaultBrain} />
               </label>
             ))}
           </fieldset>
@@ -91,6 +114,17 @@ function MemberPanel({ card, step, summary }: { card: MemberCard; step: number; 
 
       <Runs summary={summary} />
     </Panel>
+  );
+}
+
+function BrainLine({ option: o, isDefault }: { option: MemberCard["options"][number]; isDefault: boolean }) {
+  return (
+    <span className="min-w-0">
+      <span className="font-medium">{o.label}</span>
+      {isDefault && <span className="text-muted"> (default)</span>}
+      {o.paid ? <Badge tone="violet" className="ml-2">paid</Badge> : <Badge tone="success" className="ml-2">{o.brain === "rules" ? "free" : "no cost per call"}</Badge>}
+      {o.note ? <span className="block text-[13px] text-danger">{o.note}</span> : <span className="block text-[13px] text-success">Available here</span>}
+    </span>
   );
 }
 

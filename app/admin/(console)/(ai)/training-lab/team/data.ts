@@ -5,9 +5,10 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
-import { AGENTS, BRAIN_LABELS, agentById, chooseBrain, isAgentId, isBrain, type Agent, type Brain } from "@/lib/training-lab/agents";
+import { AGENTS, BRAIN_LABELS, agentById, chooseBrain, isAgentId, isBrain, type Agent, type AgentId, type Brain } from "@/lib/training-lab/agents";
 import { brainAvailable, saveBrain } from "@/lib/training-lab/brains";
 import { assertLabOwner, type LabOwner } from "@/lib/training-lab/examples";
+import { subscriptionAllowed } from "@/lib/image-engine/claude-cli";
 
 /** One group of identical examples (same kind, engines and consent) and how many there are. */
 export type ExampleGroup = { kind: string; engines: string[]; consentGiven: boolean; count: number };
@@ -53,7 +54,12 @@ export function brainOptions(agent: Agent): BrainOption[] {
   });
 }
 
-export type MemberCard = { agent: Agent; examples: number; saved: Brain | null; chosen: Brain; using: Brain | null; options: BrainOption[] };
+/** What a wired member does with no saved choice, when that is not a single brain (the engine's own split). */
+export const DEFAULT_NOTES: Partial<Record<AgentId, string>> = {
+  "script-writer": "By default: English reels on Claude, Kinyarwanda reels on Gemini. Choosing a brain sends every language to it.",
+};
+
+export type MemberCard = { agent: Agent; examples: number; saved: Brain | null; chosen: Brain; using: Brain | null; options: BrainOption[]; defaultNote: string | null };
 
 /** Every member in pipeline order with its examples, its brains and the brain it runs on now (as brainFor decides). */
 export async function teamCards(): Promise<MemberCard[]> {
@@ -70,6 +76,7 @@ export async function teamCards(): Promise<MemberCard[]> {
       // The same choice as brainFor (lib/training-lab/brains.ts), from the settings read once for the whole team.
       using: chooseBrain(agent, saved, brainAvailable),
       options: brainOptions(agent),
+      defaultNote: agent.wired && !saved ? (DEFAULT_NOTES[agent.id] ?? null) : null,
     };
   });
 }
@@ -79,6 +86,7 @@ export async function setAgentBrain(ctx: AdminContext, identity: LabOwner, agent
   assertLabOwner(ctx, identity);
   if (!isAgentId(agentId)) throw new AdminError("invalid", "That team member does not exist.");
   const agent = agentById(agentId)!;
+  if (!agent.wired) throw new AdminError("invalid", `${agent.name} is not connected to the switch yet: it works as it always has.`);
   if (!isBrain(brain) || !agent.brains.includes(brain)) throw new AdminError("invalid", `${agent.name} cannot use that brain.`);
   const before = (await prisma.agentSetting.findUnique({ where: { agentId }, select: { brain: true } }))?.brain ?? null;
   if (!(await saveBrain(agentId, brain, identity.id))) throw new AdminError("invalid", `${agent.name} cannot use that brain.`);
@@ -86,4 +94,16 @@ export async function setAgentBrain(ctx: AdminContext, identity: LabOwner, agent
   const using = chooseBrain(agent, brain, brainAvailable);
   if (using === brain) return `${agent.name} now works on ${BRAIN_LABELS[brain]}.`;
   return `Saved. ${BRAIN_LABELS[brain]} is not available here, so ${agent.name} uses ${using ? BRAIN_LABELS[using] : "nothing"} for now.`;
+}
+
+/**
+ * Who really runs on the owner's subscription here: wired members whose brain now is the subscription (an unwired one
+ * works as it always has, so the switch says nothing about it). `prompter`: the image engine's Prompter uses the
+ * subscription on its own when there is no Anthropic key (lib/image-engine/planner.ts claudeRoute).
+ */
+export function subscriptionUse(cards: MemberCard[], env: Record<string, string | undefined> = process.env): { members: string[]; prompter: boolean } {
+  return {
+    members: cards.filter((c) => c.agent.wired && c.using === "claude-subscription").map((c) => c.agent.name),
+    prompter: subscriptionAllowed(env) && !env.ANTHROPIC_API_KEY,
+  };
 }

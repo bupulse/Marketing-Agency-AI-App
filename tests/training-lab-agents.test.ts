@@ -39,6 +39,10 @@ describe("registry", () => {
       expect(a.engines.length > 0).toBe(a.reads.length > 0);
     }
   });
+  it("marks as wired only the script writer and the members with one brain", () => {
+    expect(AGENTS.filter((a) => a.wired).map((a) => a.id)).toEqual(["researcher", "script-writer", "painter", "filmmaker", "editor", "scheduler"]);
+    for (const a of AGENTS) if (a.brains.length === 1) expect(a.wired).toBe(true);
+  });
   it("reads Kinyarwanda phrases through the language switch and actors through the presenter switch", () => {
     for (const a of AGENTS) if (a.reads.includes("voice")) expect(a.engines).toContain("language");
     expect(AGENTS.find((a) => a.id === "painter")?.engines).toContain("presenter");
