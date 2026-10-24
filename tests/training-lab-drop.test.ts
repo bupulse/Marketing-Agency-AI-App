@@ -222,6 +222,7 @@ describe("the AI reads a dropped file", () => {
   it("keeps only what the form takes", () => {
     expect(readDraftFields({ title: "x".repeat(200), sector: "spaceships", language: "Klingon", techniques: Array.from({ length: 9 }, (_, i) => `t${i}`) })).toMatchObject({ sector: "", language: "", techniques: ["t0", "t1", "t2", "t3", "t4", "t5"] });
     expect(readDraftFields({ title: "x".repeat(200) })!.title).toHaveLength(120);
+    expect(readDraftFields({ title: "A", sector: "unknown", language: "unknown" })).toMatchObject({ sector: "", language: "" });
     expect(readDraftFields({})).toBeNull();
     expect(readDraftFields("no")).toBeNull();
   });
@@ -268,5 +269,14 @@ describe("a recording's spellings in the check card", () => {
   it("refuse a line the edit form would refuse, in the same words", async () => {
     put(draftOf("note.m4a"), "audio/x-m4a");
     await expect(ex.createExampleFromDraft(ctx, OWNER, draftOf("note.m4a"), { ...form, kind: "voice", engines: ["language"], transcript: "x", voice: { wrong: "nez ->", words: "" } })).rejects.toThrow('"nez ->": write the right spelling after the arrow, or leave the arrow out.');
+  });
+});
+
+describe("the draft schema Gemini accepts", () => {
+  it("has no empty enum value (Gemini answers 400 to one)", async () => {
+    const { DRAFT_SCHEMA } = await import("@/lib/training-lab/analyse");
+    const enums = Object.values(DRAFT_SCHEMA.properties as Record<string, { enum?: string[] }>).flatMap((p) => p.enum ?? []);
+    expect(enums.length).toBeGreaterThan(0);
+    expect(enums.every((v) => v.trim().length > 0)).toBe(true);
   });
 });
