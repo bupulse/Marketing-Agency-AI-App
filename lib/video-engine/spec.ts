@@ -285,7 +285,21 @@ export interface VideoLayer extends LayerBase {
   sound?: boolean;
   /** A dark veil over the clip, 0 to 0.8 (set by the validator under light text, like a photo's). */
   dim?: number;
+  /**
+   * Playback speed in this scene, CLIP_RATE.min (slow motion) to CLIP_RATE.max; 1 when absent. The scene reads
+   * `seconds × rate` of the clip from `start`. A clip not at 1 plays without its own sound (it would change pitch).
+   */
+  rate?: number;
+  /** The clip's own sound in this scene (with `sound`): its level, 0 to 1 (1 when absent; 0 is silent). */
+  volume?: number;
+  /** Seconds the clip's own sound fades in at the scene's start and out at its end, 0 to CLIP_FADE_MAX (a click-free 8 ms when absent). */
+  fadeIn?: number;
+  fadeOut?: number;
 }
+
+/** A clip's playback speed (VideoLayer.rate) and its sound's longest fade (fadeIn, fadeOut), in the editor and the validator. */
+export const CLIP_RATE = { min: 0.5, max: 2 } as const;
+export const CLIP_FADE_MAX = 3;
 
 export type Layer = PhotoLayer | TextLayer | ShapeLayer | CharacterLayer | ParticlesLayer | VideoLayer;
 

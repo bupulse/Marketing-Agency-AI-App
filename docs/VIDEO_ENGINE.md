@@ -527,6 +527,16 @@ builds a MotionSpec with these parts:
 
 - **Scenes:** one scene per shot, all cuts, each with a full-frame `video` layer (`start` = where in the clip the scene
   begins, `sound` = keep the clip's own audio). Shots under 1.2 s join a neighbour.
+- **Editor settings** (owner decision 24 October 2026, for the shared editor; `lib/video-engine/spec.ts` VideoLayer):
+  - `rate` sets the speed, from 0.5 (slow motion) to 2 (`CLIP_RATE`). The scene reads `seconds × rate` of the clip from
+    `start` (`videoFramesAt`). A clip that is not at 1 plays without its own sound, because resampling would change its
+    pitch.
+  - `volume` sets the level of the clip's own sound, from 0 to 1. At 0 the scene is silent.
+  - `fadeIn` and `fadeOut` are in seconds, from 0 to 3 (`CLIP_FADE_MAX`), at that scene's start and end. They go on the
+    sound cue as `gain`, `fadeInMs` and `fadeOutMs` (`clipSoundCues`), and `placeVoice` (lib/video-engine/voice.ts)
+    applies them. A voice cue has none of these, so it keeps full level and 8 ms fades.
+  - The validator clamps all four and leaves them out at their defaults, so a design without them is unchanged. The
+    music still ducks under a clip's sound at any level above 0.
 - **Text:** the hook in the first 3 s (the Brain's best hook that the facts can fill), the price on the product shot,
   the number on every scene and the call to action on the last. A calm template shows a small quiet number on its first
   shot, then the bar.
