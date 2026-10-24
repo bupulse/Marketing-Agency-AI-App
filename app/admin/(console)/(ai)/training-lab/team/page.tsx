@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app";
-import { Empty, Panel, notice } from "@/components/admin/ui";
-import { Badge, Button } from "@/components/ui";
+import { notice } from "@/components/admin/ui";
+import { Badge } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { BRAIN_LABELS } from "@/lib/training-lab/agents";
@@ -10,7 +10,9 @@ import { SUMMARY_DAYS, teamSummary, type AgentSummary } from "@/lib/training-lab
 import { LabTabs } from "../lab-tabs";
 import { rateRunAction, setBrainAction } from "./actions";
 import { resultLabels } from "@/lib/training-lab/from-result";
-import { subscriptionUse, teamCards, type MemberCard } from "./data";
+import { subscriptionUse, teamCards, type MemberCard as Card } from "./data";
+import { AGENT_ICONS, Pipeline } from "./pipeline";
+import { SHORT_BRAIN, costChip, learnsLine } from "./view";
 
 export const metadata = { title: "Training Lab team" };
 export const dynamic = "force-dynamic";
@@ -31,133 +33,137 @@ export default async function TrainingLabTeamPage({ searchParams }: PageProps<"/
 
   return (
     <>
-      <PageHeader title="Training Lab" description="BuPulse's studio team: each member does one job, learns from your Lab examples, and works on the brain you choose." />
+      <PageHeader title="Training Lab" description="Your studio team: each member does one job, learns from your Lab examples, and works on the brain you choose." />
       <LabTabs current="team" />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
       <p className={onSubscription.length ? notice.bad : "rounded-2xl bg-soft px-4 py-3 text-sm text-muted"}>
-        The Claude subscription is for your own use on your Mac. Before anything goes to bupulse.com, move every member on it to the Anthropic key.
-        {onSubscription.length > 0 && ` On it now: ${onSubscription.join(", ")}.`}
+        Your Claude subscription is for you, on your Mac only. Before anything goes to bupulse.com, move the members using it to the Claude key.
+        {onSubscription.length > 0 && ` Using it now: ${onSubscription.join(", ")}.`}
+        {subscription.prompter && " The image engine's Prompter also uses it when there is no Claude key."}
       </p>
-      {subscription.prompter && <p className="rounded-2xl bg-soft px-4 py-3 text-sm text-muted">The image engine&apos;s Prompter uses your subscription when there is no Anthropic key, as it does here now.</p>}
 
-      <ol className="flex min-w-0 flex-col gap-5">
-        {cards.map((card, i) => (
+      <Pipeline />
+
+      <ul className="grid min-w-0 gap-4 lg:grid-cols-2">
+        {cards.map((card) => (
           <li key={card.agent.id} id={`agent-${card.agent.id}`} className="min-w-0 scroll-mt-24">
-            <MemberPanel card={card} step={i + 1} summary={byAgent.get(card.agent.id)} labels={labels} />
+            <MemberCard card={card} summary={byAgent.get(card.agent.id)} labels={labels} />
           </li>
         ))}
-      </ol>
+      </ul>
     </>
   );
 }
 
-function MemberPanel({ card, step, summary, labels }: { card: MemberCard; step: number; summary?: AgentSummary; labels: Map<string, string> }) {
+const CHIP = { Free: "bg-success-bg text-success", Paid: "bg-amber-100 text-amber-800" } as const;
+
+function MemberCard({ card, summary, labels }: { card: Card; summary?: AgentSummary; labels: Map<string, string> }) {
   const { agent } = card;
+  const Icon = AGENT_ICONS[agent.id];
+  const cost = costChip(card);
   const single = card.options.length === 1;
   // Several brains but its engine does not ask the router yet: the brains are information, there is nothing to save.
   const unwired = !agent.wired && !single;
+  const unavailable = card.options.filter((o) => o.note);
   return (
-    <Panel title={`${step}. ${agent.name}`} description={agent.job} action={agent.paid ? <Badge tone="violet">Paid</Badge> : <Badge tone="success">Free</Badge>}>
-      <dl className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-1.5 text-[14px] sm:grid-cols-[auto_1fr]">
-        <dt className="text-muted">Engine</dt>
-        <dd className="min-w-0 break-words">{agent.engine}</dd>
-        <dt className="text-muted">Lab examples</dt>
-        <dd>{agent.reads.length === 0 ? "Reads none: it works from the business's own facts." : `${card.examples} it can read now`}</dd>
-        <dt className="text-muted">Works on now</dt>
-        <dd className="min-w-0 break-words">
-          {unwired ? (
-            <span className="font-semibold">{card.defaultNote ?? "As it always has"}</span>
-          ) : card.defaultNote ? (
-            <span className="font-semibold">{card.defaultNote}</span>
-          ) : (
-            <>
-              {card.using ? <span className="font-semibold">{BRAIN_LABELS[card.using]}</span> : <span className="font-semibold text-danger">No brain is available here</span>}
-              {card.using && card.using !== card.chosen && (
-                <span className="block text-[13px] text-muted">
-                  {card.saved ? `Your choice, ${BRAIN_LABELS[card.chosen]}, is not available here, so it works on ${BRAIN_LABELS[card.using]}.` : `Its default, ${BRAIN_LABELS[card.chosen]}, is not available here, so it works on ${BRAIN_LABELS[card.using]}.`}
-                </span>
-              )}
-            </>
-          )}
-        </dd>
-      </dl>
+    <section aria-label={agent.name} className="flex h-full min-w-0 flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white shadow-glow">
+          <Icon aria-hidden className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold">{agent.name}</h2>
+            <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${CHIP[cost]}`}>{cost}</span>
+          </div>
+          <p className="text-[14px] text-muted">{agent.job}</p>
+          <p className="text-[13px] text-muted">{learnsLine(card)}</p>
+        </div>
+      </div>
+
+      {unwired || card.defaultNote ? (
+        <p className="text-[14px] font-medium">{card.defaultNote ?? "Works as it always has."}</p>
+      ) : card.using ? (
+        card.using !== card.chosen && (
+          <p className="text-[13px] text-muted">
+            {card.saved ? `Your choice, ${BRAIN_LABELS[card.chosen]}, is not available here, so it works on ${BRAIN_LABELS[card.using]}.` : `Its default, ${BRAIN_LABELS[card.chosen]}, is not available here, so it works on ${BRAIN_LABELS[card.using]}.`}
+          </p>
+        )
+      ) : (
+        <p className="text-[14px] font-semibold text-danger">No brain is available here.</p>
+      )}
 
       {single ? (
-        <p className="text-[13px] text-muted">It has one brain: {card.options[0].label}{card.options[0].note ? ` (${card.options[0].note})` : ""}.</p>
+        <p className="text-[13px] text-muted">One brain: {card.options[0].label}{card.options[0].note ? ` (${card.options[0].note})` : ""}.</p>
       ) : unwired ? (
-        <div className="flex min-w-0 flex-col gap-1">
-          <p className="text-[13px] font-medium text-muted">The brains it can use</p>
-          <ul className="flex min-w-0 flex-col gap-1">
-            {card.options.map((o) => (
-              <li key={o.brain} className="min-w-0 px-2 py-1.5 text-[14px]">
-                <BrainLine option={o} isDefault={o.brain === agent.defaultBrain} />
-              </li>
-            ))}
-          </ul>
-          <p className="text-[13px] text-muted">{card.defaultNote ? "Not connected to the switch yet: its brain cannot be changed for now." : "Not connected to the switch yet: it works as it always has."}</p>
-        </div>
+        <p className="text-[13px] text-muted">
+          It can use {card.options.map((o) => SHORT_BRAIN[o.brain]).join(", ")}. {card.defaultNote ? "Not connected to the switch yet, so its brain cannot be changed for now." : "Not connected to the switch yet, so it works as it always has."}
+        </p>
       ) : (
         <form action={setBrainAction} className="flex min-w-0 flex-col gap-2">
           <input type="hidden" name="agentId" value={agent.id} />
-          <fieldset className="flex min-w-0 flex-col gap-1">
-            <legend className="mb-1 text-[13px] font-medium text-muted">Its brain</legend>
-            {card.options.map((o) => (
-              <label key={o.brain} className="flex min-h-11 min-w-0 items-start gap-2.5 rounded-xl px-2 py-2 text-[14px] hover:bg-soft">
-                <input type="radio" name="brain" value={o.brain} defaultChecked={o.brain === card.chosen} className="mt-0.5 size-5 shrink-0" />
-                <BrainLine option={o} isDefault={o.brain === agent.defaultBrain} />
-              </label>
-            ))}
-          </fieldset>
-          <div>
-            <Button type="submit" size="sm" variant="outline">Save the brain</Button>
+          <div role="group" aria-label={`${agent.name}'s brain`} className="grid min-w-0 grid-cols-2 gap-1 rounded-2xl bg-soft p-1 sm:grid-cols-4">
+            {card.options.map((o) => {
+              const on = o.brain === card.chosen;
+              return (
+                <button
+                  key={o.brain}
+                  type="submit"
+                  name="brain"
+                  value={o.brain}
+                  aria-pressed={on}
+                  title={o.note ?? (o.brain === agent.defaultBrain ? "Default" : undefined)}
+                  className={`min-h-11 min-w-0 rounded-xl px-2 text-[13px] font-medium ${on ? "bg-surface text-text shadow-glass" : "text-muted hover:bg-surface/60"} ${o.note ? "opacity-50" : ""}`}
+                >
+                  {SHORT_BRAIN[o.brain]}
+                </button>
+              );
+            })}
           </div>
+          {unavailable.map((o) => (
+            <p key={o.brain} className="text-[12px] text-muted">{SHORT_BRAIN[o.brain]} is greyed out: {o.note!.charAt(0).toLowerCase()}{o.note!.slice(1)}.</p>
+          ))}
         </form>
       )}
 
-      <Runs summary={summary} agentId={agent.id} labels={labels} />
-    </Panel>
+      <Stats summary={summary} />
+      <Recent summary={summary} agentId={agent.id} labels={labels} />
+    </section>
   );
 }
 
-function BrainLine({ option: o, isDefault }: { option: MemberCard["options"][number]; isDefault: boolean }) {
+function Stats({ summary }: { summary?: AgentSummary }) {
+  const has = !!summary && summary.runs > 0;
   return (
-    <span className="min-w-0">
-      <span className="font-medium">{o.label}</span>
-      {isDefault && <span className="text-muted"> (default)</span>}
-      {o.paid ? <Badge tone="violet" className="ml-2">paid</Badge> : <Badge tone="success" className="ml-2">{o.brain === "rules" ? "free" : "no cost per call"}</Badge>}
-      {o.note ? <span className="block text-[13px] text-danger">{o.note}</span> : <span className="block text-[13px] text-success">Available here</span>}
-    </span>
+    <dl className="grid grid-cols-3 gap-2 text-[14px]">
+      <Stat label={`Runs, ${SUMMARY_DAYS} days`} value={has ? String(summary.runs) : "0"} />
+      <Stat label="Worked" value={has ? percent(summary.okRate) : "none yet"} />
+      <Stat label="Cost" value={has ? usd(summary.costUsd) : "$0"} />
+    </dl>
   );
 }
 
-function Runs({ summary, agentId, labels }: { summary?: AgentSummary; agentId: string; labels: Map<string, string> }) {
-  if (!summary || summary.runs === 0) return <Empty>No runs in the last {SUMMARY_DAYS} days.</Empty>;
+/** The last runs and the stars on their work, folded away until opened. */
+function Recent({ summary, agentId, labels }: { summary?: AgentSummary; agentId: string; labels: Map<string, string> }) {
+  if (!summary || summary.runs === 0) return <p className="text-[13px] text-muted">No work in the last {SUMMARY_DAYS} days.</p>;
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <dl className="grid grid-cols-2 gap-3 text-[14px] sm:grid-cols-4">
-        <Stat label={`Runs (${SUMMARY_DAYS} days)`} value={String(summary.runs)} />
-        <Stat label="Worked" value={percent(summary.okRate)} />
-        <Stat label="Cost" value={usd(summary.costUsd)} />
-        <Stat label="Rating" value={summary.avgRating === null ? "none yet" : `${summary.avgRating} of 5 (${summary.rated})`} />
-      </dl>
-      <div className="min-w-0">
-        <p className="mb-1 text-[13px] font-medium text-muted">Last runs</p>
-        <ul className="flex min-w-0 flex-col divide-y divide-line">
-          {summary.last.map((r) => (
-            <li key={r.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2 text-[13px]">
-              {r.ok ? <Badge tone="success">ok</Badge> : <Badge tone="danger">error</Badge>}
-              <span className="font-medium">{BRAIN_LABELS[r.brain] ?? r.brain}</span>
-              <span className="text-muted">{dateTime(r.createdAt)}</span>
-              <span className="tabular-nums text-muted">{usd(r.costUsd)}</span>
-              {!r.resultRef && r.rating !== null && <span className="text-muted">{r.rating} of 5</span>}
-              {!r.ok && r.error && <span className="block w-full break-words text-danger">{r.error.slice(0, 200)}</span>}
-              {r.resultRef && labels.has(r.resultRef) && <RateResult agentId={agentId} resultRef={r.resultRef} label={labels.get(r.resultRef)!} rating={r.rating} />}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+    <details className="min-w-0">
+      <summary className="min-h-11 cursor-pointer py-2.5 text-[14px] font-medium">Recent work{summary.avgRating !== null ? ` · rated ${summary.avgRating} of 5 (${summary.rated})` : ""}</summary>
+      <ul className="flex min-w-0 flex-col divide-y divide-line">
+        {summary.last.map((r) => (
+          <li key={r.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-2 text-[13px]">
+            {r.ok ? <Badge tone="success">ok</Badge> : <Badge tone="danger">error</Badge>}
+            <span className="font-medium">{BRAIN_LABELS[r.brain] ?? r.brain}</span>
+            <span className="text-muted">{dateTime(r.createdAt)}</span>
+            <span className="tabular-nums text-muted">{usd(r.costUsd)}</span>
+            {!r.resultRef && r.rating !== null && <span className="text-muted">{r.rating} of 5</span>}
+            {!r.ok && r.error && <span className="block w-full break-words text-danger">{r.error.slice(0, 200)}</span>}
+            {r.resultRef && labels.has(r.resultRef) && <RateResult agentId={agentId} resultRef={r.resultRef} label={labels.get(r.resultRef)!} rating={r.rating} />}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

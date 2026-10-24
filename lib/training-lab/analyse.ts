@@ -17,6 +17,8 @@ import { recordRun } from "./runs";
 import { assertLabOwner, NOTE_FIELDS, NOTE_MAX, readNotes, saveNotes, type LabNotes, type LabOwner } from "./examples";
 import { TRAINING_BUCKET } from "./storage";
 import { KIND_LABELS, type TrainingKind } from "./types";
+import { SECTORS } from "@/lib/video-engine/brain/types";
+import { parseWrongSpellings, WORD_MAX } from "./language";
 
 export const ANALYSIS_FEATURE = "trainingLab";
 export const MAX_INLINE_BYTES = 20 * 1024 * 1024;
@@ -73,6 +75,38 @@ export function exampleProblem(e: ExampleForNotes): string | null {
   return null;
 }
 
+/** One Gemini call on a file sent inline (as the reel checker does), in the AI ledger under "trainingLab". */
+async function askGemini(a: { apiKey: string; model: string; mime: string; bytes: Uint8Array; prompt: string; schema: object; maxOutputTokens: number; fetchImpl?: typeof fetch }): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
+  const body = {
+    contents: [{ parts: [{ inline_data: { mime_type: a.mime, data: Buffer.from(a.bytes).toString("base64") } }, { text: a.prompt }] }],
+    generationConfig: { responseMimeType: "application/json", responseSchema: a.schema, maxOutputTokens: a.maxOutputTokens },
+  };
+  return withLedger(
+    { feature: ANALYSIS_FEATURE },
+    { provider: "gemini", model: a.model },
+    async () => {
+      const res = await (a.fetchImpl ?? fetch)(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(a.model)}:generateContent`, {
+        method: "POST",
+        headers: { "x-goog-api-key": a.apiKey, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!res.ok) throw new Error(`Gemini answered ${res.status}.`);
+      const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
+      return { text: j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "", usage: { inputTokens: j.usageMetadata?.promptTokenCount ?? 0, outputTokens: j.usageMetadata?.candidatesTokenCount ?? 0 } };
+    },
+    (r) => ({ provider: "gemini", model: a.model, usage: r.usage }),
+  );
+}
+
+const parseJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text.trim().replace(/^```(?:json)?\s*|\s*```$/g, ""));
+  } catch {
+    return null;
+  }
+};
+
 export type Analysis = { ok: true; notes: LabNotes; costUsd: number } | { ok: false; error: string };
 
 /**
@@ -96,34 +130,9 @@ export async function analyseExample(e: ExampleForNotes, opts: { fetchImpl?: typ
     if (error || !blob) return { ok: false, error: "The file could not be read from Storage. Try again." };
     const bytes = new Uint8Array(await blob.arrayBuffer());
     if (bytes.byteLength > MAX_INLINE_BYTES) return { ok: false, error: `The file is over ${MAX_INLINE_BYTES / 1024 / 1024} MB, too big for the AI to watch.` };
-    const body = {
-      contents: [{ parts: [{ inline_data: { mime_type: e.mime, data: Buffer.from(bytes).toString("base64") } }, { text: notesPrompt(e) }] }],
-      generationConfig: { responseMimeType: "application/json", responseSchema: NOTES_SCHEMA, maxOutputTokens: 2000 },
-    };
-    const result = await withLedger(
-      { feature: ANALYSIS_FEATURE },
-      { provider: "gemini", model },
-      async () => {
-        const res = await (opts.fetchImpl ?? fetch)(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-          method: "POST",
-          headers: { "x-goog-api-key": apiKey, "content-type": "application/json" },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(120_000),
-        });
-        if (!res.ok) throw new Error(`Gemini answered ${res.status}.`);
-        const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
-        return { text: j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "", usage: { inputTokens: j.usageMetadata?.promptTokenCount ?? 0, outputTokens: j.usageMetadata?.candidatesTokenCount ?? 0 } };
-      },
-      (r) => ({ provider: "gemini", model, usage: r.usage }),
-    );
+    const result = await askGemini({ apiKey, model, mime: e.mime!, bytes, prompt: notesPrompt(e), schema: NOTES_SCHEMA, maxOutputTokens: 2000, fetchImpl: opts.fetchImpl });
     const costUsd = estimateCostUsd(model, result.usage);
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*|\s*```$/g, ""));
-    } catch {
-      parsed = null;
-    }
-    const notes = readNotes(parsed);
+    const notes = readNotes(parseJson(result.text));
     await recordRun({ ...run, ok: !!notes, ms: Date.now() - started, costUsd, error: notes ? null : "The answer had no usable notes." });
     return notes ? { ok: true, notes, costUsd } : { ok: false, error: "The AI's answer could not be read. Try again, or write the notes yourself." };
   } catch (error) {
@@ -141,4 +150,121 @@ export async function draftExampleNotes(ctx: AdminContext, identity: LabOwner, i
   if (!result.ok) throw new AdminError("invalid", result.error);
   await saveNotes(ctx, row, result.notes, "draft_training_notes", { costUsd: result.costUsd });
   return result.notes;
+}
+
+// ---- Reading a dropped file (the Library's Drop, read, check; app/admin/(console)/(ai)/training-lab/drop) -------------
+
+/** The form fields the AI suggests for a dropped file, in plain words; the owner checks and corrects them. */
+export type DraftFields = { title: string; howMade: string; whatIsGood: string; techniques: string[]; sector: string; language: string; transcript: string };
+/**
+ * A recording's likely misspellings the AI heard, as "wrong -> right" lines (language.ts parseWrongSpellings). Only a
+ * suggestion: the check card shows it and the owner adds it to the box or not; it is never saved on its own.
+ */
+export type DraftReadingExtras = { spellingSuggestions: string };
+export type DraftReading = ({ ok: true; fields: DraftFields; notes: LabNotes | null; costUsd: number } & DraftReadingExtras) | { ok: false; error: string };
+
+export const DRAFT_LANGUAGES = ["Kinyarwanda", "English", "French", "Swahili"] as const;
+const DRAFT_KINDS: TrainingKind[] = ["reel", "video", "image", "voice", "actor"];
+
+export const DRAFT_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    how_made: { type: "string" },
+    what_is_good: { type: "string" },
+    techniques: { type: "array", items: { type: "string" } },
+    sector: { type: "string", enum: [...SECTORS, ""] },
+    language: { type: "string", enum: [...DRAFT_LANGUAGES, ""] },
+    transcript: { type: "string" },
+    spelling_suggestions: { type: "array", items: { type: "object", properties: { wrong: { type: "string" }, right: { type: "string" } }, required: ["wrong", "right"] } },
+    ...NOTES_SCHEMA.properties,
+  },
+  required: ["title", "how_made", "what_is_good", "techniques", "sector", "language", "transcript", "spelling_suggestions", ...NOTE_FIELDS],
+};
+
+export function draftPrompt(kind: TrainingKind): string {
+  const what = kind === "image" ? "image or social-media post" : kind === "voice" ? "voice recording" : kind === "actor" ? "photo or video of a person who could present a business's videos" : "short social-media video";
+  return [
+    `You study a ${what} that the owner of BuPulse, a social-media service for small businesses in Rwanda, saved as an example for its AI to learn from. Look at (and listen to) all of it closely.`,
+    "Write in plain, friendly English a non-expert understands. Be concrete; never invent what you cannot see or hear.",
+    "Fields:",
+    "- title: a short name for it, at most 8 words.",
+    "- how_made: 2 or 3 sentences on how it was made (who filmed what, with what, the shots and the edit).",
+    "- what_is_good: 1 or 2 sentences on what the AI should learn from it.",
+    '- techniques: at most 6 short lowercase tags for the techniques it uses (for example "hook in 1 second", "beat sync", "whip pan", "3d sticker", "price on screen").',
+    `- sector: the kind of business it is for, one of ${SECTORS.join(", ")}, or "" when you cannot tell.`,
+    `- language: the language spoken or written in it, one of ${DRAFT_LANGUAGES.join(", ")}, or "".`,
+    kind === "voice" ? "- transcript: exactly what is said, word for word, in the language it is said in." : '- transcript: "" (only recordings get one).',
+    kind === "voice"
+      ? "- spelling_suggestions: Kinyarwanda words in it that people often spell wrong in captions, each as the common wrong spelling and the right one (at most 8; [] when you are not sure)."
+      : "- spelling_suggestions: [] (only recordings get them).",
+    "- and the notes: hook (the first 1-3 seconds), shots (each shot in order), cuts_per_second (a number and a short note), beat_sync, music, captions (the words on screen), stickers, setting, people (who appears and what they do, or \"none\"), why_it_works.",
+    'For an image or a recording, answer "none" for the fields that do not apply.',
+    "Answer as JSON with exactly those fields.",
+  ].join("\n");
+}
+
+const clip = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+
+/** The AI's suggested misspellings as "wrong -> right" lines the spellings box takes; anything the box would refuse is dropped. */
+export function readSpellingSuggestions(raw: unknown): string {
+  const list = raw && typeof raw === "object" && Array.isArray((raw as { spelling_suggestions?: unknown }).spelling_suggestions) ? ((raw as { spelling_suggestions: unknown[] }).spelling_suggestions) : [];
+  const lines = list
+    .map((x) => (x && typeof x === "object" ? x : {}) as { wrong?: unknown; right?: unknown })
+    .map((x) => [clip(x.wrong, 1000), clip(x.right, 1000)])
+    // A word too long for the box is dropped, never cut: half a word would be a wrong "right" spelling.
+    .filter(([w, r]) => w && r && w.length <= WORD_MAX && r.length <= WORD_MAX && w.toLowerCase() !== r.toLowerCase() && !/->|→|=>/.test(w + r))
+    .map(([w, r]) => `${w} -> ${r}`);
+  const parsed = parseWrongSpellings(lines.slice(0, 8).join("\n"));
+  return parsed.problem ? "" : parsed.wrong.map((w) => `${w.word} -> ${w.fix}`).join("\n");
+}
+
+/** The suggested fields from the answer, each cut to what the form takes; unknown sectors and languages become "". */
+export function readDraftFields(raw: unknown): DraftFields | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const techniques = (Array.isArray(r.techniques) ? r.techniques : []).map((t) => clip(t, 40).toLowerCase()).filter((t) => t && t !== "none");
+  const sector = clip(r.sector, 40).toLowerCase();
+  const language = DRAFT_LANGUAGES.find((l) => l.toLowerCase() === clip(r.language, 40).toLowerCase()) ?? "";
+  const fields: DraftFields = {
+    title: clip(r.title, 120),
+    howMade: clip(r.how_made, 2000),
+    whatIsGood: clip(r.what_is_good, 2000),
+    techniques: [...new Set(techniques)].slice(0, 6),
+    sector: (SECTORS as readonly string[]).includes(sector) ? sector : "",
+    language,
+    transcript: clip(r.transcript, 10_000),
+  };
+  return fields.title || fields.howMade || fields.whatIsGood ? fields : null;
+}
+
+/**
+ * One Gemini call on a dropped file: the suggested form fields and the notes together. Within the switch and the cap,
+ * files up to 20 MB, kinds the AI can look at (not a posting habit). Never throws; a problem comes back in plain words
+ * and the owner fills the form in by hand. Logged as the Checker's run with resultRef "draft:<id>".
+ */
+export async function readDraft(d: { draftId: string; path: string; mime: string; bytes: number; kind: TrainingKind }, opts: { fetchImpl?: typeof fetch; env?: Record<string, string | undefined> } = {}): Promise<DraftReading> {
+  const env = opts.env ?? process.env;
+  if (!DRAFT_KINDS.includes(d.kind)) return { ok: false, error: "The AI does not read posting habits: fill in the form yourself." };
+  if (d.bytes > MAX_INLINE_BYTES) return { ok: false, error: `The file is over ${MAX_INLINE_BYTES / 1024 / 1024} MB, too big for the AI to read. Fill in the form yourself, or drop a shorter cut.` };
+  const status = await analysisStatus(env);
+  if (!status.allowed) return { ok: false, error: status.reason?.replace(/ You can write the notes yourself below\.$/, " Fill in the form yourself.") ?? "The AI cannot read it now." };
+  const model = env.TRAINING_LAB_ANALYSIS_MODEL || env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_TEXT_MODEL;
+  const started = Date.now();
+  const run = { agentId: "checker" as const, brain: "gemini" as const, model, feature: ANALYSIS_FEATURE, exampleIds: [] as string[], resultRef: `draft:${d.draftId}` };
+  try {
+    const { data: blob, error } = await createAdminClient().storage.from(TRAINING_BUCKET).download(d.path);
+    if (error || !blob) return { ok: false, error: "The file could not be read from Storage. Try again." };
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (bytes.byteLength > MAX_INLINE_BYTES) return { ok: false, error: `The file is over ${MAX_INLINE_BYTES / 1024 / 1024} MB, too big for the AI to read.` };
+    const result = await askGemini({ apiKey: env.GEMINI_API_KEY!, model, mime: d.mime, bytes, prompt: draftPrompt(d.kind), schema: DRAFT_SCHEMA, maxOutputTokens: 3000, fetchImpl: opts.fetchImpl });
+    const costUsd = estimateCostUsd(model, result.usage);
+    const parsed = parseJson(result.text);
+    const fields = readDraftFields(parsed);
+    await recordRun({ ...run, ok: !!fields, ms: Date.now() - started, costUsd, error: fields ? null : "The answer had no usable fields." });
+    return fields ? { ok: true, fields, notes: readNotes(parsed), costUsd, spellingSuggestions: d.kind === "voice" ? readSpellingSuggestions(parsed) : "" } : { ok: false, error: "The AI's answer could not be read. Fill in the form yourself." };
+  } catch (error) {
+    await recordRun({ ...run, ok: false, ms: Date.now() - started, error: error instanceof Error ? error.message : String(error) });
+    return { ok: false, error: "The AI could not read it this time. Fill in the form yourself, or try again later." };
+  }
 }

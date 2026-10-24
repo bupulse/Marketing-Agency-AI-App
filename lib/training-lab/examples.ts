@@ -12,7 +12,7 @@ import { AdminError, type AdminContext } from "@/lib/admin/types";
 import type { AdminIdentity } from "@/lib/admin/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { withdrawActorConsent } from "./consent";
-import { createUploadSlot, exampleFolder, examplePath, isExamplePath, removeObjects, DOWNLOAD_SECONDS, TRAINING_BUCKET } from "./storage";
+import { createUploadSlot, exampleFolder, examplePath, isExamplePath, removeObjects, safeFileName, DOWNLOAD_SECONDS, TRAINING_BUCKET } from "./storage";
 import { readVoiceExtras, withVoiceExtras } from "./language";
 import { ENGINES, KINDS, exampleInputSchema, fileProblem, type ExampleInput, type TrainingEngine, type TrainingKind } from "./types";
 
@@ -385,4 +385,119 @@ export async function createPortraitFromVideo(ctx: AdminContext, identity: LabOw
     await writeAudit(tx, ctx, "create_training_portrait", `training:${made.id}`, null, { from_video: source.id, at_seconds: at, consentName: source.consentName });
   });
   return made;
+}
+
+// ---- Drafts: a dropped file before it is saved (the Library's Drop, read, check) --------------------------------------
+
+/**
+ * A dropped file waits in "drafts/<adminUserId>/<draftId>/<name>" in the private Lab bucket while the AI reads it and the
+ * owner checks the form; Save creates the example and moves the file into its folder, Discard deletes it, and drafts
+ * left for a day are deleted the next time the owner drops something. No row exists until Save, so the engines never
+ * see a draft.
+ */
+export const DRAFTS = "drafts";
+export const DRAFT_KEEP_MS = 24 * 60 * 60 * 1000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type Draft = { draftId: string; path: string; token: string; signedUrl: string };
+
+/** The draft's path for this admin and file name; null when the id is not a draft id. */
+export function draftPath(adminUserId: string, draftId: string, fileName: string): string | null {
+  if (!UUID.test(draftId)) return null;
+  return `${DRAFTS}/${exampleFolder(adminUserId, draftId)}${safeFileName(fileName)}`;
+}
+
+/** The parts of a draft path, when it is this admin's own draft (and nothing else: no other folder, no "..") . */
+export function ownDraft(path: unknown, adminUserId: string): { draftId: string; name: string } | null {
+  if (typeof path !== "string") return null;
+  const m = /^drafts\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(path);
+  if (!m || m[1] !== adminUserId || !UUID.test(m[2]) || safeFileName(m[3]) !== m[3]) return null;
+  return { draftId: m[2], name: m[3] };
+}
+
+/** Deletes this admin's drafts older than a day (best effort: a draft that stays is only a file in a private folder). */
+export async function cleanupDrafts(adminUserId: string, now = Date.now()): Promise<number> {
+  try {
+    const storage = createAdminClient().storage.from(TRAINING_BUCKET);
+    const root = `${DRAFTS}/${adminUserId}`;
+    const { data: folders } = await storage.list(root, { limit: 100 });
+    const old: string[] = [];
+    for (const folder of folders ?? []) {
+      if (!UUID.test(folder.name)) continue;
+      const { data: files } = await storage.list(`${root}/${folder.name}`, { limit: 10 });
+      for (const f of files ?? []) if (f.id && f.created_at && now - new Date(f.created_at).getTime() > DRAFT_KEEP_MS) old.push(`${root}/${folder.name}/${f.name}`);
+    }
+    if (old.length) await removeObjects(old);
+    return old.length;
+  } catch {
+    return 0;
+  }
+}
+
+/** Step 1 of a drop: the file is checked for its kind and size, and gets an upload address in a fresh draft folder. */
+export async function startDraft(ctx: AdminContext, identity: LabOwner, rawFile: unknown, kind: string): Promise<Draft> {
+  assertLabOwner(ctx, identity);
+  const file = fileOf(rawFile);
+  if (!file) throw new AdminError("invalid", "Choose a file.");
+  if (!(KINDS as readonly string[]).includes(kind)) throw new AdminError("invalid", "Choose what kind of example this is.");
+  const problem = fileProblem(file, kind as TrainingKind);
+  if (problem) throw new AdminError("invalid", problem);
+  void cleanupDrafts(identity.id);
+  const draftId = globalThis.crypto.randomUUID();
+  const path = draftPath(identity.id, draftId, file.name)!;
+  try {
+    const slot = await createUploadSlot(path);
+    return { draftId, path, token: slot.token, signedUrl: slot.signedUrl };
+  } catch {
+    throw new AdminError("unavailable", "Storage did not give an upload address. Try again; is the \"training-lab\" bucket there?");
+  }
+}
+
+/** The uploaded draft's real size and type, from Storage; null when nothing arrived. */
+export async function draftInfo(path: string): Promise<{ mime: string; bytes: number } | null> {
+  const { data, error } = await createAdminClient().storage.from(TRAINING_BUCKET).info(path);
+  if (error || !data?.size) return null;
+  return { mime: String(data.contentType ?? ""), bytes: data.size };
+}
+
+/** Discard: the draft's file is deleted. Only the owner's own drafts. */
+export async function discardDraft(ctx: AdminContext, identity: LabOwner, path: string): Promise<void> {
+  assertLabOwner(ctx, identity);
+  if (!ownDraft(path, identity.id)) throw new AdminError("invalid", "That draft could not be found.");
+  await removeObjects([path]).catch(() => {});
+}
+
+/**
+ * Save: the checked form becomes an example (the same checks as the long form), and the draft's file is moved into the
+ * example's folder. `draft` null: an example given as a link. A file that cannot be moved leaves the example saved
+ * without it (the Library's health line then says so) and the message says what to do.
+ */
+export async function createExampleFromDraft(ctx: AdminContext, identity: LabOwner, draft: string | null, raw: unknown): Promise<{ id: string; warning?: string }> {
+  assertLabOwner(ctx, identity);
+  const own = draft === null ? null : ownDraft(draft, identity.id);
+  if (draft !== null && !own) throw new AdminError("invalid", "That draft could not be found. Drop the file again.");
+  const info = draft ? await draftInfo(draft) : null;
+  if (draft && !info) throw new AdminError("not_found", "The file did not arrive. Drop it again.");
+  const input = parse({ ...(raw as object), hasFile: !!info });
+  if (info && own) {
+    const problem = fileProblem({ name: own.name, type: info.mime, size: info.bytes }, input.kind);
+    if (problem) throw new AdminError("invalid", problem);
+  }
+  const row = await prisma.$transaction(async (tx) => {
+    const row = await tx.trainingExample.create({
+      data: { kind: input.kind, ...columns(input), notes: notesForCreate(input), consentAt: input.consentGiven ? new Date() : null, createdById: identity.id },
+    });
+    await writeAudit(tx, ctx, "create_training_example", `training:${row.id}`, null, { kind: row.kind, title: row.title, engines: row.engines, consentGiven: row.consentGiven, from: draft ? "drop" : "link" });
+    return row;
+  });
+  if (!draft || !own || !info) return { id: row.id };
+  const to = examplePath(identity.id, row.id, own.name);
+  try {
+    const { error } = await createAdminClient().storage.from(TRAINING_BUCKET).move(draft, to);
+    if (error) throw error;
+    await prisma.trainingExample.update({ where: { id: row.id }, data: { path: to, mime: info.mime, bytes: info.bytes } });
+    return { id: row.id };
+  } catch {
+    return { id: row.id, warning: "The example is saved, but its file could not be moved into it. Open it in the list and add the file again." };
+  }
 }

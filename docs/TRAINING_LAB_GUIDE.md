@@ -19,6 +19,15 @@ Each member does one job and learns from certain examples.
 | Checker | Watches the result and sends back what is wrong | Your "never this" notes, Kinyarwanda words |
 | Scheduler | Chooses when to post | Posting habits |
 
+## Adding an example: drop, read, check
+1. **Drop** a reel, video, photo or voice note into the big box at the top of the Library, or paste a link.
+2. **The AI reads it** (a few seconds): it fills in the title, how it was made, what is good, the techniques, the
+   business type, the language and its notes (hook, shots, cuts, beat, stickers, music, words). A link cannot be
+   watched, so you fill that one in yourself.
+3. **Check** the card: fix anything, tap the stars, add "Never copy this" if needed, and press **Save to the Lab**.
+   Discard throws the file away.
+Your examples then show as a gallery: tap one to see and change everything about it.
+
 ## Adding examples well
 Say how it was made and what is good, in your own words. Add a sector and a language, so the right team members find it. Short and specific beats long.
 
@@ -47,7 +56,7 @@ Each member has a card with its job, how many examples it learns from, its lates
 Open the Editor tab. It starts with an example video; pick "Open a finished reel" to load a real one. Use the timeline to reorder shots (drag, or the Earlier and Later buttons), trim by dragging the right edge or typing the seconds, and use the panel below for transitions, zoom, words, stickers and the colour look. Undo and Redo are there too. "Export MP4" makes the video in your browser; keep the tab open. Nothing is saved unless you press "Save as a Lab example". That adds your edited video to the Library with a list of what you changed and the reason you give. The reel you opened is never changed.
 
 ## What costs money
-Nothing in the Lab spends money by itself. The AI notes that draft an example's description are off until you set a budget; you can always write the notes by hand. Editing and exporting happen in your browser. Reels, pictures and posts cost what they did before, and a member on a paid brain costs per use, within the caps already set.
+The AI that reads a dropped example costs about a cent each, inside your $2 test budget, and stops by itself when it is used up. You can always write the notes by hand. Editing and exporting happen in your browser. Reels, pictures and posts cost what they did before, and a member on a paid brain costs per use, within the caps already set.
 
 ## First day
 1. Add your 3 best reels, rate them 5 stars, and say in a sentence what makes each one work.

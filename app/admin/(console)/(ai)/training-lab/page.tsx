@@ -8,7 +8,7 @@ import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { analysisStatus, exampleProblem, type AnalysisStatus } from "@/lib/training-lab/analyse";
 import { filterChoices, LIST_MAX, listExamples, NOTE_FIELDS, NOTE_LABELS, parseFilter, previewLinks, readNotes, type ExampleFilter } from "@/lib/training-lab/examples";
-import { ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, type TrainingKind } from "@/lib/training-lab/types";
+import { ENGINE_LABELS, ENGINES, KIND_LABELS, type TrainingKind } from "@/lib/training-lab/types";
 import { deleteExampleAction, draftNotesAction, moreLikeThisAction, neverThisAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
 import { finishedReels, type FinishedReel } from "@/lib/training-lab/from-result";
 import { presenterUses } from "@/lib/training-lab/consent";
@@ -16,7 +16,10 @@ import { HEALTH_SHOWN, healthRows, labHealth, type HealthIssue } from "@/lib/tra
 import { describeExtras } from "@/lib/training-lab/language";
 import { exampleUsage, usageLine, type ExampleUse } from "@/lib/training-lab/usage";
 import { describeSchedule } from "@/lib/training-lab/schedule";
-import { EditExample, ExampleForm } from "./example-form";
+import { chipHref, galleryItem, KIND_CHIPS } from "@/lib/training-lab/gallery";
+import { EditExample } from "./example-form";
+import { DropZone } from "./drop/drop-zone";
+import { Gallery } from "./gallery";
 import { LabTabs } from "./lab-tabs";
 import { PortraitFromVideo } from "./portrait-from-video";
 
@@ -53,6 +56,9 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
   const withFiles = examples.filter((e) => e.path);
   const missing = new Set(links.size ? withFiles.filter((e) => !links.get(e.path!)).map((e) => e.id) : []);
   const health = forHealth ? labHealth(forHealth, missing) : null;
+  // Why an example has a warning dot on its card: what the health list says about it.
+  const warnings = new Map<string, string>();
+  for (const issue of health ?? []) warnings.set(issue.id, warnings.has(issue.id) ? `${warnings.get(issue.id)} ${issue.problem}` : issue.problem);
   const filtered = Object.keys(filter).length > 0;
   const back = query(filter);
 
@@ -68,30 +74,37 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
 
       {health && <LabHealth issues={health} />}
 
-      <Panel title="Add an example" description="A file or a link, then the plain-words form. Files stay private: only this page shows them, with links that expire after an hour.">
-        <ExampleForm />
-      </Panel>
+      <DropZone />
 
-      <Panel title={`Examples (${examples.length}${examples.length === LIST_MAX ? "+" : ""})`} description="Newest first.">
-        <form method="get" action={BASE} className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
-          <FilterSelect name="kind" label="Kind" value={filter.kind} options={KINDS.map((k) => [k, KIND_LABELS[k]])} />
-          <FilterSelect name="sector" label="Sector" value={filter.sector} options={choices.sectors.map((s) => [s, s])} />
-          <FilterSelect name="language" label="Language" value={filter.language} options={choices.languages.map((l) => [l, l])} />
-          <FilterSelect name="engine" label="Engine" value={filter.engine} options={ENGINES.map((e) => [e, ENGINE_LABELS[e]])} />
-          <div className="flex gap-2">
-            <Button type="submit" size="sm">Filter</Button>
-            {filtered && <Button href={BASE} size="sm" variant="outline">Clear</Button>}
-          </div>
-        </form>
-        {examples.length === 0 ? (
-          <Empty>{filtered ? "No example matches these filters." : "No examples yet. Add the first one above."}</Empty>
-        ) : (
-          <ul className="flex min-w-0 flex-col gap-4">
-            {examples.map((e) => (
-              <ExampleCard key={e.id} example={e} link={e.path ? links.get(e.path) : undefined} back={back} analysis={analysis} use={usage.get(e.id)} presenterUses={presenterCounts.get(e.id) ?? 0} />
-            ))}
-          </ul>
-        )}
+      <Panel title={`Examples (${examples.length}${examples.length === LIST_MAX ? "+" : ""})`} description="Newest first. Tap an example to see everything about it and change it.">
+        <nav aria-label="Filter by kind" className="flex min-w-0 flex-wrap gap-2">
+          {KIND_CHIPS.map((chip) => {
+            const on = (filter.kind ?? null) === chip.kind;
+            return (
+              <Link key={chip.label} href={chipHref(BASE, filter, chip.kind)} aria-current={on ? "true" : undefined} className={`inline-flex min-h-11 items-center rounded-full border px-4 text-[14px] font-medium no-underline ${on ? "border-transparent bg-brand-gradient text-white" : "border-line text-muted hover:bg-soft"}`}>
+                {chip.label}
+              </Link>
+            );
+          })}
+        </nav>
+        <details open={!!(filter.sector || filter.language || filter.engine)} className="min-w-0">
+          <summary className="inline-flex min-h-11 cursor-pointer items-center text-[14px] font-medium text-pulse-blue">More filters</summary>
+          <form method="get" action={BASE} className="grid min-w-0 gap-3 pt-2 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+            {filter.kind && <input type="hidden" name="kind" value={filter.kind} />}
+            <FilterSelect name="sector" label="Sector" value={filter.sector} options={choices.sectors.map((sc) => [sc, sc])} />
+            <FilterSelect name="language" label="Language" value={filter.language} options={choices.languages.map((l) => [l, l])} />
+            <FilterSelect name="engine" label="Engine" value={filter.engine} options={ENGINES.map((e) => [e, ENGINE_LABELS[e]])} />
+            <div className="flex gap-2">
+              <Button type="submit" size="sm">Filter</Button>
+              {filtered && <Button href={BASE} size="sm" variant="outline">Clear</Button>}
+            </div>
+          </form>
+        </details>
+        <Gallery
+          items={examples.map((e) => galleryItem(e, { link: e.path ? links.get(e.path) : undefined, times: usage.get(e.id)?.times, warning: warnings.get(e.id) ?? null }))}
+          details={Object.fromEntries(examples.map((e) => [e.id, <ExampleDetail key={e.id} example={e} link={e.path ? links.get(e.path) : undefined} back={back} analysis={analysis} use={usage.get(e.id)} presenterUses={presenterCounts.get(e.id) ?? 0} />]))}
+          empty={filtered ? "No example matches these filters." : "Your Lab is empty. Drop your best reel above to start."}
+        />
       </Panel>
 
       <FinishedReels reels={reels} />
@@ -194,14 +207,13 @@ function Text({ label, children }: { label: string; children: string | null }) {
   );
 }
 
-function ExampleCard({ example: e, link, back, analysis, use, presenterUses: uses }: { example: Example; link?: string; back: string; analysis: AnalysisStatus; use?: ExampleUse; presenterUses: number }) {
+function ExampleDetail({ example: e, link, back, analysis, use, presenterUses: uses }: { example: Example; link?: string; back: string; analysis: AnalysisStatus; use?: ExampleUse; presenterUses: number }) {
   const here = `${back}#ex-${e.id}`;
   const noFile = !e.path && !e.sourceUrl && e.kind !== "schedule";
   return (
-    <li id={`ex-${e.id}`} className="flex min-w-0 scroll-mt-24 flex-col gap-3 rounded-2xl border border-line p-4">
+    <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="break-words font-semibold">{e.title}</h3>
           <p className="text-[13px] text-muted">{kindLabel(e.kind)} · added {dateTime(e.createdAt)}{e.bytes ? ` · ${mb(e.bytes)}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -303,7 +315,7 @@ function ExampleCard({ example: e, link, back, analysis, use, presenterUses: use
         />
         <ConfirmButton action={deleteExampleAction} fields={{ id: e.id }} label="Delete" title={`Delete “${e.title}”?`} description={`The example and its file are deleted, and the engines stop learning from it.${e.kind === "actor" && uses > 0 ? ` This also removes them as the presenter of ${uses} business${uses === 1 ? "" : "es"}. Reels already made are not changed.` : ""} This cannot be undone.`} confirmLabel="Delete example" pendingLabel="Deleting…" />
       </div>
-    </li>
+    </div>
   );
 }
 

@@ -73,6 +73,13 @@ Kinyarwanda voice later.
   subscription warning), and the Editor opened by link with "Loading the clips… 0 of 7" and the Lab notes panel: all
   render, no errors. video-engine built speed and clip sound for the editor (81a02e83, theirs): task 25 waits for it
   to reach quiz-mode.
+- 17:58: main put a10c5a35 on the test site (quiz-mode merged into training-lab first, a fast-forward, bringing
+  video-engine's VideoLayer rate, volume and fades). Chrome (read-only): the editor opened by link shows the new
+  "Clip speed and sound" group for a real LEAF reel shot. ef76b9b3 (speed and trims stop at the clip's end) sent to main.
+- 18:03: the OWNER (back briefly): the Lab "shouldn't display like that, make it friendly and a perfect training lab".
+  Chose "Drop, read, check" (one drop box, the AI fills everything, the owner checks and saves; a gallery of
+  thumbnails) and a $2 test budget for the AI reading examples (docs/AI_COSTS.md; my .env set; main asked to set it on
+  the test site). Board tasks 26 (drop, read, check) and 27 (gallery) given to the two helpers.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small
