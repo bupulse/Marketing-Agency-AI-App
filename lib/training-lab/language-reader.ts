@@ -4,16 +4,23 @@ import "server-only";
 import type { LanguageExtra } from "@/lib/video-engine/brain/language";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { voiceLanguage } from "@/lib/video-engine/voice-language";
 import { languageExtraFrom } from "./language";
 
 const ROWS = 200;
+
+/** One name per language for comparing ("rw", "Ikinyarwanda" and "Kinyarwanda (Rwanda)" are all Kinyarwanda). */
+export function sameLanguageKey(language: string | null | undefined): string {
+  const bare = (language ?? "").replace(/\(.*?\)/g, "").trim();
+  return voiceLanguage(bare).captionLanguage.toLowerCase();
+}
 
 /** `language`: the business's content language; examples in another language are left out (examples with none count). */
 export async function labLanguage(language?: string | null): Promise<LanguageExtra> {
   try {
     const rows = await prisma.trainingExample.findMany({ where: { kind: "voice", engines: { has: "language" } }, orderBy: { createdAt: "desc" }, take: ROWS, select: { kind: true, rating: true, transcript: true, notes: true, engines: true, language: true } });
-    const want = language?.trim().toLowerCase();
-    return languageExtraFrom(want ? rows.filter((r) => !r.language || r.language.trim().toLowerCase() === want) : rows);
+    const want = language?.trim() ? sameLanguageKey(language) : null;
+    return languageExtraFrom(want ? rows.filter((r) => !r.language?.trim() || sameLanguageKey(r.language) === want) : rows);
   } catch (error) {
     await logError(error, { source: "training-lab.language", level: "warn" });
     return {};

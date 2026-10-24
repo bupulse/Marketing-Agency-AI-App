@@ -6,7 +6,7 @@ vi.mock("@/lib/db", () => ({ prisma: { trainingExample: { findMany: (...a: unkno
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 
 import { buildVoiceExtras, describeExtras, extrasText, languageExtraFrom, parseApprovedWords, parseWrongSpellings, readVoiceExtras, withVoiceExtras } from "@/lib/training-lab/language";
-import { labLanguage } from "@/lib/training-lab/language-reader";
+import { labLanguage, sameLanguageKey } from "@/lib/training-lab/language-reader";
 import { exampleInputProblem, exampleInputSchema } from "@/lib/training-lab/types";
 import { checkLanguage } from "@/lib/video-engine/brain/language";
 import { planSeries } from "@/lib/video-engine/brain/series";
@@ -97,6 +97,11 @@ describe("labLanguage", () => {
     const out = await labLanguage("kinyarwanda");
     expect(findMany.mock.calls[0][0]).toMatchObject({ where: { kind: "voice", engines: { has: "language" } }, take: 200 });
     expect(out.words).toEqual(["murakaza", "neza", "muraho"]);
+  });
+  it("matches the language by its aliases on both sides (video-engine's review)", async () => {
+    findMany.mockResolvedValue([{ ...voice({ transcript: "murakaza neza" }), language: "Kinyarwanda (Rwanda)" }, { ...voice({ transcript: "amakuru" }), language: "rw" }, { ...voice({ transcript: "bonjour madame" }), language: "fr" }]);
+    expect((await labLanguage("Ikinyarwanda")).words).toEqual(["murakaza", "neza", "amakuru"]);
+    expect(sameLanguageKey("RW")).toBe(sameLanguageKey("kinyarwanda (Rwanda)"));
   });
   it("is empty on an error", async () => {
     findMany.mockRejectedValue(new Error("down"));
