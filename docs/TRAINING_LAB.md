@@ -121,8 +121,8 @@ The owner: the Lab "shouldn't display like that, make it friendly and a perfect 
   it and fills in everything (what it is, the hook, shots, cuts, beat, stickers, music, words, sector, language,
   techniques); the owner only checks, gives stars and saves. Examples show as a gallery of thumbnails, not a list.
 - **AI reading budget: $2 in total for testing** (docs/AI_COSTS.md), switched on for the test site.
-26. **Doing** The drop, read and check flow.
-27. **Doing** The gallery of examples with a detail view.
+26. **Done** The drop, read and check flow (dc72bdd5).
+27. **Done** The gallery of examples with a detail view (65f4733c), and a friendlier Team page (61763a32).
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
