@@ -110,7 +110,7 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 24. **Done** Fixes from the second review (24 October): the clip checker gets only visual never-notes; the brain
     router stops on a budget or a switched-off service and never pays twice; the spelling fixer leaves links,
     hashtags and the business's own names alone; placeholders never reach a post.
-25. **Todo** Editor: speed (0.5x to 2x), clip sound level and fades, now that video-engine built them (81a02e83 on
+25. **Doing** Editor: speed (0.5x to 2x), clip sound level and fades, now that video-engine built them (81a02e83 on
     video-engine: `VideoLayer.rate`, `volume`, `fadeIn`, `fadeOut`). Waits for main to merge that batch into
     quiz-mode, then merge quiz-mode into training-lab. Ops must carry the next scene's `start` when a scene is slowed,
     and the UI says "Sound is off while the speed is not 1x".
