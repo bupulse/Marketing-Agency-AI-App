@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { checkActiveUser } from "@/lib/auth/require-user";
 import { assertFeature, FeatureRequiredError, featureErrorResponse } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
+import { hasShortRequestLimit } from "@/lib/platform/limits";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { can } from "@/lib/team/roles";
 import { UsageLimitError } from "@/lib/usage";
@@ -42,6 +43,11 @@ const body = z.object({
 // versions?, voice?, chosenHook? }. Answers { jobs } (each designed, or failed with its reason); 503 when video design is
 // unavailable (no Claude key, or Claude switched off in Admin -> Services), before anything is charged.
 export async function POST(request: Request) {
+  // A design takes 30 to 60 s (four versions side by side, a second call when the first answer cannot be read): on a
+  // host that stops a request after 60 s (Netlify) it would be cut off after Claude was paid. Videos are designed in the
+  // Video Studio (studio.bupulse.com, its own server; owner decision of 19 October 2026), so this route is refused here
+  // before anything is charged or called.
+  if (hasShortRequestLimit()) return NextResponse.json({ error: "studio_only", message: "Videos are designed in the Video Studio. Open it from the Videos page." }, { status: 503 });
   const check = await checkActiveUser();
   if (check.status === "signed_out") return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (check.status !== "ok") return NextResponse.json({ error: "account_locked" }, { status: 403 });

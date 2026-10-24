@@ -11,6 +11,7 @@ import { isOwnDesignPath, isOwnPhotoPath } from "@/lib/designs/assets";
 import { bucketForPath } from "@/lib/publishing/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit, RateLimitError, type RateLimitRule } from "@/lib/rate-limit";
+import { timeBudget } from "@/lib/platform/limits";
 import { finalizeVideo, prepareVideoUpload, ROBOT_LEASE_MS, videoAvailable, VisualError } from "./service";
 import { VIDEO_LIMITS, type VideoPlan } from "./types";
 import { readVideoPlan } from "./video-plan";
@@ -30,6 +31,11 @@ export const ROBOT_CLAIMS_PER_HOUR: RateLimitRule = { limit: 60, windowSeconds: 
 export const ROBOT_CLAIMS_PER_BUSINESS_HOUR: RateLimitRule = { limit: 10, windowSeconds: 60 * 60 };
 /** Pending videos looked at per claim (some may belong to companies without videos left). */
 const ROBOT_SCAN = 25;
+/**
+ * Time a claim may spend preparing videos (each may make its voice-over: a script shortening and ElevenLabs, a few
+ * seconds to tens of seconds) before it answers with those it has. Netlify stops a request after 60 s, so 20 s there.
+ */
+const claimBudgetMs = () => timeBudget(120_000, 20_000);
 /** Lifetime of the photo download URLs: enough for one run. */
 const PHOTO_URL_SECONDS = 30 * 60;
 /** The heartbeat job name (CronRun), shown on the admin Services and Health pages. */
@@ -144,7 +150,8 @@ async function releaseLease(id: string, job: string, data: { robotAttempts?: { i
  * The attempt is counted when the video is claimed (a run killed mid-render still counts toward the 3) and set back
  * to 0 when a video is made. At most 60 claims an hour in all and 10 per company.
  */
-export async function claimRobotVideos(options: { max?: number; format?: RobotFormat } = {}, now = new Date()): Promise<RobotJob[]> {
+export async function claimRobotVideos(options: { max?: number; format?: RobotFormat; budgetMs?: number } = {}, now = new Date()): Promise<RobotJob[]> {
+  const deadline = Date.now() + (options.budgetMs ?? claimBudgetMs());
   const max = Math.min(ROBOT_MAX_CLAIM, Math.max(1, Math.floor(options.max ?? ROBOT_DEFAULT_CLAIM)));
   const mimeType = MIME[options.format ?? "mp4"];
   const rows = await prisma.contentVisual.findMany({
@@ -173,6 +180,8 @@ export async function claimRobotVideos(options: { max?: number; format?: RobotFo
   };
   for (const row of rows) {
     if (jobs.length >= max) break;
+    // Out of time: the videos prepared so far go to the robot, the rest wait for its next claim (one always fits).
+    if (jobs.length > 0 && Date.now() > deadline) break;
     const plan = readVideoPlan(row.plan);
     if (!plan) continue;
     if (!owners.has(row.businessId)) {
