@@ -58,7 +58,7 @@ export function hasKinyarwanda(text: string): boolean {
 
 export type LanguageText = { where: string; text: string; kind?: "screen" | "caption" | "voice" };
 export type LanguageIssue = {
-  code: "price-format" | "english-cta" | "mixed-line" | "not-clickable" | "literal-translation";
+  code: "price-format" | "english-cta" | "mixed-line" | "not-clickable" | "literal-translation" | "owner-spelling";
   where: string;
   /** The words that raised it, as written. */
   found: string;
@@ -85,11 +85,17 @@ const words = (s: string) => s.toLowerCase().match(/[\p{L}']+/gu) ?? [];
 const count = (list: readonly string[], ws: string[]) => ws.filter((w) => list.includes(w)).length;
 
 /**
+ * What the owner's Training Lab adds: `words` they approved (an issue whose found text is exactly such a word is dropped)
+ * and spellings they marked wrong, with the right one when they gave it.
+ */
+export type LanguageExtra = { words?: string[]; wrong?: { word: string; fix?: string }[] };
+
+/**
  * The language issues in the texts an engine wrote, for a business whose content language is `language`. Voice lines
  * are checked only when the voice speaks the content language (a Kinyarwanda business's voice speaks English by rule);
  * prices only on screen and in the caption (the voice says "francs" on purpose). Pure.
  */
-export function checkLanguage(texts: (string | LanguageText)[], language: string | null | undefined): LanguageIssue[] {
+export function checkLanguage(texts: (string | LanguageText)[], language: string | null | undefined, extra: LanguageExtra = {}): LanguageIssue[] {
   const v = voiceLanguage(language);
   const content = v.captionLanguage;
   const kinyarwanda = content === "Kinyarwanda";
@@ -133,7 +139,27 @@ export function checkLanguage(texts: (string | LanguageText)[], language: string
       if (rw >= 2 && (en >= 2 || fr >= 2)) add("mixed-line", sentence.trim().slice(0, 80), `"${sentence.trim().slice(0, 60)}" mixes ${en >= 2 ? "English" : "French"} and Kinyarwanda grammar in one sentence; keep one language per sentence (a product name or "free delivery" inside is fine).`);
     }
   }
-  return issues;
+  return withOwnerWords(issues, items, extra);
+}
+
+const escapeRe = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The Lab's words applied after the built-in rules: approved words drop their issue, wrong spellings add one. */
+function withOwnerWords(issues: LanguageIssue[], items: { where: string; text: string; kind: string }[], extra: LanguageExtra): LanguageIssue[] {
+  const approved = new Set((extra.words ?? []).map((w) => w.trim().toLowerCase()).filter(Boolean));
+  const kept = approved.size ? issues.filter((i) => !approved.has(i.found.trim().toLowerCase())) : issues;
+  const out = [...kept];
+  for (const { word, fix } of extra.wrong ?? []) {
+    const w = word.trim();
+    if (!w) continue;
+    const re = new RegExp(`(?<![\\p{L}\\p{N}'])${escapeRe(w)}(?![\\p{L}\\p{N}'])`, "iu");
+    for (const { where, text, kind } of items) {
+      if (!text?.trim() || kind === "voice") continue;
+      const m = text.match(re);
+      if (m && !approved.has(m[0].toLowerCase())) out.push({ code: "owner-spelling", where, found: m[0], message: `"${m[0]}" is a spelling you marked wrong${fix ? `; write "${fix}" instead` : ""}.`, suggestion: fix ?? null });
+    }
+  }
+  return out;
 }
 
 /** The texts of a design, ready for checkLanguage: every on-screen line, every voice line and the caption. */

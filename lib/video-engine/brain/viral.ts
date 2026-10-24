@@ -15,7 +15,11 @@ import type { CameraMove } from "../spec";
 export type { ViralVideo, ViralBeat, ViralRole };
 export const VIRAL: ViralVideo[] = viralJson as ViralVideo[];
 const BY_ID = new Map(VIRAL.map((v) => [v.id, v]));
-export const viralById = (id: string): ViralVideo | null => BY_ID.get(id) ?? null;
+export const viralById = (id: string, lab: readonly ViralVideo[] = []): ViralVideo | null => BY_ID.get(id) ?? lab.find((v) => v.id === id) ?? null;
+
+/** What a Training Lab reel adds to its score (a curated video's strength is worth up to 25), and what an avoided one loses. */
+export const LAB_BONUS = 10;
+export const AVOID_PENALTY = 25;
 
 /**
  * A beat that wants filmed footage or an AI clip, and what the clip should show. `source`: a phone clip the client
@@ -53,6 +57,13 @@ export type RecipeInput = {
   footage?: { phoneClips?: number; aiClips?: boolean; /** AI clips already made (at most 3 beats then take one); none given: up to 3. */ aiCount?: number; generated?: boolean };
   /** The business's recent recipes (newest first; about 5 are read): the new one avoids their opening, layout and beat order. */
   recent?: ViralRecipe[];
+  /**
+   * The owner's Training Lab reels as viral rows (ids "lab:<TrainingExample id>", lib/training-lab/viral-rows.ts): they join
+   * the pool beside the curated ones, with a small bonus (LAB_BONUS) that stays below a curated video's strength.
+   */
+  lab?: ViralVideo[];
+  /** Ids or opening types the owner's Lab says never to copy: matching videos lose AVOID_PENALTY (none is filtered out). */
+  avoid?: string[];
   /** Any text: the same seed gives the same recipe; a new job gets a new seed. */
   seed: string;
 };
@@ -209,7 +220,9 @@ export function scoreViral(input: RecipeInput, rng: () => number = seededRandom(
   const recentSources = new Set((input.recent ?? []).slice(0, 5).flatMap((r) => r.sources.map((s) => s.id)));
   const near = NEIGHBOURS[input.sector] ?? [];
   const post = input.purpose === "post";
-  return VIRAL.map((v) => {
+  const avoid = new Set(input.avoid ?? []);
+  const pool = input.lab?.length ? [...VIRAL, ...input.lab] : VIRAL;
+  return pool.map((v) => {
     const why: string[] = [];
     let score = 0;
     const s = sectorOf(v);
@@ -228,7 +241,10 @@ export function scoreViral(input: RecipeInput, rng: () => number = seededRandom(
     if (post && !v.isAd && v.kind !== "creator") score += 6;
     if (v.kind === "creator") score -= 4;
     if (recentSources.has(v.id)) add(-25, "used recently");
-    score += 28 * rng();
+    if (v.id.startsWith("lab:")) add(LAB_BONUS, "your Training Lab");
+    if (avoid.has(v.id) || avoid.has(v.hookType)) add(-AVOID_PENALTY, "the owner said never");
+    // A Lab reel's chance comes from its own seed, so the draws for the curated videos stay as they were without a Lab.
+    score += 28 * (v.id.startsWith("lab:") ? seededRandom(`${input.seed}:${v.id}`)() : rng());
     return { v, score: Math.round(score * 10) / 10, why };
   }).sort((a, z) => z.score - a.score || a.v.id.localeCompare(z.v.id));
 }
@@ -474,14 +490,14 @@ export function viralRecipe(input: RecipeInput): ViralRecipe {
   // can be made from the photo, photos everywhere else.
   let phoneLeft = Math.max(0, Math.min(4, input.footage?.phoneClips ?? 0));
   let aiLeft = input.footage?.aiClips ? Math.min(3, input.footage.aiCount ?? 3) : 0;
-  const filmed = (id: string) => !(viralById(id)?.needs.includes("photos") ?? true);
+  const filmed = (id: string) => !(viralById(id, input.lab)?.needs.includes("photos") ?? true);
   const product = input.product || "product";
   const ctaEnd = post ? "the shop sign or the logo, a warm last look (no hard sell)" : ctaWhat;
   const beats: RecipeBeat[] = shaped.map((b, i) => {
     const wantsFilm = filmed(b.source) && b.role !== "cta";
     let footage: RecipeBeat["footage"] = "photo";
     if (wantsFilm && phoneLeft > 0) footage = "phone";
-    else if (wantsFilm && aiLeft > 0 && (viralById(b.source)?.needs.includes("ai-ok") ?? false)) footage = "ai";
+    else if (wantsFilm && aiLeft > 0 && (viralById(b.source, input.lab)?.needs.includes("ai-ok") ?? false)) footage = "ai";
     else if (i > 0 && b.role === "show" && aiLeft > 0 && !phoneLeft) footage = "ai";
     if (footage === "phone") phoneLeft--;
     if (footage === "ai") aiLeft--;
