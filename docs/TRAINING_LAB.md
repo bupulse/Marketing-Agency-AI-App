@@ -96,7 +96,7 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 13. **Done** (the owner picks the moment in the browser) Actors with only a video: take a still frame for the presenter portrait.
 
 14. **Doing** The Editor opens a reel from a link (Team page, finished reels) and shows what the Lab did to it.
-15. **Doing** A Words tab: every Kinyarwanda spelling, right word and phrase the Lab teaches, in one place.
+15. **Done** A Words tab: every Kinyarwanda spelling, right word and phrase the Lab teaches, in one place.
 16. **Done** The owner's guide (docs/TRAINING_LAB_GUIDE.md).
 
 ### Waiting (owner)
