@@ -27,11 +27,13 @@ Netlify's free plan gives **300 credits a month, as a hard limit: when they are 
 
 **The publisher runs every 5 minutes on Netlify** (owner decision; every minute on Cloudflare). Each run is three function invocations (the scheduled function, the background runner, the `/api/cron/publish` route), about 8,640 runs a month: roughly 12 to 50 credits at 0.5 to 2 s a run, instead of 60 to 240 every minute. Each run claims every post due up to that moment, so a post scheduled between two runs goes out at the next one, at most 5 minutes late; the composer and the calendar say "Posts go out within 5 minutes of the scheduled time." on Netlify. (`NETLIFY_PUBLISH_EVERY_MINUTES` in `lib/platform/limits.ts` and the schedule in `netlify/functions/cron-publish.mts` change together; `tests/netlify-crons.test.ts` checks it.) A run publishes up to 20 posts in its 15 s budget; anything beyond waits for the next run. Add the video sweep (`cron-video-jobs`, every 10 minutes on Netlify instead of 4: about 4,300 runs a month, roughly 6 to
 20 credits; `NETLIFY_VIDEO_JOBS_EVERY_MINUTES` in `lib/platform/limits.ts`, checked by `tests/netlify-crons.test.ts`; overnight AI
-clips give up after 45 minutes so they still get 3 tries at Google's limit), the hourly jobs (about 10 to 30 credits, the hourly content summary included: about 720 runs a month), the video
+clips give up after 45 minutes so they still get 3 tries at Google's limit), Autopilot's late pictures (`cron-autopilot-visuals`,
+every 10 minutes from Friday to Sunday: about 1,860 runs a month, almost all idle (one small read), roughly 2 to 8
+credits; the busy ones make the AI pictures Autopilot left for later, see docs/CONTENT_VISUALS.md "Autopilot on Netlify"), the hourly jobs (about 10 to 30 credits, the hourly content summary included: about 720 runs a month), the video
 robot's calls from GitHub (every 15 minutes about 2,900 short claim calls a month, plus an upload and a confirm per
 video: roughly 5 to 15 credits; the videos are rendered on GitHub's runner, never on Netlify) and the GitHub fallback
-workflows. A realistic month at launch: 10 deploys (150) + publisher (12 to 50) + video sweep (6 to 20) + hourly jobs (10
-to 30) + robot (5 to 15) + visitors, about 205 to 280 of the 300 credits: deploy in batches.
+workflows. A realistic month at launch: 10 deploys (150) + publisher (12 to 50) + video sweep (6 to 20) + Autopilot pictures (2 to 8)
++ hourly jobs (10 to 30) + robot (5 to 15) + visitors, about 207 to 288 of the 300 credits: deploy in batches.
 
 What else to do:
 
@@ -165,6 +167,7 @@ robot is not one of them: it runs on GitHub Actions every 15 minutes (`video-rob
 | `cron-publish` | every 5 minutes (every minute on Cloudflare) | `/api/cron/publish` |
 | `cron-metrics` | hourly at :23 | `/api/cron/metrics` |
 | `cron-autopilot` | every 3 hours on Fri and Sat at :11 | `/api/cron/autopilot` (cursor calls) |
+| `cron-autopilot-visuals` | every 10 minutes on Fri, Sat and Sun | `/api/cron/autopilot-visuals` (cursor calls; idle unless Autopilot left AI pictures for later) |
 | `cron-leads-digest` | hourly at :37 | `/api/cron/leads-digest` |
 | `cron-store-sync` | daily 03:47 | `/api/cron/store-sync` (cursor calls) |
 | `cron-analytics-rollup` | daily 02:17 | `/api/cron/analytics-rollup` (cursor calls) |

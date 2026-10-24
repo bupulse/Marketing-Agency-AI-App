@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   paintOne: vi.fn(),
   makeGroupImages: vi.fn(),
   logError: vi.fn(),
+  shortLimit: { value: false },
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
@@ -37,6 +38,7 @@ vi.mock("@/lib/knowledge/service", () => ({ KnowledgeError: class extends Error 
 vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/platform/limits", async (original) => ({ ...(await original<typeof import("@/lib/platform/limits")>()), hasShortRequestLimit: () => mocks.shortLimit.value }));
 
 import { buildPrompt, fence } from "@/lib/visuals/art-director";
 import { planContentVisuals } from "@/lib/visuals/content";
@@ -56,6 +58,7 @@ let n = 0;
 beforeEach(() => {
   vi.clearAllMocks();
   n = 0;
+  mocks.shortLimit.value = false;
   mocks.prisma.contentVisual.create.mockImplementation(async ({ data }: { data: { kind: string } }) => ({ id: `v-${data.kind}` }));
   mocks.prisma.connection.findMany.mockResolvedValue([{ provider: "instagram" }]);
   mocks.prisma.business.findUnique.mockResolvedValue({ userId: U });
@@ -193,6 +196,27 @@ describe("Autopilot group visuals", () => {
     expect(run.aiMade).toBe(1);
     expect(mocks.paintOne.mock.calls[0][1]).toMatchObject({ source: "autopilot", caption: expect.stringContaining("How to wear it") });
     expect(out.designs["4:5"]).toBe(`${U}/designs/ai1.png`);
+  });
+
+  it("on Netlify (60 s a request) the AI picture is left for later: the posts get the owner's photo, the visual waits", async () => {
+    mocks.shortLimit.value = true;
+    mocks.makeGroupImages.mockResolvedValue({ designs: { "4:5": `${U}/designs/one.png`, "1:1": `${U}/designs/one-sq.png` }, aiStopped: false, notes: [], aiUsed: false });
+    const run = newRunState();
+    const out = await makeGroupVisuals(group(), written("A short post."), { ...ctx, useAiImages: true }, run);
+    expect(mocks.makeGroupImages.mock.calls[0][2]).toMatchObject({ useAiImages: false });
+    expect(mocks.paintOne).not.toHaveBeenCalled();
+    expect(out.designs["4:5"]).toBe(`${U}/designs/one.png`);
+    const saved = mocks.prisma.contentVisual.create.mock.calls[0][0].data;
+    expect(saved).toMatchObject({ groupId: "g1", kind: "image", status: "pending" });
+    expect(saved.plan.deferredFrom).toEqual([`${U}/designs/one.png`, `${U}/designs/one-sq.png`]);
+    expect(saved.plan.slides[0]).toMatchObject({ source: "ai", photoPath: `${U}/gallery/aaaaaaaa-1.jpg`, path: null });
+    // It counts against the run's AI pictures like one painted at once.
+    expect(run.aiMade).toBe(1);
+    // The Mac and Cloudflare still paint at once.
+    mocks.shortLimit.value = false;
+    mocks.makeGroupImages.mockClear();
+    await makeGroupVisuals(group(), written("A short post."), { ...ctx, useAiImages: true }, newRunState());
+    expect(mocks.makeGroupImages.mock.calls[0][2]).toMatchObject({ useAiImages: true });
   });
 
   it("a recording failure never fails the group", async () => {

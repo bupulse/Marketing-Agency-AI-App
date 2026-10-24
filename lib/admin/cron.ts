@@ -17,6 +17,7 @@ export const CRON_JOBS: CronJob[] = [
   { job: "metrics", label: "Collect metrics", cron: "23 * * * *", via: "Cloudflare", what: "Reads post reach and engagement" },
   { job: "leads-digest", label: "Leads digest and webhook retries", cron: "37 * * * *", via: "Cloudflare", what: "Daily lead emails and webhook retries" },
   { job: "autopilot", label: "Autopilot planning", cron: "11 */3 * * 5,6", via: "Cloudflare", what: "Plans next week on Fridays and Saturdays" },
+  { job: "autopilot-visuals", label: "Autopilot pictures", cron: "*/10 * * * 5,6,0", via: "Cloudflare", what: "Makes the AI pictures Autopilot left for later on Netlify, one step at a time" },
   { job: "store-sync", label: "Store sync", cron: "47 3 * * *", via: "Cloudflare", what: "Re-syncs imported store products" },
   { job: "analytics-rollup", label: "Analytics roll-up", cron: "17 2 * * *", via: "Cloudflare", what: "Daily numbers for the admin console" },
   { job: "plan-price-changes", label: "Plan price changes", cron: "29 4 * * *", via: "Cloudflare", what: "Notices and renewals when a plan price changes" },

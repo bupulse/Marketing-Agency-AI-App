@@ -20,6 +20,7 @@ export const CRON_JOBS: Record<string, CronJob> = {
   "/api/cron/publish": { path: "/api/cron/publish", cursor: false },
   "/api/cron/metrics": { path: "/api/cron/metrics", cursor: false },
   "/api/cron/autopilot": { path: "/api/cron/autopilot", cursor: true },
+  "/api/cron/autopilot-visuals": { path: "/api/cron/autopilot-visuals", cursor: true },
   "/api/cron/leads-digest": { path: "/api/cron/leads-digest", cursor: false },
   "/api/cron/store-sync": { path: "/api/cron/store-sync", cursor: true },
   "/api/cron/analytics-rollup": { path: "/api/cron/analytics-rollup", cursor: true },

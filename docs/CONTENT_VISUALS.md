@@ -78,6 +78,23 @@ the dollar allowance stops the images first, the same "AI images for this month 
 month. The drawing lease (`RENDER_LEASE_MS`, 4 minutes) outlasts the slowest AI photo call (120 s timeout plus up to
 30 s of SDK retries) so a second call never pays for the same photo.
 
+### Autopilot on Netlify (24 October 2026)
+
+bupulse.com answers a request within 60 s on Netlify, and one AI picture takes 40 to 100 s, while Autopilot plans a
+business's whole week in one call (`/api/cron/autopilot`). So on Netlify (`hasShortRequestLimit`) Autopilot does not
+paint:
+- A single image's posts get the owner's photo now, and the group's visual is saved as a pending AI picture whose plan
+  lists those photo pictures (`deferredFrom`, `recordLatePicture` in lib/autopilot/visuals.ts). It counts against the
+  run's AI pictures like one painted at once. A carousel uses the owner's photos (its AI cover would be painted in the
+  call).
+- `cron-autopilot-visuals` (every 10 minutes from Friday to Sunday, `/api/cron/autopilot-visuals`,
+  lib/autopilot/late-pictures.ts) takes one AI step of each waiting picture within 25 s (`renderImageStep`: plan, paint,
+  check, fix) and asks to be called again while some are left. It answers at once, after one small read, when none
+  wait. A finished picture replaces only the photo pictures it stood in for (`attachToGroup` with `onlyFrom`), on posts
+  still waiting (draft, waiting for approval, scheduled): never a picture the owner picked, never a post already out.
+  When the AI picture cannot be made, the owner's photo stays.
+- The Mac (test site) and Cloudflare paint at once, as before; there the sweep finds nothing.
+
 ### Carousel or single
 
 `shouldCarousel`: a network that takes carousels (Instagram, Facebook, LinkedIn; with none connected yet, yes) and

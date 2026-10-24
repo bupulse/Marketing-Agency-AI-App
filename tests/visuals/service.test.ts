@@ -544,6 +544,20 @@ describe("attachToGroup (pictures)", () => {
     expect(mocks.prisma.post.updateMany).toHaveBeenCalledWith({ where: { groupId: "g1", status, id: "fb", lockedAt: null, updatedAt }, data: { format: "CAROUSEL", mediaPaths: ["a.png", "b.png", "c.png"] } });
   });
 
+  it("a picture made later replaces only the owner's photo it stood in for, never one the owner picked", async () => {
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "image", status: "ready", items: [{ path: "ai.png" }] }]);
+    const updatedAt = new Date("2026-10-12T10:00:00Z");
+    mocks.prisma.post.findMany.mockResolvedValue([
+      { id: "ig", network: "instagram", format: "POST", mediaPaths: ["stand-in.png"], status: "PENDING_APPROVAL", lastError: null, updatedAt },
+      { id: "fb", network: "facebook", format: "POST", mediaPaths: ["picked-by-owner.jpg"], status: "SCHEDULED", lastError: null, updatedAt },
+    ]);
+    await attachToGroup("biz1", "g1", { feed: true, onlyFrom: ["stand-in.png", "stand-in-sq.png"] });
+    // Published posts are never read (DRAFT, PENDING_APPROVAL and SCHEDULED only), so they are left alone.
+    expect(mocks.prisma.post.findMany.mock.calls[0][0].where.status).toEqual({ in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] });
+    expect(mocks.prisma.post.updateMany).toHaveBeenCalledTimes(1);
+    expect(mocks.prisma.post.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: "ig" }, data: { mediaPaths: ["ai.png"] } });
+  });
+
   it("Studio drafts take a finished picture only while waiting and untouched by the owner", async () => {
     const { attachToContent } = await import("@/lib/visuals/service");
     mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "image", status: "ready", items: [{ path: "a.png" }] }]);

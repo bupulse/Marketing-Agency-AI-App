@@ -112,6 +112,11 @@ export interface ImagePlan {
   mood?: string;
   /** AI images ran out: when they come back, for "AI images for this month used — next refill on …". */
   aiExhausted?: { refillAt: string | null };
+  /**
+   * An Autopilot picture made later (on Netlify's 60 s, docs/CONTENT_VISUALS.md "Autopilot on Netlify"): the owner's
+   * photo pictures the group's posts got meanwhile. The AI picture replaces only those, never a picture the owner picked.
+   */
+  deferredFrom?: string[];
 }
 
 export type Motion = "zoom-in" | "zoom-out" | "pan-left" | "pan-right";
