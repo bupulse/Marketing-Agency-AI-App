@@ -115,6 +115,15 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
     quiz-mode, then merge quiz-mode into training-lab. Ops must carry the next scene's `start` when a scene is slowed,
     and the UI says "Sound is off while the speed is not 1x".
 
+### Phase 5: friendly (owner, 24 October, about 18:00)
+The owner: the Lab "shouldn't display like that, make it friendly and a perfect training lab". Decisions:
+- **Drop, read, check:** one big "Drop a reel, video, photo or voice note here (or paste a link)" box. The AI watches
+  it and fills in everything (what it is, the hook, shots, cuts, beat, stickers, music, words, sector, language,
+  techniques); the owner only checks, gives stars and saves. Examples show as a gallery of thumbnails, not a list.
+- **AI reading budget: $2 in total for testing** (docs/AI_COSTS.md), switched on for the test site.
+26. **Doing** The drop, read and check flow.
+27. **Doing** The gallery of examples with a detail view.
+
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
 - Any paid AI spend beyond the caps in docs/AI_COSTS.md.
@@ -125,5 +134,4 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
   client's finished reel into the Lab, where its style then teaches the engines for every business (phones, links and
   prices are scrubbed, and the prompts say never to use other businesses' names). Check this against BuPulse's terms
   before it is used on bupulse.com.
-- A small budget for the Lab's AI notes (Gemini watching an uploaded video, about a cent each): set
-  `TRAINING_LAB_ANALYSIS=1` and `TRAINING_LAB_ANALYSIS_CAP_USD` (for example 1) when the owner approves.
+

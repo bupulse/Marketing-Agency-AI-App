@@ -187,3 +187,8 @@ API-equivalent cost when Claude runs on the subscription), under a $5 daily cap 
 clips add their real token cost when they finish (`seedanceUsage`), and Veo AI clips a `veo-clip` row each. Once in the
 app, designs, voice takes, images, Seedance clips and a client's Veo clips go through `withLedger` like every other AI
 call.
+
+**Training Lab AI notes** (owner-approved test budget, 24 October 2026: **$2 in total**). Gemini watches an example the
+owner drops in the Training Lab and drafts its notes (lib/training-lab/analyse.ts), about a cent a video. Every call is
+in the AI ledger as feature `trainingLab`, and the Lab stops by itself when that feature's spend reaches
+`TRAINING_LAB_ANALYSIS_CAP_USD` (2). Switched on with `TRAINING_LAB_ANALYSIS=1` on the owner's test site only.
