@@ -31,6 +31,27 @@ export async function sweepVideoJobs(now = new Date()): Promise<SweepResult> {
     select: { id: true, credits: true, periodStart: true, business: { select: { userId: true } } },
   });
   const result: SweepResult = { stranded: 0, refunded: 0, credits: 0, refundErrors: 0, voiceRefunded: 0, voiceCredits: 0 };
+  // The parts touch different rows (or different columns, with conditional updates), so they run side by side: an idle
+  // sweep takes one database round trip per part instead of all of them one after another (Netlify bills the time).
+  const [seedance, aiClips] = await Promise.all([
+    sweepStrandedDesigns(stale, now, result).then(() => sweepVoiceReservations(now, result)),
+    sweepSeedanceJobs(now).catch(async (error: unknown) => {
+      await logError(error, { source: "video.sweep.seedance" }).catch(() => {});
+      return { stranded: 0, expired: 0 };
+    }),
+    // AI clips for content videos marked "ai" (lib/visuals/ai-clips.ts): started, checked, settled.
+    runAiClips(now).catch(async (error: unknown) => {
+      await logError(error, { source: "video.sweep.ai-clips" }).catch(() => {});
+      return null;
+    }),
+  ]).then(([, s, a]) => [s, a] as const);
+  result.seedance = seedance;
+  result.aiClips = aiClips;
+  return result;
+}
+
+/** Designs whose request died: failed (compare-and-set) and their credits given back once. */
+async function sweepStrandedDesigns(stale: { id: string; credits: number; periodStart: Date | null; business: { userId: string } }[], now: Date, result: SweepResult): Promise<void> {
   for (const job of stale) {
     const { count } = await prisma.videoJob.updateMany({
       where: { id: job.id, status: "designing", leaseUntil: { lt: now }, refundedAt: null },
@@ -48,17 +69,6 @@ export async function sweepVideoJobs(now = new Date()): Promise<SweepResult> {
       await logError(error, { source: "video.sweep" }).catch(() => {});
     }
   }
-  await sweepVoiceReservations(now, result);
-  result.seedance = await sweepSeedanceJobs(now).catch(async (error: unknown) => {
-    await logError(error, { source: "video.sweep.seedance" }).catch(() => {});
-    return { stranded: 0, expired: 0 };
-  });
-  // AI clips for content videos marked "ai" (lib/visuals/ai-clips.ts): started, checked, settled.
-  result.aiClips = await runAiClips(now).catch(async (error: unknown) => {
-    await logError(error, { source: "video.sweep.ai-clips" }).catch(() => {});
-    return null;
-  });
-  return result;
 }
 
 /** Voice reservations whose request died: cleared (compare-and-set on the reservation time), then refunded once. */

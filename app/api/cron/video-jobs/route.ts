@@ -26,12 +26,15 @@ export async function POST(request: NextRequest) {
   }
   return NextResponse.json(
     await recordCron("video-jobs", async () => {
-      const sweep = await sweepVideoJobs();
+      // Side by side (they touch different rows): an idle run is a few database round trips, not one after another.
       // A mail problem must not hide the sweep's result: it is logged, and the unsent videos wait for the next run.
-      const notices = await sendReadyNotices().catch(async (error) => {
-        await logError(error, { source: "cron.video-jobs.notices" });
-        return null;
-      });
+      const [sweep, notices] = await Promise.all([
+        sweepVideoJobs(),
+        sendReadyNotices().catch(async (error) => {
+          await logError(error, { source: "cron.video-jobs.notices" });
+          return null;
+        }),
+      ]);
       return { ...sweep, notices };
     }),
   );

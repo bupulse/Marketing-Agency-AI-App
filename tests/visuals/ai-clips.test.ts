@@ -352,6 +352,15 @@ describe("AI clips: made overnight", () => {
     expect(usage.refundUsage).not.toHaveBeenCalled();
   });
 
+  it("an idle sweep (nothing waiting or being made) stops after one query and calls nobody", async () => {
+    prisma.contentVisual.findMany.mockClear();
+    const g = veo();
+    expect(await runAiClips(T0, { env, fetchImpl: g.fetchImpl })).toMatchObject({ started: 0, made: 0, done: 0 });
+    expect(prisma.contentVisual.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.contentVisual.updateMany).not.toHaveBeenCalled();
+    expect(g.calls).toHaveLength(0);
+  });
+
   it("a sweep out of time leaves the videos for the next one, untouched (Netlify's 60 s)", async () => {
     addVisual("v1");
     const g = veo();

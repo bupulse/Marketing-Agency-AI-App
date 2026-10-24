@@ -104,7 +104,10 @@ export function readClipJobs(value: unknown): ClipJob[] {
 export async function runAiClips(now = new Date(), deps: ClipDeps = {}): Promise<AiClipsResult> {
   const result: AiClipsResult = { started: 0, fallback: 0, made: 0, done: 0, refunded: 0, credits: 0, retried: 0 };
   const free = { OR: [{ clipLeaseUntil: null }, { clipLeaseUntil: { lt: now } }] };
-  const slots: Slots = { free: VEO_PARALLEL - (await clipsAtGoogle()) };
+  const working = await prisma.contentVisual.findMany({ where: { clipState: { in: [...CLIP_WORKING] } }, select: { clipJobs: true } });
+  // Nothing waiting or being made (most sweeps): done after this one query (each sweep is paid for in Netlify credits).
+  if (working.length === 0) return result;
+  const slots: Slots = { free: VEO_PARALLEL - clipsAtGoogle(working) };
   const deadline = Date.now() + (deps.budgetMs ?? clipBudgetMs());
   // The videos already started first: their finished clips free places, and their waiting clips go before new videos.
   // Clips submitted in this sweep are checked from the next one (Google takes 11 s to 6 minutes a clip).
@@ -149,9 +152,8 @@ const rowSelect = { id: true, businessId: true, contentId: true, groupId: true, 
 type Row = NonNullable<Awaited<ReturnType<typeof loadRow>>>;
 const loadRow = (id: string) => prisma.contentVisual.findUnique({ where: { id }, select: rowSelect });
 
-/** Clips Google is making right now for content videos (all companies). */
-async function clipsAtGoogle(): Promise<number> {
-  const rows = await prisma.contentVisual.findMany({ where: { clipState: { in: [...CLIP_WORKING] } }, select: { clipJobs: true } });
+/** Clips Google is making right now for content videos (all companies), from the visuals still waiting or making. */
+function clipsAtGoogle(rows: { clipJobs: unknown }[]): number {
   return rows.reduce((n, r) => n + readClipJobs(r.clipJobs).filter((j) => j.status === "submitted").length, 0);
 }
 
