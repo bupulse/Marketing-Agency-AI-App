@@ -196,3 +196,4 @@ in the AI ledger as feature `trainingLab`, and the Lab stops by itself when that
 | # | Date | What | Provider cost (USD) | Running total |
 | --- | --- | --- | --- | --- |
 | 1 | 24 Oct 2026 | Budget switched on for the test site (18:04 CAT); no example read yet | 0.00 | 0.00 |
+| 2 | 24 Oct 2026 | First real drop (the BuPulse logo, 18:44 CAT): Gemini refused the request (400, an empty choice in the answer's shape; fixed in 2bb03ae1); not billed. Draft discarded, no file left | 0.00 | 0.00 |
