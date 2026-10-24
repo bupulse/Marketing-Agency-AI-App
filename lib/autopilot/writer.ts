@@ -9,6 +9,9 @@ import type { Network } from "@/lib/social/types";
 import { normalizeHashtags, truncateSmart } from "@/lib/studio/variants";
 import { fitScript, SCRIPT_GUIDE } from "@/lib/visuals/script";
 import type { AutopilotAngle } from "@/lib/content-flow/autopilot";
+import { labBlock } from "@/lib/image-engine/prompter";
+import { fixSpellings } from "@/lib/training-lab/fix-spelling";
+import type { LanguageExtra } from "@/lib/video-engine/brain/language";
 import type { Trend } from "./learning";
 import type { AutopilotFormat, Idea } from "./playbook";
 
@@ -28,6 +31,11 @@ export interface WriterBrand extends BrandContext {
   /** Owner's name from sign-up, usable for team and story posts. */
   ownerName?: string | null;
   country?: string | null;
+  /**
+   * What the owner's Training Lab teaches the Post writer (lib/training-lab/reader.ts labFor, engine "post"): its
+   * examples, "never" notes and Kinyarwanda phrases. Empty lists print nothing, so the prompt is as before.
+   */
+  labExamples?: { examples: string[]; avoid: string[]; phrases: string[] } | null;
 }
 
 export interface WriteRequest {
@@ -105,6 +113,8 @@ export function buildPrompt(req: WriteRequest): string {
   const k = brand.knowledge;
   const faq = facts.faq;
   const p = facts.project;
+  // The same blocks the reel and image writers print (lib/image-engine/prompter.ts labBlock); null with an empty Lab.
+  const labText = labBlock(brand.labExamples, language);
 
   return [
     `Write all content in ${language}. Hashtags may stay in English where that is normal for ${language}-speaking audiences; everything else must be in ${language}.`,
@@ -129,6 +139,7 @@ export function buildPrompt(req: WriteRequest): string {
     brand.profile && `\n${brand.profile}`,
     brand.voiceProfile && `\n${brand.voiceProfile}`,
     brand.knowledgeBase && `\n${brand.knowledgeBase}`,
+    labText && `\n${labText}`,
     "",
     `Post idea: ${idea.name} (goal: ${idea.goal})`,
     `How to write it: ${idea.guidance}`,
@@ -158,6 +169,20 @@ export function buildPrompt(req: WriteRequest): string {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * The owner's spellings (Training Lab recordings) applied to what the writer wrote: the posts' texts, titles and video
+ * scripts and the image's words. No AI call; unchanged when the owner marked no wrong spelling with a fix.
+ */
+export function fixWrittenSpellings<T extends { image: ImageText; versions: WrittenVersion[] }>(written: T, extra: LanguageExtra | null | undefined): T {
+  if (!extra?.wrong?.some((w) => w.fix?.trim())) return written;
+  const fix = (t: string) => fixSpellings(t, extra).text;
+  return {
+    ...written,
+    image: { ...written.image, kicker: fix(written.image.kicker), headline: fix(written.image.headline), subline: fix(written.image.subline) },
+    versions: written.versions.map((v) => ({ ...v, text: fix(v.text), title: v.title === null ? null : fix(v.title), ...(v.videoScript !== undefined ? { videoScript: fix(v.videoScript) } : {}) })),
+  };
 }
 
 export interface ImageText {

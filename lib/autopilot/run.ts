@@ -31,7 +31,10 @@ import { configuredModel } from "@/lib/studio/service";
 import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import { getProvider } from "@/lib/social/registry";
 import { localDateISO, nextWeekStart, safeZone, weekdayOfISO, weekKey, weekStartFromKey } from "./timezone";
-import { writeGroup, type WriteRequest, type WriterBrand } from "./writer";
+import { fixWrittenSpellings, writeGroup, type WriteRequest, type WriterBrand } from "./writer";
+import { labFor } from "@/lib/training-lab/reader";
+import { labLanguage } from "@/lib/training-lab/language-reader";
+import { sectorFromText } from "@/lib/video-engine/brain/select";
 import { planAutopilotAngles } from "@/lib/content-flow/autopilot";
 import type { AutopilotAngle } from "@/lib/content-flow/autopilot";
 
@@ -152,6 +155,10 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     const notes = [...plan.notes];
     const knowledge = readKnowledge(business.knowledge);
     const configured = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
+    // The owner's Training Lab for the Post writer, read once per run: examples, never notes and Kinyarwanda phrases for
+    // the prompt, and the spellings to fix afterwards. An empty Lab or an error changes nothing.
+    const sector = sectorFromText([business.industry, business.description].filter(Boolean).join(" "));
+    const [lab, languageExtra] = await Promise.all([labFor({ engine: "post", kinds: ["image", "voice"], sector, language: business.contentLanguage }), labLanguage(business.contentLanguage)]);
     const brand: WriterBrand = {
       businessName: business.name,
       industry: business.industry,
@@ -166,6 +173,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       knowledge: knowledgeFacts(knowledge),
       ownerName: business.ceoName,
       country: business.country,
+      labExamples: { examples: lab.examples, avoid: lab.avoid, phrases: lab.phrases },
     };
     const trendSource = options.trends ?? noopTrendSource;
 
@@ -208,11 +216,14 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         const targets = group.networks.map((network) => ({ network, format: group.posts.find((p) => p.network === network)!.format }));
         const trends = (await trendSource.trends({ network: targets[0].network, country: business.country, industry: business.industry }).catch(() => [])).slice(0, 3);
         const request: WriteRequest = { brand, idea: group.idea, facts: { ...factsFor(group, angles.get(group.groupId)), trends }, targets };
-        const written = await withLedger(
-          { userId, businessId, feature: "autopilot" },
-          { provider: configured, model: configuredModel(configured) },
-          () => writeGroup(getTextProvider(), request),
-          (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
+        const written = fixWrittenSpellings(
+          await withLedger(
+            { userId, businessId, feature: "autopilot" },
+            { provider: configured, model: configuredModel(configured) },
+            () => writeGroup(getTextProvider(), request),
+            (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
+          ),
+          languageExtra,
         );
 
         // Gallery first: a video idea about a product or campaign with its own album video posts that video as it is.

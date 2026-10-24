@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   makeGroupImages: vi.fn(),
   sendReadyEmail: vi.fn(),
   logError: vi.fn(),
+  lab: { value: { examples: [] as string[], avoid: [] as string[], phrases: [] as string[], exampleIds: [] as string[], rows: [] } },
+  labFor: vi.fn(),
+  languageExtra: { value: {} as Record<string, unknown> },
+  fixWrittenSpellings: vi.fn<(written: unknown, extra?: unknown) => unknown>((written) => written),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
@@ -34,7 +38,10 @@ vi.mock("@/lib/usage", async () => {
   return { consumeUsage: mocks.consumeUsage, refundUsage: mocks.refundUsage, UsageLimitError };
 });
 vi.mock("@/lib/autopilot/plan", () => ({ planWeek: mocks.planWeek }));
-vi.mock("@/lib/autopilot/writer", () => ({ writeGroup: mocks.writeGroup }));
+vi.mock("@/lib/autopilot/writer", () => ({ writeGroup: mocks.writeGroup, fixWrittenSpellings: mocks.fixWrittenSpellings }));
+// An empty Training Lab unless a test sets one: the run plans and writes as it always has (the prompt: tests/autopilot/lab.test.ts).
+vi.mock("@/lib/training-lab/reader", () => ({ labFor: mocks.labFor }));
+vi.mock("@/lib/training-lab/language-reader", () => ({ labLanguage: async () => mocks.languageExtra.value }));
 vi.mock("@/lib/autopilot/images", () => ({ makeGroupImages: mocks.makeGroupImages, aspectFor: (n: string) => (n === "instagram" ? "4:5" : "1:1") }));
 vi.mock("@/lib/autopilot/notify", () => ({ sendReadyEmail: mocks.sendReadyEmail }));
 
@@ -99,6 +106,10 @@ beforeEach(() => {
   mocks.prisma.serviceSwitch.findMany.mockResolvedValue([]);
   clearSwitchCache();
   vi.resetAllMocks();
+  mocks.lab.value = { examples: [], avoid: [], phrases: [], exampleIds: [], rows: [] };
+  mocks.languageExtra.value = {};
+  mocks.labFor.mockImplementation(async () => mocks.lab.value);
+  mocks.fixWrittenSpellings.mockImplementation((w: unknown) => w);
   mocks.prisma.business.findUnique.mockResolvedValue(business);
   mocks.prisma.autopilotRun.create.mockResolvedValue({ id: "run1" });
   mocks.prisma.autopilotRun.update.mockResolvedValue({});
@@ -138,6 +149,19 @@ describe("an Autopilot run", () => {
     expect(tip.find((p) => p.network === "instagram")!.mediaPaths).toEqual(["user1/designs/a.png"]);
     expect(tip.find((p) => p.network === "linkedin")!.mediaPaths).toEqual(["user1/designs/b.png"]);
     expect(mocks.prisma.autopilotRun.update).toHaveBeenLastCalledWith({ where: { id: "run1" }, data: { status: "DONE", postCount: 4, error: null } });
+  });
+
+  it("reads the Training Lab once per run for the Post writer, and fixes the owner's spellings in what it wrote", async () => {
+    mocks.lab.value = { examples: ['Post "Market day": made like this: one photo.'], avoid: ["Never: stock photos."], phrases: ["Murakaza neza"], exampleIds: ["e1"], rows: [] };
+    mocks.languageExtra.value = { wrong: [{ word: "nez", fix: "neza" }] };
+    mocks.planWeek.mockResolvedValue(plan([group("tip-how-to"), group("poll-question")]));
+    await runAutopilot("biz1", { now });
+    expect(mocks.labFor).toHaveBeenCalledTimes(1);
+    expect(mocks.labFor).toHaveBeenCalledWith(expect.objectContaining({ engine: "post", kinds: ["image", "voice"] }));
+    const request = mocks.writeGroup.mock.calls[0][1] as { brand: { labExamples: unknown } };
+    expect(request.brand.labExamples).toEqual({ examples: mocks.lab.value.examples, avoid: mocks.lab.value.avoid, phrases: mocks.lab.value.phrases });
+    expect(mocks.fixWrittenSpellings).toHaveBeenCalledTimes(2);
+    expect(mocks.fixWrittenSpellings.mock.calls[0][1]).toEqual(mocks.languageExtra.value);
   });
 
   it("emails the owner when posts need approval", async () => {
