@@ -6,6 +6,7 @@ import { FORMATS } from "@/lib/video-engine/brain/types";
 import { HOOK_IDEAS } from "@/lib/video-engine/brain/viral";
 import type { CaptionShape, ViralBeat, ViralNeed, ViralPlatform, ViralRole, ViralVideo } from "@/lib/video-engine/brain/viral-ingest";
 import type { ExampleRow } from "./match";
+import { scrubContact } from "./scrub";
 
 const PLATFORMS: readonly ViralPlatform[] = ["tiktok", "instagram", "facebook", "youtube"];
 const ROLES: readonly ViralRole[] = ["hook", "show", "proof", "offer", "cta"];
@@ -16,7 +17,7 @@ const NEUTRAL_CAPTION: CaptionShape = { lines: 2, chars: 120, hashtags: 3, price
 type Notes = Record<string, unknown>;
 const squash = (s: string) => s.replace(/\s+/g, " ").trim();
 /** Text with phone numbers and links swapped for the placeholders the recipes use. */
-const clean = (s: string) => squash(s).replace(/https?:\/\/\S+|www\.\S+/gi, "{website}").replace(/\+?\d[\d\s().-]{7,}\d/g, "{phone}");
+const clean = (s: string) => scrubContact(squash(s));
 const text = (v: unknown): string => (typeof v === "string" ? clean(v) : Array.isArray(v) ? v.filter((x) => typeof x === "string").map((x) => clean(x as string)).join(", ") : "");
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && Number.isFinite(Number(v)) && v.trim() ? Number(v) : null);
 /** The first of these keys that has a value ("first_3s", "first3s", "First 3s" are one). */

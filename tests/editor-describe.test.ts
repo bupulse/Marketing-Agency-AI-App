@@ -51,8 +51,8 @@ describe("describeEdit", () => {
   });
   it("names stickers added and removed", () => {
     const added = addSticker(addSticker(reel(), 3, textSticker("45,000 RWF")), 3, { kind: "shape", shape: "arrow", color: "#ff0", x: 0.5, y: 0.5, w: 0.2, h: 0.2 });
-    expect(describeEdit(reel(), added)).toEqual(['Shot 4: text added "45,000 RWF".', "Shot 4: an arrow shape added."]);
-    expect(describeEdit(added, reel())).toEqual(['Shot 4: text removed "45,000 RWF".', "Shot 4: an arrow shape removed."]);
+    expect(describeEdit(reel(), added)).toEqual(['Shot 4: text added "{price}".', "Shot 4: an arrow shape added."]);
+    expect(describeEdit(added, reel())).toEqual(['Shot 4: text removed "{price}".', "Shot 4: an arrow shape removed."]);
   });
   it("is deterministic, does not change its inputs, and is capped", () => {
     const before = frozen(reel());

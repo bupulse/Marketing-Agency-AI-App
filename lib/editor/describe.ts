@@ -2,13 +2,15 @@
 // so the engines can learn from them. It compares the spec the reel was opened with against the edited one, matching
 // shots by the piece of clip they show (a trim or a caption change keeps the match; a split makes a second piece).
 // Shots are numbered as in the original. Deterministic and capped. Pure.
+import { scrubText } from "@/lib/training-lab/scrub";
 import type { Layer, MotionSpec, Scene } from "@/lib/video-engine/spec";
 
 export const MAX_LINES = 30;
 const r1 = (v: number) => Math.round(v * 10) / 10;
 const secs = (v: number) => `${r1(v)} s`;
 const article = (w: string) => (/^[aeiou]/i.test(w) ? "an" : "a");
-const quote = (s: string) => `"${s.replace(/\s+/g, " ").trim().slice(0, 60)}"`;
+// The quoted words are scrubbed: phone numbers, links and prices of the client's reel must not travel into other businesses' prompts.
+const quote = (s: string) => `"${scrubText(s.replace(/\s+/g, " ").trim()).slice(0, 60)}"`;
 
 type Clip = { url: string; start: number };
 const clipOf = (s: Scene): Clip | null => {

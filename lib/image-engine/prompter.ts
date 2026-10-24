@@ -93,9 +93,9 @@ const line = (label: string, value: string | null | undefined) => (value && valu
  */
 export function labBlock(lab: { examples: string[]; avoid: string[]; phrases?: string[] } | null | undefined, language: string): string | null {
   if (!lab) return null;
-  const list = (title: string, lines: readonly string[] | undefined) => (lines?.length ? `${title}\n${lines.map((l) => `- ${l}`).join("\n")}` : null);
+  const list = (title: string, lines: readonly string[] | undefined, note?: string) => (lines?.length ? `${title}\n${note ? `${note}\n` : ""}${lines.map((l) => `- ${l}`).join("\n")}` : null);
   const blocks = [
-    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples),
+    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples, "These are other businesses' examples: never use their names, products, prices or contact details."),
     list("NEVER (the owner's notes):", lab.avoid),
     language === "Kinyarwanda" ? list("KINYARWANDA THE OWNER USES (spelling and natural phrases):", lab.phrases) : null,
   ].filter(Boolean);

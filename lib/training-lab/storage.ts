@@ -56,9 +56,13 @@ export function isExamplePath(path: string, adminUserId: string, exampleId: stri
 
 const bucket = () => createAdminClient().storage.from(TRAINING_BUCKET);
 
-/** Where the browser uploads an example's file (a signed upload URL for this path). */
+/**
+ * Where the browser uploads an example's file (a signed upload URL for this path). Upsert: a file of the same name
+ * replaces the old one, so a replacement with the same name, or a retry after an upload that arrived but was not
+ * confirmed, works. The path is always inside the example's own folder (examplePath).
+ */
 export async function createUploadSlot(path: string): Promise<{ signedUrl: string; token: string }> {
-  const { data, error } = await bucket().createSignedUploadUrl(path);
+  const { data, error } = await bucket().createSignedUploadUrl(path, { upsert: true });
   if (error || !data) throw error ?? new Error("createSignedUploadUrl returned nothing");
   return { signedUrl: data.signedUrl, token: data.token };
 }

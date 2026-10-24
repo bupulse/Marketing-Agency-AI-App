@@ -62,9 +62,9 @@ export function recipeLines(r: ViralRecipe | null | undefined): string | null {
 /** The Training Lab's examples, "never this" notes and (for Kinyarwanda) phrases as prompt blocks; null when the Lab has nothing. */
 export function labBlock(lab: ReelInput["lab"], language: ReelLanguage): string | null {
   if (!lab) return null;
-  const list = (title: string, lines: string[]) => (lines.length ? `${title}\n${lines.map((l) => `- ${l}`).join("\n")}` : null);
+  const list = (title: string, lines: string[], note?: string) => (lines.length ? `${title}\n${note ? `${note}\n` : ""}${lines.map((l) => `- ${l}`).join("\n")}` : null);
   const blocks = [
-    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples),
+    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples, "These are other businesses' examples: never use their names, products, prices or contact details."),
     list("NEVER (the owner's notes):", lab.avoid),
     language === "Kinyarwanda" ? list("KINYARWANDA THE OWNER USES (spelling and natural phrases):", lab.phrases) : null,
   ].filter(Boolean);

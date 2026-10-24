@@ -10,6 +10,7 @@ import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertLabOwner, type LabOwner } from "./examples";
 import { rateResult } from "./runs";
+import { scrubText } from "./scrub";
 import { examplePath, TRAINING_BUCKET } from "./storage";
 
 /** What a run made: "reel:<ReelJob id>", "batch:<image batch id>", "example:<id>", "presenter:<businessId>". */
@@ -57,8 +58,8 @@ export type FinishedReel = { id: string; business: string; title: string; langua
 export async function finishedReels(): Promise<FinishedReel[]> {
   const jobs = await prisma.reelJob.findMany({ where: { status: "done" }, orderBy: { createdAt: "desc" }, take: FINISHED_MAX, select: { id: true, plan: true, language: true, createdAt: true, business: { select: { name: true } } } });
   if (!jobs.length) return [];
-  const known = await prisma.trainingExample.findMany({ where: { tags: { hasSome: jobs.map((j) => reelTag(j.id)) } }, select: { tags: true } });
-  const inLab = new Set(known.flatMap((k) => k.tags));
+  const known = await prisma.trainingExample.findMany({ where: { OR: jobs.flatMap((j) => reelMatch(j.id)) }, select: { tags: true, notes: true } });
+  const inLab = new Set(known.flatMap((k) => [...k.tags, ...(k.notes && typeof k.notes === "object" && !Array.isArray(k.notes) && typeof (k.notes as { rated_reel?: unknown }).rated_reel === "string" ? [reelTag((k.notes as { rated_reel: string }).rated_reel)] : [])]));
   return jobs.map((j) => ({ id: j.id, business: j.business.name, title: titleOf(j.plan), language: j.language, createdAt: j.createdAt, inLab: inLab.has(reelTag(j.id)) }));
 }
 
@@ -72,9 +73,14 @@ export function reelHowMade(plan: unknown): string {
     ? `a montage: ${talks} talking clips of the presenter with ${clips.length - talks} product shots cut in on the music's beat`
     : `a talking reel: ${clips.length || 4} clips of the presenter speaking to the camera`;
   const sentence = (t: string) => (/[.!?]$/.test(t) ? t : `${t}.`);
-  const extra = [typeof p.hook === "string" && p.hook.trim() ? sentence(`Hook sticker: ${p.hook.trim()}`) : "", typeof p.setting === "string" && p.setting.trim() ? sentence(`Filmed in ${p.setting.trim()}`) : ""].filter(Boolean).join(" ");
+  const extra = [typeof p.hook === "string" && p.hook.trim() ? sentence(`Hook sticker: ${scrubText(p.hook.trim())}`) : "", typeof p.setting === "string" && p.setting.trim() ? sentence(`Filmed in ${scrubText(p.setting.trim())}`) : ""].filter(Boolean).join(" ");
   return `BuPulse's AI reel "${titleOf(plan)}": ${style}, filmed by Veo and edited in the browser.${extra ? ` ${extra}` : ""}`.slice(0, 5000);
 }
+
+const ALREADY = "This reel is already in the Lab. Change its example in the list instead.";
+/** The example rows that stand for this reel: tagged with it, or with its id in the notes. */
+const reelMatch = (reelId: string) => [{ tags: { has: reelTag(reelId) } }, { notes: { path: ["rated_reel"], equals: reelId } }];
+const reelInLab = async (reelId: string) => !!(await prisma.trainingExample.findFirst({ where: { OR: reelMatch(reelId) }, select: { id: true } }));
 
 export type FromReel = { id: string; copied: boolean; runs: number };
 
@@ -91,7 +97,7 @@ export async function exampleFromReel(ctx: AdminContext, identity: LabOwner, ree
   if (why.length > REASON_MAX) throw new AdminError("invalid", `Keep the reason under ${REASON_MAX} letters.`);
   const job = typeof reelId === "string" && reelId ? await prisma.reelJob.findFirst({ where: { id: reelId, status: "done" }, select: { id: true, plan: true, language: true, path: true } }) : null;
   if (!job) throw new AdminError("not_found", "That reel is not finished or is gone. Refresh the page.");
-  if (await prisma.trainingExample.findFirst({ where: { tags: { has: reelTag(job.id) } }, select: { id: true } })) throw new AdminError("conflict", "This reel is already in the Lab. Change its example in the list instead.");
+  if (await reelInLab(job.id)) throw new AdminError("conflict", ALREADY);
   const rating = verdict === "more" ? 5 : 1;
   const row = await prisma.$transaction(async (tx) => {
     const row = await tx.trainingExample.create({
@@ -105,12 +111,21 @@ export async function exampleFromReel(ctx: AdminContext, identity: LabOwner, ree
         tags: [reelTag(job.id)],
         rating,
         engines: ["reel", "video"],
+        // The reel's id twice: the tag (the owner can edit it) and the notes (the guard checks either).
+        notes: { rated_reel: job.id },
         createdById: identity.id,
       },
     });
     await writeAudit(tx, ctx, "create_training_example", `training:${row.id}`, null, { kind: "reel", fromReel: job.id, verdict, rating });
     return row;
   });
+  // Two quick clicks both pass the check above and both create an example: after creating, the oldest one (by time, then
+  // id) stays and any newer one is removed again, so exactly one survives whatever the order.
+  const first = await prisma.trainingExample.findFirst({ where: { id: { not: row.id }, OR: reelMatch(job.id) }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, createdAt: true } });
+  if (first && (first.createdAt < row.createdAt || (first.createdAt.getTime() === row.createdAt.getTime() && first.id < row.id))) {
+    await prisma.trainingExample.deleteMany({ where: { id: row.id } });
+    throw new AdminError("conflict", ALREADY);
+  }
   const copied = await copyReel(job.path, examplePath(identity.id, row.id, "reel.mp4"), row.id);
   const runs = await rateResult(`reel:${job.id}`, rating).catch(() => 0);
   return { id: row.id, copied, runs };

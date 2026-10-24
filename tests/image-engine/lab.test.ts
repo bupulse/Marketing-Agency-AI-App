@@ -68,7 +68,7 @@ describe("the Prompter's request with the Lab", () => {
     const today = plannerPrompt(planner);
     const p = plannerPrompt({ ...planner, lab });
     const block = labBlock(lab, "English")!;
-    expect(block).toBe(`THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):\n- ${lab.examples[0]}\n\nNEVER (the owner's notes):\n- Never: stock smiles.`);
+    expect(block).toBe(`THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):\nThese are other businesses' examples: never use their names, products, prices or contact details.\n- ${lab.examples[0]}\n\nNEVER (the owner's notes):\n- Never: stock smiles.`);
     expect(p.indexOf(block)).toBeGreaterThan(p.indexOf("RECENT pictures"));
     expect(p.indexOf(block)).toBeLessThan(p.indexOf("Write 2 concepts"));
     expect(p.replace(`\n\n${block}`, "")).toBe(today);

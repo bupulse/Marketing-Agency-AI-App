@@ -30,6 +30,7 @@ describe("the Lab in the reel prompt", () => {
     expect(block).toBe(
       [
         "THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):",
+        "These are other businesses' examples: never use their names, products, prices or contact details.",
         '- Reel "Car seller": made like this: phone. Good because: price first.',
         "",
         "NEVER (the owner's notes):",

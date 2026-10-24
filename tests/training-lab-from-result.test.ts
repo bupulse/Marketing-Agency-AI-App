@@ -7,7 +7,9 @@ const m = vi.hoisted(() => {
     buckets: { "gallery-videos": bucket(), "training-lab": bucket() } as Record<string, ReturnType<typeof bucket>>,
     reel: { value: null as null | Record<string, unknown> },
     existing: { value: null as null | { id: string } },
-    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ ...data, id: "ex1" })),
+    afterCreate: { value: null as null | { id: string; createdAt: Date } },
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ ...data, id: "ex1", createdAt: new Date("2026-10-24T10:00:00Z") })),
+    deleteMany: vi.fn(async () => ({ count: 1 })),
     update: vi.fn(async () => ({})),
     updateMany: vi.fn(async () => ({ count: 2 })),
     reelFindMany: vi.fn(),
@@ -23,7 +25,7 @@ vi.mock("@/lib/admin/audit", () => ({
 vi.mock("@/lib/db", () => ({
   prisma: {
     reelJob: { findFirst: vi.fn(async () => m.reel.value), findMany: m.reelFindMany },
-    trainingExample: { findFirst: vi.fn(async () => m.existing.value), findMany: m.exampleFindMany, update: m.update },
+    trainingExample: { findFirst: vi.fn(async () => (m.create.mock.calls.length && m.afterCreate.value ? m.afterCreate.value : m.existing.value)), findMany: m.exampleFindMany, update: m.update, deleteMany: m.deleteMany },
     agentRun: { updateMany: m.updateMany },
     $transaction: async (fn: (tx: unknown) => unknown) => fn({ trainingExample: { create: m.create }, auditLog: {} }),
   },
@@ -41,7 +43,8 @@ beforeEach(() => {
   m.audits.length = 0;
   m.reel.value = reel;
   m.existing.value = null;
-  for (const f of [m.create, m.update, m.updateMany, m.reelFindMany, m.exampleFindMany]) f.mockClear();
+  m.afterCreate.value = null;
+  for (const f of [m.deleteMany, m.create, m.update, m.updateMany, m.reelFindMany, m.exampleFindMany]) f.mockClear();
   for (const b of Object.values(m.buckets)) for (const f of [b.download, b.upload, b.remove]) f.mockReset();
   m.buckets["gallery-videos"].download.mockResolvedValue({ data: new Blob([new Uint8Array([0, 0, 0, 24, 1, 2])]), error: null });
   m.buckets["training-lab"].upload.mockResolvedValue({ error: null });
@@ -131,5 +134,26 @@ describe("finished reels into the Lab", () => {
     await expect(lab.exampleFromReel(ctx, OWNER, "reel1", "more")).rejects.toMatchObject({ code: "conflict" });
     await expect(lab.exampleFromReel({ ...ctx, viaApi: true }, OWNER, "reel1", "more")).rejects.toMatchObject({ code: "forbidden" });
     expect(m.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("two quick clicks on the same reel", () => {
+  it("keeps the older example and removes the newer one", async () => {
+    m.afterCreate.value = { id: "ex0", createdAt: new Date("2026-10-24T09:59:59Z") };
+    await expect(lab.exampleFromReel(ctx, OWNER, "reel1", "more")).rejects.toMatchObject({ code: "conflict" });
+    expect(m.deleteMany).toHaveBeenCalledWith({ where: { id: "ex1" } });
+    expect(m.buckets["training-lab"].upload).not.toHaveBeenCalled();
+  });
+  it("keeps this one when the other is newer, or at the same time with a larger id", async () => {
+    m.afterCreate.value = { id: "ex2", createdAt: new Date("2026-10-24T10:00:01Z") };
+    await expect(lab.exampleFromReel(ctx, OWNER, "reel1", "more")).resolves.toMatchObject({ id: "ex1" });
+    m.create.mockClear();
+    m.afterCreate.value = { id: "ex9", createdAt: new Date("2026-10-24T10:00:00Z") };
+    await expect(lab.exampleFromReel(ctx, OWNER, "reel1", "more")).resolves.toMatchObject({ id: "ex1" });
+    expect(m.deleteMany).not.toHaveBeenCalled();
+  });
+  it("stores the reel's id in the notes as well as the tag, and checks either", async () => {
+    await lab.exampleFromReel(ctx, OWNER, "reel1", "more");
+    expect(m.create.mock.calls[0][0].data).toMatchObject({ tags: ["reel:reel1"], notes: { rated_reel: "reel1" } });
   });
 });

@@ -39,7 +39,8 @@ function hourOf(token: string): number | null {
   return Number.isInteger(h) && h >= 0 && h <= 23 ? h : null;
 }
 
-const tokens = (s: string) => s.split(/[,;/]+|\s+and\s+|\s+/).map((t) => t.trim()).filter(Boolean);
+// "7 am", "12:30 pm" and "19 h" are one token each, as people write them.
+const tokens = (s: string) => s.replace(/(\d)\s+(am|pm|h)\b/gi, "$1$2").split(/[,;/]+|\s+and\s+|\s+/).map((t) => t.trim()).filter(Boolean);
 
 /** Hours from numbers or from text like "7, 12:30, 19h"; undefined unless every part is a real hour. */
 function parseHours(v: unknown): number[] | undefined {

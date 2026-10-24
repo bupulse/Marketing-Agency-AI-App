@@ -3,6 +3,7 @@
 // used only when it is switched on for the engine; an actor needs the consent box ticked, always. Pure.
 import { NEIGHBOURS } from "@/lib/video-engine/brain/viral";
 import { SECTORS, type SectorId } from "@/lib/video-engine/brain/types";
+import { scrubText } from "./scrub";
 import { KIND_LABELS, type TrainingEngine, type TrainingKind } from "./types";
 import { voiceLanguage } from "@/lib/video-engine/voice-language";
 
@@ -103,6 +104,8 @@ export function exampleIdsOf(ranked: Ranked): string[] {
 export type LabLines = { examples: string[]; avoid: string[]; phrases: string[] };
 const LINE_MAX = 420;
 const squash = (s: string) => s.replace(/\s+/g, " ").trim();
+/** Text for another business's prompt: spaces tidied, and phone numbers, links, emails and prices swapped for placeholders (scrub.ts). */
+const plain = (s: string) => scrubText(squash(s));
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
 /** The key notes of an example (the AI-drafted analysis the owner corrected): short text, numbers and short lists. */
@@ -111,7 +114,7 @@ export function notesText(notes: unknown): string {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(notes as Record<string, unknown>)) {
     const v = Array.isArray(value) ? value.filter((x) => typeof x === "string" || typeof x === "number").join(", ") : typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : "";
-    if (squash(v)) parts.push(`${key.replace(/[_-]+/g, " ")}: ${cut(squash(v), 90)}`);
+    if (squash(v)) parts.push(`${key.replace(/[_-]+/g, " ")}: ${cut(plain(v), 90)}`);
     if (parts.length >= 6) break;
   }
   return parts.join("; ");
@@ -120,15 +123,15 @@ export function notesText(notes: unknown): string {
 function exampleLine(e: ExampleRow): string {
   const kind = KIND_LABELS[e.kind as TrainingKind] ?? e.kind;
   const notes = notesText(e.notes);
-  return cut(`${kind} "${squash(e.title)}": made like this: ${squash(e.howMade)} Good because: ${squash(e.whatIsGood)}${notes ? ` Notes: ${notes}.` : ""}`, LINE_MAX);
+  return cut(`${kind} "${plain(e.title)}": made like this: ${plain(e.howMade)} Good because: ${plain(e.whatIsGood)}${notes ? ` Notes: ${notes}.` : ""}`, LINE_MAX);
 }
 
 function avoidLines(ranked: Ranked): string[] {
   const lines: string[] = [];
-  for (const { example: e } of ranked.examples) if (e.neverThis && squash(e.neverThis)) lines.push(cut(`Never (from "${squash(e.title)}"): ${squash(e.neverThis)}`, LINE_MAX));
+  for (const { example: e } of ranked.examples) if (e.neverThis && plain(e.neverThis)) lines.push(cut(`Never (from "${plain(e.title)}"): ${plain(e.neverThis)}`, LINE_MAX));
   for (const e of ranked.avoid) {
-    const wrong = e.neverThis && squash(e.neverThis) ? squash(e.neverThis) : `how it was made: ${squash(e.howMade)}`;
-    lines.push(cut(`Rated ${e.rating} of 5 by the owner, do not copy "${squash(e.title)}": ${wrong}`, LINE_MAX));
+    const wrong = e.neverThis && plain(e.neverThis) ? plain(e.neverThis) : `how it was made: ${plain(e.howMade)}`;
+    lines.push(cut(`Rated ${e.rating} of 5 by the owner, do not copy "${plain(e.title)}": ${wrong}`, LINE_MAX));
   }
   return lines;
 }
@@ -139,7 +142,7 @@ export function phrasesOf(ranked: Ranked): string[] {
   for (const { example: e } of ranked.examples) {
     if (e.kind !== "voice" || !e.transcript) continue;
     for (const part of e.transcript.split(/[\n.!?;]+/)) {
-      const p = squash(part);
+      const p = plain(part);
       if (p.length >= 3 && p.length <= 90 && p.split(" ").length <= 12) out.push(p);
     }
   }
