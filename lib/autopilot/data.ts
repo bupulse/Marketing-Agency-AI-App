@@ -7,7 +7,8 @@ import { readKnowledge } from "@/lib/brand/schemas";
 import { accountUsable } from "@/lib/publishing/service";
 import { isNetwork } from "@/lib/social/registry";
 import { holidaysBetween } from "./calendar";
-import { buildProfile } from "./learning";
+import { labSchedule } from "@/lib/training-lab/schedule-reader";
+import { buildProfile, withLab } from "./learning";
 import { loadPostResults } from "./results";
 
 export { loadPostResults };
@@ -153,7 +154,7 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     // Picture or video per post (lib/content-flow/format.ts): videos BuPulse makes need the plan's videos.
     video: { inPlan: videoFeature === "ok" && (usage?.limits.videos ?? 0) > 0, videosLeft: usage ? Math.max(0, usage.limits.videos - usage.used.videos) : 0 },
     recentFormats: formats,
-    profile: buildProfile(results, timeZone),
+    profile: withLab(buildProfile(results, timeZone), await labSchedule({ country: business.country })),
     now,
   };
 }

@@ -41,6 +41,15 @@ export interface LearningProfile {
   posts: number;
   /** Enough published posts with metrics to trust the scores. */
   confident: boolean;
+  /** Hours and weekdays the owner's Training Lab teaches per network (withLab); tried after the learned ones. */
+  labHours?: Map<string, number[]>;
+  labWeekdays?: Map<string, number[]>;
+}
+
+/** The profile with the Training Lab's times added; the same profile when the Lab has none. */
+export function withLab(profile: LearningProfile, lab: { hours: Map<string, number[]>; weekdays: Map<string, number[]> } | null | undefined): LearningProfile {
+  if (!lab || (lab.hours.size === 0 && lab.weekdays.size === 0)) return profile;
+  return { ...profile, labHours: lab.hours, labWeekdays: lab.weekdays };
 }
 
 /** Posts needed before learned scores steer the plan. */
@@ -124,16 +133,16 @@ export const NETWORK_DEFAULTS: Record<Network, { hours: number[]; weekdays: numb
   twitter: { hours: [8, 13], weekdays: [0, 1, 2, 3, 4] },
 };
 
-/** Preferred weekdays for a network: learned when there is data, else the defaults. */
+/** Preferred weekdays for a network: learned when there is data, then the Training Lab's, then the defaults. */
 export function preferredWeekdays(profile: LearningProfile, network: Network): number[] {
   const learned = profile.confident ? (profile.bestWeekdays.get(network) ?? []) : [];
-  return [...new Set([...learned, ...NETWORK_DEFAULTS[network].weekdays])];
+  return [...new Set([...learned, ...(profile.labWeekdays?.get(network) ?? []), ...NETWORK_DEFAULTS[network].weekdays])];
 }
 
-/** Preferred hours for a network: learned (when confident) first, then the defaults. */
+/** Preferred hours for a network: learned (when confident) first, then the Training Lab's, then the defaults. */
 export function preferredHours(profile: LearningProfile, network: Network): number[] {
   const learned = profile.confident ? (profile.bestHours.get(network) ?? []) : [];
-  return [...new Set([...learned, ...NETWORK_DEFAULTS[network].hours])];
+  return [...new Set([...learned, ...(profile.labHours?.get(network) ?? []), ...NETWORK_DEFAULTS[network].hours])];
 }
 
 // ---- Choosing ideas: exploit what works, explore the rest ----

@@ -7,7 +7,8 @@ import { getProvider, isNetwork } from "@/lib/social/registry";
 import { composeSchema, editSchema, isOwnMediaPath, type ComposeParsed } from "./schemas";
 import { cleanSlotTimes, nextFreeSlots } from "./slots";
 import { bestTime, MIN_GAP_MINUTES } from "./best-time";
-import { buildProfile, preferredHours, preferredWeekdays } from "@/lib/autopilot/learning";
+import { buildProfile, preferredHours, preferredWeekdays, withLab } from "@/lib/autopilot/learning";
+import { labSchedule } from "@/lib/training-lab/schedule-reader";
 import { loadPostResults } from "@/lib/autopilot/results";
 import { EDITABLE, QUEUED, type PostStatusName } from "./status";
 import { parseLocalInput } from "./time";
@@ -44,11 +45,11 @@ export function accountUsable(c: { status: string; postingMode: string }): boole
 
 async function businessSettings(businessId: string) {
   const [business, autopilot] = await Promise.all([
-    prisma.business.findUnique({ where: { id: businessId }, select: { timezone: true } }),
+    prisma.business.findUnique({ where: { id: businessId }, select: { timezone: true, country: true } }),
     prisma.autopilotSettings.findUnique({ where: { businessId }, select: { postingTimes: true } }),
   ]);
   if (!business) throw new PublishingError("We could not find your business.", "not_found");
-  return { timezone: business.timezone || "UTC", slotTimes: cleanSlotTimes(autopilot?.postingTimes) };
+  return { timezone: business.timezone || "UTC", country: business.country, slotTimes: cleanSlotTimes(autopilot?.postingTimes) };
 }
 
 /** Times where any of these accounts already has a queued post, so "Add to queue" does not stack posts. */
@@ -340,7 +341,7 @@ export async function bestTimesFor(businessId: string, posts: { id: string; netw
       ? prisma.post.findMany({ where: { connectionId: { in: connectionIds }, status: { in: [...QUEUED] }, scheduledAt: { gte: now }, id: { notIn: posts.map((p) => p.id) } }, select: { connectionId: true, scheduledAt: true }, take: 2000 })
       : [],
   ]);
-  const profile = buildProfile(results, settings.timezone);
+  const profile = withLab(buildProfile(results, settings.timezone), await labSchedule({ country: settings.country }));
   const taken = new Map<string, Date[]>();
   for (const q of queued ?? []) if (q.connectionId && q.scheduledAt) taken.set(q.connectionId, [...(taken.get(q.connectionId) ?? []), q.scheduledAt]);
   for (const post of posts) {
