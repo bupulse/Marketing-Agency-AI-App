@@ -31,7 +31,62 @@ clips give up after 45 minutes so they still get 3 tries at Google's limit), the
 robot's calls from GitHub (every 15 minutes about 2,900 short claim calls a month, plus an upload and a confirm per
 video: roughly 5 to 15 credits; the videos are rendered on GitHub's runner, never on Netlify) and the GitHub fallback
 workflows. A realistic month at launch: 10 deploys (150) + publisher (12 to 50) + video sweep (6 to 20) + hourly jobs (10
-to 30) + robot (5 to 15) + visitors, about 205 to 280 of the 300 credits: deploy in batches.
+to 30) + robot (5 to 15) + visitors, about 205 to 280 of the 300 credits: deploy in batches. **These figures count each
+route once. The background runner waits for the route, so its time is paid twice: see "Credits per job" below
+(about 220 to 450).**
+
+### Credits per job (estimate, biggest first)
+
+Written on 24 October 2026 from the code, not measured: the TEST database has no `CronRun` rows, and production is
+not read from here. Replace the numbers with Netlify's own figures after the first week (step 1 below).
+
+**How a run is billed.** A cron run is three functions:
+- The scheduled one returns at once.
+- The background runner (`netlify/lib/cron.ts` `runJob`) **waits for the route's answer**.
+- The route runs.
+
+So the route's time is paid **twice**. Per job: credits a month ≈ runs × (2 × route seconds + about 0.5 s) / 360, plus
+2 credits per 10,000 requests (3 a run). The estimate above counted the route once, so the real figures are higher.
+
+| Job | Runs a month | Route time per run (guess) | Credits a month |
+| --- | --- | --- | --- |
+| `cron-publish` (every 5 min) | 8,640 | 0.3 to 1.5 s (2 claim queries; more when posts go out) | **31 to 89** |
+| `cron-video-jobs` (every 10 min) | 4,320 | 0.3 to 1 s (idle: a few queries side by side) | **16 to 33** |
+| `cron-metrics` (hourly) | 720 | 1 to 10 s (fetches insights, 30 s budget) | **5 to 41** |
+| `cron-daily-posts` (hourly, cursor) | 720 + one call per company due | idle 0.3 s; about 10 s per company per day (AI writing) | 4 to 35 (20 companies) |
+| `cron-autopilot-visuals` (every 10 min, Fri to Sun only; client-qa, being added) | about 430 | idle 0.3 s; more while Autopilot's pictures are made | 1 to 12 |
+| `cron-creator-views` (every 6 h) | 120 | idle 0.3 s, up to 40 s budget | 0.4 to 27 |
+| `cron-autopilot` (Fri, Sat every 3 h, cursor) | about 70 + one call per company a week | 30 to 60 s per company (AI planning) | 1 to 25 (20 companies) |
+| `cron-content-summary`, `cron-leads-digest`, `cron-trial-reminders` (hourly) | 720 each | 0.3 to 1 s | 2 to 6 each, 6 to 18 together |
+| The 5 daily jobs (store sync, analytics, price changes, MoMo renewals, media clean-up) | 30 each | 1 to 10 s | 1 to 8 together |
+| Video robot calls from GitHub | about 2,900 claims | short | 5 to 15 |
+| Production deploys | 10 | n/a | **150** (15 each) |
+
+That comes to **about 220 to 450 of the 300 credits**, before visitors. Deploys and the publisher are the biggest parts.
+The low end fits; the high end would pause the site.
+
+**Free ways to cut the top three:**
+1. **Deploys (150).**
+   - Deploy in batches, at most 5 a month (75): about half of the whole budget is deploys.
+   - Rollbacks and failed deploys are free.
+2. **Publisher (31 to 89).** Proposals for the owner (not done):
+   - (a) Every 5 minutes from 06:00 to 23:00 Kigali time, every 15 minutes at night. That needs a second scheduled
+     function: Netlify takes one schedule per function, and `tests/netlify-crons.test.ts` checks the schedules. Saves
+     about 15 to 25.
+   - (b) Every 10 minutes all day ("Posts go out within 10 minutes"). Saves about half.
+   - (c) Run the video sweep inside the publisher's run, as a batch, so the video sweep's own invocations go. Saves
+     most of the 16 to 33 above. Only if the two together stay well inside 60 s: publisher 15 s plus clips 25 s is
+     too close today, so this would need the clip budget cut to about 15 s.
+   - Skipping when idle saves little here: an idle run is already two short queries, so the bill is mostly the
+     functions starting.
+3. **Video sweep (16 to 33).** Done (`lib/visuals/ai-clips.ts`, `lib/video-studio/sweep.ts`, `app/api/cron/video-jobs/route.ts`):
+   - Every 10 minutes (was 4).
+   - An idle sweep stops the AI clip part after one query.
+   - Its independent parts (stranded designs and voice reservations, Seedance, AI clips, ready emails) run side by
+     side, so an idle run is about 3 database round trips one after another instead of about 10.
+   - Proposal: every 15 minutes at night.
+4. **Metrics (5 to 41).** Proposal for the owner (not done): every 3 hours instead of hourly. Post insights on the
+   dashboard are not watched by the hour; saves about two thirds.
 
 What else to do:
 
@@ -175,6 +230,7 @@ robot is not one of them: it runs on GitHub Actions every 15 minutes (`video-rob
 | `cron-content-summary` | hourly :07 | `/api/cron/content-summary` (cursor calls) |
 | `cron-daily-posts` | hourly :13 | `/api/cron/daily-posts` (cursor calls; one company per call) |
 | `cron-video-jobs` | every 10 minutes (every 4 on Cloudflare, to save credits) | `/api/cron/video-jobs` |
+| `cron-creator-views` | every 6 hours at :31 | `/api/cron/creator-views` (cursor calls) |
 
 How a run works: the scheduled function (30 s limit) posts `{ path }` with `Authorization: Bearer $CRON_SECRET` to `/.netlify/functions/cron-runner-background`; Netlify answers 202 and runs that background function (15 minutes), which checks the secret and that the path is one of the jobs above, then calls the route on the site's own URL with the same bearer token. `purge-accounts` and `social-refresh` keep running from GitHub Actions as before.
 
