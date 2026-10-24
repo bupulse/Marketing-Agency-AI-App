@@ -4,6 +4,7 @@ import { sumTracks } from "@/lib/video-engine/encode";
 import { totalMs, type VideoLayer } from "@/lib/video-engine/spec";
 import { validateSpec } from "@/lib/video-engine/validate";
 import { clipSoundCues, openVideoFrames, videoClips, videoFramesAt } from "@/lib/video-engine/video-frames";
+import { placeVoice } from "@/lib/video-engine/voice";
 
 const clip = (over: Record<string, unknown> = {}) => ({ kind: "video", url: "/videos/seedance/sd-1.mp4", fit: "cover", start: 0, sound: true, x: 0.5, y: 0.5, w: 1, h: 1, ...over });
 const text = (over: Record<string, unknown> = {}) => ({ kind: "text", text: "WhatsApp 0788 123 456", font: "inter", size: 0.04, color: "#ffffff", x: 0.5, y: 0.75, w: 0.7, h: 0.05, ...over });
@@ -98,6 +99,43 @@ describe("video layers: frames and sound", () => {
     calls.length = 0;
     drawSpecFrame(ctx as unknown as CanvasRenderingContext2D, spec, new Map(), 1000, { makeCanvas: null });
     expect(calls.some((c) => c.startsWith("drawImage"))).toBe(false);
+  });
+});
+
+describe("video layers: the editor's speed, sound level and fades", () => {
+  const edited = (over: Record<string, unknown>) => overlay([{ seconds: 3, background: {}, layers: [clip(over)] }, { seconds: 3, background: {}, layers: [clip({ start: 3 })] }], 6);
+
+  it("keeps speed, level and fades within their limits, and leaves them out at their defaults (a design is unchanged)", () => {
+    expect(edited({ rate: 0.5, volume: 0.4, fadeIn: 0.5, fadeOut: 1 }).scenes[0].layers[0]).toMatchObject({ rate: 0.5, volume: 0.4, fadeIn: 0.5, fadeOut: 1 });
+    expect(edited({ rate: 9, volume: 3, fadeIn: 10, fadeOut: -1 }).scenes[0].layers[0]).toMatchObject({ rate: 2, fadeIn: 3 });
+    expect(edited({ rate: 0.1 }).scenes[0].layers[0]).toMatchObject({ rate: 0.5 });
+    const plain = edited({ rate: 1, volume: 1, fadeIn: 0 }).scenes[0].layers[0];
+    for (const k of ["rate", "volume", "fadeIn", "fadeOut"]) expect(plain).not.toHaveProperty(k);
+  });
+
+  it("a slowed or sped-up scene reads its clip at that speed", () => {
+    expect(videoFramesAt(edited({ rate: 0.5 }), 2000)[0].clipMs).toBe(1000);
+    expect(videoFramesAt(edited({ rate: 2, start: 1 }), 1000)[0].clipMs).toBe(3000);
+  });
+
+  it("the clip sound: a scene not at speed 1 or turned down to 0 is silent; a level and fades go on the cue", () => {
+    expect(clipSoundCues(edited({ rate: 0.5 }))[0].cues.map((c) => c.scene)).toEqual([1]);
+    expect(clipSoundCues(edited({ volume: 0 }))[0].cues.map((c) => c.scene)).toEqual([1]);
+    expect(clipSoundCues(edited({ volume: 0.5, fadeIn: 0.25, fadeOut: 1 }))[0].cues[0]).toEqual({ scene: 0, fromMs: 0, toMs: 3000, atMs: 0, gain: 0.5, fadeInMs: 250, fadeOutMs: 1000 });
+  });
+
+  it("the mixer plays a cue at its level, fading in and out over the times given; a voice cue is as before", () => {
+    const rate = 1000;
+    const take = [new Float32Array(2000).fill(1)];
+    const [out] = placeVoice(take, [{ scene: 0, fromMs: 0, toMs: 1000, atMs: 0, gain: 0.5, fadeInMs: 100, fadeOutMs: 200 }], rate, 1000);
+    expect(out[0]).toBeCloseTo(0.005, 3);
+    expect(out[50]).toBeCloseTo(0.255, 3);
+    expect(out[500]).toBe(0.5);
+    expect(out[899]).toBeCloseTo(0.5 * (101 / 200), 3);
+    const [voice] = placeVoice(take, [{ scene: 0, fromMs: 0, toMs: 1000, atMs: 0 }], rate, 1000);
+    // 8 ms fades at full level.
+    expect(voice[0]).toBeCloseTo(1 / 8, 5);
+    expect(voice[8]).toBe(1);
   });
 });
 

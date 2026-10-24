@@ -25,6 +25,8 @@ export type VoiceLine = { scene: number; text: string };
 export type SpokenLine = VoiceLine & { startMs: number; endMs: number };
 /** Play the take from `fromMs` to `toMs` at `atMs` of the video (scene `scene`). */
 export type VoiceCue = { scene: number; fromMs: number; toMs: number; atMs: number };
+/** A cue with a level (0 to 1) and fades (a clip's own sound, set in the editor); a voice cue has none: full level, 8 ms fades. */
+export type SoundCue = VoiceCue & { gain?: number; fadeInMs?: number; fadeOutMs?: number };
 
 export type SpecVoice = { audio: Uint8Array; mimeType: "audio/mpeg"; durationMs: number; characters: number; voiceId: string; model: string; lines: SpokenLine[]; costUsd: number };
 
@@ -205,14 +207,18 @@ const CUE_FADE_MS = 8;
 
 /**
  * The voice track of the whole video: each cue's piece of the decoded take placed at its moment, with a short fade at
- * both ends. `take` holds the decoded channels at `sampleRate`. Pure.
+ * both ends (longer, and at a lower level, for a clip's own sound the editor set: SoundCue). `take` holds the decoded
+ * channels at `sampleRate`. Pure.
  */
-export function placeVoice(take: readonly Float32Array[], cues: readonly VoiceCue[], sampleRate: number, totalMs: number): Float32Array[] {
+export function placeVoice(take: readonly Float32Array[], cues: readonly SoundCue[], sampleRate: number, totalMs: number): Float32Array[] {
   const frames = Math.max(1, Math.round((totalMs / 1000) * sampleRate));
-  const fade = Math.max(1, Math.round((CUE_FADE_MS / 1000) * sampleRate));
+  const samples = (ms: number | undefined) => Math.max(1, Math.round((Math.max(CUE_FADE_MS, ms ?? 0) / 1000) * sampleRate));
   return take.map((src) => {
     const out = new Float32Array(frames);
     for (const c of cues) {
+      const fadeIn = samples(c.fadeInMs);
+      const fadeOut = samples(c.fadeOutMs);
+      const gain = c.gain ?? 1;
       const from = Math.max(0, Math.round((c.fromMs / 1000) * sampleRate));
       const to = Math.min(src.length, Math.round((c.toMs / 1000) * sampleRate));
       const at = Math.round((c.atMs / 1000) * sampleRate);
@@ -221,7 +227,7 @@ export function placeVoice(take: readonly Float32Array[], cues: readonly VoiceCu
         const o = at + i;
         if (o < 0) continue;
         if (o >= frames) break;
-        const g = Math.min(1, (i + 1) / fade, (n - i) / fade);
+        const g = Math.min(1, (i + 1) / fadeIn, (n - i) / fadeOut) * gain;
         out[o] += src[from + i] * g;
       }
     }

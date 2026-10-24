@@ -17,6 +17,8 @@ import {
   YOUTUBE_MIDDLE_BAND,
   SHAPES,
   SPEC_LIMITS,
+  CLIP_FADE_MAX,
+  CLIP_RATE,
   TEXT_ANIMATIONS,
   TRANSITIONS,
   isRatio,
@@ -52,6 +54,9 @@ const num = (v: unknown, min: number, max: number, fallback: number): number => 
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 };
 const optNum = (v: unknown, min: number, max: number): number | undefined => (v === undefined || v === null ? undefined : num(v, min, max, min));
+/** `{ [key]: value }` rounded, or nothing when the value is absent or the default (so a spec without it stays the same). */
+const optional = <K extends string>(key: K, v: number | undefined, round: (n: number) => number, fallback: number): Partial<Record<K, number>> =>
+  v === undefined || round(v) === fallback ? {} : ({ [key]: round(v) } as Partial<Record<K, number>>);
 const oneOf = <T extends string>(v: unknown, list: readonly T[], fallback: T): T => (typeof v === "string" && (list as readonly string[]).includes(v) ? (v as T) : fallback);
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
@@ -271,6 +276,11 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       start: Math.round(num(v.start, 0, 600, 0) * 1000) / 1000,
       sound: v.sound === true,
       dim: optNum(v.dim, 0, 0.8),
+      // Editor settings (speed, the clip sound's level and fades); left out when not given, so a design is unchanged.
+      ...optional("rate", optNum(v.rate, CLIP_RATE.min, CLIP_RATE.max), (n) => Math.round(n * 100) / 100, 1),
+      ...optional("volume", optNum(v.volume, 0, 1), (n) => Math.round(n * 100) / 100, 1),
+      ...optional("fadeIn", optNum(v.fadeIn, 0, CLIP_FADE_MAX), (n) => Math.round(n * 100) / 100, 0),
+      ...optional("fadeOut", optNum(v.fadeOut, 0, CLIP_FADE_MAX), (n) => Math.round(n * 100) / 100, 0),
     };
   }
   if (v.kind === "particles") {

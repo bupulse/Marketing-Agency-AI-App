@@ -6,6 +6,7 @@
 import { scenesAt } from "./animate";
 import { videoFrameKey, type Photos } from "./draw";
 import type { MotionSpec } from "./spec";
+import type { SoundCue } from "./voice";
 import { VideoSource } from "./video-source";
 
 export { videoFrameKey };
@@ -16,7 +17,8 @@ export function videoFramesAt(spec: Pick<MotionSpec, "scenes">, tMs: number): { 
   const out: { key: string; url: string; clipMs: number }[] = [];
   for (const active of previous ? [previous, current] : [current]) {
     spec.scenes[active.index].layers.forEach((l, i) => {
-      if (l.kind === "video") out.push({ key: videoFrameKey(active.index, i), url: l.url, clipMs: Math.round(l.start * 1000 + active.localMs) });
+      // At a speed other than 1 the scene reads more (or less) of the clip in the same time.
+      if (l.kind === "video") out.push({ key: videoFrameKey(active.index, i), url: l.url, clipMs: Math.round(l.start * 1000 + active.localMs * (l.rate ?? 1)) });
     });
   }
   return out;
@@ -28,6 +30,8 @@ export function videoFramesAt(spec: Pick<MotionSpec, "scenes">, tMs: number): { 
  */
 export const isAiClipUrl = (url: string) => /\/videos\/veo\/vc-[0-9a-f]{12}\.mp4(\?|$)/.test(url);
 const keepsSound = (l: { url: string; sound?: boolean }) => l.sound === true && !isAiClipUrl(l.url);
+/** The clip sound plays in this scene: kept, at normal speed (a sped-up or slowed clip is silent), and not turned down to 0. */
+const playsSound = (l: { url: string; sound?: boolean; rate?: number; volume?: number }) => keepsSound(l) && (l.rate ?? 1) === 1 && (l.volume ?? 1) > 0;
 
 /** The distinct clips of a spec, and whether each keeps its own sound. */
 export function videoClips(spec: Pick<MotionSpec, "scenes">): { url: string; sound: boolean }[] {
@@ -38,17 +42,22 @@ export function videoClips(spec: Pick<MotionSpec, "scenes">): { url: string; sou
 
 /**
  * The clip sound to play (video layers with `sound`): per clip, one cue per scene, its piece of the clip (from the
- * layer's start for the scene's length) at the scene's start, in the same shape as the voice-over's cues (voice.ts).
+ * layer's start for the scene's length) at the scene's start, in the same shape as the voice-over's cues (voice.ts),
+ * with the layer's level and fades when the editor set them.
  */
-export function clipSoundCues(spec: Pick<MotionSpec, "scenes">): { url: string; cues: { scene: number; fromMs: number; toMs: number; atMs: number }[] }[] {
-  const byUrl = new Map<string, { scene: number; fromMs: number; toMs: number; atMs: number }[]>();
+export function clipSoundCues(spec: Pick<MotionSpec, "scenes">): { url: string; cues: SoundCue[] }[] {
+  const byUrl = new Map<string, SoundCue[]>();
   let at = 0;
   spec.scenes.forEach((s, scene) => {
     const ms = Math.round(s.seconds * 1000);
     for (const l of s.layers) {
-      if (l.kind !== "video" || !keepsSound(l)) continue;
+      if (l.kind !== "video" || !playsSound(l)) continue;
       const from = Math.round(l.start * 1000);
-      byUrl.set(l.url, [...(byUrl.get(l.url) ?? []), { scene, fromMs: from, toMs: from + ms, atMs: at }]);
+      const cue: SoundCue = { scene, fromMs: from, toMs: from + ms, atMs: at };
+      if (l.volume !== undefined && l.volume < 1) cue.gain = l.volume;
+      if (l.fadeIn) cue.fadeInMs = Math.round(l.fadeIn * 1000);
+      if (l.fadeOut) cue.fadeOutMs = Math.round(l.fadeOut * 1000);
+      byUrl.set(l.url, [...(byUrl.get(l.url) ?? []), cue]);
     }
     at += ms;
   });
