@@ -52,14 +52,22 @@ vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => ({ download: async () => ({ data: new Blob([new Uint8Array([0x89, 1, 2])]), error: null }), upload: h.upload, createSignedUrls: async () => ({ data: [] }) }) } }) }));
 vi.mock("@/lib/video-engine/veo", async (orig) => ({ ...(await orig<typeof import("@/lib/video-engine/veo")>()), submitVeo: h.submit, getVeoOperation: h.poll, veoClipBytes: undefined, downloadVeo: async () => Buffer.from([0, 0, 0, 24]) }));
 
-import { framePhotos, latestReel, reelEngineOn, retryReel, startReel, stepReel } from "@/lib/reel-engine/engine";
+import { BUSY_GIVE_UP_MS, framePhotos, latestReel, QUOTA_MESSAGE, reelEngineOn, retryReel, startReel, stepReel } from "@/lib/reel-engine/engine";
 import { veoClipUsd, veoModel } from "@/lib/video-engine/veo";
 
 const owner = { userId: "u1", businessId: "b1" };
 
-/** Steps until the reel is no longer filming (one finished clip is saved and checked per step). */
+/** Steps until the reel is no longer filming (one finished clip is saved, or one saved clip checked, per step). */
 async function settle(id: string) {
-  for (let n = 0; n < 20 && h.jobs.get(id)!.status === "filming"; n++) await stepReel(owner, id);
+  for (let n = 0; n < 40 && h.jobs.get(id)!.status === "filming"; n++) await stepReel(owner, id);
+}
+
+/** Starts a reel and takes its two planning steps (the presenter, then the script), as the screen does. */
+async function begin(request: Parameters<typeof startReel>[1]) {
+  const id = await startReel(owner, request);
+  await stepReel(owner, id);
+  await stepReel(owner, id);
+  return id;
 }
 
 beforeEach(() => {
@@ -86,7 +94,7 @@ describe("the reel engine (test only)", () => {
 
   it("paints every frame of a reel from the same product photo (an album can show several models)", async () => {
     h.photos.value = ["u1/gallery/spiral.jpg", "u1/gallery/pots.jpg", "u1/gallery/tree.jpg"];
-    const id = await startReel(owner, { language: "English", tier: "lite", subjectId: "p1" });
+    const id = await begin({ language: "English", tier: "lite", subjectId: "p1" });
     for (let i = 0; i < 7; i++) await stepReel(owner, id);
     expect(h.design).toHaveBeenCalledTimes(7);
     expect(new Set(h.design.mock.calls.map((c) => (c[0] as { usePhotoPath: string }).usePhotoPath))).toEqual(new Set(["u1/gallery/spiral.jpg"]));
@@ -104,7 +112,7 @@ describe("the reel engine (test only)", () => {
   });
 
   it("frames the 4 clips one step at a time, then sends them to Veo, then saves the clips and is ready to join", async () => {
-    const id = await startReel(owner, { language: "English", tier: "lite", subjectId: "p1" });
+    const id = await begin({ language: "English", tier: "lite", subjectId: "p1" });
     for (let i = 0; i < 7; i++) await stepReel(owner, id);
     expect(h.design).toHaveBeenCalledTimes(7);
     expect(h.design.mock.calls[0][0]).toMatchObject({ aspectRatio: "9:16", model: "gemini-3.1-flash-image", usePhotoPath: "u1/gallery/a.jpg" });
@@ -123,14 +131,20 @@ describe("the reel engine (test only)", () => {
   });
 
   it("a clip Google refuses is sent again twice (refusals cost nothing), then fails the reel with the reason", async () => {
-    const id = await startReel(owner, { language: "English", tier: "lite" });
+    const id = await begin({ language: "English", tier: "lite" });
     for (let i = 0; i < 7; i++) await stepReel(owner, id);
     const refused = { name: "op", done: true, videoUri: null, error: new Error("Google declined this clip under its safety rules.") };
-    // The first clip polled (the hook) is refused three times; each refusal sends it again at the next step.
-    for (let k = 0; k < 3; k++) {
-      h.poll.mockResolvedValueOnce(refused);
-      await stepReel(owner, id);
-    }
+    // The first clip sent (the hook) is refused every time; each refusal sends it again at a later step.
+    let k = 0;
+    let hookPrompt: string | null = null;
+    const hookOps = new Set<string>();
+    h.submit.mockImplementation(async (req: { prompt: string }) => {
+      const op = `models/veo/operations/op${++k}`;
+      hookPrompt ??= req.prompt;
+      if (req.prompt === hookPrompt) hookOps.add(op);
+      return op;
+    });
+    h.poll.mockImplementation(async (op: string) => (hookOps.has(op) ? refused : { name: op, done: true, videoUri: "https://generativelanguage.googleapis.com/v.mp4", error: null }));
     // The other clips finish first, so trying again never pays for them twice.
     await settle(id);
     expect(h.submit).toHaveBeenCalledTimes(9);
@@ -141,7 +155,8 @@ describe("the reel engine (test only)", () => {
     expect(filmed).toHaveLength(6);
     expect(h.jobs.get(id)!.costUsd).toBeCloseTo(7 * 0.067 + filmed.reduce((t, c) => t + veoClipUsd(c.seconds, veoModel()), 0), 2);
 
-    // "Try the failed clips again": the 3 filmed clips are kept, only the failed one is filmed again.
+    // "Try the failed clips again": the filmed clips are kept, only the failed one is filmed again.
+    h.poll.mockResolvedValue({ name: "op", done: true, videoUri: "https://generativelanguage.googleapis.com/v.mp4", error: null });
     await retryReel(owner, id);
     expect(h.jobs.get(id)).toMatchObject({ status: "filming", error: null });
     await settle(id);
@@ -164,7 +179,7 @@ describe("the presenter", () => {
 describe("carrying on with a reel", () => {
   it("the page gets the latest reel back, so an unfinished one carries on", async () => {
     expect(await latestReel(owner)).toBeNull();
-    const id = await startReel(owner, { language: "Kinyarwanda", tier: "lite" });
+    const id = await begin({ language: "Kinyarwanda", tier: "lite" });
     await stepReel(owner, id);
     const view = await latestReel(owner);
     expect(view).toMatchObject({ id, status: "filming", language: "Kinyarwanda" });
@@ -174,7 +189,7 @@ describe("carrying on with a reel", () => {
 
 describe("the clip checker in the engine", () => {
   it("films a clip again when the checker sees broken physics, telling the model what went wrong, at most twice a reel", async () => {
-    const id = await startReel(owner, { language: "English", tier: "lite" });
+    const id = await begin({ language: "English", tier: "lite" });
     for (let i = 0; i < 7; i++) await stepReel(owner, id);
     h.check
       .mockResolvedValueOnce({ ok: false, problems: ["3 s: a man walks through the tower"], ran: true })
@@ -184,22 +199,23 @@ describe("the clip checker in the engine", () => {
     const plan = h.jobs.get(id)!.plan as { refilms: number; clips: { status: string; avoid?: string[]; problems?: string[] }[] };
     expect(plan.refilms).toBe(2);
     expect(plan.clips.every((c) => c.status === "done")).toBe(true);
-    // The first clip was filmed again twice, each time told what went wrong; its third take is kept with what the
-    // checker saw, because the reel's 2 refilms were used.
-    expect(plan.clips[0].avoid).toEqual(["5 s: her fingers melt into the leaves"]);
-    expect(plan.clips[0].problems).toEqual(["1 s: a face changes"]);
+    // Two clips were filmed again, each told what went wrong; the third bad take is kept with what the checker saw,
+    // because the reel's 2 refilms were used.
+    expect(plan.clips.flatMap((c) => c.avoid ?? []).sort()).toEqual(["3 s: a man walks through the tower", "5 s: her fingers melt into the leaves"]);
+    expect(plan.clips.filter((c) => c.problems?.includes("1 s: a face changes"))).toHaveLength(1);
     expect(h.submit).toHaveBeenCalledTimes(9);
     expect(h.submit.mock.calls.map((c) => String(c[0].prompt)).join(" ")).toContain("avoid exactly this: 3 s: a man walks through the tower.");
     expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
-    // 6 clips paid: the 4 and the 2 filmed again.
-    expect(h.jobs.get(id)!.costUsd).toBeCloseTo(7 * 0.067 + 5 * veoClipUsd(8, veoModel()) + 4 * veoClipUsd(4, veoModel()), 2);
+    // 9 clips paid: the 7 and the 2 filmed again.
+    const refilmed = (plan.clips as { avoid?: string[]; seconds?: number }[]).filter((c) => c.avoid?.length).reduce((t, c) => t + veoClipUsd(c.seconds ?? 8, veoModel()), 0);
+    expect(h.jobs.get(id)!.costUsd).toBeCloseTo(7 * 0.067 + 3 * veoClipUsd(8, veoModel()) + 4 * veoClipUsd(4, veoModel()) + refilmed, 2);
   });
 });
 
 describe("a product photo that cannot be read", () => {
   it("is skipped: the frame is painted without it instead of failing the reel", async () => {
     const { DesignError } = await import("@/lib/designs/service");
-    const id = await startReel(owner, { language: "English", tier: "lite" });
+    const id = await begin({ language: "English", tier: "lite" });
     h.design.mockImplementationOnce(async () => {
       throw new DesignError("That photo could not be loaded. Please pick it again.");
     });
@@ -218,7 +234,7 @@ describe("re-cutting a finished reel", () => {
     const storage = await import("@/lib/storage");
     vi.mocked(storage.createSignedUploadUrl).mockResolvedValue({ path: "p", token: "tok", signedUrl: "u" });
     const { reelUploadTarget } = await import("@/lib/reel-engine/engine");
-    const id = await startReel(owner, { language: "English", tier: "lite" });
+    const id = await begin({ language: "English", tier: "lite" });
     for (let i = 0; i < 7; i++) await stepReel(owner, id);
     await settle(id);
     expect(await reelUploadTarget(owner, id)).toEqual({ path: `u1/clips/reels/${id}.mp4`, token: "tok" });
@@ -228,7 +244,7 @@ describe("re-cutting a finished reel", () => {
 
 describe("Google at its limit", () => {
   it("never films more than 3 clips at once, and a clip Google is too busy for waits a minute without counting as a try", async () => {
-    const id = await startReel(owner, { language: "English", tier: "lite" });
+    const id = await begin({ language: "English", tier: "lite" });
     for (let i = 0; i < 7; i++) await stepReel(owner, id);
     const t0 = new Date();
     h.poll.mockResolvedValueOnce({ name: "op", done: true, videoUri: null, error: Object.assign(new Error("Google Veo is at its limit right now."), { kind: "quota" }) });
@@ -245,7 +261,7 @@ describe("Google at its limit", () => {
   });
 
   it("a submit Google refuses for its limit (HTTP 429) waits too, instead of failing the reel", async () => {
-    const id = await startReel(owner, { language: "English", tier: "lite" });
+    const id = await begin({ language: "English", tier: "lite" });
     for (let i = 0; i < 7; i++) await stepReel(owner, id);
     h.submit.mockRejectedValueOnce(Object.assign(new Error("Google Veo is at its limit right now."), { name: "VeoError", kind: "quota" }));
     const t0 = new Date();
@@ -255,5 +271,113 @@ describe("Google at its limit", () => {
     expect(clip).toMatchObject({ status: "framed", retryAt: t0.getTime() + 60_000 });
     for (let n = 0; n < 30 && h.jobs.get(id)!.status === "filming"; n++) await stepReel(owner, id, new Date(t0.getTime() + 61_000 + n * 1000));
     expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
+  });
+});
+
+describe("within Netlify's 60 s (docs/VIDEO_ENGINE_LAUNCH.md section 1)", () => {
+  type Clip = { status: string; operation?: string | null; error?: string; retryAt?: number | null };
+  const clipsOf = (id: string) => (h.jobs.get(id)!.plan as { clips: Clip[] }).clips;
+
+  it("starting a reel is quick: the portrait and the script are the next two steps, one per call", async () => {
+    const id = await startReel(owner, { language: "English", tier: "lite", brief: "rooftop farming" });
+    expect(h.design).not.toHaveBeenCalled();
+    expect(h.jobs.get(id)).toMatchObject({ status: "filming", plan: { clips: [], stage: "presenter", brief: "rooftop farming" } });
+    await stepReel(owner, id);
+    expect((h.jobs.get(id)!.plan as { stage: string }).stage).toBe("script");
+    expect(clipsOf(id)).toEqual([]);
+    await stepReel(owner, id);
+    expect(h.jobs.get(id)!.plan).not.toHaveProperty("stage");
+    expect(clipsOf(id)).toHaveLength(7);
+    expect(h.design).not.toHaveBeenCalled();
+  });
+
+  it("a planning step cut off half way is taken again after its hold, and a reel with nothing to film fails, never assembles", async () => {
+    // Cut off in the presenter step: nothing was saved, so the job is still at that stage and the next step does it.
+    const id = await startReel(owner, { language: "English", tier: "lite" });
+    expect((h.jobs.get(id)!.plan as { stage: string }).stage).toBe("presenter");
+    await stepReel(owner, id);
+    await stepReel(owner, id);
+    expect(clipsOf(id)).toHaveLength(7);
+    // An old reel cut off before planning moved into steps: no clips and no planning stage.
+    h.jobs.set("old", { id: "old", businessId: "b1", status: "filming", costUsd: 0, language: "English", subjectId: null, plan: { clips: [] } });
+    await stepReel(owner, "old");
+    expect(h.jobs.get("old")).toMatchObject({ status: "failed", error: "The reel could not be planned. Please try again." });
+  });
+
+  it("stops sending clips once the step's time is used, and saves each clip's job at Google as soon as it is accepted", async () => {
+    const id = await begin({ language: "English", tier: "lite" });
+    for (let i = 0; i < 7; i++) await stepReel(owner, id);
+    let clock = Date.now();
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    h.submit.mockImplementation(async () => {
+      clock += 20_000;
+      return `models/veo/operations/op${clock}`;
+    });
+    h.poll.mockResolvedValue({ name: "op", done: false, videoUri: null, error: null });
+    // What each save held at the moment it was made (the plan object changes after).
+    const kept: number[] = [];
+    const update = h.prisma.reelJob.update.getMockImplementation()!;
+    h.prisma.reelJob.update.mockImplementation(async (a: { where: { id: string }; data: Record<string, unknown> }) => {
+      if (!("stepUntil" in a.data) && a.data.plan) kept.push((a.data.plan as { clips: Clip[] }).clips.filter((c) => c.operation).length);
+      return update(a);
+    });
+    await stepReel(owner, id);
+    now.mockRestore();
+    h.prisma.reelJob.update.mockImplementation(update);
+    expect(h.submit).toHaveBeenCalledTimes(2);
+    // Each accepted clip was saved at once, while the step still held the reel (no stepUntil in those saves).
+    expect(kept).toEqual([1, 2]);
+  });
+
+  it("does one heavy thing per step: a finished clip is saved in one step and checked in the next", async () => {
+    const id = await begin({ language: "English", tier: "lite" });
+    for (let i = 0; i < 7; i++) await stepReel(owner, id);
+    await stepReel(owner, id);
+    expect(h.upload).toHaveBeenCalledTimes(1);
+    expect(h.check).not.toHaveBeenCalled();
+    expect(clipsOf(id).filter((c) => c.status === "checking")).toHaveLength(1);
+    await stepReel(owner, id);
+    expect(h.check).toHaveBeenCalledTimes(1);
+    expect(h.upload).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up on a clip Google stays at its limit for, and the reel fails with a clear message", async () => {
+    const id = await begin({ language: "English", tier: "lite" });
+    for (let i = 0; i < 7; i++) await stepReel(owner, id);
+    const quota = Object.assign(new Error("Google Veo is at its limit right now."), { name: "VeoError", kind: "quota" });
+    h.submit.mockRejectedValue(quota);
+    const t0 = Date.now();
+    await stepReel(owner, id, new Date(t0));
+    expect(clipsOf(id)[0]).toMatchObject({ status: "framed", retryAt: t0 + 60_000 });
+    await stepReel(owner, id, new Date(t0 + 10 * 60_000));
+    expect(clipsOf(id).filter((c) => c.status === "failed")).toHaveLength(0);
+    // Half an hour with no clip taken: every clip still waiting fails, and so does the reel (nothing was paid for them).
+    await stepReel(owner, id, new Date(t0 + BUSY_GIVE_UP_MS));
+    expect(clipsOf(id).every((c) => c.status === "failed" && c.error === QUOTA_MESSAGE)).toBe(true);
+    expect(h.jobs.get(id)).toMatchObject({ status: "failed", error: QUOTA_MESSAGE });
+    // Trying again later starts the clock again.
+    h.submit.mockReset().mockImplementation(async () => `models/veo/operations/op${Math.random()}`);
+    await retryReel(owner, id);
+    await settle(id);
+    expect(h.jobs.get(id)).toMatchObject({ status: "assembling" });
+  });
+
+  it("counts clips filming and Google's waits across every business's reels, not per reel", async () => {
+    const id = await begin({ language: "English", tier: "lite" });
+    for (let i = 0; i < 7; i++) await stepReel(owner, id);
+    const t0 = Date.now();
+    const findMany = h.prisma.reelJob.findMany as unknown as ReturnType<typeof vi.fn>;
+    const other = (clips: Clip[]) => findMany.mockImplementation(async (a?: { where?: { status?: string } }) => (a?.where?.status === "filming" ? [{ plan: { clips } }] : []));
+    // Another company's reel has 3 clips at Google: this one waits.
+    other([{ status: "filming" }, { status: "filming" }, { status: "filming" }]);
+    await stepReel(owner, id, new Date(t0));
+    expect(h.submit).not.toHaveBeenCalled();
+    // Another company's clip was just told Google is at its limit: nobody sends until its wait is over.
+    other([{ status: "framed", busySince: t0, retryAt: t0 + 60_000 } as Clip]);
+    await stepReel(owner, id, new Date(t0 + 30_000));
+    expect(h.submit).not.toHaveBeenCalled();
+    await stepReel(owner, id, new Date(t0 + 61_000));
+    expect(h.submit).toHaveBeenCalledTimes(3);
+    findMany.mockReset().mockImplementation(async () => []);
   });
 });

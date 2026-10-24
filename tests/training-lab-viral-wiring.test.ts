@@ -19,6 +19,8 @@ vi.mock("@/lib/db", () => ({
         return row;
       }),
       findMany: vi.fn(async () => []),
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => h.jobs.get(where.id) ?? null),
+      updateMany: vi.fn(async () => ({ count: 1 })),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => Object.assign(h.jobs.get(where.id)!, data)),
     },
   },
@@ -50,7 +52,15 @@ vi.mock("@/lib/video-engine/brain/viral", async (orig) => {
 
 const viral = await import("@/lib/video-engine/brain/viral");
 const { labViralRows } = await import("@/lib/training-lab/reader");
-const { startReel } = await import("@/lib/reel-engine/engine");
+const { startReel, stepReel } = await import("@/lib/reel-engine/engine");
+
+/** Starts a reel and takes its two planning steps (the presenter, then the script), where the Lab is read. */
+async function planReel(owner: { userId: string; businessId: string }, request: Parameters<typeof startReel>[1]) {
+  const id = await startReel(owner, request);
+  await stepReel(owner, id);
+  await stepReel(owner, id);
+  return id;
+}
 const { recipeForBrief } = await import("@/lib/video-engine/designer");
 const { VIRAL_STYLE_ID } = await import("@/lib/video-engine/templates");
 type RecipeInput = import("@/lib/video-engine/brain/viral").RecipeInput;
@@ -160,21 +170,21 @@ describe("startReel passes the Lab to the recipe", () => {
 
   it("gives the recipe the Lab rows and the never-copy list", async () => {
     h.examples = [example(), example({ id: "bad", rating: 1, tags: ["never:pov-local-find"] })];
-    await startReel({ userId: "u1", businessId: "b1" }, { language: "English", tier: "lite" });
+    await planReel({ userId: "u1", businessId: "b1" }, { language: "English", tier: "lite" });
     expect(h.recipeInputs).toHaveLength(1);
     expect((h.recipeInputs[0].lab as ViralVideo[]).map((r) => r.id)).toEqual(["lab:good"]);
     expect(h.recipeInputs[0].avoid).toEqual(["lab:bad", "pov-local-find"]);
   });
 
   it("asks for the recipe exactly as before with an empty Lab", async () => {
-    await startReel({ userId: "u1", businessId: "b1" }, { language: "English", tier: "lite" });
+    await planReel({ userId: "u1", businessId: "b1" }, { language: "English", tier: "lite" });
     expect(h.recipeInputs[0]).not.toHaveProperty("lab");
     expect(h.recipeInputs[0]).not.toHaveProperty("avoid");
   });
 
   it("lets the Director lean towards the shots of the owner's best-rated reels, from the same Lab read", async () => {
     h.examples = [example({ technique: ["question hook"], notes: { shots: "a result shot of the harvest" } })];
-    await startReel({ userId: "u1", businessId: "b1" }, { language: "English", tier: "lite" });
+    await planReel({ userId: "u1", businessId: "b1" }, { language: "English", tier: "lite" });
     const variants = ((h.jobs.get("job1")!.plan as { clips: { variant: string }[] }).clips ?? []).map((c) => c.variant);
     expect(variants[0]).toBe("hook:question");
     expect(variants).toContain("broll:result");
