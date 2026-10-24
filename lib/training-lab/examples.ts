@@ -309,10 +309,26 @@ export function readNotes(raw: unknown): LabNotes | null {
   return Object.keys(out).length ? out : null;
 }
 
-/** Writes an example's notes (null clears them) with an audit row. */
-export async function saveNotes(ctx: AdminContext, row: { id: string; notes: unknown }, notes: LabNotes | null, action: string, extra: Record<string, unknown> = {}) {
+/**
+ * The keys in an example's notes that the system wrote, not the owner's note fields: where it came from (a rated or
+ * edited reel, an actor's video and the moment), the edit's changes, and a posting habit's schedule. Saving the note
+ * fields keeps them (from-result.ts uses rated_reel to put a reel in the Lab once).
+ */
+export const SYSTEM_NOTE_KEYS = ["rated_reel", "from_reel", "from_video", "at_seconds", "edit"] as const;
+export const SCHEDULE_NOTE_KEYS = ["network", "country", "hours", "weekdays", "postsPerWeek", "formats"] as const;
+
+/** The system keys of these notes, for this kind of example (a posting habit's schedule too). */
+export function systemNotes(notes: unknown, kind?: string): Record<string, unknown> {
+  if (!notes || typeof notes !== "object" || Array.isArray(notes)) return {};
+  const n = notes as Record<string, unknown>;
+  const keys: readonly string[] = kind === "schedule" ? [...SYSTEM_NOTE_KEYS, ...SCHEDULE_NOTE_KEYS] : SYSTEM_NOTE_KEYS;
+  return Object.fromEntries(keys.filter((k) => n[k] !== undefined && n[k] !== null).map((k) => [k, n[k]]));
+}
+
+/** Writes an example's notes (null clears the note fields) with an audit row; the system keys and a recording's spellings stay. */
+export async function saveNotes(ctx: AdminContext, row: { id: string; notes: unknown; kind?: string }, notes: LabNotes | null, action: string, extra: Record<string, unknown> = {}) {
   // A recording's spellings to avoid and right words live in the same notes: drafting or correcting the AI fields keeps them.
-  const kept = withVoiceExtras(notes, readVoiceExtras(row.notes));
+  const kept = withVoiceExtras({ ...systemNotes(row.notes, row.kind), ...(notes ?? {}) }, readVoiceExtras(row.notes));
   await prisma.$transaction(async (tx) => {
     await tx.trainingExample.update({ where: { id: row.id }, data: { notes: kept ? (kept as Prisma.InputJsonValue) : Prisma.DbNull } });
     await writeAudit(tx, ctx, action, `training:${row.id}`, { notes: row.notes ?? null }, { notes, ...extra });

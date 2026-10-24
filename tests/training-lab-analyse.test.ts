@@ -151,6 +151,27 @@ describe("saving notes", () => {
     expect(m.tx.trainingExample.update).toHaveBeenLastCalledWith({ where: { id: "ex1" }, data: { notes: Prisma.DbNull } });
   });
 
+  it("keeps the keys the system wrote: where it came from, the edit, a recording's spellings", async () => {
+    const system = { rated_reel: "reel1", from_reel: "reel1", from_video: "v1", at_seconds: 2.5, edit: [{ change: "trim" }], wrong: [{ word: "nez", fix: "neza" }], words: ["LEAF"], hook: "old hook" };
+    m.findUnique.mockResolvedValueOnce({ ...reel, notes: system });
+    await saveExampleNotes(ctx, OWNER, "ex1", { hook: "New hook" });
+    expect(m.tx.trainingExample.update).toHaveBeenLastCalledWith({ where: { id: "ex1" }, data: { notes: { rated_reel: "reel1", from_reel: "reel1", from_video: "v1", at_seconds: 2.5, edit: [{ change: "trim" }], hook: "New hook", wrong: [{ word: "nez", fix: "neza" }], words: ["LEAF"] } } });
+    // Clearing every note field keeps them too.
+    m.findUnique.mockResolvedValueOnce({ ...reel, notes: { rated_reel: "reel1", hook: "x" } });
+    await saveExampleNotes(ctx, OWNER, "ex1", { hook: "" });
+    expect(m.tx.trainingExample.update).toHaveBeenLastCalledWith({ where: { id: "ex1" }, data: { notes: { rated_reel: "reel1" } } });
+  });
+
+  it("keeps a posting habit's schedule, and only for a posting habit", async () => {
+    const schedule = { network: "facebook", country: "Rwanda", hours: [7, 19], weekdays: [1, 3], postsPerWeek: 5, formats: ["reel"] };
+    m.findUnique.mockResolvedValueOnce({ ...reel, kind: "schedule", notes: schedule });
+    await saveExampleNotes(ctx, OWNER, "ex1", { why_it_works: "Evenings work" });
+    expect(m.tx.trainingExample.update).toHaveBeenLastCalledWith({ where: { id: "ex1" }, data: { notes: { ...schedule, why_it_works: "Evenings work" } } });
+    m.findUnique.mockResolvedValueOnce({ ...reel, notes: schedule });
+    await saveExampleNotes(ctx, OWNER, "ex1", { hook: "" });
+    expect(m.tx.trainingExample.update).toHaveBeenLastCalledWith({ where: { id: "ex1" }, data: { notes: Prisma.DbNull } });
+  });
+
   it("is for the owner only", async () => {
     await expect(saveExampleNotes(ctx, { ...OWNER, staffId: "s1" }, "ex1", { hook: "x" })).rejects.toMatchObject({ code: "forbidden" });
     await expect(lab.draftExampleNotes({ ...ctx, viaApi: true }, OWNER, "ex1")).rejects.toMatchObject({ code: "forbidden" });
