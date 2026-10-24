@@ -2,7 +2,7 @@
 // docs/CONTENT_VISUALS.md "Video quality"). A video Autopilot or Daily posts marked quality "ai" gets
 // AI_CLIPS_PER_VIDEO real moving clips from Google Veo (lib/video-engine/veo.ts), each starting from one of the video's
 // own photos, before the robot or the owner's browser renders it. Runs inside the /api/cron/video-jobs sweep (every 4
-// minutes), with its state on the visual (ContentVisual.clip*):
+// minutes; every 10 on Netlify), with its state on the visual (ContentVisual.clip*):
 // 1. "waiting" (set by the planner): the Veo switch, the Gemini key, a photo and BuPulse's daily clip limit are checked,
 //    then the studio credits are taken from the company owner (AI_CLIPS_PER_VIDEO × veoClipCredits) and the clips
 //    submitted through the cost ledger (withLedger: the switch and the platform cap). Then "making".
@@ -41,12 +41,15 @@ import type { VideoPlan } from "./types";
 export const CLIP_WORKING = ["waiting", "making"] as const;
 /** How long one sweep may hold a visual (submitting 2 clips, or downloading and saving them). */
 export const CLIP_LEASE_MS = 3 * 60_000;
-/** After this the clips not made are given up (Google's worst case is 6 minutes a clip). */
-export const CLIP_GIVE_UP_MS = 20 * 60_000;
-/** Videos started, and videos checked, per sweep; the rest wait for the next one (4 minutes later). */
+/**
+ * After this the clips not made are given up (Google's worst case is 6 minutes a clip). 45 minutes: the sweep runs every
+ * 10 minutes on Netlify (NETLIFY_VIDEO_JOBS_EVERY_MINUTES), which leaves room for 3 sends at Google's limit.
+ */
+export const CLIP_GIVE_UP_MS = 45 * 60_000;
+/** Videos started, and videos checked, per sweep; the rest wait for the next one (4 or 10 minutes later). */
 export const CLIP_START_BATCH = 5;
 export const CLIP_POLL_BATCH = 10;
-/** Times a clip is sent when Google answers "at its limit" (one sweep, 4 minutes, apart) before it is given up. */
+/** Times a clip is sent when Google answers "at its limit" (one sweep, 4 or 10 minutes, apart) before it is given up. */
 export const CLIP_QUOTA_TRIES = 3;
 /** BuPulse's own limit on clips submitted in 24 hours (all companies), VEO_CLIPS_PER_DAY overrides it. */
 export const VEO_CLIPS_PER_DAY = 10;
@@ -396,7 +399,7 @@ async function downloadPhoto(userId: string, path: string): Promise<Buffer> {
 }
 
 /** The owner's screen while clips are being made, and the browser's refusal to render meanwhile. */
-export const CLIPS_IN_PROGRESS = "AI clips are being made for this video (usually within 15 minutes). It will be ready soon.";
+export const CLIPS_IN_PROGRESS = "AI clips are being made for this video (usually within half an hour). It will be ready soon.";
 export const clipsInProgress = (row: { clipState: string | null }) => !!row.clipState && (CLIP_WORKING as readonly string[]).includes(row.clipState);
 
 /**

@@ -22,7 +22,7 @@ Netlify's limits, from `docs/DEPLOY_NETLIFY.md`:
 
 ### Fixed in this commit (video engine)
 
-1. **Overnight AI clips** (`runAiClips`, inside `/api/cron/video-jobs`, every 4 minutes).
+1. **Overnight AI clips** (`runAiClips`, inside `/api/cron/video-jobs`, every 10 minutes on Netlify).
    - Before: no time limit. One sweep could start and check up to 15 videos, and a video's work includes downloading
      a photo, making the first frame, sending to Google, and downloading and saving a finished clip of about 5 MB.
    - `VEO_PARALLEL` (3 clips at Google at once) kept the real work to about 6 clip actions a sweep, but nothing stopped
@@ -118,19 +118,18 @@ and 10 working videos.
 
 Possible later improvement (not done): let the studio's clips wait and retry at the limit as overnight clips do.
 
-## 4. Netlify credits: the video sweep every 4 minutes
+## 4. Netlify credits: the video sweep every 10 minutes
 
-`netlify/functions/cron-video-jobs.mts` runs every 4 minutes: about 10,800 runs a month, each three invocations
-(scheduled function, background runner, route). That is about as many as the publisher, which `docs/DEPLOY_NETLIFY.md`
-counts at 12 to 50 of the 300 monthly credits, but the video sweep is not in that estimate.
+Every 4 minutes, `netlify/functions/cron-video-jobs.mts` would run about 10,800 times a month, each three invocations
+(scheduled function, background runner, route), about 15 to 50 of the 300 monthly credits, and it was not in
+`docs/DEPLOY_NETLIFY.md`'s estimate.
 
-Choices for the owner (on the Waiting list):
-1. Keep 4 minutes and count it (about 15 to 50 credits).
-2. Every 10 minutes.
-
-Overnight clips depend on the interval. They give up after 20 minutes (`CLIP_GIVE_UP_MS`) and re-send at Google's
-limit once a sweep, up to 3 times. With a 10-minute sweep, `CLIP_GIVE_UP_MS` should go to about 45 minutes, or a
-clip at the limit would time out before its third send.
+**Decided** (main session, 24 October 2026, while the owner was away): every 10 minutes on Netlify, about 4,300 runs, roughly
+6 to 20 credits, now in the estimate. Cloudflare and the test site stay at 4 minutes. `NETLIFY_VIDEO_JOBS_EVERY_MINUTES`
+in `lib/platform/limits.ts`; `tests/netlify-crons.test.ts` checks the schedule. Overnight clips re-send at Google's
+limit once a sweep, up to 3 times, so `CLIP_GIVE_UP_MS` went from 20 to 45 minutes and a clip at the limit still gets
+its third send. A stranded Studio design is refunded up to 10 minutes later, and "video ready" emails go out up to 10
+minutes later.
 
 ## 5. Settings production needs (video)
 
@@ -160,6 +159,5 @@ Not covered here: the studio server's own settings (`STUDIO_SESSION_SECRET`, Sup
 
 ## Waiting for the owner
 
-1. Netlify credits: keep the video sweep at 4 minutes, or move it to 10 minutes and raise `CLIP_GIVE_UP_MS` (section 4).
-2. Before the studio server goes live: API keys only, with no subscription (section 2).
-3. Reels on Netlify need client-qa's fixes before any client business is allow-listed (section 1).
+1. Before the studio server goes live: API keys only, with no subscription (section 2).
+2. Reels on Netlify need client-qa's fixes before any client business is allow-listed (section 1).

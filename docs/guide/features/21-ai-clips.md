@@ -31,9 +31,9 @@ When the **Videos** choice (Autopilot's settings card, or Content -> Settings fo
 video) or **Mix** (one video in four), BuPulse makes the AI clips by itself, with nobody present:
 
 1. The video is planned as usual, and its panel says **"AI clips being made"**.
-2. Within about 4 minutes BuPulse takes **380 studio credits** (2 clips of 6 s) and asks Google for the clips: one for
+2. Within about 4 minutes (10 on bupulse.com, which runs on Netlify) BuPulse takes **380 studio credits** (2 clips of 6 s) and asks Google for the clips: one for
    the opening scene and one for a body scene, each starting from that scene's photo.
-3. About 5 to 15 minutes later the clips are in the video, and the video robot (or your browser) makes the MP4 with the
+3. About 5 to 30 minutes later the clips are in the video, and the video robot (or your browser) makes the MP4 with the
    clips playing in their scenes, under the captions, with the video's own voice-over and music.
 4. If Google makes only one clip, the video keeps it and the other clip's 190 credits come back. If none is made, the
    video is a simple slideshow and all 380 credits come back. Either way the panel says why.
@@ -88,7 +88,7 @@ More: `docs/VIDEO_ENGINE.md` "Veo AI clips", costs in `docs/AI_COSTS.md` "Veo AI
 | "AI clips are paused right now." | Admin -> Services, Google Veo AI clips (off until switched on) | Switch it on. |
 | "Google Veo needs billing turned on…" | Google AI Studio, Billing, for the key's project | Turn billing on (Veo has no free tier) or top up the prepaid credit. |
 | "Google Veo is at its limit right now…" | Google's per-minute or per-day quota | Wait a few minutes; fewer clips at once. |
-| A content video says "Google was too busy to make the AI clips" | Google refused the clips at its limit `CLIP_QUOTA_TRIES` (3) times, 4 minutes apart (the interaction's `errors[0].code` is `RESOURCE_EXHAUSTED`, read as `quota` in `lib/video-engine/veo.ts`; `lib/visuals/ai-clips.ts` sends again). Nothing was billed. | The credits are already back. If it happens often, lower `VEO_CLIPS_PER_DAY` or `VEO_PARALLEL` (clips at Google at once, 3). |
+| A content video says "Google was too busy to make the AI clips" | Google refused the clips at its limit `CLIP_QUOTA_TRIES` (3) times, one sweep apart (4 minutes, or 10 on Netlify) (the interaction's `errors[0].code` is `RESOURCE_EXHAUSTED`, read as `quota` in `lib/video-engine/veo.ts`; `lib/visuals/ai-clips.ts` sends again). Nothing was billed. | The credits are already back. If it happens often, lower `VEO_CLIPS_PER_DAY` or `VEO_PARALLEL` (clips at Google at once, 3). |
 | "Google declined this clip under its safety rules." | The photo (a real person's face?) or the shot | Use a product-only photo; the credits are already back. |
-| A content video stays on "AI clips being made" | `ContentVisual.clipState`, `clipJobs`, `clipUntil`; Admin -> Health, `video-jobs` | The sweep gives up after 20 minutes and falls back with the credits back; check the `video-jobs` cron runs. |
+| A content video stays on "AI clips being made" | `ContentVisual.clipState`, `clipJobs`, `clipUntil`; Admin -> Health, `video-jobs` | The sweep gives up after 45 minutes (`CLIP_GIVE_UP_MS`) and falls back with the credits back; check the `video-jobs` cron runs. |
 | A clip stays at "Making…" after a restart | `video-lab/data/veo/clips/<id>.json` (`operation`) | The studio picks it up again at start (`resumeAiClips`); one never sent to Google is refunded. |

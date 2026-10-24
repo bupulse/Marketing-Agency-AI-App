@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { NETLIFY_PUBLISH_EVERY_MINUTES, publishTimingNote } from "@/lib/platform/limits";
+import { NETLIFY_PUBLISH_EVERY_MINUTES, NETLIFY_VIDEO_JOBS_EVERY_MINUTES, publishTimingNote } from "@/lib/platform/limits";
 import { CRON_JOBS, handleRunnerRequest, MAX_CURSOR_CALLS, RUNNER_BUDGET_MS, RUNNER_PATH, runJob, siteOrigin, startCron } from "@/netlify/lib/cron";
 
 // worker.ts imports the OpenNext build output, so read it and worker-crons.ts as text (as tests/worker-crons.test.ts does).
@@ -21,11 +21,14 @@ const scheduled = readdirSync(DIR)
   });
 
 describe("Netlify scheduled functions match the Cloudflare cron triggers", () => {
-  // The one documented difference: the publisher runs every 5 minutes on Netlify (free plan credits), every minute on
-  // Cloudflare. docs/DEPLOY_NETLIFY.md, lib/platform/limits.ts NETLIFY_PUBLISH_EVERY_MINUTES.
-  const NETLIFY_ONLY: Record<string, string> = { "/api/cron/publish": `*/${NETLIFY_PUBLISH_EVERY_MINUTES} * * * *` };
+  // The documented differences, both for the free plan's credits: the publisher runs every 5 minutes on Netlify (every
+  // minute on Cloudflare), the video sweep every 10 (every 4 on Cloudflare). docs/DEPLOY_NETLIFY.md, lib/platform/limits.ts.
+  const NETLIFY_ONLY: Record<string, string> = {
+    "/api/cron/publish": `*/${NETLIFY_PUBLISH_EVERY_MINUTES} * * * *`,
+    "/api/cron/video-jobs": `*/${NETLIFY_VIDEO_JOBS_EVERY_MINUTES} * * * *`,
+  };
 
-  it("every Worker schedule has a Netlify function with the same schedule and route (publisher excepted)", () => {
+  it("every Worker schedule has a Netlify function with the same schedule and route (publisher and video sweep excepted)", () => {
     const netlify = Object.fromEntries(scheduled.map((s) => [s.path, s.schedule]));
     const expected = Object.fromEntries(Object.entries(workerRoutes).map(([schedule, path]) => [path, NETLIFY_ONLY[path] ?? schedule]));
     expect(netlify).toEqual(expected);

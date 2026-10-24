@@ -174,7 +174,8 @@ settled (`robotWaitingWhere`, `leaseVideoForBrowser`; the panel says "AI clips b
    `CLIP_QUOTA_TRIES` (3) sends. Then it fails and the note says Google was too busy. Each sweep checks the clips at
    Google first, so the places they free go to waiting clips before new videos. Every resend counts toward
    `VEO_CLIPS_PER_DAY`.
-3. **Settle** when every clip is made or failed, or 20 minutes after the start: the made clips go into their scenes
+3. **Settle** when every clip is made or failed, or 45 minutes after the start (`CLIP_GIVE_UP_MS`; the sweep runs every
+   4 minutes, every 10 on Netlify): the made clips go into their scenes
    (`VideoScene.clipPath`, the scene held for the clip, the video still within 30 s: `withClips`) and `clipState =
    "done"`; with none made, `withoutClips` clears the mark (`quality = "simple"`) and `clipState = "fallback"`. Owner
    decision: a half-done video **keeps the clip that was made** and gives back the other clip's 190 credits.

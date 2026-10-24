@@ -25,11 +25,13 @@ Netlify's free plan gives **300 credits a month, as a hard limit: when they are 
 | Web requests | 2 credits per 10,000 | Pages, assets, API, cron calls |
 | Bandwidth | 20 credits per GB | Pages, scripts, images served by Netlify |
 
-**The publisher runs every 5 minutes on Netlify** (owner decision; every minute on Cloudflare). Each run is three function invocations (the scheduled function, the background runner, the `/api/cron/publish` route), about 8,640 runs a month: roughly 12 to 50 credits at 0.5 to 2 s a run, instead of 60 to 240 every minute. Each run claims every post due up to that moment, so a post scheduled between two runs goes out at the next one, at most 5 minutes late; the composer and the calendar say "Posts go out within 5 minutes of the scheduled time." on Netlify. (`NETLIFY_PUBLISH_EVERY_MINUTES` in `lib/platform/limits.ts` and the schedule in `netlify/functions/cron-publish.mts` change together; `tests/netlify-crons.test.ts` checks it.) A run publishes up to 20 posts in its 15 s budget; anything beyond waits for the next run. Add the hourly jobs (about 10 to 30 credits, the hourly content summary included: about 720 runs a month), the video
+**The publisher runs every 5 minutes on Netlify** (owner decision; every minute on Cloudflare). Each run is three function invocations (the scheduled function, the background runner, the `/api/cron/publish` route), about 8,640 runs a month: roughly 12 to 50 credits at 0.5 to 2 s a run, instead of 60 to 240 every minute. Each run claims every post due up to that moment, so a post scheduled between two runs goes out at the next one, at most 5 minutes late; the composer and the calendar say "Posts go out within 5 minutes of the scheduled time." on Netlify. (`NETLIFY_PUBLISH_EVERY_MINUTES` in `lib/platform/limits.ts` and the schedule in `netlify/functions/cron-publish.mts` change together; `tests/netlify-crons.test.ts` checks it.) A run publishes up to 20 posts in its 15 s budget; anything beyond waits for the next run. Add the video sweep (`cron-video-jobs`, every 10 minutes on Netlify instead of 4: about 4,300 runs a month, roughly 6 to
+20 credits; `NETLIFY_VIDEO_JOBS_EVERY_MINUTES` in `lib/platform/limits.ts`, checked by `tests/netlify-crons.test.ts`; overnight AI
+clips give up after 45 minutes so they still get 3 tries at Google's limit), the hourly jobs (about 10 to 30 credits, the hourly content summary included: about 720 runs a month), the video
 robot's calls from GitHub (every 15 minutes about 2,900 short claim calls a month, plus an upload and a confirm per
 video: roughly 5 to 15 credits; the videos are rendered on GitHub's runner, never on Netlify) and the GitHub fallback
-workflows. A realistic month at launch: 10 deploys (150) + publisher (12 to 50) + hourly jobs (10 to 30) + robot (5 to
-15) + visitors, about 200 to 260 of the 300 credits: deploy in batches.
+workflows. A realistic month at launch: 10 deploys (150) + publisher (12 to 50) + video sweep (6 to 20) + hourly jobs (10
+to 30) + robot (5 to 15) + visitors, about 205 to 280 of the 300 credits: deploy in batches.
 
 What else to do:
 
@@ -172,7 +174,7 @@ robot is not one of them: it runs on GitHub Actions every 15 minutes (`video-rob
 | `cron-media-cleanup` | daily 03:19 | `/api/cron/media-cleanup` |
 | `cron-content-summary` | hourly :07 | `/api/cron/content-summary` (cursor calls) |
 | `cron-daily-posts` | hourly :13 | `/api/cron/daily-posts` (cursor calls; one company per call) |
-| `cron-video-jobs` | every 4 minutes | `/api/cron/video-jobs` |
+| `cron-video-jobs` | every 10 minutes (every 4 on Cloudflare, to save credits) | `/api/cron/video-jobs` |
 
 How a run works: the scheduled function (30 s limit) posts `{ path }` with `Authorization: Bearer $CRON_SECRET` to `/.netlify/functions/cron-runner-background`; Netlify answers 202 and runs that background function (15 minutes), which checks the secret and that the path is one of the jobs above, then calls the route on the site's own URL with the same bearer token. `purge-accounts` and `social-refresh` keep running from GitHub Actions as before.
 
