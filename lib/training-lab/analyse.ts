@@ -173,8 +173,9 @@ export const DRAFT_SCHEMA = {
     how_made: { type: "string" },
     what_is_good: { type: "string" },
     techniques: { type: "array", items: { type: "string" } },
-    sector: { type: "string", enum: [...SECTORS, ""] },
-    language: { type: "string", enum: [...DRAFT_LANGUAGES, ""] },
+    // Gemini refuses an empty enum value, so "unknown" stands for "cannot tell" (readDraftFields turns it into "").
+    sector: { type: "string", enum: [...SECTORS, "unknown"] },
+    language: { type: "string", enum: [...DRAFT_LANGUAGES, "unknown"] },
     transcript: { type: "string" },
     spelling_suggestions: { type: "array", items: { type: "object", properties: { wrong: { type: "string" }, right: { type: "string" } }, required: ["wrong", "right"] } },
     ...NOTES_SCHEMA.properties,
@@ -192,8 +193,8 @@ export function draftPrompt(kind: TrainingKind): string {
     "- how_made: 2 or 3 sentences on how it was made (who filmed what, with what, the shots and the edit).",
     "- what_is_good: 1 or 2 sentences on what the AI should learn from it.",
     '- techniques: at most 6 short lowercase tags for the techniques it uses (for example "hook in 1 second", "beat sync", "whip pan", "3d sticker", "price on screen").',
-    `- sector: the kind of business it is for, one of ${SECTORS.join(", ")}, or "" when you cannot tell.`,
-    `- language: the language spoken or written in it, one of ${DRAFT_LANGUAGES.join(", ")}, or "".`,
+    `- sector: the kind of business it is for, one of ${SECTORS.join(", ")}, or "unknown" when you cannot tell.`,
+    `- language: the language spoken or written in it, one of ${DRAFT_LANGUAGES.join(", ")}, or "unknown".`,
     kind === "voice" ? "- transcript: exactly what is said, word for word, in the language it is said in." : '- transcript: "" (only recordings get one).',
     kind === "voice"
       ? "- spelling_suggestions: Kinyarwanda words in it that people often spell wrong in captions, each as the common wrong spelling and the right one (at most 8; [] when you are not sure)."

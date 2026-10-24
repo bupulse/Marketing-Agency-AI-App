@@ -80,6 +80,10 @@ Kinyarwanda voice later.
   Chose "Drop, read, check" (one drop box, the AI fills everything, the owner checks and saves; a gallery of
   thumbnails) and a $2 test budget for the AI reading examples (docs/AI_COSTS.md; my .env set; main asked to set it on
   the test site). Board tasks 26 (drop, read, check) and 27 (gallery) given to the two helpers.
+- 18:44: friendly Lab live (4f31243b). End-to-end test in Chrome (approved by main, one paid call): dropped the
+  BuPulse logo; upload and the check card worked at phone width, but Gemini answered 400 (an empty "" enum value in
+  the answer schema; free). Fixed in 2bb03ae1 ("unknown" instead), with a test that no enum value is empty. Discard
+  removed the draft (0 files left in drafts/). The paid read still needs one retest after the fix is live.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small
