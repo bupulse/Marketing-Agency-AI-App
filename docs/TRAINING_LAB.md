@@ -77,15 +77,15 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 ### Phase 2: the engines learn from it
 5. **Doing** (the reel writer and checker read the Lab; the viral-recipe hook is in, 0e4fd8e0, waiting for video-engine's review before it is wired) Video: the reel writer and `viralRecipe` take the best matching Lab examples (sector, language, technique)
    as references; the checker uses the owner's "never this" notes.
-6. **Doing** Image and posts: the image planner and post writer take Lab examples (layouts, wording, style) the same way.
-7. **Doing** (the logic; the form fields for a schedule example come next) Posting and scheduling: Lab notes on best times, frequency and formats per network feed Autopilot and
+6. **Done** (no place yet to keep which examples an image batch read) Image and posts: the image planner and post writer take Lab examples (layouts, wording, style) the same way.
+7. **Done** (posts per week stays the owner's setting) Posting and scheduling: Lab notes on best times, frequency and formats per network feed Autopilot and
    daily posts' plans.
-8. **Todo** Kinyarwanda: recordings plus text become a phrase and pronunciation list used by the writers (spelling,
+8. **Doing** (the form, the extras and every checkLanguage caller done; the Studio job and the reel lines next) Kinyarwanda: recordings plus text become a phrase and pronunciation list used by the writers (spelling,
    natural phrases, words to avoid) and by caption checks; keep the audio for a future voice.
-9. **Todo** Actors: consented clips and portraits become presenter options for the reel engine (`ReelPresenter`).
+9. **Doing** Actors: consented clips and portraits become presenter options for the reel engine (`ReelPresenter`).
 
 ### Phase 3: the editor
-10. **Doing** (edit operations done, lib/editor/ops.ts) A timeline editor on the MotionSpec: trim, reorder, captions, stickers, transitions, music with beat
+10. **Doing** (edit operations done, lib/editor/ops.ts; the UI in components/editor next) A timeline editor on the MotionSpec: trim, reorder, captions, stickers, transitions, music with beat
     marks, export through `encodeSpecMp4` in the browser. Start with editing a finished reel (its spec), then any
     uploaded clip. Coordinate with video-engine before touching shared encoder code (it is theirs: ask, do not edit).
 11. **Todo** "Teach from an edit": an edit the owner makes is saved as a Lab example (what was changed and why).
