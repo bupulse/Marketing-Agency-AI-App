@@ -120,14 +120,14 @@ billed (`RESOURCE_EXHAUSTED` is read as `VeoError` kind "quota").
 | Where | What happens | Credits |
 | --- | --- | --- |
 | Overnight clips (Autopilot / Daily posts videos marked "ai") | At most 3 clips at Google at once across all businesses. A refused clip is sent again from the next sweep, 3 sends in all, then the video is a slideshow that says "Google was too busy to make the AI clips". `VEO_CLIPS_PER_DAY` (10, or 0 to pause) caps the day, counting re-sends. | Taken when the video starts; given back exactly once for clips not made. |
-| Video Studio clips (studio server, `video-lab/ai-clips.ts`) | "quota" is not a temporary error there, so the clip fails at once with Google's limit message. | Given back. |
+| Video Studio clips (studio server, `video-lab/ai-clips.ts`) | The clip waits a minute and is sent again, up to `QUOTA_WAITS` (3) times, without counting as a try. Then it fails with Google's limit message. It used to fail at once. | Given back. |
 | Reels (test businesses only) | At most `VEO_PARALLEL` clips at Google across all reels, and a wait at the limit is shared. After 30 minutes (`BUSY_GIVE_UP_MS`) the waiting clips fail with a plain message (client-qa's fix; it used to retry without end). | No credits yet; the test cap counts spend. Nothing is paid for clips that were not made. |
 
 If the daily limit is hit every day, raise it with Google (AI Studio, the key's project, quotas) or lower
 `VEO_CLIPS_PER_DAY`. Nothing piles up on BuPulse's side for overnight videos: each sweep looks at no more than 5 new
 and 10 working videos.
 
-Possible later improvement (not done): let the studio's clips wait and retry at the limit as overnight clips do.
+The studio's clips now wait and retry at the limit, as overnight clips do (done 24 October 2026).
 
 ## 4. Netlify credits: the video sweep every 10 minutes
 
