@@ -28,6 +28,9 @@
 - 12:50: brain hooks (viral.ts, language.ts) committed 0e4fd8e0 and sent to video-engine for review; they are not wired
   into any engine until video-engine says OK. Team page imported claude-cli directly (a guard failure); it now asks
   brains.ts (37940095).
+- 12:55: video-engine approved 0e4fd8e0. Before wiring: (1) recipeText (viral.ts ~581) and the why-text (~631) must
+  credit `lab:` sources to "your Training Lab" (pass the Lab through); (2) when checkLanguage gets `extra`, pass it in
+  both callers, designer.ts:427 and suggest.ts:300. Send them the wiring commit for a quick review. NEXT TASK QUEUED.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small
