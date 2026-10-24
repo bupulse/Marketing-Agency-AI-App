@@ -11,6 +11,7 @@ import { Inspector } from "./inspector";
 import { shotAt, shotStarts, secondsText } from "./layout";
 import { Preview } from "./preview";
 import { reelSource, type ReelBrand } from "./reel-spec";
+import { SavePanel, type Source } from "./save-panel";
 import type { ReelView } from "@/lib/reel-engine/engine";
 import { Timeline } from "./timeline";
 import { useSpecHistory } from "./use-spec-history";
@@ -22,9 +23,15 @@ export type OpenReel = (id: string) => Promise<({ ok: true; view: ReelView; bran
  * The timeline editor: the preview, the shots, what you can change about one shot, undo and redo, and export. The state
  * is the spec. It starts on `initial` (an example); with `reels` and `openReel` the owner can open a finished reel instead.
  */
-export function SpecEditor({ initial, reels = [], openReel }: { initial: MotionSpec; reels?: ReelChoice[]; openReel?: OpenReel }) {
+type CreateExample = (input: unknown, file: unknown) => Promise<{ ok: true; id: string; upload: { path: string; token: string } | null; warning?: string } | { ok: false; error: string }>;
+type ConfirmFile = (id: string, path: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+
+export function SpecEditor({ initial, reels = [], openReel, createExample, confirmFile }: { initial: MotionSpec; reels?: ReelChoice[]; openReel?: OpenReel; createExample?: CreateExample; confirmFile?: ConfirmFile }) {
   const { spec, run, undo, redo, canUndo, canRedo, reset } = useSpecHistory(initial);
   const [musicUrl, setMusicUrl] = useState<string | null>(null);
+  // The reel that is open (null: the example), as it was opened; and the last MP4 made, for saving.
+  const [source, setSource] = useState<Source | null>(null);
+  const [made, setMade] = useState<{ blob: Blob; spec: MotionSpec } | null>(null);
   const [title, setTitle] = useState(initial.title);
   const [pick, setPick] = useState(reels[0]?.id ?? "");
   const [opening, setOpening] = useState(false);
@@ -88,8 +95,10 @@ export function SpecEditor({ initial, reels = [], openReel }: { initial: MotionS
     seek(Math.round((shotStarts(spec)[i] ?? 0) * 1000));
   }
 
-  function load(next: MotionSpec, music: string | null, name: string) {
+  function load(next: MotionSpec, music: string | null, name: string, from: Source | null) {
     setPlaying(false);
+    setSource(from);
+    setMade(null);
     reset(next);
     setMusicUrl(music);
     setTitle(name);
@@ -105,8 +114,8 @@ export function SpecEditor({ initial, reels = [], openReel }: { initial: MotionS
     try {
       const res = await openReel(pick);
       if (!res.ok) return setOpenError(res.error);
-      const source = await reelSource(res.view, res.brand);
-      load(source.spec, source.musicUrl, source.title);
+      const opened = await reelSource(res.view, res.brand);
+      load(opened.spec, opened.musicUrl, opened.title, { id: res.view.id, title: opened.title, spec: opened.spec, musicUrl: opened.musicUrl, language: res.view.language });
     } catch {
       setOpenError("The reel could not be opened. Try again.");
     } finally {
@@ -130,7 +139,7 @@ export function SpecEditor({ initial, reels = [], openReel }: { initial: MotionS
               </Select>
             </div>
             <Button type="button" onClick={open} disabled={!pick || opening}>{opening ? "Opening…" : "Open"}</Button>
-            <Button type="button" variant="outline" onClick={() => load(initial, null, initial.title)} disabled={opening}>Back to the example</Button>
+            <Button type="button" variant="outline" onClick={() => load(initial, null, initial.title, null)} disabled={opening}>Back to the example</Button>
           </div>
           {openError && <p role="alert" className="text-sm font-medium text-danger">{openError}</p>}
         </Panel>
@@ -165,7 +174,8 @@ export function SpecEditor({ initial, reels = [], openReel }: { initial: MotionS
           <Panel title="Change this shot">
             <Inspector spec={spec} selected={index} tMs={tMs} run={run} onSelect={setSelected} />
           </Panel>
-          <ExportPanel spec={spec} musicUrl={musicUrl} title={title} />
+          <ExportPanel spec={spec} musicUrl={musicUrl} title={title} onMade={setMade} />
+          {source && createExample && confirmFile && <SavePanel spec={spec} source={source} made={made} onMade={setMade} createExample={createExample} confirmFile={confirmFile} />}
         </div>
       </div>
     </div>

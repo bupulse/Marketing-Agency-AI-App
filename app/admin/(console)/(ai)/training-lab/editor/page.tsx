@@ -4,6 +4,7 @@ import { SpecEditor } from "@/components/editor/spec-editor";
 import { DEMO_SPEC } from "@/components/editor/demo-spec";
 import { requirePermission } from "@/lib/admin/auth";
 import { LabTabs } from "../lab-tabs";
+import { confirmExampleFileAction, createExampleAction } from "../actions";
 import { openReelAction } from "./actions";
 import { listFinishedReels, type ReelChoice } from "./reels";
 
@@ -17,9 +18,9 @@ export default async function TrainingLabEditorPage() {
   const reels: ReelChoice[] = await listFinishedReels().catch(() => []);
   return (
     <>
-      <PageHeader title="Training Lab" description="Edit a video: change the order and the length of the shots, the words, the stickers and the look, then export the MP4. Start from the example or open a finished reel." />
+      <PageHeader title="Training Lab" description="Edit a video: change the order and the length of the shots, the words, the stickers and the look, then export the MP4 or save the edit as a Lab example. Start from the example or open a finished reel." />
       <LabTabs current="editor" />
-      <SpecEditor initial={DEMO_SPEC} reels={reels} openReel={openReelAction} />
+      <SpecEditor initial={DEMO_SPEC} reels={reels} openReel={openReelAction} createExample={createExampleAction} confirmFile={confirmExampleFileAction} />
     </>
   );
 }
