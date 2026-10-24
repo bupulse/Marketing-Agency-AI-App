@@ -24,19 +24,55 @@ feed back into it. Build on what exists: the video brain (`lib/video-engine/brai
 outcomes), the reel engine's writer and checker (`lib/reel-engine/*`), the image engine's planner and checker
 (`lib/image-engine/*`), and the publisher, Autopilot and daily posts.
 
+## The agent team inside BuPulse (owner request, 24 October 2026)
+The owner: the engine has **agents inside, each with one job** (videos, images, captions, scheduling), trained by the
+Lab, running on the owner's Gemini API key, the Anthropic API key, and the Claude subscription while BuPulse is hosted
+on the owner's Mac. In plain words: BuPulse is a small studio team. Each member does one thing, reads the Lab examples
+for its job, and works on one "brain" the owner picks.
+
+| Team member | Job | Engine (files) | Lab examples it reads | Brain today |
+| --- | --- | --- | --- | --- |
+| Researcher | The business, its products and photos, the brief | image engine `loadFacts` | none | the database (free) |
+| Director | Picks the story, the shots, the camera, the viral recipe | reel `story.ts`, image `director.ts`, brain `viral.ts` | reels, videos, images (technique, rating) | rules (free) |
+| Script writer | The reel's lines, title, caption, hashtags | reel `writer.ts` | reels, videos, Kinyarwanda phrases | Claude (API or subscription), Gemini for Kinyarwanda |
+| Designer | The image or post idea, headline and layout | image `planner.ts`, `prompter.ts` | images and posts | Claude (API or subscription) |
+| Caption writer | Post captions and hashtags | image `captioner.ts`, Autopilot writer | posts, Kinyarwanda phrases | Gemini or Claude |
+| Painter | Start frames and images | `createEngineDesign` (Nano Banana) | images, actors (with consent) | Gemini API (paid, capped) |
+| Filmmaker | AI clips | `lib/video-engine/veo.ts` (video-engine's) | none directly (the writer's prompt) | Gemini Omni (paid, capped) |
+| Editor | Cuts, beats, stickers, captions into the MP4 | `buildMontageSpec`, the Lab editor | reels, videos (edit style) | rules, in the browser (free) |
+| Checker | Watches and reads the result, sends back what is wrong | reel `checker.ts`, image `checker.ts`, `checkLanguage` | "never this" notes, Kinyarwanda words | Gemini (cheap) |
+| Scheduler | When and how often to post on each network | Autopilot `learning.ts`, `planner.ts`, `best-time.ts` | schedule notes | rules (free) |
+
+**How it works:** one registry (`lib/training-lab/agents.ts`) names every member, its job in plain words, its engine,
+the Lab kinds it reads, and its brain: `gemini` (API key), `anthropic` (API key) or `claude-subscription` (the Claude
+CLI, only on the owner's Mac, never on Netlify or Cloudflare, as `lib/image-engine/claude-cli.ts` already does). A
+small router runs a member on its chosen brain and falls back to the next one that is available. Every call stays in
+the AI ledger, under the member's name. Admin, Training Lab, **Team** shows a card per member: its job, how many Lab
+examples it learns from, its brain (the owner can switch it), its last runs, their cost and their ratings.
+Before any deploy to bupulse.com, members on the subscription must move to the API key (it is for the owner's own use).
+
 ## Task board
 Status: Todo / Doing / Done / Waiting (owner). Keep it current; any round resumes from here.
 
 ### Phase 1: the library (foundation)
 1. **Done** Map: one page in `docs/handovers/training-lab.md` on what each engine reads today and where a Lab example
    would plug in (video brain, reel writer/checker, image planner/checker, posting times).
-2. **Doing** Data model: a `TrainingExample` (kind: reel, video, image/post, voice, actor, schedule; the file in Storage;
+2. **Done** Data model: a `TrainingExample` (kind: reel, video, image/post, voice, actor, schedule; the file in Storage;
    how it was made; what is good; tags such as sector, language, technique; rating; consent for people; which engines
    use it) with a new migration. Files in a private bucket path under the owner.
 3. **Todo** Admin page `Training Lab`: upload (file or link), the "how it was made" form in plain words, list, filter,
    rate, switch an example on or off for each engine. Phone width works.
 4. **Todo** Analysis on upload (free or cheap, within caps): Gemini watches a video and drafts the notes (shots, cuts per
    second, beat sync, stickers, captions, hook, setting, music), which the owner corrects.
+
+### Phase 1b: the agent team
+A1. **Todo** The registry and the brain router (`lib/training-lab/agents.ts`, `brains.ts`): members, jobs, Lab kinds,
+    brain choice saved in the database (a small `AgentSetting` table), fallback order, tests. No engine changes yet.
+A2. **Todo** Admin, Training Lab, Team: a card per member (job, examples it reads, brain switch, last runs and cost
+    from the AI ledger). Phone width works.
+A3. **Todo** The engines ask the router: the reel script writer, the designer and the caption writer use the member's
+    chosen brain (they already choose between Claude and Gemini; this makes it the owner's switch).
+A4. **Todo** Each member's run records which Lab examples it used, so a rating on the result goes back to them.
 
 ### Phase 2: the engines learn from it
 5. **Todo** Video: the reel writer and `viralRecipe` take the best matching Lab examples (sector, language, technique)
