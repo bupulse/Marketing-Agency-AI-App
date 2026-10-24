@@ -41,6 +41,9 @@
   of downloading (black until then, with no message: to fix). The editor's picker says "not saved until you export",
   which contradicts "Export alone saves nothing" (to fix). Main raised the actor consent scope with the owner (on the
   board, Waiting).
+- 13:03: full vitest 5588 passed; main asked to merge up to 588da03a. A read-only review of the Lab's server side
+  (helper): owner checks, private storage and spend are fine; fixes under way for consent withdrawal and for a client's
+  phone, link or price reaching other businesses' prompts. The policy point on clients' reels is on Waiting.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small

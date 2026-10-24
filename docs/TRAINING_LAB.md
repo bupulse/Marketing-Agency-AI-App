@@ -95,9 +95,12 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
     finished reel turns it into a Lab example (its MP4 copied privately into the Lab).
 13. **Done** (the owner picks the moment in the browser) Actors with only a video: take a still frame for the presenter portrait.
 
-14. **Doing** The Editor opens a reel from a link (Team page, finished reels) and shows what the Lab did to it.
+14. **Done** The Editor opens a reel from a link (Team page, finished reels) and shows what the Lab did to it.
 15. **Done** A Words tab: every Kinyarwanda spelling, right word and phrase the Lab teaches, in one place.
 16. **Done** The owner's guide (docs/TRAINING_LAB_GUIDE.md).
+17. **Done** Each example shows how much the team used it in the last 30 days.
+18. **Doing** Fixes from the review of 24 October: actor consent can be withdrawn (and removes the copies), no
+    client's phone, link or price reaches another business's prompt, file replacement, duplicate reels, "7 am".
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
@@ -106,5 +109,9 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
   presenter of every business that has none yet, so many client businesses could show the same real person. Does the
   actor's consent cover that, or should an actor present for one business, or a few? Kept as built on TEST until the
   owner decides; not widened.
+- **Clients' reels in the Lab** (from the review): "More like this", "Never this" and "Save as a Lab example" copy a
+  client's finished reel into the Lab, where its style then teaches the engines for every business (phones, links and
+  prices are scrubbed, and the prompts say never to use other businesses' names). Check this against BuPulse's terms
+  before it is used on bupulse.com.
 - A small budget for the Lab's AI notes (Gemini watching an uploaded video, about a cent each): set
   `TRAINING_LAB_ANALYSIS=1` and `TRAINING_LAB_ANALYSIS_CAP_USD` (for example 1) when the owner approves.
