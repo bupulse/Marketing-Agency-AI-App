@@ -76,6 +76,15 @@ beforeEach(() => {
   for (const f of [h.upsert, h.design, h.recordRun]) f.mockClear();
 });
 
+describe("labPresentersAllowed (owner decision: test site only)", () => {
+  it("is off on Netlify and Cloudflare (bupulse.com), on for the owner's own server", async () => {
+    const { labPresentersAllowed } = await import("@/lib/training-lab/reader");
+    expect(labPresentersAllowed("netlify")).toBe(false);
+    expect(labPresentersAllowed("cloudflare")).toBe(false);
+    expect(labPresentersAllowed("node")).toBe(true);
+  });
+});
+
 describe("labPresenters", () => {
   it("asks only for consented actors on the presenter engine with a file", async () => {
     await labPresenters();

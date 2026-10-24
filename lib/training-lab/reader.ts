@@ -3,6 +3,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { currentPlatform } from "@/lib/platform/detect";
 import { HOOK_IDEAS } from "@/lib/video-engine/brain/viral";
 import type { ViralVideo } from "@/lib/video-engine/brain/viral-ingest";
 import { exampleIdsOf, labLines, LOW_RATING, rankExamples, usable, type ExampleRow, type LabLines, type Want } from "./match";
@@ -96,7 +97,16 @@ function actorDescription(e: ActorRow): string {
  * the "presenter" engine, with a portrait (an image) or a video file, not rated 1 or 2 stars. Best first: the owner's rating, then the business's
  * sector, then tags that the audience names. Empty on any error.
  */
+/**
+ * Owner decision, 24 October 2026: Lab actors become presenters on the TEST SITE ONLY. Before any launch this stays off
+ * (never on Netlify or Cloudflare, bupulse.com) until the actors' consent covers appearing for any business.
+ */
+export function labPresentersAllowed(platform: string = currentPlatform()): boolean {
+  return platform !== "netlify" && platform !== "cloudflare";
+}
+
 export async function labPresenters(want: { sector?: string | null; audience?: string | null } = {}): Promise<LabPresenter[]> {
+  if (!labPresentersAllowed()) return [];
   try {
     const rows = (await prisma.trainingExample.findMany({
       where: { kind: "actor", consentGiven: true, engines: { has: "presenter" }, path: { not: null } },

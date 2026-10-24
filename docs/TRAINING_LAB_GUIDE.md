@@ -25,7 +25,8 @@ Say how it was made and what is good, in your own words. Add a sector and a lang
 - **Reel or video:** upload the file or paste a link. Describe the shots, the cuts, the music and the hook. Name the technique, for example "price sticker first".
 - **Image or post:** upload it. Say what makes the layout, the words or the light work.
 - **Kinyarwanda recording:** upload the audio and type exactly what is said, spelled the way it should be written. Then fill in two boxes. "Spellings to avoid": one per line, as "wrong -> right". "Words that are right": brand names, or Kinyarwanda words the checker wrongly flags. The team then fixes your spellings in new reels and flags them everywhere else.
-- **Actor:** consent comes first. Tick the box, write the person's name and how and when they agreed. Without consent, the team will not use the actor. If you have a video of the actor, pause on a clear face and use "Portrait from this video" to make a portrait example from it. If the browser cannot read the video, it says so; then upload a photo instead.
+- **Actor:** consent comes first. Tick the box, write the person's name and how and when they agreed. Without consent, the team will not use the actor. For now an actor becomes a presenter only on the test site; on
+bupulse.com this stays off until the actor's consent covers appearing for any business. If you have a video of the actor, pause on a clear face and use "Portrait from this video" to make a portrait example from it. If the browser cannot read the video, it says so; then upload a photo instead.
 - **Posting schedule:** pick the network, the country, the best hours (like "7, 12:30, 19h"; you see how it was read before you save) and the best days. The team only reorders the posting times the business already allows. How many posts a week stays in the business's own settings.
 
 ## Ratings and "never this"
