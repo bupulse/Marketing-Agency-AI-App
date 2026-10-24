@@ -151,3 +151,22 @@ flames, "+25M RWF" in green), flashes, all on the song's beat.
   pots, a white "tree", a fluted column, grey blocks, a tube rack…), and each clip's frame took the next photo, with
   that photo's greenhouse. Now a reel keeps one product photo for every frame (`plan.productPhoto`: the album's first,
   the product's main photo, unless it cannot be read), and the frame takes only the product from it, never its place.
+
+## Before clients: Netlify's 60 s (24 October 2026, docs/VIDEO_ENGINE_LAUNCH.md section 1)
+
+bupulse.com answers a request within 60 s on Netlify, and the reel engine had long calls. Now:
+- **Starting is quick.** `startReel` only checks and saves the job (`plan.stage: "presenter"`, the brief). The next step
+  makes the presenter (a portrait the first time, up to 2 minutes on the slowest day), the one after writes the script
+  (`plan.stage: "script"`, then the clips). A step cut off half way saved nothing, so it is simply done again.
+- **Nothing to film never assembles.** A reel with no clips and no planning stage (one cut off before this change) fails
+  with "The reel could not be planned"; a reel assembles only with clips, all done.
+- **One heavy thing a step, 25 s of light work** (`STEP_BUDGET_MS`): the planning steps, a start frame (one paint and
+  its check; a frame with slop is painted again in the next step and kept), one finished clip saved (status
+  "checking"), or one saved clip checked by the Checker. Sending framed clips and asking about filming ones stops when
+  the 25 s are used.
+- **Paid work is saved at once.** A clip's job at Google is saved as soon as Google accepts it, so a step cut off after
+  that never sends (and pays for) the clip again; a saved clip waiting for its check is never filmed again on retry.
+- **Google's limit is shared.** At most `VEO_PARALLEL` clips film at once across every business's reels, and when any
+  reel is told Google is at its limit, no reel sends until that wait is over. A reel that waits 30 minutes
+  (`BUSY_GIVE_UP_MS`) with no clip taken fails its waiting clips with a plain message (`QUOTA_MESSAGE`: try again
+  later, it resets at about 09:00 in Kigali); nothing was paid for them, and "Try the failed clips again" starts over.

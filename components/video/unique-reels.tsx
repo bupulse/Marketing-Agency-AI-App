@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const STEP_EVERY_MS = 6000;
 const FILMING = "Filming: start frames first, then each clip is filmed (a few minutes). Keep this tab open.";
+const PLANNING = "Planning the story and your presenter… Keep this tab open.";
 const JOINING = "Putting your reel together. Keep this tab in front until it is done…";
 const BEAT_LABEL: Record<string, string> = { hook: "Hook", use: "How it works", result: "Result", cta: "Call to action", broll: "Product shot" };
 
@@ -52,7 +53,7 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
     setReel(res.reel);
     setBudget({ spent: res.spent, cap: res.cap });
     if (res.reel.status === "filming") {
-      setBusy(FILMING);
+      setBusy(res.reel.clips.length ? FILMING : PLANNING);
       timer.current = setTimeout(() => step(id), STEP_EVERY_MS);
     } else if (res.reel.status === "assembling") void join(res.reel);
     else setBusy(null);
@@ -248,7 +249,7 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
                 )}
               </div>
               <p className="text-[13px] font-semibold">{BEAT_LABEL[c.beat] ?? c.beat}</p>
-              <p className="text-[12px] text-muted">{c.status === "done" ? "Filmed and checked" : c.status === "filming" ? "Filming…" : c.status === "framed" ? (c.problems.length ? "Filming again: the check found a problem" : "Start frame ready") : c.status === "failed" ? "Failed" : "Waiting"}</p>
+              <p className="text-[12px] text-muted">{c.status === "done" ? "Filmed and checked" : c.status === "filming" ? "Filming…" : c.status === "checking" ? "Filmed, being checked…" : c.status === "framed" ? (c.problems.length ? "Filming again: the check found a problem" : "Start frame ready") : c.status === "failed" ? "Failed" : "Waiting"}</p>
               {c.line && <p className="text-[12px] italic">“{c.line}”</p>}
             </li>
           ))}

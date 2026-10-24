@@ -58,6 +58,17 @@ const STEP_LEASE_MS = 3 * 60 * 1000;
 const CLIP_RETRIES = 2;
 /** How long a clip waits when Google is at its limit (RESOURCE_EXHAUSTED). */
 const BUSY_WAIT_MS = 60_000;
+/**
+ * How long a clip keeps waiting for Google before it fails (the project's daily quota resets at midnight Pacific, about
+ * 09:00 in Kigali): the reel then fails cleanly and "Try the failed clips again" sends it later, with nothing paid twice.
+ */
+export const BUSY_GIVE_UP_MS = 30 * 60_000;
+/**
+ * The work one step starts (bupulse.com answers within 60 s on Netlify): the light work (sending and asking about clips)
+ * stops once this is used, and a step does at most one heavy thing (a portrait, the script, a frame, a download or a check).
+ */
+export const STEP_BUDGET_MS = 25_000;
+export const QUOTA_MESSAGE = "Google's video model is at its limit for today. Try the failed clips again later (it resets at about 09:00 in Kigali).";
 /** Google at its limit: too many clips at once, or the day's quota (VeoError kind "quota", or its own words). */
 const isBusy = (error: unknown) => (error as { kind?: string } | null)?.kind === "quota" || /RESOURCE_EXHAUSTED|at its limit|quota/i.test(String((error as Error | null)?.message ?? ""));
 /** Clips the checker may send back to be filmed again in one reel (each costs a clip). */
@@ -221,45 +232,55 @@ export function clipAvoid(rows: readonly { kind: string; neverThis: string | nul
   return [...new Set(notes.filter((n) => !NOT_VISUAL.test(n)))].slice(0, 6);
 }
 
-/** Plans a reel: the presenter, the Director's beats and the Prompter's clips. Throws ReelError the owner can read. */
+/** What the plan holds while the reel is planned in steps (before it has clips). */
+type Planning = { stage?: "presenter" | "script"; brief?: string | null; busySince?: number | null };
+type JobPlan = ReelPlan & LabPlan & Planning;
+
+/**
+ * Starts a reel: the checks and the job only, so the call is quick. The presenter's portrait (up to 2 minutes the first
+ * time) and the script are made by the next steps (stepReel), one per call. Throws ReelError the owner can read.
+ */
 export async function startReel(owner: Owner, request: { subjectId?: string | null; brief?: string | null; language: ReelLanguage; tier: ReelTier }): Promise<string> {
   if (!(await reelEngineOn(owner.businessId))) throw new ReelError("AI reels are being tested and are not on for your business yet.");
   const spent = await reelTestSpentUsd();
   if (spent + reelCostUsd(veoClipUsd(CLIP_SECONDS, veoModel())) > reelTestCapUsd()) throw new ReelError(`The test budget is used: $${spent.toFixed(2)} of $${reelTestCapUsd()}. Ask to raise it before the next reel.`);
-  const loaded = await loadFacts(owner, request.subjectId);
-  const job = await prisma.reelJob.create({ data: { businessId: owner.businessId, subjectId: request.subjectId ?? null, language: request.language, tier: request.tier, status: "filming", plan: json({ clips: [] }), stepUntil: new Date(Date.now() + STEP_LEASE_MS) } });
+  const job = await prisma.reelJob.create({ data: { businessId: owner.businessId, subjectId: request.subjectId ?? null, language: request.language, tier: request.tier, status: "filming", plan: json({ clips: [], stage: "presenter", brief: request.brief?.trim() || null }) } });
+  return job.id;
+}
+
+/** The sector of the business and product: where the product is filmed, which viral videos and Lab actors fit. */
+function sectorOf(loaded: Awaited<ReturnType<typeof loadFacts>>): ReturnType<typeof sectorFromText> {
+  return sectorFromText([loaded.facts.industry, loaded.facts.description, loaded.subject?.name, loaded.subject?.description].filter(Boolean).join(" "));
+}
+
+/** The planning step after the presenter: the Director's beats and the Prompter's clips, saved on the plan. */
+async function planScript(owner: Owner, job: { id: string; subjectId: string | null; language: string }, planning: Planning): Promise<JobPlan> {
+  const language = job.language as ReelLanguage;
+  const loaded = await loadFacts(owner, job.subjectId);
+  const sector = sectorOf(loaded);
+  const presenter = await ensurePresenter(owner, job.id, loaded.business.audience, sector);
+  const recentJobs = await prisma.reelJob.findMany({ where: { businessId: owner.businessId, id: { not: job.id } }, orderBy: { createdAt: "desc" }, take: 10, select: { plan: true } });
+  const recentClips = recentJobs.flatMap((j) => ((j.plan as unknown as ReelPlan).clips ?? []).map((c) => ({ variant: c.variant, camera: c.camera })));
+  // What the owner's Training Lab teaches for this sector and language; an empty Lab or an error changes nothing. The
+  // checker gets only the owner's own "never this" notes (a low-rated example's description would refilm clips for nothing).
+  const [lab, languageExtra] = await Promise.all([labFor({ engine: "reel", kinds: ["reel", "video", "voice"], sector, language }), labLanguage(language)]);
+  // The viral montage: 3 talking clips and 4 product shots cut between them (the owner's example reel). The Director
+  // leans towards the shots and moves the owner's best-rated Lab reels use, and never what they marked never.
+  const beats = directMontage(recentClips, job.id, labPreferences((lab.rows ?? []).filter((e) => e.kind === "reel" || e.kind === "video")));
+  let recipe: ViralRecipe | null = null;
+  // The owner's Lab reels join the viral pool, and the ones rated 1 or 2 stars are never copied (empty Lab: as before).
+  const labViral = await labViralRows();
+  const avoid = [...labViral.avoidIds, ...labViral.avoidHooks];
   try {
-    // What kind of business it is decides where the product is filmed, which viral videos the reel learns from and which
-    // of the owner's Lab actors fits it best as the presenter.
-    const sector = sectorFromText([loaded.facts.industry, loaded.facts.description, loaded.subject?.name, loaded.subject?.description].filter(Boolean).join(" "));
-    const presenter = await ensurePresenter(owner, job.id, loaded.business.audience, sector);
-    const recentJobs = await prisma.reelJob.findMany({ where: { businessId: owner.businessId, id: { not: job.id } }, orderBy: { createdAt: "desc" }, take: 10, select: { plan: true } });
-    const recentClips = recentJobs.flatMap((j) => ((j.plan as unknown as ReelPlan).clips ?? []).map((c) => ({ variant: c.variant, camera: c.camera })));
-    // What the owner's Training Lab teaches for this sector and language; an empty Lab or an error changes nothing. The
-    // checker gets only the owner's own "never this" notes (a low-rated example's description would refilm clips for nothing).
-    const [lab, languageExtra] = await Promise.all([labFor({ engine: "reel", kinds: ["reel", "video", "voice"], sector, language: request.language }), labLanguage(request.language)]);
-    // The viral montage: 3 talking clips and 4 product shots cut between them (the owner's example reel). The Director
-    // leans towards the shots and moves the owner's best-rated Lab reels use, and never what they marked never.
-    const beats = directMontage(recentClips, job.id, labPreferences((lab.rows ?? []).filter((e) => e.kind === "reel" || e.kind === "video")));
-    let recipe: ViralRecipe | null = null;
-    // The owner's Lab reels join the viral pool, and the ones rated 1 or 2 stars are never copied (empty Lab: as before).
-    const labViral = await labViralRows();
-    const avoid = [...labViral.avoidIds, ...labViral.avoidHooks];
-    try {
-      recipe = viralRecipe({ sector, product: loaded.subject?.name ?? loaded.facts.name, platform: "instagram", country: "Rwanda", language: request.language, purpose: "ad", seconds: 30, hasPrice: !!loaded.subject?.price, hasPhone: true, footage: { generated: true }, seed: job.id, ...(labViral.rows.length ? { lab: labViral.rows } : {}), ...(avoid.length ? { avoid } : {}) });
-    } catch {
-      recipe = null;
-    }
-    const written = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, language: request.language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean), sector, recipe, lab }, { exampleIds: lab.exampleIds, resultRef: `reel:${job.id}` });
-    // The owner's spellings are fixed in the title, the caption and the spoken lines, and the language check runs on them. Only text
-    // changes: nothing is filmed at planning time, so a fixed line costs nothing, and there is no rewrite or retry.
-    const { plan, fixes, issues } = polishReelTexts(written, request.language, languageExtra, [loaded.facts.name, loaded.subject?.name].filter((n): n is string => !!n));
-    await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json({ ...plan, price: loaded.subject?.price ?? null, refilms: 0, sources: recipe?.sources.map((s) => s.id) ?? [], ...(fixes.length ? { labSpellingFixes: fixes } : {}), ...(issues.length ? { languageIssues: issues } : {}), labExampleIds: lab.exampleIds, labAvoid: clipAvoid(lab.rows ?? []) }), stepUntil: null } });
-    return job.id;
-  } catch (error) {
-    await prisma.reelJob.update({ where: { id: job.id }, data: { status: "failed", stepUntil: null, error: "The reel could not be planned. Please try again." } });
-    throw error;
+    recipe = viralRecipe({ sector, product: loaded.subject?.name ?? loaded.facts.name, platform: "instagram", country: "Rwanda", language, purpose: "ad", seconds: 30, hasPrice: !!loaded.subject?.price, hasPhone: true, footage: { generated: true }, seed: job.id, ...(labViral.rows.length ? { lab: labViral.rows } : {}), ...(avoid.length ? { avoid } : {}) });
+  } catch {
+    recipe = null;
   }
+  const written = await writeReel(owner, { business: loaded.facts, subject: loaded.subject, brief: planning.brief ?? null, language, presenter: presenter.description, beats, recent: recentJobs.map((j) => (j.plan as unknown as ReelPlan).title).filter(Boolean), sector, recipe, lab }, { exampleIds: lab.exampleIds, resultRef: `reel:${job.id}` });
+  // The owner's spellings are fixed in the title, the caption and the spoken lines, and the language check runs on them. Only text
+  // changes: nothing is filmed at planning time, so a fixed line costs nothing, and there is no rewrite or retry.
+  const { plan, fixes, issues } = polishReelTexts(written, language, languageExtra, [loaded.facts.name, loaded.subject?.name].filter((n): n is string => !!n));
+  return { ...plan, price: loaded.subject?.price ?? null, refilms: 0, sources: recipe?.sources.map((s) => s.id) ?? [], ...(fixes.length ? { labSpellingFixes: fixes } : {}), ...(issues.length ? { languageIssues: issues } : {}), labExampleIds: lab.exampleIds, labAvoid: clipAvoid(lab.rows ?? []) };
 }
 
 async function bytesOf(bucket: string, path: string): Promise<Uint8Array> {
@@ -283,7 +304,7 @@ export function framePhotos(albumPhotos: string[], chosen: string | null | undef
   return chosen ? [chosen, ...albumPhotos.filter((p) => p !== chosen)] : albumPhotos;
 }
 
-async function frameFor(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhotos: string[]): Promise<{ path: string; photo: string | null }> {
+async function frameFor(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhotos: string[]): Promise<{ path: string | null; photo: string | null }> {
   // The product's photos in turn: one that cannot be read (too big, a type the model cannot take) is skipped, and with
   // none the frame is painted from the words (a LEAF photo that would not load failed the first round-2 reel).
   for (const photo of productPhotos.slice(0, 3)) {
@@ -296,7 +317,7 @@ async function frameFor(owner: Owner, job: { id: string; subjectId: string | nul
   return { path: await paintFrame(owner, job, plan, clip, presenterPath, null), photo: null };
 }
 
-async function paintFrame(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhoto: string | null): Promise<string> {
+async function paintFrame(owner: Owner, job: { id: string; subjectId: string | null }, plan: ReelPlan, clip: ReelClip, presenterPath: string, productPhoto: string | null): Promise<string | null> {
   const prompt = [
     `A tall vertical (9:16) photograph, the first frame of a video clip. ${clip.frame}`,
     plan.setting ? `The place: ${plan.setting}. Nowhere else.` : null,
@@ -306,112 +327,186 @@ async function paintFrame(owner: Owner, job: { id: string; subjectId: string | n
     realismBlock("a photo taken on a modern phone (main camera, natural light, handheld at eye level), like a friend took it"),
     "No words, letters, captions or logos anywhere in the picture.",
   ].filter(Boolean).join("\n");
-  const paint = () => createEngineDesign({ userId: owner.userId, businessId: owner.businessId, subjectId: job.subjectId, service: true, model: FRAME_MODEL(), aspectRatio: "9:16", prompt, references: clip.presenter ? [presenterPath] : [], usePhotoPath: productPhoto });
-  let made = await paint();
+  const made = await createEngineDesign({ userId: owner.userId, businessId: owner.businessId, subjectId: job.subjectId, service: true, model: FRAME_MODEL(), aspectRatio: "9:16", prompt, references: clip.presenter ? [presenterPath] : [], usePhotoPath: productPhoto });
   await addCost(job.id, FRAME_USD);
+  // A frame the Checker finds slop in is painted again in the next step, once; that second one is kept as it is.
+  if (clip.repainted) return made.path;
   const verdict = await checkPicture(owner, made, { headline: "", subline: "", cta: "", productShown: false, product: "" });
-  if (!verdict.ok) {
-    made = await paint();
-    await addCost(job.id, FRAME_USD);
-  }
-  return made.path;
+  return verdict.ok ? made.path : null;
 }
 
-/** One unit of work on a reel: a start frame, or sending the framed clips to Veo, or checking the clips being filmed. */
+/**
+ * Google's state across every business's reels: clips filming now (Google takes only a few at a time for the whole
+ * project) and when the last "at its limit" answer said to wait until. Read from the other reels being filmed.
+ */
+async function veoAcrossReels(jobId: string): Promise<{ filming: number; busyUntil: number }> {
+  const others = await prisma.reelJob.findMany({ where: { status: "filming", id: { not: jobId } }, select: { plan: true } });
+  const clips = others.flatMap((o) => (o.plan as unknown as ReelPlan).clips ?? []);
+  return { filming: clips.filter((c) => c.status === "filming").length, busyUntil: Math.max(0, ...clips.filter((c) => c.busySince).map((c) => c.retryAt ?? 0)) };
+}
+
+/**
+ * Google said it is at its limit: the clip waits a minute, without counting a try. Once the reel has waited
+ * BUSY_GIVE_UP_MS with no clip accepted, every clip still waiting to be sent fails with QUOTA_MESSAGE.
+ */
+function waitForGoogle(plan: JobPlan, clip: ReelClip, now: number) {
+  clip.operation = null;
+  clip.status = "framed";
+  clip.busySince ??= now;
+  clip.retryAt = now + BUSY_WAIT_MS;
+  plan.busySince ??= now;
+  if (now - plan.busySince < BUSY_GIVE_UP_MS) return;
+  for (const c of plan.clips.filter((c) => c.status === "framed" || c.status === "planned")) {
+    c.status = "failed";
+    c.error = QUOTA_MESSAGE;
+    c.retryAt = null;
+  }
+}
+
+/**
+ * One step of a reel, so no call runs long (bupulse.com answers within 60 s on Netlify): the presenter, or the script,
+ * or one start frame; else the light work within STEP_BUDGET_MS (framed clips sent to Google, filming clips asked
+ * about) and at most one heavy thing (one finished clip saved, or one saved clip checked). What is paid for is saved at
+ * once (a clip's job at Google as soon as it is accepted), so a step cut short never pays twice.
+ */
 export async function stepReel(owner: Owner, jobId: string, now: Date = new Date()): Promise<void> {
   const { count } = await prisma.reelJob.updateMany({ where: { id: jobId, businessId: owner.businessId, status: "filming", OR: [{ stepUntil: null }, { stepUntil: { lt: now } }] }, data: { stepUntil: new Date(now.getTime() + STEP_LEASE_MS) } });
   if (count === 0) return;
+  const started = Date.now();
+  const timeLeft = () => Date.now() - started < STEP_BUDGET_MS;
   const job = (await prisma.reelJob.findUnique({ where: { id: jobId } }))!;
-  const plan = job.plan as unknown as ReelPlan;
+  let plan = job.plan as unknown as JobPlan;
+  plan.clips ??= [];
   const save = (data: Prisma.ReelJobUpdateInput = {}) => prisma.reelJob.update({ where: { id: jobId }, data: { plan: json(plan), stepUntil: null, ...data } });
+  // Saves the plan in the middle of a step (the hold stays): right after something is paid for.
+  const keep = () => prisma.reelJob.update({ where: { id: jobId }, data: { plan: json(plan) } });
   const apiKey = process.env.GEMINI_API_KEY ?? "";
   // Google's video model in lib/video-engine/veo.ts (Veo 3.1 Lite was retired on 23 October 2026; the shared client
   // moves to Gemini Omni Flash). One model for now: the tier is kept for when there are two again.
   const model = veoModel();
+  const at = now.getTime();
   try {
+    // 0. Planning, one step each: the presenter (a portrait the first time), then the script.
+    if (plan.stage === "presenter") {
+      const loaded = await loadFacts(owner, job.subjectId);
+      await ensurePresenter(owner, job.id, loaded.business.audience, sectorOf(loaded));
+      plan.stage = "script";
+      return void (await save());
+    }
+    if (plan.stage === "script") {
+      try {
+        plan = await planScript(owner, job, plan);
+      } catch (error) {
+        await logError(error, { source: "reel-engine.plan", businessId: owner.businessId });
+        return void (await save({ status: "failed", error: "The reel could not be planned. Please try again." }));
+      }
+      return void (await save());
+    }
+    // A reel started before planning moved into steps and cut off half way has nothing to film: it fails, never assembles.
+    if (!plan.clips.length) return void (await save({ status: "failed", error: "The reel could not be planned. Please try again." }));
+
     // 1. The next start frame.
     const toFrame = plan.clips.find((c) => !c.framePath);
     if (toFrame) {
       const presenter = await ensurePresenter(owner, job.id, null);
       const loaded = await loadFacts(owner, job.subjectId);
       const framed = await frameFor(owner, job, plan, toFrame, presenter.path, framePhotos(loaded.photos, plan.productPhoto));
-      toFrame.framePath = framed.path;
       plan.productPhoto = framed.photo ?? plan.productPhoto ?? null;
-      toFrame.status = "framed";
-      await save();
-      return;
+      if (framed.path) {
+        toFrame.framePath = framed.path;
+        toFrame.status = "framed";
+      } else toFrame.repainted = true;
+      return void (await save());
     }
-    // 2. Framed clips to the video model, at most VEO_PARALLEL filming at once: Google takes only a few clips at a time
-    // and answers the rest with RESOURCE_EXHAUSTED (the first 7-clip reel lost 6 clips to it). A clip Google is too busy
-    // for waits a minute and goes again; the wait is not counted as a try.
-    for (const clip of plan.clips.filter((c) => c.status === "framed" && (c.retryAt ?? 0) <= now.getTime())) {
-      if (plan.clips.filter((c) => c.status === "filming").length >= veo.VEO_PARALLEL) break;
+
+    // 2. Framed clips to the video model, at most VEO_PARALLEL filming at once across every business's reels: Google
+    // takes only a few clips at a time for the whole project and answers the rest with RESOURCE_EXHAUSTED. While any reel
+    // was told to wait, none sends.
+    const google = await veoAcrossReels(jobId);
+    for (const clip of plan.clips.filter((c) => c.status === "framed" && Math.max(c.retryAt ?? 0, google.busyUntil) <= at)) {
+      if (!timeLeft() || google.filming + plan.clips.filter((c) => c.status === "filming").length >= veo.VEO_PARALLEL) break;
       const frame = await bytesOf("designs", clip.framePath!);
       const mimeType = frame[0] === 0x89 ? "image/png" : "image/jpeg";
       try {
         clip.operation = await submitVeo({ model, prompt: veoClipPrompt(clip, job.language as ReelLanguage, plan.setting), image: { base64: base64(frame), mimeType }, ratio: "9:16", seconds: clip.seconds === 4 ? 4 : CLIP_SECONDS, resolution: "720p" }, { apiKey });
       } catch (error) {
-        if (isBusy(error)) {
-          clip.retryAt = now.getTime() + BUSY_WAIT_MS;
-          break;
-        }
-        throw error;
+        if (!isBusy(error)) throw error;
+        waitForGoogle(plan, clip, at);
+        await keep();
+        break;
       }
       clip.status = "filming";
       clip.retryAt = null;
+      clip.busySince = null;
+      plan.busySince = null;
+      // Accepted by Google, so paid for: saved before anything else can stop this step.
+      await keep();
     }
-    // 3. The clips being filmed: one finished clip is downloaded and checked per step (four in one request took longer
-    // than the test site's connection waits, and the screen lost the reel).
-    for (const [i, clip] of plan.clips.entries()) {
-      if (clip.status !== "filming" || !clip.operation) continue;
-      const op = await getVeoOperation(clip.operation, { apiKey });
-      if (!op.done) continue;
-      if (op.error || (!op.videoUri && !(op as { videoBytes?: Buffer | null }).videoBytes)) {
-        clip.operation = null;
-        if (isBusy(op.error)) {
-          // Google was at its limit: the clip goes again in a minute, and this is not a try.
-          clip.status = "framed";
-          clip.retryAt = now.getTime() + BUSY_WAIT_MS;
+
+    // 3. One heavy thing: a saved clip checked, else one finished clip saved (the download is up to 5 MB).
+    const toCheck = plan.clips.find((c) => c.status === "checking" && c.clipPath);
+    if (toCheck) {
+      await checkSavedClip(owner, plan, toCheck, model);
+    } else {
+      for (const [i, clip] of plan.clips.entries()) {
+        if (clip.status !== "filming" || !clip.operation) continue;
+        if (!timeLeft()) break;
+        const op = await getVeoOperation(clip.operation, { apiKey });
+        if (!op.done) continue;
+        if (op.error || (!op.videoUri && !(op as { videoBytes?: Buffer | null }).videoBytes)) {
+          if (isBusy(op.error)) {
+            waitForGoogle(plan, clip, at);
+            continue;
+          }
+          // Google sometimes refuses a clip with a general error and charges nothing: send it again, up to 2 times.
+          clip.operation = null;
+          clip.error = op.error?.message ?? "Google could not make this clip.";
+          clip.tries = (clip.tries ?? 0) + 1;
+          clip.status = clip.tries <= CLIP_RETRIES ? "framed" : "failed";
           continue;
         }
-        // Google sometimes refuses a clip with a general error and charges nothing: send it again, up to 2 times.
-        clip.error = op.error?.message ?? "Google could not make this clip.";
-        clip.tries = (clip.tries ?? 0) + 1;
-        clip.status = clip.tries <= CLIP_RETRIES ? "framed" : "failed";
-        continue;
+        // The clip comes back as a link (Veo) or inline (Omni: veoClipBytes); both are read the same way.
+        const clipBytes = (veo as { veoClipBytes?: (o: typeof op, opts: { apiKey: string }) => Promise<Buffer> }).veoClipBytes;
+        const bytes = await withLedger({ ...owner, feature: "reelEngine" }, { provider: "veo", model }, () => (clipBytes ? clipBytes(op, { apiKey }) : downloadVeo(op.videoUri!, { apiKey })), () => veoLedgerUsage(model, clip.seconds ?? CLIP_SECONDS));
+        const path = `${owner.userId}/clips/reels/${job.id}-${i}.mp4`;
+        const { error } = await createAdminClient().storage.from(CLIPS_BUCKET).upload(path, bytes, { contentType: "video/mp4", upsert: true });
+        if (error) throw new ReelError("A clip could not be saved. Please try again.");
+        clip.clipPath = path;
+        clip.operation = null;
+        // Checked in the next step (the Checker watches it for up to a minute and a half).
+        clip.status = "checking";
+        await addCost(job.id, veoClipUsd(clip.seconds ?? CLIP_SECONDS, model));
+        break;
       }
-      // The clip comes back as a link (Veo) or inline (Omni: veoClipBytes); both are read the same way.
-      const clipBytes = (veo as { veoClipBytes?: (o: typeof op, opts: { apiKey: string }) => Promise<Buffer> }).veoClipBytes;
-      const bytes = await withLedger({ ...owner, feature: "reelEngine" }, { provider: "veo", model }, () => (clipBytes ? clipBytes(op, { apiKey }) : downloadVeo(op.videoUri!, { apiKey })), () => veoLedgerUsage(model, clip.seconds ?? CLIP_SECONDS));
-      const path = `${owner.userId}/clips/reels/${job.id}-${i}.mp4`;
-      const { error } = await createAdminClient().storage.from(CLIPS_BUCKET).upload(path, bytes, { contentType: "video/mp4", upsert: true });
-      if (error) throw new ReelError("A clip could not be saved. Please try again.");
-      clip.clipPath = path;
-      clip.status = "done";
-      await addCost(job.id, veoClipUsd(clip.seconds ?? CLIP_SECONDS, model));
-      // The Checker watches the clip for broken physics and AI slop; a bad one is filmed again with what went wrong,
-      // while the reel's refilms and the test budget allow.
-      const verdict = await checkClip(owner, bytes, plan.setting ?? null, { avoid: (plan as ReelPlan & LabPlan).labAvoid });
-      clip.problems = verdict.problems;
-      if (!verdict.ok) {
-        const room = (await reelTestSpentUsd()) + veoClipUsd(clip.seconds ?? CLIP_SECONDS, model) <= reelTestCapUsd();
-        if ((plan.refilms ?? 0) < MAX_REFILMS && room) {
-          plan.refilms = (plan.refilms ?? 0) + 1;
-          clip.avoid = verdict.problems;
-          clip.status = "framed";
-          clip.operation = null;
-        }
-      }
-      break;
     }
+
     // A clip that failed for good fails the reel once the others are finished, so "Try again" never pays for them twice.
     const failed = plan.clips.find((c) => c.status === "failed");
-    const busy = plan.clips.some((c) => c.status === "filming" || c.status === "framed");
-    if (failed && !busy) return void (await save({ status: "failed", error: `A clip could not be made: ${failed.error}` }));
-    await save(plan.clips.every((c) => c.status === "done") ? { status: "assembling" } : {});
+    const busy = plan.clips.some((c) => c.status === "filming" || c.status === "framed" || c.status === "checking");
+    if (failed && !busy) return void (await save({ status: "failed", error: failed.error === QUOTA_MESSAGE ? QUOTA_MESSAGE : `A clip could not be made: ${failed.error}` }));
+    await save(plan.clips.length > 0 && plan.clips.every((c) => c.status === "done") ? { status: "assembling" } : {});
   } catch (error) {
     await logError(error, { source: "reel-engine.step", businessId: owner.businessId });
     await save({ status: "failed", error: error instanceof ReelError || (error as Error).name === "VeoError" ? (error as Error).message : "The reel could not be made. Please try again." });
+  }
+}
+
+/**
+ * The Checker watches a saved clip for broken physics and AI slop; a bad one is filmed again with what went wrong,
+ * while the reel's refilms and the test budget allow, else it is kept with what the Checker saw.
+ */
+async function checkSavedClip(owner: Owner, plan: JobPlan, clip: ReelClip, model: string) {
+  const bytes = await bytesOf(CLIPS_BUCKET, clip.clipPath!);
+  const verdict = await checkClip(owner, bytes, plan.setting ?? null, { avoid: plan.labAvoid });
+  clip.problems = verdict.problems;
+  clip.status = "done";
+  if (verdict.ok) return;
+  const room = (await reelTestSpentUsd()) + veoClipUsd(clip.seconds ?? CLIP_SECONDS, model) <= reelTestCapUsd();
+  if ((plan.refilms ?? 0) < MAX_REFILMS && room) {
+    plan.refilms = (plan.refilms ?? 0) + 1;
+    clip.avoid = verdict.problems;
+    clip.status = "framed";
+    clip.operation = null;
   }
 }
 
@@ -487,13 +582,16 @@ export async function retryReel(owner: Owner, jobId: string): Promise<void> {
   const spent = await reelTestSpentUsd();
   if (spent + left > reelTestCapUsd()) throw new ReelError(`The test budget is used: $${spent.toFixed(2)} of $${reelTestCapUsd()}. Ask to raise it before trying again.`);
   for (const clip of plan.clips) {
-    if (clip.status === "done") continue;
+    // A saved clip waiting for its check is paid for: it is checked, never filmed again.
+    if (clip.status === "done" || clip.status === "checking") continue;
     clip.status = clip.framePath ? "framed" : "planned";
     clip.operation = null;
     clip.error = null;
     clip.tries = 0;
     clip.retryAt = null;
+    clip.busySince = null;
   }
+  (plan as JobPlan).busySince = null;
   await prisma.reelJob.update({ where: { id: job.id }, data: { plan: json(plan), status: "filming", error: null, stepUntil: null } });
 }
 
