@@ -13,6 +13,13 @@ const article = (w: string) => (/^[aeiou]/i.test(w) ? "an" : "a");
 const quote = (s: string) => `"${scrubText(s.replace(/\s+/g, " ").trim()).slice(0, 60)}"`;
 
 type Clip = { url: string; start: number };
+/** The clip settings of a shot (its first video layer): speed, level and fades, with their defaults. */
+const clipSettings = (s: Scene) => {
+  const v = s.layers.find((l) => l.kind === "video");
+  return v && v.kind === "video" ? { rate: v.rate ?? 1, volume: v.volume ?? 1, fadeIn: v.fadeIn ?? 0, fadeOut: v.fadeOut ?? 0 } : null;
+};
+const speed = (v: number) => `${Math.round(v * 100) / 100}x`;
+const pct = (v: number) => `${Math.round(v * 100)}%`;
 const clipOf = (s: Scene): Clip | null => {
   const v = s.layers.find((l) => l.kind === "video");
   return v && v.kind === "video" ? { url: v.url, start: v.start } : null;
@@ -100,6 +107,14 @@ export function describeEdit(before: MotionSpec, after: MotionSpec): string[] {
     const now = a.transition ?? "fade";
     if (was !== now && to[i] > 0) out.push(`The way ${name(i).toLowerCase()} comes in changed from ${was} to ${now}.`);
     if (Math.abs(zoomOf(b) - zoomOf(a)) >= 0.02) out.push(`${name(i)} zoom changed from ${zoomOf(b).toFixed(2)}x to ${zoomOf(a).toFixed(2)}x.`);
+    const cb = clipSettings(b);
+    const ca = clipSettings(a);
+    if (cb && ca) {
+      if (Math.abs(cb.rate - ca.rate) >= 0.005) out.push(`${name(i)} speed changed from ${speed(cb.rate)} to ${speed(ca.rate)}.`);
+      if (Math.abs(cb.volume - ca.volume) >= 0.005) out.push(`${name(i)} sound level changed from ${pct(cb.volume)} to ${pct(ca.volume)}.`);
+      if (Math.abs(cb.fadeIn - ca.fadeIn) >= 0.05) out.push(`${name(i)} sound fade-in changed from ${secs(cb.fadeIn)} to ${secs(ca.fadeIn)}.`);
+      if (Math.abs(cb.fadeOut - ca.fadeOut) >= 0.05) out.push(`${name(i)} sound fade-out changed from ${secs(cb.fadeOut)} to ${secs(ca.fadeOut)}.`);
+    }
     const tb = texts(b);
     const ta = texts(a);
     for (let n = 0; n < Math.min(tb.length, ta.length); n++) if (tb[n] !== ta[n]) out.push(`${name(i)} words changed: ${quote(tb[n])} -> ${quote(ta[n])}.`);

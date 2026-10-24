@@ -3,13 +3,17 @@
 // spec, so undo/redo is a list of specs. SPEC_LIMITS' scene length applies; maxScenes does not (reel specs have about 20
 // scenes). Pure.
 import { snapToBeat, type MusicBeat } from "@/lib/reel-engine/story";
-import { GRADES, SPEC_LIMITS, TRANSITIONS, totalMs, type Grade, type Layer, type MotionSpec, type Scene, type ShapeLayer, type TextLayer, type Transition } from "@/lib/video-engine/spec";
+import { isAiClipUrl } from "@/lib/video-engine/video-frames";
+import { CLIP_FADE_MAX, CLIP_RATE, GRADES, SPEC_LIMITS, TRANSITIONS, totalMs, type Grade, type Layer, type MotionSpec, type Scene, type ShapeLayer, type TextLayer, type Transition } from "@/lib/video-engine/spec";
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const MIN = SPEC_LIMITS.minSceneSeconds;
 const MAX = SPEC_LIMITS.maxSceneSeconds;
 const has = (spec: MotionSpec, i: number) => Number.isInteger(i) && i >= 0 && i < spec.scenes.length;
+
+/** A shot's playback speed (1 when absent). */
+const rateOf = (l: { rate?: number }) => l.rate ?? 1;
 
 /** A copy of the spec with scene `i` replaced. */
 const withScene = (spec: MotionSpec, i: number, scene: Scene): MotionSpec => ({ ...spec, scenes: spec.scenes.map((s, k) => (k === i ? scene : s)) });
@@ -19,7 +23,7 @@ export const totalSeconds = (spec: MotionSpec): number => r2(totalMs(spec) / 100
 
 /**
  * Trims shot `i`: `start` is where in its clip the shot begins, `seconds` its length (kept between the scene limits).
- * With `clipSeconds` (the clip's real length) the shot never runs past the clip's end.
+ * With `clipSeconds` (the clip's real length) the shot never runs past the clip's end: it reads `seconds × rate` of the clip.
  */
 export function trimShot(spec: MotionSpec, i: number, change: { start?: number; seconds?: number }, opts: { clipSeconds?: number } = {}): MotionSpec {
   if (!has(spec, i)) return spec;
@@ -29,9 +33,10 @@ export function trimShot(spec: MotionSpec, i: number, change: { start?: number; 
   const clip = opts.clipSeconds && opts.clipSeconds > 0 ? opts.clipSeconds : null;
   const video = scene.layers.find((l) => l.kind === "video");
   let from = video?.kind === "video" ? video.start : 0;
-  if (start !== undefined && video) from = Math.max(0, clip ? Math.min(start, clip - MIN) : start);
+  const rate = video?.kind === "video" ? rateOf(video) : 1;
+  if (start !== undefined && video) from = Math.max(0, clip ? Math.min(start, clip - MIN * rate) : start);
   let length = seconds === undefined ? scene.seconds : clamp(seconds, MIN, MAX);
-  if (clip && video && (seconds !== undefined || start !== undefined)) length = clamp(Math.min(length, clip - from), MIN, MAX);
+  if (clip && video && (seconds !== undefined || start !== undefined)) length = clamp(Math.min(length, (clip - from) / rate), MIN, MAX);
   from = r2(from);
   length = r2(length);
   const changesStart = video?.kind === "video" && from !== video.start;
@@ -64,7 +69,7 @@ export function splitShot(spec: MotionSpec, i: number, atSeconds: number): Motio
     scene.layers.flatMap((l) => {
       const m = remap(l, a, b);
       if (!m) return [];
-      return [m.kind === "video" ? { ...m, start: r2(m.start + shift) } : m];
+      return [m.kind === "video" ? { ...m, start: r2(m.start + shift * rateOf(m)) } : m];
     });
   const first: Scene = { ...scene, seconds: at, layers: part(0, f, 0) };
   const second: Scene = { ...scene, seconds: r2(scene.seconds - at), layers: part(f, 1, at), transition: "cut" };
@@ -176,11 +181,77 @@ export function snapCutsToBeats(spec: MotionSpec, beat: MusicBeat): MotionSpec {
     const b = clipOf(s);
     // Contiguous with the shot before (same clip, picking up where it ended): its start moves with the cut.
     const shift = k ? bounds[k - 1] - old[k - 1] : 0;
-    const follows = !!a && !!b && a.kind === "video" && b.kind === "video" && a.url === b.url && Math.abs(a.start + before.seconds - b.start) < 0.05;
-    const layers = follows && shift ? s.layers.map((l) => (l.kind === "video" ? { ...l, start: r2(Math.max(0, l.start + shift)) } : l)) : s.layers;
+    const follows = !!a && !!b && a.kind === "video" && b.kind === "video" && a.url === b.url && Math.abs(a.start + before.seconds * rateOf(a) - b.start) < 0.05;
+    const layers = follows && shift ? s.layers.map((l) => (l.kind === "video" ? { ...l, start: r2(Math.max(0, l.start + shift * (a && a.kind === "video" ? rateOf(a) : 1))) } : l)) : s.layers;
     return seconds === s.seconds && layers === s.layers ? s : { ...s, seconds, layers };
   });
   return scenes.every((s, k) => s === spec.scenes[k]) ? spec : { ...spec, scenes };
+}
+
+/** Whether shot `i + 1` (and on) carries on the same clip from where shot `i` read to: its start follows when the speed changes. */
+const continues = (a: Scene, b: Scene) => {
+  const x = a.layers.find((l) => l.kind === "video");
+  const y = b.layers.find((l) => l.kind === "video");
+  return !!x && !!y && x.kind === "video" && y.kind === "video" && x.url === y.url && Math.abs(x.start + a.seconds * rateOf(x) - y.start) < 0.05;
+};
+
+/** A video layer with `rate` set, or left out at 1 (as the validator leaves defaults out). */
+const withRate = (l: Layer & { kind: "video" }, rate: number): Layer => {
+  const { rate: _old, ...rest } = l;
+  void _old;
+  return rate === 1 ? rest : { ...rest, rate };
+};
+
+/**
+ * The speed of shot `i` (0.5 slow motion to 2, to 0.01): the shot keeps its length and reads `seconds × rate` of its clip. When
+ * the shots after it carry on the same clip, their starts move by the same amount so the clip still plays straight through.
+ * A clip that is not at 1 plays without its own sound.
+ */
+export function setSpeed(spec: MotionSpec, i: number, rate: number): MotionSpec {
+  if (!has(spec, i) || !Number.isFinite(rate)) return spec;
+  const scene = spec.scenes[i];
+  const video = scene.layers.find((l) => l.kind === "video");
+  if (!video || video.kind !== "video") return spec;
+  const next = r2(clamp(rate, CLIP_RATE.min, CLIP_RATE.max));
+  if (next === rateOf(video)) return spec;
+  const delta = r2(scene.seconds * (next - rateOf(video)));
+  const scenes = spec.scenes.map((s, k) => (k === i ? { ...s, layers: s.layers.map((l) => (l.kind === "video" ? withRate(l, next) : l)) } : s));
+  // Ripple: each following shot that continued the one before (as it was) starts later (or earlier) by the same amount.
+  for (let j = i + 1; j < spec.scenes.length && continues(spec.scenes[j - 1], spec.scenes[j]); j++) {
+    scenes[j] = { ...scenes[j], layers: scenes[j].layers.map((l) => (l.kind === "video" ? { ...l, start: r2(Math.max(0, l.start + delta)) } : l)) };
+  }
+  return { ...spec, scenes };
+}
+
+export type ClipSound = { volume?: number; fadeIn?: number; fadeOut?: number };
+
+/**
+ * The clip's own sound in shot `i`: its level (0 to 1) and the fades at the shot's start and end (0 to 3 s). Values at their
+ * defaults (level 1, fades 0) are left out. An AI clip has no sound of its own, so it is not changed.
+ */
+export function setClipSound(spec: MotionSpec, i: number, change: ClipSound): MotionSpec {
+  if (!has(spec, i)) return spec;
+  const { volume, fadeIn, fadeOut } = change;
+  if ([volume, fadeIn, fadeOut].some((v) => v !== undefined && !Number.isFinite(v))) return spec;
+  const scene = spec.scenes[i];
+  let changed = false;
+  const layers = scene.layers.map((l) => {
+    if (l.kind !== "video" || isAiClipUrl(l.url)) return l;
+    const out: Record<string, unknown> = { ...l };
+    const set = (key: "volume" | "fadeIn" | "fadeOut", value: number | undefined, lo: number, hi: number, def: number) => {
+      if (value === undefined) return;
+      const v = r2(clamp(value, lo, hi));
+      if (v === def) delete out[key];
+      else out[key] = v;
+    };
+    set("volume", volume, 0, 1, 1);
+    set("fadeIn", fadeIn, 0, CLIP_FADE_MAX, 0);
+    set("fadeOut", fadeOut, 0, CLIP_FADE_MAX, 0);
+    if (JSON.stringify(out) === JSON.stringify(l)) return l;
+    changed = true;
+    return out as unknown as Layer;
+  });
+  return changed ? withScene(spec, i, { ...scene, layers }) : spec;
 }
 
 // ---- Undo and redo: plain data, the specs before and after the present one.

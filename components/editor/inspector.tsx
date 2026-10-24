@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { Button, Field, Input, Select } from "@/components/ui";
-import { addSticker, deleteShot, removeSticker, setCaptionText, setLook, setTransition, setZoom, splitShot, textSticker, trimShot, type Op } from "@/lib/editor/ops";
-import { GRADES, SPEC_LIMITS, TRANSITIONS, type Grade, type Layer, type MotionSpec, type ShapeLayer, type Transition } from "@/lib/video-engine/spec";
+import { addSticker, deleteShot, removeSticker, setCaptionText, setClipSound, setLook, setSpeed, setTransition, setZoom, splitShot, textSticker, trimShot, type Op } from "@/lib/editor/ops";
+import { isAiClipUrl } from "@/lib/video-engine/video-frames";
+import { CLIP_FADE_MAX, GRADES, SPEC_LIMITS, TRANSITIONS, type Grade, type Layer, type MotionSpec, type ShapeLayer, type Transition, type VideoLayer } from "@/lib/video-engine/spec";
 
 const TRANSITION_NAMES: Record<Transition, string> = { cut: "Cut", fade: "Fade", slideUp: "Slide up", slideLeft: "Slide left", zoom: "Zoom in", wipe: "Wipe", flash: "Flash", whip: "Whip", blurZoom: "Blur zoom", spin: "Spin", dip: "Dip to black" };
 const GRADE_NAMES: Record<Grade, string> = { none: "None", warm: "Warm", cool: "Cool", tealOrange: "Teal and orange", vivid: "Vivid", mono: "Black and white", film: "Film", faded: "Faded", night: "Night" };
@@ -34,6 +35,44 @@ function TextBox({ value, label, onCommit }: { value: string; label: string; onC
   );
 }
 
+const SPEEDS = [0.5, 0.75, 1, 1.5, 2];
+
+/** Speed and the clip's own sound for a shot that has a clip. The sound is heard in the exported video, not in the preview. */
+function ClipControls({ layer, selected, run }: { layer: VideoLayer; selected: number; run: (op: Op) => void }) {
+  const rate = layer.rate ?? 1;
+  const ai = isAiClipUrl(layer.url);
+  const silent = ai || layer.sound !== true || rate !== 1;
+  const speeds = SPEEDS.includes(rate) ? SPEEDS : [...SPEEDS, rate].sort((a, b) => a - b);
+  const volume = layer.volume ?? 1;
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-3">
+      <legend className="mb-1 text-sm font-medium">Clip speed and sound</legend>
+      <Field label="Speed" hint="Below 1x is slow motion, above 1x is faster. The shot keeps its length; a faster shot shows more of the clip.">
+        <Select value={String(rate)} onChange={(e) => run((s) => setSpeed(s, selected, Number(e.target.value)))}>
+          {speeds.map((r) => (
+            <option key={r} value={String(r)}>{r}x</option>
+          ))}
+        </Select>
+      </Field>
+      {ai && <p className="text-[13px] text-muted">AI clips have no sound of their own.</p>}
+      {!ai && layer.sound !== true && <p className="text-[13px] text-muted">This clip has no sound of its own.</p>}
+      {!ai && layer.sound === true && rate !== 1 && <p className="text-[13px] text-muted">Sound is off while the speed is not 1x.</p>}
+      <Field label={`Sound level: ${Math.round(volume * 100)}%`}>
+        <input type="range" min={0} max={1} step={0.05} disabled={silent} value={volume} onChange={(e) => run((s) => setClipSound(s, selected, { volume: Number(e.target.value) }))} className="min-h-11 w-full" />
+      </Field>
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+        <Field label="Sound fades in (seconds)">
+          <Input type="number" inputMode="decimal" step={0.1} min={0} max={CLIP_FADE_MAX} disabled={silent} value={layer.fadeIn ?? 0} onChange={(e) => e.target.value !== "" && run((s) => setClipSound(s, selected, { fadeIn: Number(e.target.value) }))} />
+        </Field>
+        <Field label="Sound fades out (seconds)">
+          <Input type="number" inputMode="decimal" step={0.1} min={0} max={CLIP_FADE_MAX} disabled={silent} value={layer.fadeOut ?? 0} onChange={(e) => e.target.value !== "" && run((s) => setClipSound(s, selected, { fadeOut: Number(e.target.value) }))} />
+        </Field>
+      </div>
+      <p className="text-[13px] text-muted">You hear the clip&apos;s sound only in the exported video, not in the preview.</p>
+    </fieldset>
+  );
+}
+
 const zoomOf = (layers: Layer[]) => {
   const l = layers.find((x) => x.kind === "video" || x.kind === "photo");
   return l?.keyframes?.[0]?.scale ?? 1;
@@ -46,6 +85,7 @@ export function Inspector({ spec, selected, tMs, run, onSelect }: { spec: Motion
   const startMs = spec.scenes.slice(0, selected).reduce((t, s) => t + s.seconds * 1000, 0);
   const splitAt = Math.round(((tMs - startMs) / 1000) * 10) / 10;
   const canSplit = splitAt >= SPEC_LIMITS.minSceneSeconds && scene.seconds - splitAt >= SPEC_LIMITS.minSceneSeconds;
+  const clip = scene.layers.find((l): l is VideoLayer => l.kind === "video");
   const hasPicture = scene.layers.some((l) => l.kind === "video" || l.kind === "photo");
   const texts = scene.layers.flatMap((l, i) => (l.kind === "text" ? [{ l, i }] : []));
   const shapes = scene.layers.flatMap((l, i) => (l.kind === "shape" ? [{ l, i }] : []));
@@ -68,6 +108,8 @@ export function Inspector({ spec, selected, tMs, run, onSelect }: { spec: Motion
       <Field label={`Zoom: ${zoomOf(scene.layers).toFixed(2)}x`} hint={hasPicture ? "1 is as filmed; higher zooms in slowly." : "Zoom works on a shot that has a clip or a photo."}>
         <input type="range" min={1} max={2} step={0.05} disabled={!hasPicture} value={zoomOf(scene.layers)} onChange={(e) => run((s) => setZoom(s, selected, Number(e.target.value)))} className="min-h-11 w-full" />
       </Field>
+
+      {clip && <ClipControls layer={clip} selected={selected} run={run} />}
 
       <fieldset className="flex min-w-0 flex-col gap-3">
         <legend className="mb-1 text-sm font-medium">Words on this shot</legend>
