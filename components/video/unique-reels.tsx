@@ -101,6 +101,8 @@ export function UniqueReels({ products, brand, clipUsd, initialReel }: { product
       return;
     }
     job.current = id;
+    // The reel is filming again: the old failure is not shown while the first step is on its way.
+    setReel((r) => (r && r.id === id ? { ...r, status: "filming", error: null } : r));
     void step(id);
   }
 
