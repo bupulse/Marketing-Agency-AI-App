@@ -103,6 +103,7 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
     client's phone, link or price reaches another business's prompt, file replacement, duplicate reels, "7 am".
 19. **Done** Images get the free Kinyarwanda spelling fixes (words on the picture and captions).
 20. **Done** The reel Director leans toward the best-rated examples' hooks, shots and camera moves, never the "never" ones.
+21. **Done** A Lab health list at the top of the Library.
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
