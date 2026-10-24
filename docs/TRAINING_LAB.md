@@ -106,7 +106,7 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 21. **Done** A Lab health list at the top of the Library.
 22. **Done** The editor keeps a draft of each edit in the browser.
 23. **Done** Autopilot's post writer and the daily posts read the Lab and fix the owner's spellings for free
-    ("regenerate this post" does not read it yet).
+    (and "Generate again").
 
 ### Waiting (owner)
 - A paid Kinyarwanda voice clone (cost and service), when the owner wants it.
