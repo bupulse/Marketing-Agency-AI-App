@@ -1406,6 +1406,16 @@ model TrainingExample {
   @@index([language])
 }
 
+// The brain the owner picked for one member of the agent team (docs/TRAINING_LAB.md, "The agent team inside BuPulse";
+// lib/training-lab/agents.ts). No row: the member's default brain. brain: gemini | anthropic | claude-subscription | rules.
+// updatedById is the admin's sign-in id (AdminIdentity.id); no foreign key, like TrainingExample.createdById.
+model AgentSetting {
+  agentId     String   @id
+  brain       String
+  updatedById String
+  updatedAt   DateTime @updatedAt
+}
+
 // Outgoing webhooks (Phase 7), on every plan. One business can have a few endpoints, each with its own
 // signing secret and the events it wants.
 model WebhookEndpoint {
