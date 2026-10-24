@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   createTemplateDesign: vi.fn(),
   createPhotoDesign: vi.fn(),
   paintOne: vi.fn(),
+  startPicture: vi.fn(),
+  stepPicture: vi.fn(),
   mediaUsage: vi.fn(),
   assertPlatformRoom: vi.fn(),
   signedUpload: vi.fn(),
@@ -48,7 +50,7 @@ vi.mock("@/lib/designs/service", () => {
 });
 vi.mock("@/lib/image-engine/engine", () => {
   class EngineError extends Error {}
-  return { paintOne: mocks.paintOne, EngineError };
+  return { paintOne: mocks.paintOne, startPicture: mocks.startPicture, stepPicture: mocks.stepPicture, EngineError };
 });
 vi.mock("@/lib/media/service", () => {
   class MediaError extends Error {}
@@ -111,6 +113,8 @@ beforeEach(() => {
   mocks.createTemplateDesign.mockImplementation(async (a: { photoPath: string | null }) => ({ id: `d${++n}`, path: `${U}/designs/d${n}.png`, photo: a.photoPath }));
   mocks.createAiDesign.mockResolvedValue({ id: "ai1", path: `${U}/designs/ai1.png` });
   mocks.paintOne.mockResolvedValue({ id: "concept1", designId: "ai1", path: `${U}/designs/ai1.png` });
+  mocks.startPicture.mockReset().mockResolvedValue({ id: "concept1" });
+  mocks.stepPicture.mockReset().mockResolvedValue({ status: "done", id: "concept1", designId: "ai1", path: `${U}/designs/ai1.png` });
   mocks.createPhotoDesign.mockImplementation(async (a: { photoPath: string }) => ({ id: `d${++n}`, path: `${U}/designs/d${n}.jpg`, photo: a.photoPath }));
   mocks.hasFeature.mockResolvedValue(true);
   mocks.featureStatus.mockResolvedValue("ok");
@@ -252,17 +256,36 @@ describe("renderImageStep", () => {
   it("a paid AI picture is saved at once and is the slide, so a retry never pays for it again", async () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide({ source: "ai", photoPath: null })]) });
     mocks.prisma.generatedContent.findFirst.mockResolvedValue({ brief: "Show a farmer", caption: "Grow more." });
+    // The first call plans and pays for the picture and saves its id at once; it is made in the next calls.
     const r = await renderImageStep(owner, "v1");
-    expect(r.status).toBe("ready");
-    expect(mocks.paintOne.mock.calls[0][1]).toMatchObject({ brief: "Show a farmer", caption: "Grow more." });
+    expect(r.status).toBe("pending");
+    expect(mocks.startPicture.mock.calls[0][1]).toMatchObject({ brief: "Show a farmer", caption: "Grow more." });
+    expect(mocks.prisma.contentVisual.update.mock.calls[0][0].data.plan.slides[0]).toMatchObject({ conceptId: "concept1", path: null });
+    expect(mocks.stepPicture).not.toHaveBeenCalled();
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data.plan });
+    mocks.stepPicture.mockResolvedValueOnce({ status: "working" });
+    expect((await renderImageStep(owner, "v1")).status).toBe("pending");
+    const done = await renderImageStep(owner, "v1");
+    expect(done.status).toBe("ready");
+    expect(mocks.stepPicture).toHaveBeenCalledWith(expect.anything(), "concept1");
     const saves = mocks.prisma.contentVisual.update.mock.calls.map(([a]) => a.data.plan?.slides?.[0]?.path);
-    expect(saves[0]).toBe(`${U}/designs/ai1.png`); // saved right after the picture was made
+    expect(saves).toContain(`${U}/designs/ai1.png`); // saved right after the picture was made
     const kept = mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data.plan;
     kept.slides[0].path = null;
     mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: kept });
     const again = await renderImageStep(owner, "v1");
     expect(again.status).toBe("ready");
-    expect(mocks.paintOne).toHaveBeenCalledTimes(1);
+    expect(mocks.startPicture).toHaveBeenCalledTimes(1);
+    expect(mocks.paintOne).not.toHaveBeenCalled();
+  });
+
+  it("uses the owner's photo when the AI picture could not be made (its credits came back)", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide({ source: "ai", conceptId: "concept1" })]) });
+    mocks.stepPicture.mockResolvedValueOnce({ status: "failed" });
+    const r = await renderImageStep(owner, "v1");
+    expect(r.status).toBe("ready");
+    expect(mocks.createPhotoDesign).toHaveBeenCalledTimes(1);
+    expect(r.plan!.slides[0].note).toMatch(/could not be made this time/);
   });
 
   it("stops when its time is used and stays pending (the screen calls again)", async () => {
@@ -577,10 +600,12 @@ describe("people in the pictures (owner decision, 13 October 2026)", () => {
       slide({ source: "text", photoPath: null, template: "announcement", useCoverPhoto: true, headline: "Tip 2" }),
     ]);
     mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "carousel", plan: carousel });
+    expect((await renderImageStep(owner, "v1")).status).toBe("pending");
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "carousel", plan: mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data.plan });
     const r = await renderImageStep(owner, "v1");
     expect(r.status).toBe("ready");
-    expect(mocks.paintOne).toHaveBeenCalledTimes(1);
-    expect(mocks.paintOne.mock.calls[0][1]).toMatchObject({ photoPath: photo });
+    expect(mocks.startPicture).toHaveBeenCalledTimes(1);
+    expect(mocks.startPicture.mock.calls[0][1]).toMatchObject({ photoPath: photo });
     expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
     const data = mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data;
     expect(data).toMatchObject({ kind: "image" });

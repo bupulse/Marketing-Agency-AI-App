@@ -100,6 +100,12 @@ _None yet._
 - **Before production (bupulse.com on Netlify, 60 s per request):** one picture with Claude planning (about 20 s on the
   CLI), a Pro paint (about 40 s), the check and one fix can pass 60 s. Split paintRow into steps (paint, then
   check-and-fix in the next call, using the row's status) before it runs on Netlify. The test site (Mac) has no limit.
+  **Done for the Designs page (24 Oct, main session's go):** a picture is now made in steps of one AI call each
+  (paint, check, fix, check the fix), saved on the row, so each call of "Make my ads" stays near one picture's time
+  (about 40 s for Pro, the floor). **Then a post's picture too:** Create post's renderImageStep plans and pays for it in
+  one call (the slide keeps its `conceptId` at once) and steps it in the next calls (`stepPicture`); the screen asks
+  up to 5 more times for it. Autopilot's nightly run (`paintOne`, lib/autopilot) still makes it in one call: fine on
+  the Mac, to check against the scheduled function's limit before Autopilot runs on Netlify.
 - Open ideas: a fresh repaint instead of an edit when the Checker sees slop (costs one more picture: owner to decide);
   store what the Checker read, to tell real typos from false alarms; lib/designs/service createTemplateDesign,
   createAiDesign, createAiPhotoDesign and the templates library are now unused by the app (left for a cleanup commit);

@@ -8,7 +8,9 @@
 // planBatch plans a batch and reserves its credits (Lite 1, Pro 4); paintNext paints one picture per call, so a server
 // that stops a request after 60 s (Netlify) never loses one; the screen calls it until the batch is done.
 import "server-only";
+import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { featureStatus } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { readKnowledge } from "@/lib/brand/schemas";
@@ -37,7 +39,7 @@ type Owner = { userId: string; businessId: string; service?: boolean };
 export type BatchSource = "designs" | "content" | "daily" | "autopilot";
 export type BatchRequest = { source: BatchSource; subjectId?: string | null; brief?: string | null; count: number; quality: Quality; aspectRatio: AspectRatio };
 
-/** How long one painting call holds a picture: the image (120 s budget), the check and one fix fit inside. */
+/** How long one step holds a picture: the longest step is one image (120 s budget). */
 export const PAINT_LEASE_MS = 6 * 60 * 1000;
 export const MAX_BATCH = 20;
 
@@ -165,92 +167,129 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
 
 
 /**
- * Paints the next planned picture of the batch (one per call; two calls at once paint two different pictures):
- * Painter, then Checker, then at most one Editor fix. Returns null when nothing is left to paint.
+ * The steps of one picture, one AI call each, so no server call runs long (bupulse.com answers within 60 s on
+ * Netlify; a Pro picture alone takes about 40 s): planned, then "painting" (the Painter), "painted" (the Checker),
+ * "fixing" (the Editor's one try, when the check asked for a fix), "edited" (the Checker on the fix), then done or
+ * failed. Each step saves the row, so the next call (or another painter) carries on from the database.
  */
-export async function paintNext(owner: Owner, batchId: string, now: Date = new Date()): Promise<{ id: string; status: "done" | "failed" } | null> {
+export const WORKING_STATUSES = ["planned", "painting", "painted", "fixing", "edited"] as const;
+
+/** Whether a picture is still being made (any step before done or failed). */
+export function isWorking(status: string): boolean {
+  return (WORKING_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Takes the next step of the batch's next unfinished picture that no other call holds (two calls at once work on two
+ * different pictures). Returns null when no picture is free to step: all done, or the rest held by other calls.
+ */
+export async function paintNext(owner: Owner, batchId: string, now: Date = new Date()): Promise<{ id: string; status: "done" | "failed" | "working" } | null> {
   const row = await prisma.imageConcept.findFirst({
-    where: { batchId, businessId: owner.businessId, OR: [{ status: "planned" }, { status: "painting", paintingUntil: { lt: now } }] },
+    where: { batchId, businessId: owner.businessId, status: { in: [...WORKING_STATUSES] }, OR: [{ paintingUntil: null }, { paintingUntil: { lt: now } }] },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
   if (!row) return null;
+  const status = row.status === "planned" ? "painting" : row.status;
   const { count: claimed } = await prisma.imageConcept.updateMany({
     where: { id: row.id, status: row.status, paintingUntil: row.paintingUntil },
-    data: { status: "painting", paintingUntil: new Date(now.getTime() + PAINT_LEASE_MS) },
+    data: { status, paintingUntil: new Date(now.getTime() + PAINT_LEASE_MS) },
   });
   if (claimed === 0) return paintNext(owner, batchId, now);
-
-  const result = await paintRow(owner, row);
-  return { id: row.id, status: result.status };
+  const { outcome } = await stepRow(owner, { ...row, status });
+  return { id: row.id, status: outcome };
 }
 
 type ConceptRow = NonNullable<Awaited<ReturnType<typeof prisma.imageConcept.findFirst>>>;
+type StoredCheck = { ok: boolean; problems: string[]; ran: boolean; fix?: string | null; edit?: { id: string; path: string } | null };
+
+/** A painted picture's bytes, for the Checker in a later step. */
+async function designBytes(path: string): Promise<{ bytes: Uint8Array; mimeType: string }> {
+  const { data, error } = await createAdminClient().storage.from("designs").download(path);
+  if (error || !data) throw new EngineError("This picture could not be read back to check it. Its credits were given back.");
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  return { bytes, mimeType: bytes[0] === 0x89 ? "image/png" : bytes[0] === 0x52 ? "image/webp" : "image/jpeg" };
+}
 
 /**
- * The Painter, the Checker and at most one Editor fix for one planned picture whose painting the caller holds. Saves
- * the result on the row; a failure gives the picture's credits back. Never throws.
+ * One step of a picture whose step the caller holds (see WORKING_STATUSES): saves the row and frees it for the next
+ * step. A failure gives the picture's credits back. Never throws.
  */
-async function paintRow(owner: Owner, row: ConceptRow): Promise<{ status: "done"; designId: string; path: string } | { status: "failed"; error: string }> {
+async function stepRow(owner: Owner, row: ConceptRow): Promise<{ outcome: "done" | "failed" | "working"; row: ConceptRow }> {
+  const save = async (data: Prisma.ImageConceptUpdateInput) => (await prisma.imageConcept.update({ where: { id: row.id }, data: { paintingUntil: null, ...data } })) as ConceptRow;
   try {
     const loaded = await loadFacts(owner, row.subjectId);
     const model = tierModel(row.tier as Tier);
     const aspectRatio = row.aspectRatio as AspectRatio;
-    const prompt = painterPrompt({
-      businessName: loaded.facts.name,
-      aspectRatio,
-      concept: row,
-      layout: row.layout,
-      camera: row.camera || "a 35mm documentary photo (available light)",
-      treatment: row.treatment as Treatment,
-      hasPhoto: !!row.photoPath,
-      hasLogo: !!loaded.business.logoUrl,
-      productText: loaded.subject ? `${loaded.subject.name}: ${loaded.subject.description ?? ""}` : loaded.facts.description,
-      colors: loaded.facts.colors,
-    });
     const owned = { userId: owner.userId, businessId: owner.businessId, subjectId: row.subjectId, service: owner.service };
-    let made = await createEngineDesign({ ...owned, prompt, model, aspectRatio, usePhotoPath: row.photoPath, useLogo: true });
     const expected = { headline: row.headline, subline: row.subline, cta: row.cta, productShown: !!row.photoPath && row.treatment !== "line", product: loaded.subject?.name ?? loaded.facts.name };
-    let verdict = await checkPicture(owner, made, expected);
-    let fixed = false;
-    if (!verdict.ok && verdict.fix) {
-      // The Editor's one try; the better of the two pictures is kept (the other is removed).
+    const check = (row.check ?? null) as StoredCheck | null;
+    const finish = (designId: string, path: string, verdict: StoredCheck, fixed: boolean) =>
+      save({ status: "done", designId, path, check: { ok: verdict.ok, problems: verdict.problems, ran: verdict.ran }, fixed });
+
+    if (row.status === "painting") {
+      // The Painter.
+      const prompt = painterPrompt({
+        businessName: loaded.facts.name,
+        aspectRatio,
+        concept: row,
+        layout: row.layout,
+        camera: row.camera || "a 35mm documentary photo (available light)",
+        treatment: row.treatment as Treatment,
+        hasPhoto: !!row.photoPath,
+        hasLogo: !!loaded.business.logoUrl,
+        productText: loaded.subject ? `${loaded.subject.name}: ${loaded.subject.description ?? ""}` : loaded.facts.description,
+        colors: loaded.facts.colors,
+      });
+      const made = await createEngineDesign({ ...owned, prompt, model, aspectRatio, usePhotoPath: row.photoPath, useLogo: true });
+      return { outcome: "working", row: await save({ status: "painted", designId: made.id, path: made.path }) };
+    }
+    if (row.status === "painted") {
+      // The Checker: a picture it passes, or one it cannot say how to fix, is done.
+      const verdict = await checkPicture(owner, await designBytes(row.path!), expected);
+      if (verdict.ok || !verdict.fix) return { outcome: "done", row: await finish(row.designId!, row.path!, verdict, false) };
+      return { outcome: "working", row: await save({ status: "fixing", check: { ok: false, problems: verdict.problems, ran: verdict.ran, fix: verdict.fix } }) };
+    }
+    if (row.status === "fixing") {
+      // The Editor's one try; when it fails, the first picture is kept with what the Checker saw.
       try {
-        const edited = await createEngineDesign({ ...owned, prompt: `Edit this advert. ${verdict.fix}`, model, aspectRatio, editOf: made.path });
-        const second = await checkPicture(owner, edited, expected);
-        if (second.problems.length <= verdict.problems.length) {
-          await deleteDesign(owner.userId, made.id).catch(() => undefined);
-          made = edited;
-          verdict = second;
-          fixed = true;
-        } else {
-          await deleteDesign(owner.userId, edited.id).catch(() => undefined);
-        }
+        const edited = await createEngineDesign({ ...owned, prompt: `Edit this advert. ${check?.fix ?? ""}`, model, aspectRatio, editOf: row.path });
+        return { outcome: "working", row: await save({ status: "edited", check: { ...check!, edit: { id: edited.id, path: edited.path } } }) };
       } catch (error) {
         await logError(error, { source: "image-engine.editor", level: "warn", businessId: owner.businessId });
+        return { outcome: "done", row: await finish(row.designId!, row.path!, check ?? { ok: false, problems: [], ran: true }, false) };
       }
     }
-    await prisma.imageConcept.update({
-      where: { id: row.id },
-      data: { status: "done", paintingUntil: null, designId: made.id, path: made.path, check: { ok: verdict.ok, problems: verdict.problems, ran: verdict.ran }, fixed },
-    });
-    return { status: "done", designId: made.id, path: made.path };
+    if (row.status === "edited" && check?.edit) {
+      // The Checker on the fix: the better of the two pictures is kept (the other is removed).
+      const second = await checkPicture(owner, await designBytes(check.edit.path), expected);
+      if (second.problems.length <= check.problems.length) {
+        await deleteDesign(owner.userId, row.designId!).catch(() => undefined);
+        return { outcome: "done", row: await finish(check.edit.id, check.edit.path, second, true) };
+      }
+      await deleteDesign(owner.userId, check.edit.id).catch(() => undefined);
+      return { outcome: "done", row: await finish(row.designId!, row.path!, check, false) };
+    }
+    throw new Error(`An image concept in an unknown step: ${row.status}`);
   } catch (error) {
     const message = error instanceof DesignError || error instanceof EngineError ? error.message : "This picture could not be made. Its credits were given back.";
     if (!(error instanceof DesignError)) await logError(error, { source: "image-engine.paint", businessId: owner.businessId });
-    await prisma.imageConcept.update({ where: { id: row.id }, data: { status: "failed", paintingUntil: null, error: message } });
+    const failed = await save({ status: "failed", error: message });
     if (row.creditPeriod) await refundUsage(owner.userId, "image", row.creditPeriod, row.credits).catch((e) => logError(e, { source: "image-engine.refund", businessId: owner.businessId }));
-    return { status: "failed", error: message };
+    return { outcome: "failed", row: failed };
   }
 }
+
+export type PictureRequest = { source: BatchSource; subjectId?: string | null; aspectRatio: AspectRatio; photoPath?: string | null; brief?: string | null; caption?: string | null };
+export type PictureStep = { status: "working" } | { status: "failed" } | { status: "done"; id: string; designId: string; path: string };
 
 /**
  * One finished picture for a post (Create post, Daily posts, Studio, Autopilot: lib/visuals drawSlide), no template:
  * the Director picks a pattern, shot, light, layout and camera the company has not had lately, the Prompter writes it
  * from the post (its brief and caption), then the Painter, Checker and Editor. Pro when the credits allow and none of
  * the company's last pictures was Pro, else Lite. Throws EngineError when it cannot start (not in the plan, no credits:
- * the caller then uses the owner's own photo); a picture that fails after that gives its credits back and returns null.
+ * the caller then uses the owner's own photo). This plans it and reserves its credits; stepPicture then makes it.
  */
-export async function paintOne(owner: Owner, request: { source: BatchSource; subjectId?: string | null; aspectRatio: AspectRatio; photoPath?: string | null; brief?: string | null; caption?: string | null }): Promise<{ id: string; designId: string; path: string } | null> {
+export async function startPicture(owner: Owner, request: PictureRequest): Promise<{ id: string }> {
   if ((await featureStatus(owner.businessId, "aiPhotos")) !== "ok") throw new EngineError("AI pictures are not in your plan.");
   const loaded = await loadFacts(owner, request.subjectId);
   const recent = await prisma.imageConcept.findMany({ where: { businessId: owner.businessId }, orderBy: { createdAt: "desc" }, take: 60, select: { pattern: true, shot: true, light: true, layout: true, camera: true, title: true, scene: true, tier: true, planner: true } });
@@ -290,16 +329,46 @@ export async function paintOne(owner: Owner, request: { source: BatchSource; sub
         aspectRatio: request.aspectRatio,
         credits,
         creditPeriod: periodStart,
-        status: "painting",
-        paintingUntil: new Date(Date.now() + PAINT_LEASE_MS),
       },
     });
-    const result = await paintRow(owner, row);
-    return result.status === "done" ? { id: row.id, designId: result.designId, path: result.path } : null;
+    return { id: row.id };
   } catch (error) {
-    // Only before the row exists (paintRow never throws and refunds on its own).
+    // Only before the row exists (from then on, a failed step refunds on its own).
     await refundUsage(owner.userId, "image", periodStart, credits).catch(() => undefined);
     throw error;
+  }
+}
+
+/**
+ * The next step of a post's picture (one AI call). "working" while it is being made or another call holds it; done
+ * with the picture; failed when it could not be made (its credits were given back).
+ */
+export async function stepPicture(owner: Owner, conceptId: string, now: Date = new Date()): Promise<PictureStep> {
+  const row = await prisma.imageConcept.findFirst({ where: { id: conceptId, businessId: owner.businessId } });
+  if (!row) return { status: "failed" };
+  if (row.status === "done") return { status: "done", id: row.id, designId: row.designId!, path: row.path! };
+  if (!isWorking(row.status)) return { status: "failed" };
+  const status = row.status === "planned" ? "painting" : row.status;
+  const { count: claimed } = await prisma.imageConcept.updateMany({
+    where: { id: row.id, status: row.status, paintingUntil: row.paintingUntil, OR: [{ paintingUntil: null }, { paintingUntil: { lt: now } }] },
+    data: { status, paintingUntil: new Date(now.getTime() + PAINT_LEASE_MS) },
+  });
+  if (claimed === 0) return { status: "working" };
+  const step = await stepRow(owner, { ...row, status });
+  if (step.outcome === "done") return { status: "done", id: row.id, designId: step.row.designId!, path: step.row.path! };
+  return { status: step.outcome };
+}
+
+/**
+ * A post's picture made in one call, every step one after another, for callers that wait for it (Autopilot's
+ * nightly run). Create post steps it across calls instead (startPicture, stepPicture), so no call runs long.
+ */
+export async function paintOne(owner: Owner, request: PictureRequest): Promise<{ id: string; designId: string; path: string } | null> {
+  const { id } = await startPicture(owner, request);
+  for (;;) {
+    const step = await stepPicture(owner, id);
+    if (step.status === "done") return { id: step.id, designId: step.designId, path: step.path };
+    if (step.status === "failed") return null;
   }
 }
 

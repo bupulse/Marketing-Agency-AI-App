@@ -11,7 +11,7 @@ import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { ASPECT_RATIOS } from "@/lib/designs/layout";
 import { DesignError, designUrls } from "@/lib/designs/service";
-import { batchPictures, editPicture, EngineError, MAX_BATCH, paintNext, planBatch, ratePicture, type BatchPicture } from "@/lib/image-engine/engine";
+import { batchPictures, editPicture, EngineError, isWorking, MAX_BATCH, paintNext, planBatch, ratePicture, type BatchPicture } from "@/lib/image-engine/engine";
 import { RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { UsageLimitError } from "@/lib/usage";
 
@@ -61,18 +61,21 @@ export async function startImageBatch(input: z.input<typeof startSchema>): Promi
   }
 }
 
-/** Paints the batch's next picture; `left` is false once every picture is done or failed. */
-export async function paintImageStep(batchId: string): Promise<{ ok: true; pictures: PictureView[]; left: boolean } | Fail> {
+/**
+ * The next step of the batch's next free picture (one AI call: paint, check or fix); `left` is false once every
+ * picture is done or failed, and `idle` says no picture was free (the others are held by the other painters).
+ */
+export async function paintImageStep(batchId: string): Promise<{ ok: true; pictures: PictureView[]; left: boolean; idle: boolean } | Fail> {
   const user = await requireActiveUser();
   if (!id.safeParse(batchId).success) return { ok: false, error: "That batch was not found." };
   const business = await businessOf(user.id);
   if (!business) return { ok: false, error: "Set up your business first." };
   try {
-    await paintNext({ userId: user.id, businessId: business.id }, batchId);
+    const stepped = await paintNext({ userId: user.id, businessId: business.id }, batchId);
     const pictures = await batchPictures(business.id, batchId);
     if (!pictures.length) return { ok: false, error: "That batch was not found." };
     if (pictures.every((p) => p.status === "done" || p.status === "failed")) revalidatePath("/dashboard/designs");
-    return { ok: true, pictures: await withUrls(pictures), left: pictures.some((p) => p.status === "planned" || p.status === "painting") };
+    return { ok: true, pictures: await withUrls(pictures), left: pictures.some((p) => isWorking(p.status)), idle: !stepped };
   } catch (error) {
     return failure(error, user.id);
   }
