@@ -65,3 +65,47 @@ export async function labViralRows(): Promise<LabViral> {
     return NO_VIRAL();
   }
 }
+
+export type LabPresenter = { id: string; path: string; mime: string; bytes: number | null; description: string; consentName: string | null };
+type ActorRow = ExampleRow & { path: string | null; mime: string | null; bytes: number | null; consentName: string | null };
+const PRESENTER_ROWS = 100;
+const DESCRIPTION_MAX = 300;
+
+/** Who the actor is, from the owner's words (the title and the notes' "people"); never their name, which is for the record only. */
+function actorDescription(e: ActorRow): string {
+  const notes = e.notes && typeof e.notes === "object" && !Array.isArray(e.notes) ? (e.notes as Record<string, unknown>) : {};
+  const people = typeof notes.people === "string" ? notes.people : "";
+  const text = [e.title, people].map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean).join(". ");
+  // Each part of the name ("Aline", "Uwase", or both together) becomes "the presenter".
+  const parts = (e.consentName ?? "").split(/\s+/).filter((w) => w.length > 1).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const named = parts.length ? text.replace(new RegExp(`\\b(?:${parts.join("|")})(?:\\s+(?:${parts.join("|")}))*\\b`, "giu"), "the presenter") : text;
+  const clean = named.replace(/https?:\/\/\S+|www\.\S+/gi, "").replace(/\+?\d[\d\s().-]{7,}\d/g, "");
+  return clean.replace(/\s+/g, " ").trim().slice(0, DESCRIPTION_MAX);
+}
+
+/**
+ * The owner's consented actors for the reel presenter: actor examples with the consent box ticked, switched on for
+ * the "presenter" engine, with a portrait (an image) or a video file. Best first: the owner's rating, then the business's
+ * sector, then tags that the audience names. Empty on any error.
+ */
+export async function labPresenters(want: { sector?: string | null; audience?: string | null } = {}): Promise<LabPresenter[]> {
+  try {
+    const rows = (await prisma.trainingExample.findMany({
+      where: { kind: "actor", consentGiven: true, engines: { has: "presenter" }, path: { not: null } },
+      orderBy: { createdAt: "desc" },
+      take: PRESENTER_ROWS,
+    })) as ActorRow[];
+    const sector = want.sector?.trim().toLowerCase() ?? "";
+    const audience = want.audience?.toLowerCase() ?? "";
+    const score = (e: ActorRow) =>
+      (e.rating ?? 3) * 100 + (sector && e.sector?.trim().toLowerCase() === sector ? 20 : 0) + e.tags.filter((t) => t.length > 2 && audience.includes(t.toLowerCase())).length * 5;
+    return rows
+      // The consent box again, here too: an actor who did not agree is never a presenter.
+      .filter((e) => e.consentGiven && usable(e, { engine: "presenter" }) && e.path && /^(image|video)\//.test(e.mime ?? ""))
+      .sort((a, z) => score(z) - score(a) || z.createdAt.getTime() - a.createdAt.getTime())
+      .map((e) => ({ id: e.id, path: e.path!, mime: e.mime!, bytes: e.bytes, description: actorDescription(e), consentName: e.consentName }));
+  } catch (error) {
+    await logError(error, { source: "training-lab.reader.presenters", level: "warn" });
+    return [];
+  }
+}

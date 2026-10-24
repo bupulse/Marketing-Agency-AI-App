@@ -29,7 +29,8 @@ import { downloadVeo, getVeoOperation, submitVeo, veoClipUsd, veoLedgerUsage, ve
 import { CLIP_SECONDS, directMontage, reelCostUsd, variantOf, veoClipPrompt, type ReelClip, type ReelLanguage, type ReelPlan, type ReelTier } from "./story";
 import { readReel, reelPrompt, REEL_SCHEMA, REEL_SYSTEM, ruleReel, type ReelInput } from "./writer";
 import { checkClip } from "./checker";
-import { labFor, labViralRows } from "@/lib/training-lab/reader";
+import { labFor, labPresenters, labViralRows } from "@/lib/training-lab/reader";
+import { TRAINING_BUCKET } from "@/lib/training-lab/storage";
 import { runText, savedBrain } from "@/lib/training-lab/brains";
 import { recordRun } from "@/lib/training-lab/runs";
 import type { Brain } from "@/lib/training-lab/agents";
@@ -86,10 +87,53 @@ export function presenterDescription(seed: string, audience: string | null): str
   return `a Black Rwandan ${woman ? "woman" : "man"} in ${woman ? "her" : "his"} ${age}, ${hair}, a warm confident smile, smart-casual clothes in the brand's colour`;
 }
 
-/** The company's presenter: made once (a Nano Banana Pro portrait), then reused in every reel. */
-export async function ensurePresenter(owner: Owner, jobId: string | null, audience: string | null): Promise<{ path: string; description: string }> {
+/** The Lab portrait types the painter reads as a reference (lib/designs/service.ts AI_TYPES), and its size cap. */
+const PORTRAIT_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const PORTRAIT_MAX_BYTES = 12 * 1024 * 1024;
+
+/**
+ * A consented actor from the owner's Training Lab as the company's presenter: the portrait is copied with the server's
+ * key from the private Lab bucket into the company's own private designs folder (where the painter reads references;
+ * no Design row, so it never shows in the client's gallery). Null when there is no usable portrait or the copy fails.
+ * A video-only actor is skipped for now: frames from a video come later.
+ */
+async function labPresenter(owner: Owner, sector: string | null, audience: string | null): Promise<{ path: string; description: string; exampleId: string } | null> {
+  const actor = (await labPresenters({ sector, audience })).find((a) => Object.hasOwn(PORTRAIT_TYPES, a.mime) && (a.bytes ?? 0) <= PORTRAIT_MAX_BYTES && a.description);
+  if (!actor) return null;
+  try {
+    const storage = createAdminClient().storage;
+    const { data, error } = await storage.from(TRAINING_BUCKET).download(actor.path);
+    if (error || !data) return null;
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    if (!bytes.length || bytes.length > PORTRAIT_MAX_BYTES) return null;
+    const path = `${owner.userId}/designs/${globalThis.crypto.randomUUID()}.${PORTRAIT_TYPES[actor.mime]}`;
+    const { error: failed } = await storage.from("designs").upload(path, bytes, { contentType: actor.mime, upsert: false });
+    if (failed) return null;
+    return { path, description: actor.description, exampleId: actor.id };
+  } catch (error) {
+    await logError(error, { source: "reel-engine.presenter.lab", level: "warn", businessId: owner.businessId });
+    return null;
+  }
+}
+
+/**
+ * The company's presenter: made once, then reused in every reel and never replaced. First choice, a consented actor
+ * from the owner's Training Lab (its portrait and the owner's words); else a Nano Banana Pro portrait.
+ */
+export async function ensurePresenter(owner: Owner, jobId: string | null, audience: string | null, sector: string | null = null): Promise<{ path: string; description: string }> {
   const known = await prisma.reelPresenter.findUnique({ where: { businessId: owner.businessId } });
   if (known) return known;
+  const fromLab = await labPresenter(owner, sector, audience);
+  if (fromLab) {
+    const row = await prisma.reelPresenter.upsert({ where: { businessId: owner.businessId }, create: { businessId: owner.businessId, path: fromLab.path, description: fromLab.description }, update: {} });
+    // Another reel made the presenter at the same moment: theirs stays, the copy goes.
+    if (row.path !== fromLab.path) {
+      await createAdminClient().storage.from("designs").remove([fromLab.path]).catch(() => {});
+      return row;
+    }
+    await recordRun({ agentId: "painter", brain: "rules", feature: "reelEngine", businessId: owner.businessId, ok: true, exampleIds: [fromLab.exampleId], resultRef: `presenter:${owner.businessId}` });
+    return row;
+  }
   const description = presenterDescription(owner.businessId, audience);
   const made = await createEngineDesign({
     userId: owner.userId,
@@ -166,13 +210,14 @@ export async function startReel(owner: Owner, request: { subjectId?: string | nu
   const loaded = await loadFacts(owner, request.subjectId);
   const job = await prisma.reelJob.create({ data: { businessId: owner.businessId, subjectId: request.subjectId ?? null, language: request.language, tier: request.tier, status: "filming", plan: json({ clips: [] }), stepUntil: new Date(Date.now() + STEP_LEASE_MS) } });
   try {
-    const presenter = await ensurePresenter(owner, job.id, loaded.business.audience);
+    // What kind of business it is decides where the product is filmed, which viral videos the reel learns from and which
+    // of the owner's Lab actors fits it best as the presenter.
+    const sector = sectorFromText([loaded.facts.industry, loaded.facts.description, loaded.subject?.name, loaded.subject?.description].filter(Boolean).join(" "));
+    const presenter = await ensurePresenter(owner, job.id, loaded.business.audience, sector);
     const recentJobs = await prisma.reelJob.findMany({ where: { businessId: owner.businessId, id: { not: job.id } }, orderBy: { createdAt: "desc" }, take: 10, select: { plan: true } });
     const recentClips = recentJobs.flatMap((j) => ((j.plan as unknown as ReelPlan).clips ?? []).map((c) => ({ variant: c.variant, camera: c.camera })));
     // The viral montage: 3 talking clips and 4 product shots cut between them (the owner's example reel).
     const beats = directMontage(recentClips, job.id);
-    // What kind of business it is decides where the product is filmed, and which viral videos the reel learns from.
-    const sector = sectorFromText([loaded.facts.industry, loaded.facts.description, loaded.subject?.name, loaded.subject?.description].filter(Boolean).join(" "));
     let recipe: ViralRecipe | null = null;
     // The owner's Lab reels join the viral pool, and the ones rated 1 or 2 stars are never copied (empty Lab: as before).
     const labViral = await labViralRows();
