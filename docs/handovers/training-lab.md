@@ -103,4 +103,9 @@ data; the engines get it as a new optional parameter, so nothing changes when th
 - Round 1 (11:47): task 1 map (helper, done 11:49 and reviewed), task 2 data model (helper, done 12:00, committed 3f511afb).
 - Round 2 (12:03): task 3 Admin page (model-helper), task 10 step 1 editor ops (map-helper, committed faaaa63f), A1 registry and router (map-helper, committed 5dad45ad, migration applied to TEST).
 - Round 3 (12:08): A4 run log `AgentRun` (map-helper, aa359857); the agent id is kept in our own table, not in the shared AiCall ledger. Lab reader (fe006222). Task 3 Admin page (model-helper, 22ae45bc).
-- Round 4 (12:13): task 5 reel engine reads the Lab (map-helper), A2 Team page (model-helper).
+- Round 4 (12:13): task 5 reel engine reads the Lab (map-helper, 41efc508; the checker gets only the owner's "Never"
+  lines), A2 Team page (model-helper, 17d8ce8b).
+- Full vitest (12:20): 2 failures from this branch in the subscription guard test; the router is now its second allowed
+  user behind the same lock (b235f858). Main asked to merge up to b235f858.
+- Round 5 (12:22): brain hooks viral.ts and language.ts with video-engine's conditions (map-helper), A3 script writer on
+  the router and the registry's Lab engines (model-helper).

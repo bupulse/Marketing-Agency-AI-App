@@ -68,9 +68,9 @@ Status: Todo / Doing / Done / Waiting (owner). Keep it current; any round resume
 ### Phase 1b: the agent team
 A1. **Done** The registry and the brain router (`lib/training-lab/agents.ts`, `brains.ts`): members, jobs, Lab kinds,
     brain choice saved in the database (a small `AgentSetting` table), fallback order, tests. No engine changes yet.
-A2. **Doing** Admin, Training Lab, Team: a card per member (job, examples it reads, brain switch, last runs and cost
+A2. **Done** Admin, Training Lab, Team: a card per member (job, examples it reads, brain switch, last runs and cost
     from the AI ledger). Phone width works.
-A3. **Todo** The engines ask the router: the reel script writer, the designer and the caption writer use the member's
+A3. **Doing** (the reel script writer first) The engines ask the router: the reel script writer, the designer and the caption writer use the member's
     chosen brain (they already choose between Claude and Gemini; this makes it the owner's switch).
 A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records which Lab examples it used, so a rating on the result goes back to them.
 
