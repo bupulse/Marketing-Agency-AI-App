@@ -99,7 +99,7 @@ A4. **Done** (AgentRun, lib/training-lab/runs.ts) Each member's run records whic
 15. **Done** A Words tab: every Kinyarwanda spelling, right word and phrase the Lab teaches, in one place.
 16. **Done** The owner's guide (docs/TRAINING_LAB_GUIDE.md).
 17. **Done** Each example shows how much the team used it in the last 30 days.
-18. **Doing** Fixes from the review of 24 October: actor consent can be withdrawn (and removes the copies), no
+18. **Done** Fixes from the review of 24 October: actor consent can be withdrawn (and removes the copies), no
     client's phone, link or price reaches another business's prompt, file replacement, duplicate reels, "7 am".
 
 ### Waiting (owner)
