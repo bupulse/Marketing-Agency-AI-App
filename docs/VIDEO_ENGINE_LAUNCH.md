@@ -13,7 +13,7 @@ Netlify's limits, from `docs/DEPLOY_NETLIFY.md`:
 
 | Question | Answer |
 | --- | --- |
-| Any path doing more than about 25 s in one call? | Yes, four. Three in the video engine were fixed in this commit: overnight clips, the robot's claim, the Studio design route. The reel engine has several; it is client-qa's area and is only on for allow-listed test businesses. |
+| Any path doing more than about 25 s in one call? | Yes, four. All are fixed: overnight clips, the robot's claim and the Studio design route (video-engine, 80f23229), and the reel engine (client-qa, 658f3e43 and f146ee0f). |
 | Claude subscription or local CLI in production? | No. Every path that could use it is refused on Netlify and Cloudflare (details below). Studio designs use `ANTHROPIC_API_KEY` only. |
 | Google's daily limit running out for many businesses at once? | Nobody is charged for clips that are not made. Overnight videos wait, try 3 times, then become slideshows with credits back. Reels retry every minute without end while their page is open (client-qa). Studio clips fail at once with credits back. |
 | Env settings | Table at the end. |
@@ -58,11 +58,22 @@ Netlify's limits, from `docs/DEPLOY_NETLIFY.md`:
 - Content videos (slideshows) are never rendered on Netlify. The owner's browser renders them, or the robot on
   GitHub's runner does.
 
-### Reel engine (client-qa's area, reported, not changed)
+### Reel engine (client-qa's area): done
+
+**Fixed by client-qa** in 658f3e43 and f146ee0f, on quiz-mode and the test site since 24 October 2026. See
+`docs/REEL_ENGINE.md` "Before clients: Netlify's 60 s":
+- Starting is quick, and planning is done in steps.
+- A reel with nothing to film fails instead of assembling.
+- Each step does one heavy thing, with a 25 s budget.
+- Paid work (a clip at Google, a saved clip) is saved at once.
+- `VEO_PARALLEL` counts across all businesses, and a wait at Google's limit is shared.
+- After 30 minutes at the limit the waiting clips fail with a plain message.
+
+The findings as reported, kept for the record:
 
 Its only callers are the server actions in `app/dashboard/video/reel-actions.ts`, driven by the browser. It is off
 unless the business is in `REEL_ENGINE_BUSINESSES`, and its total spend is capped by `REEL_TEST_CAP_USD` (default $10).
-None of it uses `timeBudget`. Before it is opened to clients on Netlify:
+None of it used `timeBudget`. Before it is opened to clients on Netlify:
 
 1. **`startReel` is one long call.** It can make a presenter portrait (Gemini image, up to 120 s with retries), then
    write the script with the AI (10 to 40 s). That can pass 60 s on a business's first reel.
@@ -110,7 +121,7 @@ billed (`RESOURCE_EXHAUSTED` is read as `VeoError` kind "quota").
 | --- | --- | --- |
 | Overnight clips (Autopilot / Daily posts videos marked "ai") | At most 3 clips at Google at once across all businesses. A refused clip is sent again from the next sweep, 3 sends in all, then the video is a slideshow that says "Google was too busy to make the AI clips". `VEO_CLIPS_PER_DAY` (10, or 0 to pause) caps the day, counting re-sends. | Taken when the video starts; given back exactly once for clips not made. |
 | Video Studio clips (studio server, `video-lab/ai-clips.ts`) | "quota" is not a temporary error there, so the clip fails at once with Google's limit message. | Given back. |
-| Reels (test businesses only) | The clip waits 60 s and tries again, without end, while the page is open (section 1). | No credits yet; the test cap counts spend. |
+| Reels (test businesses only) | At most `VEO_PARALLEL` clips at Google across all reels, and a wait at the limit is shared. After 30 minutes (`BUSY_GIVE_UP_MS`) the waiting clips fail with a plain message (client-qa's fix; it used to retry without end). | No credits yet; the test cap counts spend. Nothing is paid for clips that were not made. |
 
 If the daily limit is hit every day, raise it with Google (AI Studio, the key's project, quotas) or lower
 `VEO_CLIPS_PER_DAY`. Nothing piles up on BuPulse's side for overnight videos: each sweep looks at no more than 5 new
@@ -160,4 +171,4 @@ Not covered here: the studio server's own settings (`STUDIO_SESSION_SECRET`, Sup
 ## Waiting for the owner
 
 1. Before the studio server goes live: API keys only, with no subscription (section 2).
-2. Reels on Netlify need client-qa's fixes before any client business is allow-listed (section 1).
+2. Reels on Netlify: client-qa's fixes are done (section 1). Allow-listing a client business is the owner's choice.
