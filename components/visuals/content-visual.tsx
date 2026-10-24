@@ -428,7 +428,7 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage, hasScr
               {render.phase === "rendering" && `Making your video… ${Math.round(render.progress * 100)}%`}
               {render.phase === "loading" && "Getting ready…"}
               {render.phase === "uploading" && "Saving your video…"}
-              {!render.busy && clipsBusy && "AI clips are being made for this video (usually within 15 minutes). It will be ready soon."}
+              {!render.busy && clipsBusy && "AI clips are being made for this video (usually within half an hour). It will be ready soon."}
               {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "queued" && "Being made automatically (usually within 30 min)."}
               {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "making" && "Being made automatically right now…"}
               {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "browser" && "We could not make it automatically. Make it here in your browser."}

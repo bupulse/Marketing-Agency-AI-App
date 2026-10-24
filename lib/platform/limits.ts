@@ -11,6 +11,14 @@ import { currentPlatform, type Platform } from "./detect";
  */
 export const NETLIFY_PUBLISH_EVERY_MINUTES = 5;
 
+/**
+ * On Netlify the video sweep (/api/cron/video-jobs: stranded designs, overnight AI clips, "video ready" emails) runs
+ * every 10 minutes (netlify/functions/cron-video-jobs.mts), to save the free plan's credits (main session's decision,
+ * 24 October 2026, docs/VIDEO_ENGINE_LAUNCH.md); every 4 minutes on Cloudflare (worker-crons.ts). Overnight clips give
+ * up after CLIP_GIVE_UP_MS (45 minutes), which leaves room for 3 sends at Google's limit at this pace.
+ */
+export const NETLIFY_VIDEO_JOBS_EVERY_MINUTES = 10;
+
 /** The line the composer and the calendar show about publishing delay, or null where posts go out within a minute. */
 export function publishTimingNote(platform: Platform = currentPlatform()): string | null {
   return platform === "netlify" ? `Posts go out within ${NETLIFY_PUBLISH_EVERY_MINUTES} minutes of the scheduled time.` : null;
