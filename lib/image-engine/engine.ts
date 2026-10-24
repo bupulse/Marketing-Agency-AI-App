@@ -27,6 +27,8 @@ import { painterPrompt } from "./painter-prompt";
 import { writeConcepts } from "./planner";
 import type { Treatment } from "./patterns";
 import type { BusinessFacts, PlannerInput, SubjectFacts } from "./prompter";
+import { labFor } from "@/lib/training-lab/reader";
+import { sectorFromText } from "@/lib/video-engine/brain/select";
 
 export class EngineError extends Error {}
 
@@ -104,7 +106,15 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
   try {
     const recent = await prisma.imageConcept.findMany({ where: { businessId: owner.businessId }, orderBy: { createdAt: "desc" }, take: 60, select: { pattern: true, shot: true, light: true, layout: true, camera: true, title: true, scene: true } });
     const slots = directBatch({ tiers, recent, photoCount: loaded.photos.length, facts: { reviews: loaded.reviews.length > 0, price: loaded.hasPrice }, seed: batchId, prefer: patternsFromBrief(request.brief) });
-    const input: PlannerInput = { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, reviews: loaded.reviews, slots, recent: recent.slice(0, 30).map((r) => `${r.title}: ${r.scene}`.slice(0, 200)) };
+    // What the owner's Training Lab teaches for this kind of business and language: picture examples for the Prompter,
+    // posts and Kinyarwanda recordings for the Captioner. An empty Lab or an error changes nothing. The image engine has
+    // no sector of its own; it is read from the facts the way the reel engine does.
+    const sector = sectorFromText([loaded.facts.industry, loaded.facts.description, loaded.subject?.name, loaded.subject?.description].filter(Boolean).join(" "));
+    const [lab, captionLab] = await Promise.all([
+      labFor({ engine: "image", kinds: ["image"], sector, language: loaded.facts.language }),
+      labFor({ engine: "post", kinds: ["image", "voice"], sector, language: loaded.facts.language }),
+    ]);
+    const input: PlannerInput = { business: loaded.facts, subject: loaded.subject, brief: request.brief?.trim() || null, reviews: loaded.reviews, slots, recent: recent.slice(0, 30).map((r) => `${r.title}: ${r.scene}`.slice(0, 200)), lab: { examples: lab.examples, avoid: lab.avoid } };
     const concepts = await writeConcepts(owner, input);
     const captions = await captionBatch(owner, {
       businessName: loaded.facts.name,
@@ -112,6 +122,7 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
       voice: loaded.facts.voice,
       facts: [loaded.subject?.price, loaded.subject?.description, ...(loaded.subject?.sellingPoints ?? []), loaded.facts.description, request.brief],
       concepts,
+      lab: { examples: captionLab.examples, avoid: captionLab.avoid, phrases: captionLab.phrases },
     });
     await prisma.imageConcept.createMany({
       data: slots.map((slot, i) => ({

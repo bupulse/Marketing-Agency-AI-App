@@ -33,6 +33,8 @@ export type PlannerInput = {
   slots: readonly Slot[];
   /** Titles and scenes of the company's recent pictures: none may come back. */
   recent: string[];
+  /** What the owner's Training Lab teaches for these pictures (lib/training-lab/reader.ts); empty lists print nothing. */
+  lab?: { examples: string[]; avoid: string[] } | null;
 };
 
 export type Concept = {
@@ -85,6 +87,21 @@ export const PLANNER_JSON_SCHEMA = {
 
 const line = (label: string, value: string | null | undefined) => (value && value.trim() ? `${label}: ${value.trim()}` : null);
 
+/**
+ * The Training Lab's examples and "never this" notes as prompt blocks, plus (for Kinyarwanda) the owner's phrases; null
+ * when the Lab has nothing, so an empty Lab leaves the prompt as it was. Shared with the Captioner (captions.ts).
+ */
+export function labBlock(lab: { examples: string[]; avoid: string[]; phrases?: string[] } | null | undefined, language: string): string | null {
+  if (!lab) return null;
+  const list = (title: string, lines: readonly string[] | undefined) => (lines?.length ? `${title}\n${lines.map((l) => `- ${l}`).join("\n")}` : null);
+  const blocks = [
+    list("THE OWNER'S EXAMPLES (follow their style, never copy their words or numbers):", lab.examples),
+    list("NEVER (the owner's notes):", lab.avoid),
+    language === "Kinyarwanda" ? list("KINYARWANDA THE OWNER USES (spelling and natural phrases):", lab.phrases) : null,
+  ].filter(Boolean);
+  return blocks.length ? blocks.join("\n\n") : null;
+}
+
 /** The Prompter's request for the slots given (numbered from 0 in this request). */
 export function plannerPrompt(input: PlannerInput): string {
   const { business, subject } = input;
@@ -110,6 +127,7 @@ export function plannerPrompt(input: PlannerInput): string {
     `<<<DATA\n${facts.join("\n")}${input.brief?.trim() ? `\nOWNER'S BRIEF (the main idea of every concept): ${input.brief.trim().slice(0, 800)}` : ""}\nDATA>>>`,
     `Write the words in: ${business.language}.`,
     input.recent.length ? `RECENT pictures (do not repeat these ideas):\n- ${input.recent.slice(0, 30).join("\n- ")}` : null,
+    labBlock(input.lab, business.language),
     `Write ${input.slots.length} concept${input.slots.length === 1 ? "" : "s"}, one per slot, as JSON {"concepts":[...]} with "slot" set to the slot number:`,
     slots.join("\n"),
   ]

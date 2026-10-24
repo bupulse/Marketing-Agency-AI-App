@@ -1,5 +1,5 @@
 // The Captioner's pure parts (captioner.ts calls the AI): the instructions, the schema and the checks. Tested.
-import { allowedNumbers, hasInventedNumber } from "./prompter";
+import { allowedNumbers, hasInventedNumber, labBlock } from "./prompter";
 
 export type CaptionInput = {
   businessName: string;
@@ -8,6 +8,8 @@ export type CaptionInput = {
   /** The facts a caption may use numbers from (price, description, selling points, the brief). */
   facts: (string | null | undefined)[];
   concepts: { title: string; scene: string; headline: string; subline: string; cta: string }[];
+  /** The owner's Training Lab for caption style, and the Kinyarwanda phrases they use; empty lists print nothing. */
+  lab?: { examples: string[]; avoid: string[]; phrases: string[] } | null;
 };
 
 export const CAPTION_SYSTEM = [
@@ -32,9 +34,12 @@ export function captionPrompt(input: CaptionInput): string {
   return [
     `<<<DATA\nBusiness: ${input.businessName}${input.voice ? `\nVoice: ${input.voice}` : ""}\nFACTS: ${input.facts.filter(Boolean).join(" | ").slice(0, 1500)}\nDATA>>>`,
     `Language: ${input.language}.`,
+    labBlock(input.lab, input.language),
     ...input.concepts.map((c, i) => `ADVERT ${i}: ${c.title}. ${c.scene} Words on the picture: "${c.headline}"${c.subline ? ` / "${c.subline}"` : ""}${c.cta ? ` / button "${c.cta}"` : ""}`),
     `Answer as JSON {"captions":[{"index":0,"caption":"...","hashtags":["..."]}]} with one caption per advert.`,
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /** One caption per concept (null when missing); sentences with an invented number are left out. */
