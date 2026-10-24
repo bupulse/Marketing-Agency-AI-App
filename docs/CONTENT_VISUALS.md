@@ -93,7 +93,9 @@ paint:
   wait. A finished picture replaces only the photo pictures it stood in for (`attachToGroup` with `onlyFrom`), on posts
   still waiting (draft, waiting for approval, scheduled): never a picture the owner picked, never a post already out.
   When the AI picture cannot be made, the owner's photo stays.
-- The Mac (test site) and Cloudflare paint at once, as before; there the sweep finds nothing.
+- **One AI picture a run on Netlify** (`AUTOPILOT_NETLIFY_AI_PICTURES`, default 1, `aiPicturesPerRun`): each also costs
+  hosting credits there (docs/DEPLOY_NETLIFY.md "Credits per job"). The other groups of the run get the owner's photo.
+- The Mac (test site) and Cloudflare paint at once, as before, up to 5 AI pictures a run; there the sweep finds nothing.
 
 ### Carousel or single
 

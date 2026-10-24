@@ -63,10 +63,21 @@ So the route's time is paid **twice**. Per job: credits a month ≈ runs × (2 �
 | `cron-content-summary`, `cron-leads-digest`, `cron-trial-reminders` (hourly) | 720 each | 0.3 to 1 s | 2 to 6 each, 6 to 18 together |
 | The 5 daily jobs (store sync, analytics, price changes, MoMo renewals, media clean-up) | 30 each | 1 to 10 s | 1 to 8 together |
 | Video robot calls from GitHub | about 2,900 claims | short | 5 to 15 |
+| AI pictures made on Netlify (Autopilot's late pictures; Create post's at about half) | 1 a company a week by default (`AUTOPILOT_NETLIFY_AI_PICTURES`): about 86 at 20 companies | 60 to 110 s of AI calls each, over its steps | **0.3 to 0.6 each: about 26 to 52** |
 | Production deploys | 10 | n/a | **150** (15 each) |
 
 That comes to **about 220 to 450 of the 300 credits**, before visitors. Deploys and the publisher are the biggest parts.
 The low end fits; the high end would pause the site.
+That total does not include the AI pictures row above (about 26 to 52 more at 20 companies, each making one Autopilot
+AI picture a week).
+
+**AI pictures on Netlify.** A picture's AI calls keep its route waiting 60 to 110 s; through the cron runner that is paid
+twice, about 0.3 to 0.6 credits a picture (Create post's pictures, drawn by the owner's screen, are paid once). So
+Autopilot makes **1 AI picture a run on Netlify** (`AUTOPILOT_NETLIFY_AI_PICTURES`, a whole number, 0 or more; the
+other groups get the owner's photo); the Mac and Cloudflare make up to 5. Proposals for the owner (not done):
+- (b) Count AI pictures as a hosting cost in the plans' prices, then raise the setting for the plans that pay for it.
+- (c) Make Autopilot's late pictures on GitHub's runner, like the video robot, so Netlify only stores them and pays
+  for no AI waiting (bigger work).
 
 **Free ways to cut the top three:**
 1. **Deploys (150).**
@@ -158,6 +169,7 @@ Recommended (the feature switches off without it; the check warns):
 | `WIDGET_AI_SHARE` | 0.5 | Share of that allowance the website chat may use |
 | `MEDIA_PLATFORM_MAX_BYTES` | 900 MB | Shared storage guard (Supabase free: 1 GB in all) |
 | `MEDIA_COMPANY_VIDEO_MAX_BYTES` | 100 MB | Each company's Gallery videos (`docs/MEDIA.md`) |
+| `AUTOPILOT_NETLIFY_AI_PICTURES` | 1 | AI pictures in one Autopilot run on Netlify (each costs hosting credits too: "Credits per job"); 0 turns them off there |
 | `ELEVENLABS_API_KEY` | off | Voiceovers and Generate a track (`docs/VOICE_AND_MUSIC.md`), server-only |
 | `VIDEO_ROBOT_SECRET` | robot off | The video robot (`docs/VIDEO_ROBOT.md`); the same value as the GitHub secret |
 | `NEXT_PUBLIC_WHATSAPP_NUMBER` | button hidden | Chat on WhatsApp (international format). Also a GitHub variable (build value) |

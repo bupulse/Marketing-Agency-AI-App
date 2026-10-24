@@ -44,7 +44,7 @@ import { buildPrompt, fence } from "@/lib/visuals/art-director";
 import { planContentVisuals } from "@/lib/visuals/content";
 import { directionContext } from "@/lib/visuals/service";
 import { mediaUsage } from "@/lib/media/service";
-import { makeGroupVisuals, newRunState } from "@/lib/autopilot/visuals";
+import { aiPicturesPerRun, makeGroupVisuals, newRunState } from "@/lib/autopilot/visuals";
 import { getIdea } from "@/lib/autopilot/playbook";
 import type { PlannedGroup } from "@/lib/autopilot/planner";
 
@@ -217,6 +217,25 @@ describe("Autopilot group visuals", () => {
     mocks.makeGroupImages.mockClear();
     await makeGroupVisuals(group(), written("A short post."), { ...ctx, useAiImages: true }, newRunState());
     expect(mocks.makeGroupImages.mock.calls[0][2]).toMatchObject({ useAiImages: true });
+  });
+
+  it("on Netlify one AI picture a run by default (each costs hosting credits), the owner's setting raises it", async () => {
+    expect(aiPicturesPerRun({}, false)).toBe(5);
+    expect(aiPicturesPerRun({ AUTOPILOT_NETLIFY_AI_PICTURES: "3" }, false)).toBe(5);
+    expect(aiPicturesPerRun({}, true)).toBe(1);
+    expect(aiPicturesPerRun({ AUTOPILOT_NETLIFY_AI_PICTURES: "3" }, true)).toBe(3);
+    expect(aiPicturesPerRun({ AUTOPILOT_NETLIFY_AI_PICTURES: "0" }, true)).toBe(0);
+    for (const bad of ["-1", "2.5", "many", " "]) expect(aiPicturesPerRun({ AUTOPILOT_NETLIFY_AI_PICTURES: bad }, true)).toBe(1);
+
+    mocks.shortLimit.value = true;
+    mocks.makeGroupImages.mockResolvedValue({ designs: { "4:5": `${U}/designs/one.png` }, aiStopped: false, notes: [], aiUsed: false });
+    const run = newRunState();
+    await makeGroupVisuals(group(), written("A short post."), { ...ctx, useAiImages: true }, run);
+    await makeGroupVisuals(group({ groupId: "g2" }), written("A short post."), { ...ctx, useAiImages: true }, run);
+    // The second group of the run gets the owner's photo only: no AI picture waits for it.
+    expect(mocks.makeGroupImages.mock.calls.map((c) => c[2].useAiImages)).toEqual([false, false]);
+    expect(mocks.prisma.contentVisual.create.mock.calls.map(([a]) => a.data.status)).toEqual(["pending", "ready"]);
+    expect(run.aiMade).toBe(1);
   });
 
   it("a recording failure never fails the group", async () => {

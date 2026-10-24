@@ -25,6 +25,19 @@ import type { WrittenGroup } from "./writer";
 
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 
+/**
+ * AI pictures in one Autopilot run (one business's week). On Netlify each costs hosting credits too (its AI calls keep
+ * the route waiting 60 to 110 s, paid twice through the cron runner: docs/DEPLOY_NETLIFY.md "Credits per job"), so
+ * there it is AUTOPILOT_NETLIFY_AI_PICTURES (a whole number, 0 or more; 1 when unset or not a whole number). The Mac and
+ * Cloudflare keep VISUAL_LIMITS.maxAiPhotosPerRun.
+ */
+export function aiPicturesPerRun(env: Record<string, string | undefined> = process.env, shortLimit: boolean = hasShortRequestLimit()): number {
+  if (!shortLimit) return VISUAL_LIMITS.maxAiPhotosPerRun;
+  const raw = env.AUTOPILOT_NETLIFY_AI_PICTURES?.trim();
+  const n = raw ? Number(raw) : Number.NaN;
+  return Number.isInteger(n) && n >= 0 ? n : 1;
+}
+
 export interface VisualContext extends ImageContext {
   business: { name: string; tone: string | null; industry: string | null; brandColors: string[] };
   /** The plan has video: video ideas get a video plan. */
@@ -73,7 +86,7 @@ async function carouselFor(group: PlannedGroup, written: WrittenGroup, ctx: Visu
     photos: group.photos.map((p) => p.path),
     carouselAllowed,
     // On Netlify (60 s a request) a carousel uses the owner's photos: its AI cover would be painted in this call.
-    aiAllowed: ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun && !hasShortRequestLimit(),
+    aiAllowed: ctx.useAiImages && !run.aiStopped && run.aiMade < aiPicturesPerRun() && !hasShortRequestLimit(),
     maxSlides: VISUAL_LIMITS.autopilotMaxSlides,
     audience: ctx.audience,
   });
@@ -85,7 +98,7 @@ async function carouselFor(group: PlannedGroup, written: WrittenGroup, ctx: Visu
   const plan = assignDesigns(directed, { recent: recent.designs, seed: group.groupId });
   // The writer's image text is the cover, so the carousel opens like the single image would.
   plan.slides[0] = { ...plan.slides[0], headline: written.image.headline || plan.slides[0].headline, subline: written.image.subline || plan.slides[0].subline, chip: written.image.chip || plan.slides[0].chip, kicker: written.image.kicker };
-  const state: DrawState = { aiAllowed: dctx.aiAllowed, aiMade: run.aiMade, maxAi: VISUAL_LIMITS.maxAiPhotosPerRun };
+  const state: DrawState = { aiAllowed: dctx.aiAllowed, aiMade: run.aiMade, maxAi: aiPicturesPerRun() };
   const owner = { userId: ctx.userId, businessId: ctx.businessId, service: ctx.service };
   try {
     for (let i = 0; i < plan.slides.length; i++) {
@@ -203,7 +216,7 @@ export async function makeGroupVisuals(group: PlannedGroup, written: WrittenGrou
   let images: GroupImages;
   // On Netlify (60 s a request; one AI picture takes 40 to 100 s) the single image's AI picture is made later by the
   // late-pictures sweep: the posts get the owner's photo now. The Mac and Cloudflare paint it at once.
-  const aiNow = ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun;
+  const aiNow = ctx.useAiImages && !run.aiStopped && run.aiMade < aiPicturesPerRun();
   const later = !carousel && aiNow && hasShortRequestLimit();
   if (needsSingle) {
     images = await makeGroupImages(group, written.image, { ...ctx, useAiImages: aiNow && !later }, { aiStopped: run.aiStopped, caption: feedText(written) });
