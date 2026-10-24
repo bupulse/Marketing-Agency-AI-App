@@ -7,6 +7,7 @@ import { Panel } from "@/components/admin/ui";
 import { moveShot, totalSeconds, trimShot } from "@/lib/editor/ops";
 import { totalMs, type MotionSpec } from "@/lib/video-engine/spec";
 import { ExportPanel } from "./export-panel";
+import { LabNotes, type ReelLab } from "./lab-notes";
 import { Inspector } from "./inspector";
 import { shotAt, shotStarts, secondsText } from "./layout";
 import { Preview } from "./preview";
@@ -17,23 +18,27 @@ import { Timeline } from "./timeline";
 import { useSpecHistory } from "./use-spec-history";
 
 export type ReelChoice = { id: string; business: string; title: string; createdAt: string };
-export type OpenReel = (id: string) => Promise<({ ok: true; view: ReelView; brand: ReelBrand } | { ok: false; error: string })>;
+export type OpenedReel = { view: ReelView; brand: ReelBrand; lab?: ReelLab };
+export type OpenReel = (id: string) => Promise<({ ok: true } & OpenedReel) | { ok: false; error: string }>;
 
 /**
  * The timeline editor: the preview, the shots, what you can change about one shot, undo and redo, and export. The state
- * is the spec. It starts on `initial` (an example); with `reels` and `openReel` the owner can open a finished reel instead.
+ * is the spec. It starts on `initial` (an example), or on `initialReel` (a finished reel the page opened, ?reel=<id>);
+ * with `reels` and `openReel` the owner can open another finished reel.
  */
 type CreateExample = (input: unknown, file: unknown) => Promise<{ ok: true; id: string; upload: { path: string; token: string } | null; warning?: string } | { ok: false; error: string }>;
 type ConfirmFile = (id: string, path: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 
-export function SpecEditor({ initial, reels = [], openReel, createExample, confirmFile }: { initial: MotionSpec; reels?: ReelChoice[]; openReel?: OpenReel; createExample?: CreateExample; confirmFile?: ConfirmFile }) {
+export function SpecEditor({ initial, initialReel, reels = [], openReel, createExample, confirmFile }: { initial: MotionSpec; initialReel?: OpenedReel | null; reels?: ReelChoice[]; openReel?: OpenReel; createExample?: CreateExample; confirmFile?: ConfirmFile }) {
   const { spec, run, undo, redo, canUndo, canRedo, reset } = useSpecHistory(initial);
   const [musicUrl, setMusicUrl] = useState<string | null>(null);
   // The reel that is open (null: the example), as it was opened; and the last MP4 made, for saving.
   const [source, setSource] = useState<Source | null>(null);
   const [made, setMade] = useState<{ blob: Blob; spec: MotionSpec } | null>(null);
   const [title, setTitle] = useState(initial.title);
-  const [pick, setPick] = useState(reels[0]?.id ?? "");
+  const [pick, setPick] = useState(initialReel?.view.id ?? reels[0]?.id ?? "");
+  // What the Training Lab did to the open reel (null: the example, or nothing known).
+  const [lab, setLab] = useState<ReelLab | null>(null);
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
@@ -106,6 +111,12 @@ export function SpecEditor({ initial, reels = [], openReel, createExample, confi
     seek(0);
   }
 
+  async function show(res: OpenedReel) {
+    const opened = await reelSource(res.view, res.brand);
+    load(opened.spec, opened.musicUrl, opened.title, { id: res.view.id, title: opened.title, spec: opened.spec, musicUrl: opened.musicUrl, language: res.view.language });
+    setLab(res.lab ?? null);
+  }
+
   // Fresh signed links every time: the clips' links expire after an hour.
   async function open() {
     if (!openReel || !pick || opening) return;
@@ -114,14 +125,25 @@ export function SpecEditor({ initial, reels = [], openReel, createExample, confi
     try {
       const res = await openReel(pick);
       if (!res.ok) return setOpenError(res.error);
-      const opened = await reelSource(res.view, res.brand);
-      load(opened.spec, opened.musicUrl, opened.title, { id: res.view.id, title: opened.title, spec: opened.spec, musicUrl: opened.musicUrl, language: res.view.language });
+      await show(res);
     } catch {
       setOpenError("The reel could not be opened. Try again.");
     } finally {
       setOpening(false);
     }
   }
+
+  // A reel the page opened (?reel=<id>, links fresh from the server) is loaded once, as if picked and opened.
+  const started = useRef(false);
+  useEffect(() => {
+    if (!initialReel || started.current) return;
+    started.current = true;
+    setOpening(true);
+    show(initialReel)
+      .catch(() => setOpenError("The reel could not be opened. Try again."))
+      .finally(() => setOpening(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on the first render
+  }, []);
 
   const playheadShot = shotAt(spec, tMs / 1000);
 
@@ -139,9 +161,10 @@ export function SpecEditor({ initial, reels = [], openReel, createExample, confi
               </Select>
             </div>
             <Button type="button" onClick={open} disabled={!pick || opening}>{opening ? "Opening…" : "Open"}</Button>
-            <Button type="button" variant="outline" onClick={() => load(initial, null, initial.title, null)} disabled={opening}>Back to the example</Button>
+            <Button type="button" variant="outline" onClick={() => { load(initial, null, initial.title, null); setLab(null); }} disabled={opening}>Back to the example</Button>
           </div>
           {openError && <p role="alert" className="text-sm font-medium text-danger">{openError}</p>}
+          {source && lab && <LabNotes lab={lab} />}
         </Panel>
       )}
       <div className="flex flex-wrap items-center gap-2">

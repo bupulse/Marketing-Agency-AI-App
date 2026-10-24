@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
@@ -95,6 +96,7 @@ function FinishedReels({ reels }: { reels: FinishedReel[] }) {
                 <div className="min-w-0">
                   <p className="break-words font-medium">{r.title}</p>
                   <p className="text-[13px] text-muted">{r.business} · {r.language} · {dateTime(r.createdAt)}</p>
+                  <Link href={`/admin/training-lab/editor?reel=${encodeURIComponent(r.id)}`} className="inline-flex min-h-11 items-center text-[14px] font-medium text-pulse-blue underline">Open in the editor</Link>
                 </div>
                 {r.inLab ? (
                   <Badge tone="neutral">In the Lab</Badge>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app";
 import { Empty, Panel, notice } from "@/components/admin/ui";
@@ -166,7 +167,14 @@ function RateResult({ agentId, resultRef, label, rating }: { agentId: string; re
     <form action={rateRunAction} className="flex w-full min-w-0 flex-wrap items-center gap-1">
       <input type="hidden" name="agentId" value={agentId} />
       <input type="hidden" name="resultRef" value={resultRef} />
-      <span className="mr-1 min-w-0 break-words text-muted">Made: {label}</span>
+      <span className="mr-1 min-w-0 break-words text-muted">
+        Made:{" "}
+        {resultRef.startsWith("reel:") ? (
+          <Link href={`/admin/training-lab/editor?reel=${encodeURIComponent(resultRef.slice(5))}`} className="font-medium text-pulse-blue underline">{label}</Link>
+        ) : (
+          label
+        )}
+      </span>
       {[1, 2, 3, 4, 5].map((n) => (
         <button key={n} type="submit" name="rating" value={String(n)} aria-label={`Rate ${label} ${n} of 5`} aria-pressed={rating === n} className={`flex size-11 items-center justify-center rounded-full text-lg ${rating && n <= rating ? "text-amber-500" : "text-muted"} hover:bg-soft`}>
           {rating && n <= rating ? "★" : "☆"}
