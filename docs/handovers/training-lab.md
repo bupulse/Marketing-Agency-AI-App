@@ -83,7 +83,8 @@ Kinyarwanda voice later.
 - 18:44: friendly Lab live (4f31243b). End-to-end test in Chrome (approved by main, one paid call): dropped the
   BuPulse logo; upload and the check card worked at phone width, but Gemini answered 400 (an empty "" enum value in
   the answer schema; free). Fixed in 2bb03ae1 ("unknown" instead), with a test that no enum value is empty. Discard
-  removed the draft (0 files left in drafts/). The paid read still needs one retest after the fix is live.
+  removed the draft (0 files left in drafts/). Retest at 18:56 after the fix went live: Gemini read the logo and filled in the card correctly
+  ($0.0022), Discard left 0 draft files. Drop, read, check works end to end.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small
