@@ -13,6 +13,12 @@
   subscription while hosted on the Mac). Designed it as a registry plus a brain router and an Admin Team page
   (docs/TRAINING_LAB.md, "The agent team"); tasks A1 to A4 on the board. The subscription stays local-only, as
   lib/image-engine/claude-cli.ts already enforces.
+- 12:12: video-engine (bupulse-video-0f) agreed that this branch adds the optional `lab`/`avoid` to brain/viral.ts and
+  `extra` to brain/language.ts, on conditions: bit-for-bit the same without them, Lab bonus at most +15, ids `lab:<id>`,
+  avoid subtracts like -25 and never filters, existing brain tests unchanged; send them the hash to review before main
+  merges that part. Encoder changes (speed, audio fades, beats in the spec) stay theirs: ask first.
+- Admin login on the test site does not carry to my check server (port 3004), so browser checks happen on the test
+  site after main merges.
 
 ## Map: what each engine reads today, and where a Lab example plugs in
 Read from the code on 24 October 2026. Line numbers are on branch training-lab. Rule for every plug-in below: one small
@@ -96,4 +102,5 @@ data; the engines get it as a new optional parameter, so nothing changes when th
 ## Rounds
 - Round 1 (11:47): task 1 map (helper, done 11:49 and reviewed), task 2 data model (helper, done 12:00, committed 3f511afb).
 - Round 2 (12:03): task 3 Admin page (model-helper), task 10 step 1 editor ops (map-helper, committed faaaa63f), A1 registry and router (map-helper, committed 5dad45ad, migration applied to TEST).
-- Round 3 (12:08): A4 run log `AgentRun` (map-helper); the agent id is kept in our own table, not in the shared AiCall ledger.
+- Round 3 (12:08): A4 run log `AgentRun` (map-helper, aa359857); the agent id is kept in our own table, not in the shared AiCall ledger. Lab reader (fe006222). Task 3 Admin page (model-helper, 22ae45bc).
+- Round 4 (12:13): task 5 reel engine reads the Lab (map-helper), A2 Team page (model-helper).
