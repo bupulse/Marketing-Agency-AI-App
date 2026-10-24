@@ -18,6 +18,7 @@ import { assertLabOwner, NOTE_FIELDS, NOTE_MAX, readNotes, saveNotes, type LabNo
 import { TRAINING_BUCKET } from "./storage";
 import { KIND_LABELS, type TrainingKind } from "./types";
 import { SECTORS } from "@/lib/video-engine/brain/types";
+import { parseWrongSpellings, WORD_MAX } from "./language";
 
 export const ANALYSIS_FEATURE = "trainingLab";
 export const MAX_INLINE_BYTES = 20 * 1024 * 1024;
@@ -155,7 +156,12 @@ export async function draftExampleNotes(ctx: AdminContext, identity: LabOwner, i
 
 /** The form fields the AI suggests for a dropped file, in plain words; the owner checks and corrects them. */
 export type DraftFields = { title: string; howMade: string; whatIsGood: string; techniques: string[]; sector: string; language: string; transcript: string };
-export type DraftReading = { ok: true; fields: DraftFields; notes: LabNotes | null; costUsd: number } | { ok: false; error: string };
+/**
+ * A recording's likely misspellings the AI heard, as "wrong -> right" lines (language.ts parseWrongSpellings). Only a
+ * suggestion: the check card shows it and the owner adds it to the box or not; it is never saved on its own.
+ */
+export type DraftReadingExtras = { spellingSuggestions: string };
+export type DraftReading = ({ ok: true; fields: DraftFields; notes: LabNotes | null; costUsd: number } & DraftReadingExtras) | { ok: false; error: string };
 
 export const DRAFT_LANGUAGES = ["Kinyarwanda", "English", "French", "Swahili"] as const;
 const DRAFT_KINDS: TrainingKind[] = ["reel", "video", "image", "voice", "actor"];
@@ -170,9 +176,10 @@ export const DRAFT_SCHEMA = {
     sector: { type: "string", enum: [...SECTORS, ""] },
     language: { type: "string", enum: [...DRAFT_LANGUAGES, ""] },
     transcript: { type: "string" },
+    spelling_suggestions: { type: "array", items: { type: "object", properties: { wrong: { type: "string" }, right: { type: "string" } }, required: ["wrong", "right"] } },
     ...NOTES_SCHEMA.properties,
   },
-  required: ["title", "how_made", "what_is_good", "techniques", "sector", "language", "transcript", ...NOTE_FIELDS],
+  required: ["title", "how_made", "what_is_good", "techniques", "sector", "language", "transcript", "spelling_suggestions", ...NOTE_FIELDS],
 };
 
 export function draftPrompt(kind: TrainingKind): string {
@@ -188,6 +195,9 @@ export function draftPrompt(kind: TrainingKind): string {
     `- sector: the kind of business it is for, one of ${SECTORS.join(", ")}, or "" when you cannot tell.`,
     `- language: the language spoken or written in it, one of ${DRAFT_LANGUAGES.join(", ")}, or "".`,
     kind === "voice" ? "- transcript: exactly what is said, word for word, in the language it is said in." : '- transcript: "" (only recordings get one).',
+    kind === "voice"
+      ? "- spelling_suggestions: Kinyarwanda words in it that people often spell wrong in captions, each as the common wrong spelling and the right one (at most 8; [] when you are not sure)."
+      : "- spelling_suggestions: [] (only recordings get them).",
     "- and the notes: hook (the first 1-3 seconds), shots (each shot in order), cuts_per_second (a number and a short note), beat_sync, music, captions (the words on screen), stickers, setting, people (who appears and what they do, or \"none\"), why_it_works.",
     'For an image or a recording, answer "none" for the fields that do not apply.',
     "Answer as JSON with exactly those fields.",
@@ -195,6 +205,19 @@ export function draftPrompt(kind: TrainingKind): string {
 }
 
 const clip = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+
+/** The AI's suggested misspellings as "wrong -> right" lines the spellings box takes; anything the box would refuse is dropped. */
+export function readSpellingSuggestions(raw: unknown): string {
+  const list = raw && typeof raw === "object" && Array.isArray((raw as { spelling_suggestions?: unknown }).spelling_suggestions) ? ((raw as { spelling_suggestions: unknown[] }).spelling_suggestions) : [];
+  const lines = list
+    .map((x) => (x && typeof x === "object" ? x : {}) as { wrong?: unknown; right?: unknown })
+    .map((x) => [clip(x.wrong, 1000), clip(x.right, 1000)])
+    // A word too long for the box is dropped, never cut: half a word would be a wrong "right" spelling.
+    .filter(([w, r]) => w && r && w.length <= WORD_MAX && r.length <= WORD_MAX && w.toLowerCase() !== r.toLowerCase() && !/->|→|=>/.test(w + r))
+    .map(([w, r]) => `${w} -> ${r}`);
+  const parsed = parseWrongSpellings(lines.slice(0, 8).join("\n"));
+  return parsed.problem ? "" : parsed.wrong.map((w) => `${w.word} -> ${w.fix}`).join("\n");
+}
 
 /** The suggested fields from the answer, each cut to what the form takes; unknown sectors and languages become "". */
 export function readDraftFields(raw: unknown): DraftFields | null {
@@ -239,7 +262,7 @@ export async function readDraft(d: { draftId: string; path: string; mime: string
     const parsed = parseJson(result.text);
     const fields = readDraftFields(parsed);
     await recordRun({ ...run, ok: !!fields, ms: Date.now() - started, costUsd, error: fields ? null : "The answer had no usable fields." });
-    return fields ? { ok: true, fields, notes: readNotes(parsed), costUsd } : { ok: false, error: "The AI's answer could not be read. Fill in the form yourself." };
+    return fields ? { ok: true, fields, notes: readNotes(parsed), costUsd, spellingSuggestions: d.kind === "voice" ? readSpellingSuggestions(parsed) : "" } : { ok: false, error: "The AI's answer could not be read. Fill in the form yourself." };
   } catch (error) {
     await recordRun({ ...run, ok: false, ms: Date.now() - started, error: error instanceof Error ? error.message : String(error) });
     return { ok: false, error: "The AI could not read it this time. Fill in the form yourself, or try again later." };

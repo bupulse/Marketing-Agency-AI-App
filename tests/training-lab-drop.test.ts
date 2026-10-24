@@ -71,8 +71,11 @@ vi.mock("@/lib/admin/auth", () => ({ requireAdmin: async () => ({ id: "0b6f3c1e-
 vi.mock("@/lib/admin/console", () => ({ adminAction: async () => ({ actor: "admin", ip: null, viaApi: false }), actionMessage: (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.") }));
 
 const ex = await import("@/lib/training-lab/examples");
-const { readDraft, readDraftFields, draftPrompt } = await import("@/lib/training-lab/analyse");
+const { readDraft, readDraftFields, draftPrompt, readSpellingSuggestions } = await import("@/lib/training-lab/analyse");
 const kinds = await import("@/app/admin/(console)/(ai)/training-lab/drop/kinds");
+// Loaded once up front: the component and the actions pull in a lot, which can take longer than a test's 5 s when every suite runs at once.
+const { DropZone, mergeLines } = await import("@/app/admin/(console)/(ai)/training-lab/drop/drop-zone");
+const actions = await import("@/app/admin/(console)/(ai)/training-lab/drop/actions");
 
 const ctx = { actor: "admin", ip: null, viaApi: false };
 const OWNER = { id: ADMIN, isOwner: true, staffId: null };
@@ -190,6 +193,16 @@ describe("the AI reads a dropped file", () => {
     expect(m.recordRun).toHaveBeenCalledWith(expect.objectContaining({ agentId: "checker", feature: "trainingLab", ok: true, resultRef: `draft:${DRAFT}` }));
   });
 
+  it("suggests a recording's likely misspellings as editable lines, and nothing for other kinds", async () => {
+    put(draftOf("note.m4a"), "audio/x-m4a");
+    const spelling = { ...good, transcript: "Murakoze cyane", spelling_suggestions: [{ wrong: "murakoze chane", right: "murakoze cyane" }, { wrong: "same", right: "Same" }, { wrong: "x".repeat(80), right: "y" }, { wrong: "a -> b", right: "c" }] };
+    const voice = await readDraft({ ...d, path: draftOf("note.m4a"), mime: "audio/x-m4a", kind: "voice" }, { fetchImpl: answer(spelling), env: ON });
+    expect(voice).toMatchObject({ ok: true, spellingSuggestions: "murakoze chane -> murakoze cyane", fields: { transcript: "Murakoze cyane" } });
+    put(draftOf());
+    expect(await readDraft(d, { fetchImpl: answer(spelling), env: ON })).toMatchObject({ ok: true, spellingSuggestions: "" });
+    expect(readSpellingSuggestions({})).toBe("");
+  });
+
   it("says why in plain words when it cannot read, and never calls Gemini then", async () => {
     const fetchImpl = answer(good);
     expect(await readDraft(d, { fetchImpl, env: {} })).toEqual({ ok: false, error: "AI notes are off until the owner sets a budget (TRAINING_LAB_ANALYSIS and its cap). Fill in the form yourself." });
@@ -221,7 +234,6 @@ describe("the AI reads a dropped file", () => {
 
 describe("the drop box and its actions", () => {
   it("shows one friendly drop box with a link field", async () => {
-    const { DropZone } = await import("@/app/admin/(console)/(ai)/training-lab/drop/drop-zone");
     const html = renderToStaticMarkup(createElement(DropZone));
     expect(html).toContain("Drop a reel, video, photo or voice note here");
     expect(html).toContain("or paste a link");
@@ -229,16 +241,32 @@ describe("the drop box and its actions", () => {
   });
 
   it("reads only the owner's own draft", async () => {
-    const actions = await import("@/app/admin/(console)/(ai)/training-lab/drop/actions");
     expect(await actions.readDraftAction(`drafts/other/${DRAFT}/reel.mp4`, "reel")).toEqual({ ok: false, error: "That draft could not be found. Drop the file again." });
     expect(await actions.readDraftAction(draftOf(), "song")).toMatchObject({ ok: false });
     expect(await actions.readDraftAction(draftOf(), "reel")).toEqual({ ok: false, error: "The file did not arrive. Drop it again." });
   });
 
   it("saves and says so in plain words", async () => {
-    const actions = await import("@/app/admin/(console)/(ai)/training-lab/drop/actions");
     put(draftOf());
     expect(await actions.saveDraftAction(draftOf(), form)).toEqual({ ok: true, id: "ex1", message: "Saved to the Lab. The engines you switched on learn from it from now on." });
     expect(await actions.discardDraftAction("nonsense")).toEqual({ ok: false });
+  });
+});
+
+describe("a recording's spellings in the check card", () => {
+  it("adds the AI's suggestion after the owner's lines, without repeating a word", async () => {
+    expect(mergeLines("", "murakoze chane -> murakoze cyane")).toBe("murakoze chane -> murakoze cyane");
+    expect(mergeLines("Murakoze chane -> murakoze cyane\nnez -> neza", "murakoze chane -> murakoze cyane\nbite -> bite se")).toBe("Murakoze chane -> murakoze cyane\nnez -> neza\nbite -> bite se");
+  });
+
+  it("are stored in the notes exactly as the edit form stores them", async () => {
+    put(draftOf("note.m4a"), "audio/x-m4a");
+    await ex.createExampleFromDraft(ctx, OWNER, draftOf("note.m4a"), { ...form, kind: "voice", engines: ["language"], transcript: "Murakoze cyane", notes: { captions: "Murakoze cyane" }, voice: { wrong: "murakoze chane -> murakoze cyane\nnez", words: "LEAF, Hydro Tower" } });
+    expect(m.create.mock.calls[0][0].data.notes).toEqual({ captions: "Murakoze cyane", wrong: [{ word: "murakoze chane", fix: "murakoze cyane" }, { word: "nez" }], words: ["LEAF", "Hydro Tower"] });
+  });
+
+  it("refuse a line the edit form would refuse, in the same words", async () => {
+    put(draftOf("note.m4a"), "audio/x-m4a");
+    await expect(ex.createExampleFromDraft(ctx, OWNER, draftOf("note.m4a"), { ...form, kind: "voice", engines: ["language"], transcript: "x", voice: { wrong: "nez ->", words: "" } })).rejects.toThrow('"nez ->": write the right spelling after the arrow, or leave the arrow out.');
   });
 });

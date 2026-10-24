@@ -18,7 +18,7 @@ async function owner() {
 }
 
 export type StartResult = ({ ok: true } & Draft) | { ok: false; error: string };
-export type ReadResult = { ok: true; fields: DraftFields; notes: LabNotes | null } | { ok: false; error: string };
+export type ReadResult = { ok: true; fields: DraftFields; notes: LabNotes | null; spellingSuggestions: string } | { ok: false; error: string };
 export type SaveResult = { ok: true; id: string; message: string } | { ok: false; error: string };
 
 /** A fresh draft folder and its upload address, after the file's kind and size are checked. */
@@ -41,7 +41,7 @@ export async function readDraftAction(path: string, kind: string): Promise<ReadR
     const info = await draftInfo(path);
     if (!info) throw new AdminError("not_found", "The file did not arrive. Drop it again.");
     const read = await readDraft({ draftId: own.draftId, path, mime: info.mime, bytes: info.bytes, kind });
-    return read.ok ? { ok: true, fields: read.fields, notes: read.notes } : { ok: false, error: read.error };
+    return read.ok ? { ok: true, fields: read.fields, notes: read.notes, spellingSuggestions: read.spellingSuggestions } : { ok: false, error: read.error };
   } catch (e) {
     return { ok: false, error: actionMessage(e) };
   }

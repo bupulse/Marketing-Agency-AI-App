@@ -67,6 +67,9 @@ export function DropZone() {
   const [engines, setEngines] = useState<TrainingEngine[]>(DEFAULT_ENGINES.reel);
   const [consent, setConsent] = useState({ given: false, name: "", note: "" });
   const [technique, setTechnique] = useState("");
+  // A recording's spellings, as the edit form keeps them (lib/training-lab/language.ts), and the AI's suggestion for them.
+  const [voice, setVoice] = useState({ wrong: "", words: "" });
+  const [suggested, setSuggested] = useState("");
   const [schedule, setSchedule] = useState<{ network: Network | ""; hours: string; days: number[]; perWeek: string }>({ network: "", hours: "", days: [], perWeek: "" });
 
   // The "Reading…" steps move on while the AI works (one call; the steps are what it does, shown in turn).
@@ -93,6 +96,8 @@ export function DropZone() {
     setConsent({ given: false, name: "", note: "" });
     setTechnique("");
     setSchedule({ network: "", hours: "", days: [], perWeek: "" });
+    setVoice({ wrong: "", words: "" });
+    setSuggested("");
     if (input.current) input.current.value = "";
   }
 
@@ -130,6 +135,7 @@ export function DropZone() {
     if (read.ok) {
       setFields(read.fields);
       setNotes(read.notes);
+      setSuggested(read.spellingSuggestions);
     } else setAiNote(read.error);
     setStage({ name: "check" });
   }
@@ -177,7 +183,7 @@ export function DropZone() {
       engines,
       notes,
       schedule: kind === "schedule" ? { network: schedule.network, country: "", hours: schedule.hours, weekdays: schedule.days, postsPerWeek: schedule.perWeek, formats: [] } : null,
-      voice: null,
+      voice: kind === "voice" ? voice : null,
     };
     const parsed = exampleInputSchema.safeParse({ ...value, hasFile: !!draft });
     if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Check the example and try again.");
@@ -284,6 +290,7 @@ export function DropZone() {
             <Textarea value={fields.transcript} onChange={(e) => set("transcript")(e.target.value)} rows={3} maxLength={10000} />
           </Field>
         )}
+        {kind === "voice" && <VoiceSpellings value={voice} onChange={setVoice} suggested={suggested} onUseSuggestion={() => { setVoice((v) => ({ ...v, wrong: mergeLines(v.wrong, suggested) })); setSuggested(""); }} onDismissSuggestion={() => setSuggested("")} />}
         {kind === "schedule" && <ScheduleFields value={schedule} onChange={setSchedule} />}
         <Techniques list={fields.techniques} draft={technique} setDraft={setTechnique} onChange={(techniques) => setFields((f) => ({ ...f, techniques }))} />
         <div className="grid min-w-0 gap-4 sm:grid-cols-2">
@@ -404,6 +411,36 @@ function Stars({ value, onChange }: { value: number | null; onChange: (v: number
         </button>
       ))}
     </Group>
+  );
+}
+
+/** The box's lines with the new ones added after them, a word already there not repeated. */
+export function mergeLines(box: string, add: string): string {
+  const have = new Set(box.split(/\r?\n/).map((l) => l.split(/\s*(?:->|→|=>)\s*/)[0].trim().toLowerCase()).filter(Boolean));
+  const extra = add.split(/\r?\n/).filter((l) => l.trim() && !have.has(l.split(/\s*(?:->|→|=>)\s*/)[0].trim().toLowerCase()));
+  return [box.trim(), ...extra].filter(Boolean).join("\n");
+}
+
+function VoiceSpellings({ value, onChange, suggested, onUseSuggestion, onDismissSuggestion }: { value: { wrong: string; words: string }; onChange: (v: { wrong: string; words: string }) => void; suggested: string; onUseSuggestion: () => void; onDismissSuggestion: () => void }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      {suggested && (
+        <div className="flex min-w-0 flex-col gap-2 rounded-2xl border border-dashed border-line p-3 text-[14px]">
+          <p className="font-medium">The AI heard words people often misspell. Add them if they are right:</p>
+          <pre className="whitespace-pre-wrap break-words font-sans text-muted">{suggested}</pre>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={onUseSuggestion}>Add to spellings to avoid</Button>
+            <Button type="button" size="sm" variant="outline" onClick={onDismissSuggestion}>No, thanks</Button>
+          </div>
+        </div>
+      )}
+      <Field label="Spellings to avoid" hint='One per line, like "wrong -> right". The engines never write the wrong one.'>
+        <Textarea value={value.wrong} onChange={(e) => onChange({ ...value, wrong: e.target.value })} rows={3} maxLength={10000} placeholder="murakoze chane -> murakoze cyane" />
+      </Field>
+      <Field label="Words that are right" hint="Separated by commas: brand names and words the check must not flag.">
+        <Input value={value.words} onChange={(e) => onChange({ ...value, words: e.target.value })} maxLength={10000} />
+      </Field>
+    </div>
   );
 }
 
