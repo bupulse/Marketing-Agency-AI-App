@@ -192,3 +192,7 @@ call.
 owner drops in the Training Lab and drafts its notes (lib/training-lab/analyse.ts), about a cent a video. Every call is
 in the AI ledger as feature `trainingLab`, and the Lab stops by itself when that feature's spend reaches
 `TRAINING_LAB_ANALYSIS_CAP_USD` (2). Switched on with `TRAINING_LAB_ANALYSIS=1` on the owner's test site only.
+
+| # | Date | What | Provider cost (USD) | Running total |
+| --- | --- | --- | --- | --- |
+| 1 | 24 Oct 2026 | Budget switched on for the test site (18:04 CAT); no example read yet | 0.00 | 0.00 |
