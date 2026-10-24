@@ -206,7 +206,7 @@ export async function confirmExampleFile(ctx: AdminContext, identity: LabOwner, 
  * are its schedule). An actor's consent may be withdrawn here: the example stays, never used, and its presenter copies go
  * (consent.ts); `removedFrom` is how many businesses lost it as their presenter.
  */
-export async function updateExample(ctx: AdminContext, identity: LabOwner, id: string, raw: unknown): Promise<{ removedFrom: number }> {
+export async function updateExample(ctx: AdminContext, identity: LabOwner, id: string, raw: unknown): Promise<{ withdrawn: boolean; removedFrom: number }> {
   assertLabOwner(ctx, identity);
   const row = await found(id);
   const input = parse({ ...(raw as object), kind: row.kind, existing: true, hasFile: !!row.path || (raw as { hasFile?: unknown })?.hasFile === true });
@@ -220,8 +220,8 @@ export async function updateExample(ctx: AdminContext, identity: LabOwner, id: s
     await tx.trainingExample.update({ where: { id: row.id }, data: { ...data, consentAt } });
     await writeAudit(tx, ctx, "update_training_example", `training:${row.id}`, { title: row.title, engines: row.engines, consentGiven: row.consentGiven }, { title: data.title, engines: data.engines, consentGiven: data.consentGiven });
   });
-  if (row.kind === "actor" && row.consentGiven && !input.consentGiven) return { removedFrom: (await withdrawActorConsent(ctx, row)).businesses.length };
-  return { removedFrom: 0 };
+  if (row.kind === "actor" && row.consentGiven && !input.consentGiven) return { withdrawn: true, removedFrom: (await withdrawActorConsent(ctx, row)).businesses.length };
+  return { withdrawn: false, removedFrom: 0 };
 }
 
 /** 1 to 5 stars, or null to clear. */

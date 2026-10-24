@@ -8,6 +8,7 @@ import { NETWORKS, type Network } from "@/lib/social/types";
 import { extrasText } from "@/lib/training-lab/language";
 import { NETWORK_NAMES, WEEKDAY_NAMES, hoursText, parseScheduleNotes } from "@/lib/training-lab/schedule";
 import { DEFAULT_ENGINES, ENGINE_LABELS, ENGINES, KIND_LABELS, KINDS, LANGUAGES, MAX_FILE_BYTES, exampleInputSchema, fileProblem, type TrainingEngine, type TrainingKind } from "@/lib/training-lab/types";
+import { withdrawText } from "@/lib/training-lab/consent-text";
 import { confirmExampleFileAction, createExampleAction, startExampleUploadAction, updateExampleAction } from "./actions";
 
 // The private bucket's name (lib/training-lab/storage.ts TRAINING_BUCKET; that file is server-only).
@@ -59,14 +60,6 @@ const isKind = (v: string): v is TrainingKind => (KINDS as readonly string[]).in
  * "Add an example" (no `example`) or the edit form of one. The row is saved first; a file then goes straight from the
  * browser to the private bucket with the signed address the server gave, and the server checks it before using it.
  */
-/** What the owner is told before and after withdrawing an actor's consent. */
-export function withdrawText(uses: number): { confirm: string; done: string } {
-  const businesses = `${uses} business${uses === 1 ? "" : "es"}`;
-  return uses > 0
-    ? { confirm: `This also removes them as the presenter of ${businesses}. Reels already made are not changed.`, done: `Consent withdrawn: removed from ${businesses}' presenters. Reels already made are not changed.` }
-    : { confirm: "They stay in the Lab but are never used again. Reels already made are not changed.", done: "Consent withdrawn: this actor stays in the Lab but is never used." };
-}
-
 export function ExampleForm({ example, onDone }: { example?: EditableExample; onDone?: (message?: string) => void }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -154,6 +147,7 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
       if (problem) return setError(problem);
     }
     if (withdrawing && !confirmWithdraw) return setConfirmWithdraw(true);
+    let serverNote: string | null = null;
     start(async () => {
       setStage("Saving…");
       let id: string;
@@ -164,6 +158,8 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
           setStage(null);
           return setError(saved.error);
         }
+        // The server says what was really removed when consent was withdrawn.
+        serverNote = saved.message ?? null;
         id = example.id;
         if (file) {
           const target = await startExampleUploadAction(id, fileInfo);
@@ -192,7 +188,7 @@ export function ExampleForm({ example, onDone }: { example?: EditableExample; on
       setStage(null);
       router.refresh();
       if (uploadError) return setError(uploadError);
-      if (editing) return onDone?.(withdrawing ? withdraw.done : undefined);
+      if (editing) return onDone?.(serverNote ?? (withdrawing ? withdraw.done : undefined));
       formRef.current?.reset();
       setFile(null);
       setConsent(false);

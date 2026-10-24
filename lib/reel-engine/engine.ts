@@ -33,6 +33,7 @@ import { polishReelTexts, type LanguageNote, type SpellingFixNote } from "@/lib/
 import { labLanguage } from "@/lib/training-lab/language-reader";
 import { labFor, labPresenters, labViralRows } from "@/lib/training-lab/reader";
 import { TRAINING_BUCKET } from "@/lib/training-lab/storage";
+import { labCopyPath } from "@/lib/training-lab/consent";
 import { runText, savedBrain } from "@/lib/training-lab/brains";
 import { recordRun } from "@/lib/training-lab/runs";
 import type { Brain } from "@/lib/training-lab/agents";
@@ -108,7 +109,8 @@ async function labPresenter(owner: Owner, sector: string | null, audience: strin
     if (error || !data) return null;
     const bytes = new Uint8Array(await data.arrayBuffer());
     if (!bytes.length || bytes.length > PORTRAIT_MAX_BYTES) return null;
-    const path = `${owner.userId}/designs/${globalThis.crypto.randomUUID()}.${PORTRAIT_TYPES[actor.mime]}`;
+    // Named after the example (still in the company's designs folder), so withdrawing consent finds it (consent.ts).
+    const path = labCopyPath(owner.userId, actor.id, PORTRAIT_TYPES[actor.mime]);
     const { error: failed } = await storage.from("designs").upload(path, bytes, { contentType: actor.mime, upsert: false });
     if (failed) return null;
     return { path, description: actor.description, exampleId: actor.id };

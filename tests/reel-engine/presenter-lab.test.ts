@@ -122,7 +122,8 @@ describe("ensurePresenter with the Lab", () => {
     const out = await ensurePresenter(owner, "job1", null, "agriculture");
     expect(h.buckets["training-lab"].download).toHaveBeenCalledWith("admin1/a1/aline.jpg");
     const [path, , opts] = h.buckets.designs.upload.mock.calls[0] as unknown as [string, Uint8Array, { contentType: string; upsert: boolean }];
-    expect(path).toMatch(/^u1\/designs\/[0-9a-f-]{36}\.jpg$/);
+    // Named after the example, so withdrawing consent finds the copy (lib/training-lab/consent.ts).
+    expect(path).toMatch(/^u1\/designs\/lab-a1-[0-9a-f-]{36}\.jpg$/);
     expect(opts).toEqual({ contentType: "image/jpeg", upsert: false });
     expect(out).toMatchObject({ path, description: "the presenter at the market. A woman in her late twenties with short braids, call" });
     expect(h.design).not.toHaveBeenCalled();

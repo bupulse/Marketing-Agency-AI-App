@@ -8,6 +8,7 @@ import { ENGINE_LABELS, type TrainingEngine } from "@/lib/training-lab/types";
 import { confirmExampleFile, createExample, deleteExample, NOTE_FIELDS, rateExample, saveExampleNotes, setExampleEngine, startExampleUpload, updateExample, type UploadSlot } from "@/lib/training-lab/examples";
 import { draftExampleNotes } from "@/lib/training-lab/analyse";
 import { exampleFromReel, type FromReel } from "@/lib/training-lab/from-result";
+import { withdrawText } from "@/lib/training-lab/consent-text";
 
 // The Training Lab (docs/TRAINING_LAB.md). Each action re-checks the admin (allow-listed email, AAL2, the "ai" area)
 // and lib/training-lab/examples.ts then refuses anyone but the owner from ADMIN_EMAILS: server actions are public POST
@@ -41,11 +42,12 @@ export async function createExampleAction(input: unknown, file: unknown): Promis
   }
 }
 
-export async function updateExampleAction(id: string, input: unknown): Promise<StepResult> {
+/** Saves an edit; when an actor's consent was withdrawn, `message` says how many businesses lost them as presenter. */
+export async function updateExampleAction(id: string, input: unknown): Promise<({ ok: true; message?: string }) | { ok: false; error: string }> {
   const { ctx, identity } = await owner();
   try {
-    await updateExample(ctx, identity, String(id ?? ""), input);
-    return { ok: true };
+    const { withdrawn, removedFrom } = await updateExample(ctx, identity, String(id ?? ""), input);
+    return withdrawn ? { ok: true, message: withdrawText(removedFrom).done } : { ok: true };
   } catch (e) {
     return { ok: false, error: actionMessage(e) };
   }
@@ -88,13 +90,14 @@ export async function setEngineAction(f: FormData) {
 
 export async function deleteExampleAction(f: FormData): Promise<ConfirmResult> {
   const { ctx, identity } = await owner();
+  let removedFrom = 0;
   try {
-    await deleteExample(ctx, identity, text(f, "id"));
+    removedFrom = (await deleteExample(ctx, identity, text(f, "id"))).removedFrom;
   } catch (e) {
     return { ok: false, error: actionMessage(e) };
   }
   refresh();
-  return { ok: true, message: "Example and its file deleted." };
+  return { ok: true, message: removedFrom ? `Example and its file deleted. ${withdrawText(removedFrom).done}` : "Example and its file deleted." };
 }
 
 /** Gemini drafts the example's notes (only when the switch and the budget allow; lib/training-lab/analyse.ts). */
