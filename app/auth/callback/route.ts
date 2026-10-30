@@ -1,11 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { allowGoogleSignIn, ensureAccount } from "@/lib/account";
+import { afterGoogleSignIn } from "@/lib/auth/after-google";
 import { safeNext } from "@/lib/auth/safe-next";
-import { hasReturn, RETURN_COOKIE, returnCookieOptions } from "@/lib/auth/return-path";
 import { originFor } from "@/lib/auth/site-url";
 import { createClient } from "@/lib/supabase/server";
 
-// Supabase sends users here from Google.
+// Supabase sends users here from Google (when Google sign-in is not set up to return to /auth/google).
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const origin = originFor(request.headers); // the tunnel's or live address, never the dev server's own
@@ -15,17 +14,7 @@ export async function GET(request: NextRequest) {
   if (code) {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error && data.user) {
-      if (!(await allowGoogleSignIn(data.user))) {
-        await supabase.auth.signOut();
-        const email = encodeURIComponent(data.user.email ?? "");
-        return NextResponse.redirect(`${origin}/login?error=use_password&email=${email}`);
-      }
-      await ensureAccount(data.user, { visitSession: searchParams.get("vs") });
-      const response = NextResponse.redirect(`${origin}${next}`);
-      if (hasReturn(next)) response.cookies.set(RETURN_COOKIE, next, returnCookieOptions(origin.startsWith("https://")));
-      return response;
-    }
+    if (!error && data.user) return afterGoogleSignIn(supabase, data.user, origin, next, searchParams.get("vs"));
   }
   return NextResponse.redirect(`${origin}/login?error=callback`);
 }

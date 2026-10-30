@@ -1,12 +1,13 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { findAccountByEmail, switchToPasswordOnly } from "@/lib/account";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors, signInSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { safeNext } from "@/lib/auth/safe-next";
 import { originFor } from "@/lib/auth/site-url";
+import { GOOGLE_COOKIE, googleCookieOptions, googleSignInConfigured, startGoogleSignIn } from "@/lib/auth/google-signin";
 import { rememberReturn } from "@/lib/auth/return-server";
 import { publicLimited } from "@/lib/request-limits";
 
@@ -57,7 +58,14 @@ export async function signInWithPassword(_prev: LoginState, formData: FormData):
 export async function signInWithGoogle(formData: FormData) {
   const next = safeNext(String(formData.get("next") ?? ""));
   const visit = String(formData.get("visitSession") ?? "");
-  const supabase = await createClient();
+  const supabase = await createClient(); // also loads the keys saved in Admin -> Services
+  // Our own Google flow when it is set up, so Google's page names BuPulse's address, not the Supabase project's.
+  if (googleSignInConfigured()) {
+    const origin = originFor(await headers());
+    const start = startGoogleSignIn(origin, next, visit);
+    (await cookies()).set(GOOGLE_COOKIE, start.cookie, googleCookieOptions(origin.startsWith("https://")));
+    redirect(start.url);
+  }
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
