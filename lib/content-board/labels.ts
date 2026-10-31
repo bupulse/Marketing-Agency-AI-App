@@ -29,6 +29,8 @@ export function statusChip(
       return { label: post.publishedAt ? `Posted ${when(post.publishedAt)}` : "Posted", tone: "posted" };
     case "FAILED":
       return { label: "Failed", tone: "failed" };
+    case "EXPIRED":
+      return { label: "Expired", tone: "draft" };
     default:
       return { label: "Cancelled", tone: "draft" };
   }

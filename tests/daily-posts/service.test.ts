@@ -44,6 +44,8 @@ vi.mock("@/lib/publishing/email", () => ({ renderEmail: (x: { heading: string })
 vi.mock("@/lib/push/service", () => ({ pushToLeadWatchers: mocks.push }));
 vi.mock("@/lib/team/recipients", () => ({ alertRecipients: async (_b: string, f: string) => [f] }));
 vi.mock("@/lib/auth/site-url", () => ({ publicSiteUrl: () => "https://bupulse.com" }));
+const carryOver = vi.hoisted(() => vi.fn(async () => ({ moved: 2, expired: 1, toReview: 0 })));
+vi.mock("@/lib/content-board/carry-over", () => ({ carryOverMissedPosts: carryOver }));
 
 import { Prisma } from "@/lib/generated/prisma/client";
 import { claimDailyRun, runDailyPosts, runDueDailyPosts, sendReadyNotice } from "@/lib/daily-posts/service";
@@ -180,6 +182,25 @@ describe("the morning notice", () => {
 });
 
 describe("the cron", () => {
+  it("first moves missed posts to each company's today, once per hourly run (not on its follow-up calls), paused or not", async () => {
+    mocks.getSetting.mockResolvedValueOnce(false);
+    mocks.prisma.dailyPostRun.findMany.mockResolvedValue([]);
+    expect(await runDueDailyPosts({ now: night })).toMatchObject({ paused: true, carried: { moved: 2, expired: 1, toReview: 0 } });
+    expect(carryOver).toHaveBeenCalledWith(night);
+    carryOver.mockClear();
+    mocks.getSetting.mockResolvedValueOnce(false);
+    expect(await runDueDailyPosts({ now: night, cursor: "x" })).toMatchObject({ carried: { moved: 0, expired: 0, toReview: 0 } });
+    expect(carryOver).not.toHaveBeenCalled();
+  });
+
+  it("a carry-over failure never stops the daily posts", async () => {
+    carryOver.mockRejectedValueOnce(new Error("db down"));
+    mocks.getSetting.mockResolvedValueOnce(false);
+    mocks.prisma.dailyPostRun.findMany.mockResolvedValue([]);
+    expect(await runDueDailyPosts({ now: night })).toMatchObject({ paused: true, carried: { moved: 0, expired: 0, toReview: 0 } });
+    expect(mocks.logError).toHaveBeenCalled();
+  });
+
   it("makes nothing while the owner paused daily posts for everyone", async () => {
     mocks.getSetting.mockResolvedValueOnce(false);
     expect(await runDueDailyPosts({ now: night, cursor: "x" })).toMatchObject({ paused: true, made: 0 });

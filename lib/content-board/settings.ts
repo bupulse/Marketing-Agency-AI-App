@@ -48,3 +48,16 @@ export function requiresApproval(settings: ContentSettings, network: string): bo
 export function autoApps(settings: ContentSettings): Network[] {
   return NETWORKS.filter((n) => settings.requireApproval[n] === false);
 }
+
+/** The master switch ("Ask me to approve posts before they go out"): on for every app, off for every app, or some. */
+export type ApprovalMode = "all" | "none" | "some";
+
+export function approvalMode(settings: Pick<ContentSettings, "requireApproval">, apps: readonly Network[] = NETWORKS): ApprovalMode {
+  const on = apps.filter((a) => settings.requireApproval[a] !== false).length;
+  return on === apps.length ? "all" : on === 0 ? "none" : "some";
+}
+
+/** The master switch flipped: every app waits for approval (on), or every app is scheduled at its best time (off). */
+export function withApprovalForAll<T extends Pick<ContentSettings, "requireApproval">>(settings: T, on: boolean, apps: readonly Network[] = NETWORKS): T {
+  return { ...settings, requireApproval: { ...settings.requireApproval, ...Object.fromEntries(apps.map((a) => [a, on])) } };
+}

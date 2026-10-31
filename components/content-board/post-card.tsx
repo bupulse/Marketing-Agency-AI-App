@@ -85,6 +85,12 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
             <span className={cn("inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold", CHIP_STYLE[chip.tone])}>{chip.label}</span>
             {post.idea && <span className="inline-flex w-fit items-center rounded-full bg-soft px-2.5 py-1 text-xs font-semibold text-text">{post.idea}</span>}
             {post.contest?.pending && <span className="inline-flex w-fit items-center rounded-full bg-new-bg px-2.5 py-1 text-xs font-semibold text-new">Needs your confirmation: prize & rules</span>}
+            {/* A missed day moved it (lib/content-board/carry-over.ts): after 3 moves, the next miss expires it. */}
+            {post.carryCount > 0 && post.status !== "EXPIRED" && (
+              <span className="inline-flex w-fit items-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                {post.carryCount === 1 ? "Moved from a missed day" : `Moved ${post.carryCount} times`}
+              </span>
+            )}
           </span>
           <p className="line-clamp-3 text-[15px] break-words whitespace-pre-line">{caption.trim() || <span className="text-muted">No caption yet</span>}</p>
           <p className="mt-auto flex flex-wrap gap-x-2 text-[13px] text-muted">
@@ -97,6 +103,14 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
           </p>
         </div>
       </button>
+      {post.status === "EXPIRED" && (
+        <p className="flex items-center gap-2 bg-soft px-4 py-2.5 text-[13px] text-muted">
+          <CircleDashed aria-hidden className="size-4 shrink-0" />
+          <span>
+            <span className="font-semibold">Not posted</span> · It missed its day 3 times
+          </span>
+        </p>
+      )}
       {unposted && (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 bg-amber-500/15 px-4 py-2.5 text-[13px] text-amber-900 dark:text-amber-200">
           <CircleDashed aria-hidden className="size-4 shrink-0" />

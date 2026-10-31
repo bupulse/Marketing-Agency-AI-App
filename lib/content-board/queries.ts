@@ -18,7 +18,9 @@ import { IDEAS } from "@/lib/autopilot/playbook";
 import { contestBlocked, readContest } from "@/lib/content-flow/contest";
 import { ANGLES, isAngleId } from "@/lib/studio/angles";
 import { scriptLines } from "@/lib/visuals/video-plan";
+import { dayKey } from "@/lib/publishing/time";
 import { contentWhere, startOfToday, type ContentFilters, type ContentScope } from "./filters";
+import { dateDay, dayDate } from "./period";
 import { buildSubjectCards, GENERAL_LABEL, GENERAL_NAME, type CountRow, type SubjectCard, type SubjectRow } from "./grouping";
 import { isPostKind, type PostKind } from "./kind";
 
@@ -41,6 +43,10 @@ export type ContentPost = CalendarPost & {
   idea: string | null;
   /** A contest the AI suggested: waits for the owner's prize, end date and winner rule (lib/content-flow/contest.ts). */
   contest: { pending: boolean } | null;
+  /** "YYYY-MM-DD" a missed day moved it to (lib/content-board/carry-over.ts), or null. */
+  plannedDay: string | null;
+  /** How many times a missed day moved it (3 at most; the next miss expires it). */
+  carryCount: number;
 };
 
 export type SubjectCardView = Omit<SubjectCard, "lastActivity"> & { coverUrl: string | null; lastActivity: string | null };
@@ -151,14 +157,20 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       subject: r.product ? { kind: "product", id: r.product.id, name: r.product.name } : r.campaign ? { kind: "campaign", id: r.campaign.id, name: r.campaign.name } : null,
       idea: ideas.get(r.id) ?? null,
       contest: readContest(r.contest) ? { pending: contestBlocked(r) } : null,
+      plannedDay: r.plannedDay ? dateDay(r.plannedDay) : null,
+      carryCount: r.carryCount,
       ...(results.has(r.id) ? { results: results.get(r.id) } : {}),
     };
   });
 }
 
-/** Posts created today (local) that wait for review, plus how many older ones wait. App and type filters apply. */
+/**
+ * Posts for today (local) that wait for review: made today, or moved to today from a missed day
+ * (lib/content-board/carry-over.ts). Plus how many older ones wait. App and type filters apply.
+ */
 export async function loadToday(businessId: string, filters: ContentFilters, zone: string, now: Date) {
   const since = startOfToday(zone, now);
+  const today = dayDate(dayKey(now, zone));
   const base: Prisma.PostWhereInput = {
     businessId,
     status: "PENDING_APPROVAL",
@@ -166,8 +178,9 @@ export async function loadToday(businessId: string, filters: ContentFilters, zon
     ...(filters.kinds.length ? { mediaKind: { in: filters.kinds } } : {}),
   };
   const [rows, older] = await Promise.all([
-    prisma.post.findMany({ where: { ...base, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 60, include: postInclude }),
-    prisma.post.count({ where: { ...base, createdAt: { lt: since } } }),
+    prisma.post.findMany({ where: { ...base, OR: [{ createdAt: { gte: since } }, { scheduledAt: null, plannedDay: { gte: today } }] }, orderBy: { createdAt: "desc" }, take: 60, include: postInclude }),
+    // (Spelled out rather than NOT {...}: NOT over a null plannedDay would drop the row in SQL.)
+    prisma.post.count({ where: { ...base, createdAt: { lt: since }, OR: [{ scheduledAt: { not: null } }, { plannedDay: null }, { plannedDay: { lt: today } }] } }),
   ]);
   return { posts: await toContentPosts(businessId, rows), older };
 }

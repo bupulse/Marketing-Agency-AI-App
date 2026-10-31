@@ -24,9 +24,10 @@ describe("product and campaign pages", () => {
 });
 
 describe("the subject content page", () => {
-  it("is a day view with the date bar and Create today's content", () => {
+  it("is a day view (or a week or month) with the period bar and Create today's content", () => {
     const src = read("components/content-board/subject-page.tsx");
-    expect(src).toContain("<DayBar");
+    expect(src).toContain("<PeriodBar");
+    expect(src).toContain("loadPeriodPosts");
     expect(src).toContain("<CreateDayContent");
     expect(src).toContain("loadDayPosts");
     expect(src).toContain("ScheduleAllButton");

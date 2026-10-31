@@ -8,7 +8,8 @@ export type PostStatusName =
   | "PUBLISHED"
   | "NEEDS_ACTION"
   | "FAILED"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "EXPIRED";
 
 export const STATUS_LABEL: Record<PostStatusName, string> = {
   DRAFT: "Draft",
@@ -19,6 +20,7 @@ export const STATUS_LABEL: Record<PostStatusName, string> = {
   NEEDS_ACTION: "Post it yourself",
   FAILED: "Failed",
   CANCELLED: "Cancelled",
+  EXPIRED: "Expired",
 };
 
 /** Card colours per status (tokens from globals.css; amber for "you need to do something"). */
@@ -35,6 +37,8 @@ export const STATUS_STYLE: Record<PostStatusName, { card: string; dot: string; b
   },
   FAILED: { card: "border-danger/30 bg-danger-bg", dot: "bg-danger", badge: "bg-danger-bg text-danger" },
   CANCELLED: { card: "border-line bg-soft/40 opacity-70", dot: "bg-muted", badge: "bg-soft text-muted" },
+  // Missed its day 3 times (lib/content-board/carry-over.ts): history, until "Use again".
+  EXPIRED: { card: "border-line bg-soft/40 opacity-80", dot: "bg-muted", badge: "bg-soft text-muted" },
 };
 
 /** Statuses the owner can still edit. */

@@ -6,7 +6,8 @@ const prisma = vi.hoisted(() => {
 });
 vi.mock("@/lib/db", () => ({ prisma }));
 
-import { autoApps, contentSettingsSchema, DEFAULT_CONTENT_SETTINGS, readContentSettings, requiresApproval } from "@/lib/content-board/settings";
+import { approvalMode, autoApps, contentSettingsSchema, DEFAULT_CONTENT_SETTINGS, readContentSettings, requiresApproval, withApprovalForAll } from "@/lib/content-board/settings";
+import { NETWORKS } from "@/lib/social/types";
 import { ContentSettingsError, saveContentSettings } from "@/lib/content-board/settings-service";
 import { ForbiddenError } from "@/lib/team/roles";
 
@@ -62,6 +63,36 @@ describe("saveContentSettings", () => {
   it("refuses invalid input", async () => {
     await expect(saveContentSettings(admin, { requireApproval: { facebook: "off" } } as never)).rejects.toBeInstanceOf(ContentSettingsError);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("the master switch: Ask me to approve posts before they go out", () => {
+  it("is on by default (every app waits), off when no app does, and 'some' when they differ", () => {
+    expect(approvalMode(DEFAULT_CONTENT_SETTINGS)).toBe("all");
+    expect(approvalMode(readContentSettings({ requireApproval: { instagram: false } }))).toBe("some");
+    expect(approvalMode(readContentSettings({ requireApproval: Object.fromEntries(NETWORKS.map((n) => [n, false])) }))).toBe("none");
+    // Only the apps the page lists count.
+    expect(approvalMode(readContentSettings({ requireApproval: { tiktok: false } }), ["instagram", "facebook"])).toBe("all");
+  });
+
+  it("off schedules every app at its best time; on makes every app wait again, keeping the other settings", () => {
+    const start = { ...readContentSettings({ requireApproval: { instagram: false }, packSize: 6 }) };
+    const off = withApprovalForAll(start, false);
+    expect(autoApps(off)).toEqual([...NETWORKS]);
+    expect(off.packSize).toBe(6);
+    const on = withApprovalForAll(off, true);
+    expect(autoApps(on)).toEqual([]);
+    expect(approvalMode(on)).toBe("all");
+  });
+
+  it("saves and reads back what the switch set", async () => {
+    const admin = { actorId: "person-1", role: "ADMIN" as const, businessId: "b1" };
+    const off = withApprovalForAll(DEFAULT_CONTENT_SETTINGS, false);
+    const saved = await saveContentSettings(admin, { requireApproval: off.requireApproval, packSize: off.packSize, voiceId: off.voiceId });
+    expect(approvalMode(saved)).toBe("none");
+    const stored = prisma.tx.business.update.mock.calls[0][0].data.contentSettings;
+    expect(approvalMode(readContentSettings(stored))).toBe("none");
+    expect(NETWORKS.every((n) => !requiresApproval(readContentSettings(stored), n))).toBe(true);
   });
 });
 

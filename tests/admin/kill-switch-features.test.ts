@@ -18,6 +18,8 @@ vi.mock("@/lib/db", () => ({
     // X is off until the owner switches it on (h.xOn: the owner did).
     serviceSwitch: { findMany: vi.fn(async () => [...h.off.map((service) => ({ service })), ...(h.xOn ? [{ service: "twitter", enabled: true }] : [])]) },
     $queryRaw: h.queryRaw,
+    // The companies' zones, for "not from a day that has passed" (notFromPastDaySql in lib/publishing/engine.ts).
+    business: { findMany: vi.fn(async () => [{ timezone: "Africa/Kigali" }]) },
     storeConnection: { findMany: h.storeFindMany, count: h.storeCount, updateMany: vi.fn() },
     canvaConnection: { count: h.canvaCount },
   },

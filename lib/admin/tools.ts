@@ -138,7 +138,7 @@ tool({
   kind: "read",
   description: "Posts across all customers, newest first, filterable by status (e.g. FAILED), business, user and network. Use status=FAILED to find posts that rerun_failed_post can retry.",
   schema: z.object({
-    status: z.enum(["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "PUBLISHING", "PUBLISHED", "NEEDS_ACTION", "FAILED", "CANCELLED"]).optional(),
+    status: z.enum(["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "PUBLISHING", "PUBLISHED", "NEEDS_ACTION", "FAILED", "CANCELLED", "EXPIRED"]).optional(),
     businessId: z.string().max(100).optional(),
     userId: z.string().max(100).optional(),
     network: z.string().max(30).optional().describe("instagram, facebook, linkedin, tiktok or youtube."),

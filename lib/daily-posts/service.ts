@@ -9,6 +9,7 @@ import { getSetting } from "@/lib/admin/settings";
 import { isServiceEnabled, ServiceDisabledError, textAiService } from "@/lib/admin/switch";
 import { AIBudgetExceededError, CompanyBudgetExceededError, companySpendThisMonth, effectiveBudgetUsd, imageUnitUsd, spentThisMonthUsd } from "@/lib/ai/budget";
 import { publicSiteUrl } from "@/lib/auth/site-url";
+import { carryOverMissedPosts, type CarryResult } from "@/lib/content-board/carry-over";
 import { DayRunError, ALREADY_RUNNING, networkChoices, runDayContent } from "@/lib/content-flow/service";
 import { dateDay, dayBounds, dayDate } from "@/lib/content-flow/day";
 import { prisma } from "@/lib/db";
@@ -266,7 +267,17 @@ async function sendDueNotices(now: Date): Promise<number> {
   return sent;
 }
 
-export type DueResult = { paused: boolean; checked: number; made: number; skipped: number; failed: number; notices: number; nextCursor: string | null };
+export type DueResult = {
+  paused: boolean;
+  checked: number;
+  made: number;
+  skipped: number;
+  failed: number;
+  notices: number;
+  /** Missed posts moved to today, expired after 3 misses, or sent back to review without a free time (lib/content-board/carry-over.ts). */
+  carried: CarryResult;
+  nextCursor: string | null;
+};
 
 const PAGE = 100;
 /** One call starts no new company after this long (each takes about a minute of AI calls). */
@@ -275,14 +286,22 @@ const CALL_BUDGET_MS = 40_000;
 /**
  * The cron's body: companies in id order after `cursor`, a few made per call (2, or 1 on Netlify's 60 s limit), and
  * a cursor back while some remain. Paused for everyone in Admin -> Settings: nothing is made (notices still go).
+ * The first call of each hour first moves missed posts to their company's today (every company, daily posts or not),
+ * before today's posts are made, so a company's first run after its midnight finds yesterday's posts already moved.
  */
 export async function runDueDailyPosts(options: { now?: Date; cursor?: string | null; limit?: number; budgetMs?: number } = {}): Promise<DueResult> {
   const now = options.now ?? new Date();
   const started = Date.now();
   const budget = options.budgetMs ?? timeBudget(CALL_BUDGET_MS, 10_000);
   const limit = options.limit ?? (hasShortRequestLimit() ? 1 : 2);
-  const result: DueResult = { paused: false, checked: 0, made: 0, skipped: 0, failed: 0, notices: 0, nextCursor: null };
-  if (!options.cursor) result.notices = await sendDueNotices(now).catch(() => 0);
+  const result: DueResult = { paused: false, checked: 0, made: 0, skipped: 0, failed: 0, notices: 0, carried: { moved: 0, expired: 0, toReview: 0 }, nextCursor: null };
+  if (!options.cursor) {
+    result.carried = await carryOverMissedPosts(now).catch(async (error) => {
+      await logError(error, { source: "content.carry-over" });
+      return result.carried;
+    });
+    result.notices = await sendDueNotices(now).catch(() => 0);
+  }
   if (!(await getSetting("dailyPosts"))) return { ...result, paused: true };
   let cursor = options.cursor ?? null;
   let runs = 0;

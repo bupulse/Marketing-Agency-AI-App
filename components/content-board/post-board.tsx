@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Undo2 } from "lucide-react";
+import { reusePostAction } from "@/app/dashboard/calendar/actions";
+import { Button, useToast } from "@/components/ui";
 import { PostComposer } from "@/components/publishing/composer";
 import { PostDetail } from "@/components/publishing/post-detail";
 import type { ContentPost } from "@/lib/content-board/queries";
@@ -84,7 +87,7 @@ export function PostBoard({
       <ul className="grid grid-cols-1 gap-4 @xl:grid-cols-2 @4xl:grid-cols-3 @7xl:grid-cols-4">
         {all.map((post) => (
           <li key={post.id}>
-            <PostCard post={post} zone={zone} onOpen={() => setDetailId(post.id)} showSubject={showSubject} />
+            <PostCard post={post} zone={zone} onOpen={() => setDetailId(post.id)} showSubject={showSubject} actions={post.status === "EXPIRED" ? <UseAgainButton postId={post.id} /> : undefined} />
           </li>
         ))}
       </ul>
@@ -98,5 +101,30 @@ export function PostBoard({
       <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(p) => { setDetailId(null); setEditing(p); }} visualHref={detail ? visualHrefFor(detail, zone) : null} autoNetworks={autoNetworksOf(context)} />
       <PostComposer open={editing !== null} onOpenChange={(o) => !o && setEditing(null)} context={context} post={editing ?? undefined} />
     </div>
+  );
+}
+
+/** "Use again" on an expired post: back to "Needs your OK" for today, its count of missed days reset. */
+function UseAgainButton({ postId }: { postId: string }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [pending, start] = useTransition();
+  return (
+    <Button
+      size="sm"
+      leading={<Undo2 aria-hidden className="size-4" />}
+      disabled={pending}
+      onClick={() =>
+        start(async () => {
+          const res = await reusePostAction(postId).catch(() => null);
+          if (!res) toast("We lost the connection before BuPulse answered. The page now shows where things stand.", "error");
+          else if (!res.ok) toast(res.error ?? "That did not work. Please try again.", "error");
+          else toast("Back for today. Approve it when you are ready.", "success");
+          router.refresh();
+        })
+      }
+    >
+      {pending ? "Bringing it back..." : "Use again"}
+    </Button>
   );
 }

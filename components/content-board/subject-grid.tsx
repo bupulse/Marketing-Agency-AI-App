@@ -15,14 +15,17 @@ function drillQuery(f: ContentFilters) {
  * The grid of products, campaigns and General. Search and sort are a plain GET form (works without JavaScript and
  * keeps the URL shareable); the other filters ride along as hidden fields.
  */
-export function SubjectGrid({ cards, filters }: { cards: SubjectCardView[]; filters: ContentFilters }) {
+export function SubjectGrid({ cards, filters, period }: { cards: SubjectCardView[]; filters: ContentFilters; /** The Day / Week / Month label the counts are for. */ period?: string | null }) {
   const hidden = new URLSearchParams(contentQuery({ ...filters, q: undefined, sort: "recent" }).slice(1));
   return (
     <section aria-labelledby="subjects-heading" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3 px-1">
-        <h2 id="subjects-heading" className="text-xl font-semibold tracking-[-0.02em]">
-          Products, campaigns and more
-        </h2>
+        <div className="flex flex-col gap-1">
+          <h2 id="subjects-heading" className="text-xl font-semibold tracking-[-0.02em]">
+            Products, campaigns and more
+          </h2>
+          {period && <p className="text-[14px] text-muted">Posts for {period}</p>}
+        </div>
       </div>
       <form method="get" role="search" className="flex flex-wrap items-end gap-2">
         {[...hidden.entries()].map(([k, v]) => (
@@ -49,7 +52,7 @@ export function SubjectGrid({ cards, filters }: { cards: SubjectCardView[]; filt
 
       {cards.length === 0 ? (
         <GlassCard className="flex flex-col items-start gap-3 px-5 py-8">
-          <p className="text-[15px] text-muted">Nothing matches. Try another word or clear the filters.</p>
+          <p className="text-[15px] text-muted">{period ? `No posts for ${period} match. Try another day, week or month, or clear the filters.` : "Nothing matches. Try another word or clear the filters."}</p>
           <Button href="/dashboard/content" variant="outline" size="sm">
             Clear filters
           </Button>
@@ -92,7 +95,12 @@ export function SubjectGrid({ cards, filters }: { cards: SubjectCardView[]; filt
                         </div>
                       ))}
                     </dl>
-                    {c.counts.failed > 0 && <span className="text-[13px] font-medium text-danger">{c.counts.failed} failed</span>}
+                    {(c.counts.failed > 0 || c.counts.expired > 0) && (
+                      <span className="flex flex-wrap gap-x-3 text-[13px] font-medium">
+                        {c.counts.failed > 0 && <span className="text-danger">{c.counts.failed} failed</span>}
+                        {c.counts.expired > 0 && <span className="text-muted">{c.counts.expired} expired</span>}
+                      </span>
+                    )}
                   </div>
                 </Link>
               </li>

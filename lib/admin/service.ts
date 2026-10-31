@@ -37,7 +37,7 @@ export { isEnabled } from "./flags";
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const APPROVAL_TTL_MS = 7 * DAY_MS;
 const SUBSCRIPTION_STATUSES = ["PENDING_DEMO", "TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"] as const;
-const POST_STATUSES = ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "PUBLISHING", "PUBLISHED", "NEEDS_ACTION", "FAILED", "CANCELLED"] as const;
+const POST_STATUSES = ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "PUBLISHING", "PUBLISHED", "NEEDS_ACTION", "FAILED", "CANCELLED", "EXPIRED"] as const;
 
 // ---- small helpers ----------------------------------------------------------------------------------------
 

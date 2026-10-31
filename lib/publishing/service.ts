@@ -11,7 +11,8 @@ import { buildProfile, preferredHours, preferredWeekdays, withLab } from "@/lib/
 import { labSchedule } from "@/lib/training-lab/schedule-reader";
 import { loadPostResults } from "@/lib/autopilot/results";
 import { EDITABLE, QUEUED, type PostStatusName } from "./status";
-import { parseLocalInput } from "./time";
+import { dayKey, isValidTimeZone, parseLocalInput } from "./time";
+import { dayDate } from "@/lib/content-board/period";
 import { formatFor, validatePost, type PostFormatName } from "./validate";
 import type { ComposeInput, EditInput } from "./types";
 import { composerMediaFor, isVideoPath, trimNote, videoFitsNetwork } from "@/lib/visuals/post-media";
@@ -444,6 +445,36 @@ export async function unschedulePost(owner: Owner, postId: string, now = new Dat
   const { count } = await prisma.post.updateMany({
     where: { id: postId, businessId: owner.businessId, status: "SCHEDULED", lockedAt: null },
     data: { status: "PENDING_APPROVAL", autoScheduledAt: null, ownerEditedAt: now },
+  });
+  if (count === 0) {
+    const post = await prisma.post.findFirst({ where: { id: postId, businessId: owner.businessId }, select: { status: true } });
+    if (!post) throw NOT_FOUND();
+    throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
+  }
+}
+
+/**
+ * "Use again": an expired post waits for the owner's OK again, for today, with its count of moves back to 0 and no
+ * time (approving it picks the best one). Only this business's expired posts.
+ */
+export async function reusePost(owner: Owner, postId: string, now = new Date()): Promise<void> {
+  const business = await prisma.business.findUnique({ where: { id: owner.businessId }, select: { timezone: true } });
+  const zone = business?.timezone && isValidTimeZone(business.timezone) ? business.timezone : "UTC";
+  const { count } = await prisma.post.updateMany({
+    where: { id: postId, businessId: owner.businessId, status: "EXPIRED" },
+    data: {
+      status: "PENDING_APPROVAL",
+      scheduledAt: null,
+      plannedDay: dayDate(dayKey(now, zone)),
+      carryCount: 0,
+      autoScheduledAt: null,
+      attempts: 0,
+      nextAttemptAt: null,
+      lockedAt: null,
+      lastError: null,
+      reviewNote: null,
+      ownerEditedAt: now,
+    },
   });
   if (count === 0) {
     const post = await prisma.post.findFirst({ where: { id: postId, businessId: owner.businessId }, select: { status: true } });

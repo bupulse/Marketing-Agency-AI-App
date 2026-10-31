@@ -7,11 +7,14 @@ import { Switch } from "@/components/autopilot/switch";
 import { NetworkIcon } from "@/components/publishing/network-icon";
 import { previewVoiceAction, saveContentSettingsAction } from "@/app/dashboard/content/actions";
 import { VOICES } from "@/lib/voice/voices";
-import { PACK_SIZE, type ContentSettings } from "@/lib/content-board/settings";
+import { approvalMode, PACK_SIZE, withApprovalForAll, type ContentSettings } from "@/lib/content-board/settings";
 import { networkLabel } from "@/lib/content-board/labels";
 import type { Network } from "@/lib/social/types";
 
-/** "Require my approval before posting", per app. Read-only for Members. */
+/**
+ * "Ask me to approve posts before they go out": one switch for every app (on by default), with each app underneath to
+ * fine-tune ("Some apps" when they differ). Read-only for Members.
+ */
 export function ContentSettingsForm({ initial, apps, connected, canEdit, askText }: { initial: ContentSettings; apps: readonly Network[]; connected: Network[]; canEdit: boolean; askText: string }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -20,6 +23,7 @@ export function ContentSettingsForm({ initial, apps, connected, canEdit, askText
   const [error, setError] = useState<string | null>(null);
   const changed = apps.some((a) => settings.requireApproval[a] !== initial.requireApproval[a]) || settings.packSize !== initial.packSize || settings.voiceId !== initial.voiceId;
   const [previewing, setPreviewing] = useState(false);
+  const mode = approvalMode(settings, apps);
 
   async function preview() {
     setPreviewing(true);
@@ -41,15 +45,22 @@ export function ContentSettingsForm({ initial, apps, connected, canEdit, askText
 
   return (
     <GlassCard as="section" aria-labelledby="approval-heading" padding="lg" className="flex flex-col gap-5">
-      <div className="flex flex-col gap-1.5">
-        <h2 id="approval-heading" className="text-xl font-semibold tracking-[-0.02em]">
-          Require my approval before posting
-        </h2>
-        <p className="text-[15px] text-muted">
-          On (recommended): new posts for the app wait as &ldquo;Needs review&rdquo; until you approve them. Off: BuPulse schedules them on its own at the best time for that app. This applies to posts from Studio and from Autopilot.
-        </p>
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <h2 id="approval-heading" className="text-xl font-semibold tracking-[-0.02em]">
+            Ask me to approve posts before they go out
+          </h2>
+          <p className="text-[15px] text-muted">
+            On (recommended): new posts wait as &ldquo;Needs your OK&rdquo; until you approve them. Off: BuPulse schedules each one on its own at the best time for its app. This applies to daily posts, and to posts from Studio and Autopilot.
+          </p>
+          <p role="status" className="text-[14px] font-semibold">
+            {mode === "all" ? "On for every app" : mode === "none" ? "Off for every app" : "Some apps"}
+          </p>
+        </div>
+        <Switch checked={mode === "all"} disabled={!canEdit || pending} label="Ask me to approve posts before they go out" onChange={(v) => setSettings((s) => withApprovalForAll(s, v, apps))} />
       </div>
-      <ul className="flex flex-col divide-y divide-line">
+      <h3 className="border-t border-line pt-4 text-[15px] font-semibold">Each app</h3>
+      <ul className="-mt-2 flex flex-col divide-y divide-line">
         {apps.map((app) => {
           const on = settings.requireApproval[app];
           return (

@@ -22,6 +22,7 @@ import {
   reschedulePost,
   retryPost,
   unschedulePost,
+  reusePost,
   setBusinessTimezone,
   updatePost,
   type Owner,
@@ -151,6 +152,14 @@ export async function connectByHandPostsAction(postIds: string[]): Promise<Actio
 export async function unschedulePostAction(postId: string): Promise<ActionResult> {
   return run("unschedule", "compose", async (o) => {
     await unschedulePost(o, String(postId));
+    return {};
+  });
+}
+
+/** "Use again": an expired post (missed its day 3 times) waits for the owner's OK again, for today. */
+export async function reusePostAction(postId: string): Promise<ActionResult> {
+  return run("use-again", "compose", async (o) => {
+    await reusePost(o, String(postId));
     return {};
   });
 }

@@ -841,6 +841,7 @@ enum PostStatus {
   NEEDS_ACTION // NOTIFY connections: the owner was reminded to post it by hand
   FAILED
   CANCELLED
+  EXPIRED // missed its day 3 times in a row (lib/content-board/carry-over.ts): never published; "Use again" brings it back
 }
 
 enum PostFormat {
@@ -907,6 +908,11 @@ model Post {
   contest        Json?
   // "post" | "carousel" | "video" | "article": kept by a database trigger from format and mediaPaths, for the type filter.
   mediaKind      String        @default("post")
+  // The business-local day a post without a time belongs to, once a missed day moved it (lib/content-board/carry-over.ts)
+  // or "Use again" brought it back. Null: the day it was made. A post with a time belongs to its time's day.
+  plannedDay     DateTime?     @db.Date
+  // How many times a missed post was moved to the next day. The 4th miss makes it EXPIRED; "Use again" sets it to 0.
+  carryCount     Int           @default(0)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   metrics        PostMetrics[]

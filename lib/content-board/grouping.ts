@@ -48,7 +48,7 @@ export function subjectHref(kind: SubjectKind, id: string | null): string {
   return `/dashboard/content/${kind === "product" ? "products" : "campaigns"}/${id}`;
 }
 
-const zero = (): Counts => ({ review: 0, scheduled: 0, posted: 0, failed: 0 });
+const zero = (): Counts => ({ review: 0, scheduled: 0, posted: 0, failed: 0, expired: 0 });
 
 function bucketOf(status: string): StatusFilter | null {
   for (const [key, statuses] of Object.entries(STATUS_GROUPS) as [StatusFilter, readonly string[]][]) if (statuses.includes(status)) return key;
@@ -70,22 +70,23 @@ export function countBySubject(rows: readonly CountRow[]): Map<string, { counts:
   return out;
 }
 
-const total = (c: Counts) => c.review + c.scheduled + c.posted + c.failed;
+const total = (c: Counts) => c.review + c.scheduled + c.posted + c.failed + c.expired;
 
 /**
  * The grid's cards. Archived products and campaigns show only when they have posts. When a post filter is on (app,
- * type, date, status, auto-scheduled), only subjects with matching posts show, so the grid answers the filter.
+ * type, date, period, status, auto-scheduled), only subjects with matching posts show, so the grid answers the filter.
  * `q` searches names; `sort` orders: latest activity, most to review, or name.
  */
 export function buildSubjectCards(input: {
   products: readonly SubjectRow[];
   campaigns: readonly SubjectRow[];
   counts: readonly CountRow[];
-  filters: Pick<ContentFilters, "apps" | "kinds" | "statuses" | "range" | "auto" | "q" | "sort">;
+  filters: Pick<ContentFilters, "apps" | "kinds" | "statuses" | "range" | "auto" | "q" | "sort"> & Partial<Pick<ContentFilters, "view">>;
 }): SubjectCard[] {
   const { filters } = input;
   const byKey = countBySubject(input.counts);
-  const filtering = filters.apps.length > 0 || filters.kinds.length > 0 || filters.statuses.length > 0 || Boolean(filters.range) || filters.auto;
+  // A period (Day / Week / Month) is a filter too: the grid shows what has posts in it.
+  const filtering = filters.apps.length > 0 || filters.kinds.length > 0 || filters.statuses.length > 0 || Boolean(filters.range) || Boolean(filters.view) || filters.auto;
 
   const card = (kind: SubjectKind, row: SubjectRow | null): SubjectCard => {
     const key = row ? `${kind}:${row.id}` : "general";

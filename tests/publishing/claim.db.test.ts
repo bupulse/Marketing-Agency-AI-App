@@ -35,6 +35,8 @@ describe.skipIf(!enabled)("claimDuePosts against the database", { timeout: 60_00
     if (created.error || !created.data.user) throw created.error ?? new Error("Could not create the test user");
     userId = created.data.user.id;
     await prisma.user.create({ data: { id: userId, email } });
+    // Only companies with a live subscription are claimed (a trial counts).
+    await prisma.subscription.create({ data: { userId } });
     const business = await prisma.business.create({ data: { userId, name: "Claim test" } });
     businessId = business.id;
     const connection = await prisma.connection.create({ data: { businessId, kind: "SOCIAL", provider: "facebook", externalAccountId: `claim-${userId}` } });
@@ -99,6 +101,24 @@ describe.skipIf(!enabled)("claimDuePosts against the database", { timeout: 60_00
     expect(claimed.length).toBeLessThanOrEqual(4);
     // seed() makes later ids older, so the four oldest are the last four.
     expect(new Set(mine)).toEqual(new Set(ids.slice(2)));
+  });
+
+  it("never publishes a post whose time was on a day that has passed in the company's zone (the carry-over moves it)", async () => {
+    // Kigali is UTC+2: "today" there starts at 22:00 UTC the day before.
+    await prisma.business.update({ where: { id: businessId }, data: { timezone: "Africa/Kigali" } });
+    try {
+      const { dayKey, parseDayKey, zonedTimeToUtc } = await import("@/lib/publishing/time");
+      const { year, month, day } = parseDayKey(dayKey(now, "Africa/Kigali"));
+      const midnight = zonedTimeToUtc(year, month, day, 0, 0, "Africa/Kigali");
+      const [yesterday] = await seed(1, { scheduledAt: new Date(midnight.getTime() - 60_000) });
+      const [today] = await seed(1, { scheduledAt: midnight });
+      // Only these two, so the test never takes another company's posts.
+      const claimed = await claimDuePosts({ now, limit: 5, ids: [yesterday, today], businessId });
+      expect(claimed).toEqual(midnight.getTime() <= now.getTime() ? [today] : []);
+      expect((await prisma.post.findUnique({ where: { id: yesterday } }))?.status).toBe("SCHEDULED");
+    } finally {
+      await prisma.business.update({ where: { id: businessId }, data: { timezone: "UTC" } });
+    }
   });
 
   it("a manual publish claims only the given posts of that business", async () => {

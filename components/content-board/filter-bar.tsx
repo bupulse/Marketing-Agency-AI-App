@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn";
 import {
   activeFilterCount,
   contentQuery,
+  customRangeText,
   DATE_RANGE_LABEL,
   DATE_RANGES,
   STATUS_FILTER_LABEL,
@@ -25,9 +26,10 @@ const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter(
 
 /**
  * The Content page's filters, kept in the URL so a view can be shared: quick status chips inline, and every filter
- * (app, post type, date, status) in a sheet (a bottom sheet on phones). Active filters show as removable chips.
+ * (app, post type, custom dates, status) in a sheet (a bottom sheet on phones). Active filters show as removable chips.
+ * The Day / Week / Month period (its own bar, components/content-board/period-bar.tsx) rides along in `filters`.
  */
-export function FilterBar({ filters, apps = NETWORKS, day }: { filters: ContentFilters; apps?: readonly Network[]; /** The day view's day (content flow v3): kept in the URL, and the date filter is not offered. */ day?: string }) {
+export function FilterBar({ filters, apps = NETWORKS, dates = true }: { filters: ContentFilters; apps?: readonly Network[]; /** Offer custom dates in the sheet (inside a card the period bar sets the dates). */ dates?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -37,11 +39,10 @@ export function FilterBar({ filters, apps = NETWORKS, day }: { filters: ContentF
   const count = activeFilterCount(filters);
 
   function go(next: ContentFilters) {
-    const query = contentQuery({ ...next, limit: undefined, ...(day ? { range: undefined } : {}) });
-    const withDay = day ? `${query ? `${query}&` : "?"}day=${day}` : query;
+    const query = contentQuery({ ...next, limit: undefined, ...(dates ? {} : { range: undefined }) });
     start(() => {
       setStatuses(next.statuses);
-      router.push(`${pathname}${withDay}`, { scroll: false });
+      router.push(`${pathname}${query}`, { scroll: false });
     });
   }
 
@@ -101,16 +102,14 @@ export function FilterBar({ filters, apps = NETWORKS, day }: { filters: ContentF
       )}
 
       <Dialog open={open} onOpenChange={setOpen} title="Filters" className="max-w-xl">
-        {open && <FilterSheet initial={filters} apps={apps} dates={!day} onApply={(f) => { setOpen(false); go(f); }} />}
+        {open && <FilterSheet initial={filters} apps={apps} dates={dates} onApply={(f) => { setOpen(false); go(f.range === "custom" ? { ...f, view: undefined, day: undefined } : f); }} />}
       </Dialog>
     </div>
   );
 }
 
 function rangeText(f: ContentFilters): string {
-  if (f.range !== "custom") return DATE_RANGE_LABEL[f.range ?? "today"];
-  if (f.from && f.to) return f.from === f.to ? f.from : `${f.from} to ${f.to}`;
-  return f.from ? `from ${f.from}` : `until ${f.to}`;
+  return f.range !== "custom" ? DATE_RANGE_LABEL[f.range ?? "today"] : customRangeText(f);
 }
 
 function Group({ legend, children }: { legend: string; children: React.ReactNode }) {
@@ -182,12 +181,14 @@ function FilterSheet({ initial, apps, dates = true, onApply }: { initial: Conten
           <Chip selected={!f.range} onClick={() => set({ range: undefined, from: undefined, to: undefined })} className="px-4 py-2 text-[14px]">
             Any time
           </Chip>
-          {DATE_RANGES.map((r: DateRange) => (
+          {/* Today, 7 and 30 days became the Day / Week / Month switch above; an old link's range still shows here. */}
+          {DATE_RANGES.filter((r) => r === "custom" || r === f.range).map((r: DateRange) => (
             <Chip key={r} selected={f.range === r} onClick={() => set({ range: r })} className="px-4 py-2 text-[14px]">
-              {DATE_RANGE_LABEL[r]}
+              {r === "custom" ? "Pick dates" : DATE_RANGE_LABEL[r]}
             </Chip>
           ))}
         </div>
+        <p className="text-[13px] text-muted">For one day, a week or a month, use the Day, Week and Month switch on the page.</p>
         {f.range && f.range !== "custom" && f.dateField === "planned" && <p className="text-[13px] text-muted">Shows posts that went out in that time and posts scheduled for the same time ahead.</p>}
         {f.range === "custom" && (
           <div className="grid grid-cols-2 gap-3">

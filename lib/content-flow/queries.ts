@@ -4,7 +4,7 @@ import { postInclude, toContentPosts } from "@/lib/content-board/queries";
 import type { ContentFilters, ContentScope } from "@/lib/content-board/filters";
 import { prisma } from "@/lib/db";
 import { loadVisuals, pickVisuals } from "@/lib/visuals/queries";
-import { dayBounds, dayDate, dayWhere } from "./day";
+import { dayBounds, dayDate, dayWhere, periodWhere } from "./day";
 
 /**
  * One day of a subject's posts (content flow v3, lib/content-flow/day.ts): made that day or going out that day, under
@@ -13,6 +13,16 @@ import { dayBounds, dayDate, dayWhere } from "./day";
 export async function loadDayPosts(businessId: string, scope: ContentScope, day: string, filters: ContentFilters, zone: string, now: Date) {
   const where = dayWhere(businessId, scope, day, zone, filters, now);
   const [rows, total] = await Promise.all([prisma.post.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: filters.limit + 1, include: postInclude }), prisma.post.count({ where })]);
+  return { posts: await toContentPosts(businessId, rows.slice(0, filters.limit)), total, hasMore: rows.length > filters.limit };
+}
+
+/**
+ * A week's or month's posts of a subject (the Week / Month switch, lib/content-board/period.ts), oldest first so a
+ * longer list ("Show more") continues at its end. The page groups them by day.
+ */
+export async function loadPeriodPosts(businessId: string, scope: ContentScope, period: { start: string; end: string }, filters: ContentFilters, zone: string, now: Date) {
+  const where = periodWhere(businessId, scope, period, zone, filters, now);
+  const [rows, total] = await Promise.all([prisma.post.findMany({ where, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: filters.limit + 1, include: postInclude }), prisma.post.count({ where })]);
   return { posts: await toContentPosts(businessId, rows.slice(0, filters.limit)), total, hasMore: rows.length > filters.limit };
 }
 

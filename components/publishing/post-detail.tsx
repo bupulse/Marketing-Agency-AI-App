@@ -15,6 +15,7 @@ import {
   reschedulePostAction,
   retryPostAction,
   unschedulePostAction,
+  reusePostAction,
 } from "@/app/dashboard/calendar/actions";
 import { PostWriting } from "@/components/content-flow/post-writing";
 import { WhatsAppShare } from "@/components/share/whatsapp-share";
@@ -145,6 +146,11 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
           We emailed you a reminder to post this on {networkName(post.network)}. Once it is up, press &ldquo;Mark as posted&rdquo;.
         </p>
       )}
+      {post.status === "EXPIRED" && (
+        <p role="note" className="rounded-2xl bg-soft p-3.5 text-[14px] text-muted">
+          This post missed its day 3 times, so it expired and will not go out. &ldquo;Use again&rdquo; brings it back to &ldquo;Needs your OK&rdquo; for today.
+        </p>
+      )}
       {post.status === "SCHEDULED" && post.lastError && <p className="rounded-2xl bg-soft p-3.5 text-[14px] text-muted">Last try: {post.lastError} We will try again automatically.</p>}
 
       {withResults && <ResultsPanel posts={withResults} zone={zone} />}
@@ -182,6 +188,9 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
       <div className="flex flex-wrap items-start gap-2">
         {post.status === "PENDING_APPROVAL" && (
           <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => approvePostsAction([post.id]), (res) => (Number(res.skipped ?? 0) > 0 ? { text: "No free time was found for it. Open it, pick a time with Move, then approve.", tone: "error" } : { text: timePassed ? APPROVED_LATE : "Approved. It will go out at its time.", tone: "success" }))}>Approve</Button>
+        )}
+        {post.status === "EXPIRED" && (
+          <Button size="sm" leading={<Undo2 aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => reusePostAction(post.id), "Back for today. Approve it when you are ready.")}>Use again</Button>
         )}
         {post.status === "FAILED" && (
           <Button size="sm" leading={<RotateCw aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => retryPostAction(post.id), retryMessage)}>Retry</Button>

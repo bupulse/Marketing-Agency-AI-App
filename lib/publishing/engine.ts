@@ -21,6 +21,7 @@ import { composeText } from "./validate";
 import { CONTEST_NOTE, contestBlocked } from "@/lib/content-flow/contest";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { recordStudioOutcome } from "@/lib/video-studio/outcomes";
+import { dayKey, isValidTimeZone, parseDayKey, zonedTimeToUtc } from "./time";
 
 /** A claimed post whose lock is older than this was abandoned by a crashed run and is taken again. */
 export const STALE_LOCK_MINUTES = 10;
@@ -62,7 +63,8 @@ const NOT_BEING_DELETED = Prisma.sql`AND "businessId" NOT IN (
 /**
  * Atomically takes due posts: one UPDATE ... RETURNING over rows locked with SKIP LOCKED, so two runs at
  * the same moment can never both get a post. Due means SCHEDULED, past its time and any back-off wait, with
- * attempts left. A PUBLISHING post is never taken again (see sweepStalePosts): the network may already have it.
+ * attempts left, and its time on its company's today (notFromPastDaySql). Never DRAFT, PENDING_APPROVAL or EXPIRED.
+ * A PUBLISHING post is never taken again (see sweepStalePosts): the network may already have it.
  * Each claim counts as an attempt.
  */
 /**
@@ -71,6 +73,25 @@ const NOT_BEING_DELETED = Prisma.sql`AND "businessId" NOT IN (
  */
 const NOT_FORCE_DISCONNECTED = Prisma.sql`AND NOT ("lastError" LIKE 'Needs reconnect:%' AND EXISTS (
   SELECT 1 FROM "Connection" c WHERE c."id" = "Post"."connectionId" AND c."status" = 'REVOKED'::"ConnectionStatus" AND c."accessTokenEncrypted" IS NULL))`;
+
+/**
+ * Posts whose time was on a business-local day that has passed are not published late: after local midnight they wait
+ * for the carry-over (lib/content-board/carry-over.ts, the hourly daily-posts cron), which gives them today's best time
+ * (or expires them after 3 missed days). Each company's midnight is in its own zone, worked out here (the zones are
+ * few) so a bad zone name can never break the claim: unknown zones count as UTC, like everywhere else.
+ */
+export async function notFromPastDaySql(now: Date): Promise<Prisma.Sql> {
+  const rows = await prisma.business.findMany({ distinct: ["timezone"], select: { timezone: true }, take: 500 });
+  const valid = [...new Set(rows.map((r) => r.timezone).filter((z): z is string => Boolean(z) && z !== "UTC" && isValidTimeZone(z)))];
+  const since = (zone: string) => {
+    const { year, month, day } = parseDayKey(dayKey(now, zone));
+    return zonedTimeToUtc(year, month, day, 0, 0, zone);
+  };
+  const zoned = valid.map((zone) => Prisma.sql`(b."timezone" = ${zone} AND "Post"."scheduledAt" >= ${since(zone)})`);
+  const others = valid.length ? Prisma.sql`b."timezone" NOT IN (${Prisma.join(valid)})` : Prisma.sql`TRUE`;
+  const rest = Prisma.sql`(${others} AND "Post"."scheduledAt" >= ${since("UTC")})`;
+  return Prisma.sql`AND EXISTS (SELECT 1 FROM "Business" b WHERE b."id" = "Post"."businessId" AND (${Prisma.join([...zoned, rest], " OR ")}))`;
+}
 
 export async function claimDuePosts(args: { now: Date; limit: number; ids?: string[]; businessId?: string }): Promise<string[]> {
   const { now, limit } = args;
@@ -89,6 +110,7 @@ export async function claimDuePosts(args: { now: Date; limit: number; ids?: stri
   // using attempts. (A trial that ran out but was not flipped yet, or a card plan past its shorter grace, is caught by
   // the entitlement check below and released the same way.)
   const graceOver = new Date(now.getTime() - MAX_GRACE_MS);
+  const todaySql = await notFromPastDaySql(now);
   const liveSql = Prisma.sql`AND "businessId" IN (SELECT b."id" FROM "Business" b JOIN "Subscription" s ON s."userId" = b."userId" WHERE s."status" IN ('ACTIVE'::"SubscriptionStatus", 'TRIALING'::"SubscriptionStatus") AND (s."plan" = 'TRIAL' OR s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd" > ${graceOver}))`;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     UPDATE "Post" SET "status" = 'PUBLISHING'::"PostStatus", "lockedAt" = ${now}, "attempts" = "attempts" + 1, "updatedAt" = ${now}
@@ -97,7 +119,7 @@ export async function claimDuePosts(args: { now: Date; limit: number; ids?: stri
       WHERE "status" = 'SCHEDULED'::"PostStatus" AND "scheduledAt" <= ${now}
         AND "attempts" < ${MAX_ATTEMPTS}
         AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= ${now})
-        ${NOT_BEING_DELETED} ${NOT_FORCE_DISCONNECTED} ${liveSql} ${only} ${business} ${pausedSql} ${reminderSql}
+        ${NOT_BEING_DELETED} ${NOT_FORCE_DISCONNECTED} ${liveSql} ${todaySql} ${only} ${business} ${pausedSql} ${reminderSql}
       ORDER BY "scheduledAt" ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED

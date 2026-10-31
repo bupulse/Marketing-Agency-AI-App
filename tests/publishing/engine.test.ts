@@ -6,6 +6,8 @@ vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 const prisma = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
   post: { findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
+  // The companies' zones, for "not from a day that has passed" (notFromPastDaySql).
+  business: { findMany: vi.fn(async () => [{ timezone: "Africa/Kigali" }, { timezone: "UTC" }]) },
   mediaAsset: { findMany: vi.fn() },
   serviceSwitch: { findMany: vi.fn() },
 }));
@@ -31,7 +33,7 @@ vi.mock("@/lib/publishing/media", async () => {
   return { ...actual, signPaths: media.signPaths, signPathsForNetwork: media.signPathsForNetwork, adminStorageClient: media.adminStorageClient };
 });
 
-import { backoffMinutes, claimDuePosts, MAX_ATTEMPTS, publishDue, publishPostsNow, STALE_LOCK_MINUTES, sweepStalePosts } from "@/lib/publishing/engine";
+import { backoffMinutes, claimDuePosts, MAX_ATTEMPTS, notFromPastDaySql, publishDue, publishPostsNow, STALE_LOCK_MINUTES, sweepStalePosts } from "@/lib/publishing/engine";
 import { SocialError } from "@/lib/social/types";
 import { clearSwitchCache } from "@/lib/admin/switch";
 
@@ -136,6 +138,23 @@ describe("claiming", () => {
     expect(text).toContain("currentPeriodEnd");
     expect(text).toContain(`s.\\"plan\\" = 'TRIAL'`);
     expect(text).toContain(new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString());
+  });
+
+  it("never publishes a post from a day that has passed in its company's zone, nor an expired one", async () => {
+    // 10:00 UTC on 7 October: Kigali's day started at 22:00 UTC the day before, UTC's at 00:00.
+    await claimDuePosts({ now, limit: 7 });
+    const [strings, ...values] = claimCalls()[0];
+    expect((strings as string[]).join("?")).toMatch(/WHERE "status" = 'SCHEDULED'::"PostStatus" AND/);
+    expect((strings as string[]).join("?")).not.toMatch(/EXPIRED|PENDING_APPROVAL/);
+    const guard = await notFromPastDaySql(now);
+    expect(values).toContainEqual(guard);
+    expect(guard.sql).toMatch(/EXISTS \(SELECT 1 FROM "Business" b WHERE b\."id" = "Post"\."businessId"/);
+    expect(guard.values).toEqual(["Africa/Kigali", new Date("2026-10-06T22:00:00Z"), "Africa/Kigali", new Date("2026-10-07T00:00:00Z")]);
+    // A zone the app cannot read counts as UTC, and is never sent to the database as a zone name.
+    prisma.business.findMany.mockResolvedValueOnce([{ timezone: "Mars/Olympus" }, { timezone: "" }]);
+    const unknown = await notFromPastDaySql(now);
+    expect(unknown.sql).toContain('(TRUE AND "Post"."scheduledAt" >= ?)');
+    expect(unknown.values).toEqual([new Date("2026-10-07T00:00:00Z")]);
   });
 
   it("limits a manual publish to the business and the given posts", async () => {

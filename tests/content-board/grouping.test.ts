@@ -19,14 +19,16 @@ const counts: CountRow[] = [
   row({ campaignId: "c1" }, "PUBLISHED", 2, day(12)),
   row({}, "PENDING_APPROVAL", 5, day(11)),
   row({}, "CANCELLED", 9, day(13)),
+  row({}, "EXPIRED", 2, day(10)),
 ];
 
 describe("countBySubject", () => {
-  it("adds statuses into review, scheduled, posted and failed, and ignores cancelled posts", () => {
+  it("adds statuses into review, scheduled, posted, failed and expired, and ignores cancelled posts", () => {
     const map = countBySubject(counts);
-    expect(map.get("product:p1")?.counts).toEqual({ review: 3, scheduled: 4, posted: 4, failed: 1 });
-    expect(map.get("campaign:c1")?.counts).toEqual({ review: 0, scheduled: 0, posted: 2, failed: 0 });
-    expect(map.get("general")?.counts).toEqual({ review: 5, scheduled: 0, posted: 0, failed: 0 });
+    expect(map.get("product:p1")?.counts).toEqual({ review: 3, scheduled: 4, posted: 4, failed: 1, expired: 0 });
+    expect(map.get("campaign:c1")?.counts).toEqual({ review: 0, scheduled: 0, posted: 2, failed: 0, expired: 0 });
+    // Expired posts are their own count, never "Needs review".
+    expect(map.get("general")?.counts).toEqual({ review: 5, scheduled: 0, posted: 0, failed: 0, expired: 2 });
     expect(map.get("general")?.last).toEqual(day(11));
   });
 });
@@ -36,7 +38,8 @@ describe("buildSubjectCards", () => {
     const cards = buildSubjectCards({ products, campaigns, counts, filters: EMPTY_FILTERS });
     expect(cards.map((c) => c.key).sort()).toEqual(["campaign:c1", "general", "product:p1", "product:p2"]);
     const general = cards.find((c) => c.kind === "general")!;
-    expect(general).toMatchObject({ name: "General", href: "/dashboard/content/general", total: 5 });
+    // 5 waiting and 2 expired: an expired post is still a post of the subject.
+    expect(general).toMatchObject({ name: "General", href: "/dashboard/content/general", total: 7 });
     expect(cards.find((c) => c.key === "product:p1")).toMatchObject({ href: "/dashboard/content/products/p1", total: 12 });
   });
 

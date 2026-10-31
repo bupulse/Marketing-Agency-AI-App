@@ -94,11 +94,12 @@ describe("contentWhere", () => {
     expect(where.AND).toEqual([{ OR: [{ text: { contains: "bread", mode: "insensitive" } }, { title: { contains: "bread", mode: "insensitive" } }] }]);
   });
 
-  it("filters scheduled or posted on the publish time, else the planned time", () => {
+  it("filters scheduled or posted on the publish time, else the planned time, else the day a missed day moved it to", () => {
     const where = contentWhere("b1", parseContentFilters({ date: "planned", range: "today" }), { zone, now });
     const window = { gte: new Date("2026-10-12T22:00:00Z"), lt: new Date("2026-10-13T22:00:00Z") };
+    const planned = { gte: new Date("2026-10-13T00:00:00Z"), lt: new Date("2026-10-14T00:00:00Z") };
     expect(where.createdAt).toBeUndefined();
-    expect(where.AND).toEqual([{ OR: [{ publishedAt: window }, { publishedAt: null, scheduledAt: window }] }]);
+    expect(where.AND).toEqual([{ OR: [{ publishedAt: window }, { publishedAt: null, scheduledAt: window }, { publishedAt: null, scheduledAt: null, plannedDay: planned }] }]);
   });
 
   it("General means tied to no product or campaign; the grid can ignore status and search", () => {

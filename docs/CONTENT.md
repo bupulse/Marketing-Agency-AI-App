@@ -316,9 +316,10 @@ chosen per app and angle, after the angles and before writing, so the writer kno
 | --- | --- | --- |
 | `app` | `instagram,facebook,linkedin,tiktok,youtube` | the networks BuPulse supports (`NETWORKS`) |
 | `type` | `post,carousel,video,article` | from the post's format and media: a video is a Reel on Instagram, a Short on YouTube, a Video elsewhere (SCRIPT reminders included); `article` is LinkedIn's long post. Stories are not supported by BuPulse, so there is no Story type. |
-| `status` | `review,scheduled,posted,failed` | review = PENDING_APPROVAL and DRAFT; scheduled = SCHEDULED, PUBLISHING, NEEDS_ACTION; posted = PUBLISHED; failed = FAILED. Cancelled posts are never listed. |
-| `date` | `created` (default) or `planned` | which date the range uses |
-| `range` | `today`, `7d`, `30d`, `custom` (+ `from`, `to` as `YYYY-MM-DD`, inclusive) | in the business's time zone. Created looks back N days; "Scheduled or posted" looks N days back (posted) and N days ahead (scheduled). |
+| `status` | `review,scheduled,posted,failed,expired` | review = PENDING_APPROVAL and DRAFT; scheduled = SCHEDULED, PUBLISHING, NEEDS_ACTION; posted = PUBLISHED; failed = FAILED; expired = EXPIRED (missed its day 3 times, see "Missed posts"). Cancelled posts are never listed. |
+| `view`, `day` | `day`, `week`, `month`; `YYYY-MM-DD` (default today) | the Day / Week / Month switch (`period.ts`, pure): posts made, posted, scheduled or (without a time) planned in that period, in the business's time zone. Weeks start on Monday. On the Posts page no `view` means "All"; inside a card the default is `day`. A custom range replaces it. |
+| `date` | `created` (default) or `planned` | which date the custom range uses |
+| `range` | `custom` (+ `from`, `to` as `YYYY-MM-DD`, inclusive); old links: `today`, `7d`, `30d` | in the business's time zone. The sheet offers only custom dates now (Today, 7 and 30 days became the period switch); old links still work. Created looks back N days; "Scheduled or posted" looks N days back (posted) and N days ahead (scheduled). |
 | `auto` | `1` | only posts auto-approval scheduled |
 | `q`, `sort` | text; `recent`, `review`, `name` | grid search and order (on a subject page `q` searches the post text) |
 | `limit` | 24 to 240 | how many posts a subject page shows |
@@ -399,9 +400,28 @@ depend on a connection:
 - **Scheduling by hand from content** replaces its untouched drafts for those accounts and cancels the drafts the owner
   had edited ("Replaced by the post you scheduled"), so an account never gets two posts.
 
+## Missed posts (`carry-over.ts`)
+
+A post planned for a business-local day that has passed and was not posted moves to today: PENDING_APPROVAL posts
+(never approved) and SCHEDULED posts (approved) whose time is before today's local midnight, or that have no time and
+were planned for (`Post.plannedDay`) or, never moved, made on an earlier day. A waiting post loses its old time, gets
+`plannedDay` = today and shows under today's "Needs your OK"; an approved one gets today's best free time
+(`bestTimesFor` + `scheduleAtFreeSlot`), or, when no time is free, waits for the owner with a note. Each move adds one
+to `Post.carryCount`; a post that already moved 3 times becomes EXPIRED instead: it never publishes, shows under the
+"Expired" filter, and "Use again" (`reusePost`) brings it back to "Needs your OK" for today with its count at 0.
+
+Left alone: DRAFT (no day yet), PUBLISHING, PUBLISHED, CANCELLED, and NEEDS_ACTION and FAILED, which wait for the
+owner to do something (post it by hand, reconnect, retry). It runs at the start of each hourly daily-posts cron call
+(`runDueDailyPosts`, first page only), for every company zone by zone, so each company's first run after its midnight
+moves its posts; every write is guarded by the post's `updatedAt`, so running twice moves nothing twice. Companies being
+deleted or suspended are left as they are. The publisher never takes a SCHEDULED post whose time was before its
+company's local midnight (`notFromPastDaySql`): it waits for the carry-over instead of going out a day late.
+
 ## Approval and auto-approval
 
-**Settings** (`/dashboard/content/settings`): "Require my approval before posting" per app. Stored as
+**Settings** (`/dashboard/content/settings`): one switch, "Ask me to approve posts before they go out" (on by default:
+every app waits; off: every app is scheduled at its best time; "Some apps" when they differ, `approvalMode`), with each
+app underneath to fine-tune. Stored as
 `Business.contentSettings` (`{ requireApproval: { instagram: false, ... } }`, zod `contentSettingsSchema`, strict);
 missing or unreadable means approval required, so **the default is approval for every app**. Only Owners and Admins
 may change it (`contentSettings` permission, checked in `saveContentSettings`, not only on the page); Members see the

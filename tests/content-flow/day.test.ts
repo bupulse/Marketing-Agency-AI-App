@@ -23,13 +23,14 @@ describe("days in the business's time zone", () => {
     expect(dayDate("2026-10-13").toISOString()).toBe("2026-10-13T00:00:00.000Z");
   });
 
-  it("queries the posts made that day or going out that day, scoped to the business and the subject", () => {
+  it("queries the posts made that day, going out that day, or moved to it by a missed day, scoped to the business and the subject", () => {
     const where = dayWhere("b1", { kind: "product", id: "p1" }, "2026-10-13", KIGALI, { ...EMPTY_FILTERS, apps: ["instagram"], range: "30d" }, new Date("2026-10-13T08:00:00Z"));
     const window = { gte: new Date("2026-10-12T22:00:00Z"), lt: new Date("2026-10-13T22:00:00Z") };
     expect(where).toMatchObject({ businessId: "b1", productId: "p1", network: { in: ["instagram"] } });
     // The board's date range does not apply on a day.
     expect(where.createdAt).toBeUndefined();
-    expect(where.AND).toEqual([{ OR: [{ createdAt: window }, { publishedAt: window }, { publishedAt: null, scheduledAt: window }] }]);
+    const planned = { gte: new Date("2026-10-13T00:00:00Z"), lt: new Date("2026-10-14T00:00:00Z") };
+    expect(where.AND).toEqual([{ OR: [{ createdAt: window }, { publishedAt: window }, { publishedAt: null, scheduledAt: window }, { publishedAt: null, scheduledAt: null, plannedDay: planned }] }]);
     const general = dayWhere("b1", { kind: "general" }, "2026-10-13", KIGALI, EMPTY_FILTERS, new Date());
     expect(general).toMatchObject({ productId: null, campaignId: null });
   });
@@ -52,6 +53,16 @@ describe("days in the business's time zone", () => {
     );
     expect(g.goes.map((p) => p.id)).toEqual(["b", "a"]);
     expect(g.review.map((p) => p.id)).toEqual(["c"]);
+  });
+
+  it("a post a missed day moved waits on its new day; on the day it was made it shows as made; expired posts have their own section", () => {
+    const moved = { status: "PENDING_APPROVAL", scheduledAt: null, publishedAt: null, plannedDay: "2026-10-14" };
+    expect(daySection(moved, "2026-10-14", KIGALI)).toBe("review");
+    expect(daySection(moved, "2026-10-13", KIGALI)).toBe("made");
+    expect(daySection({ status: "EXPIRED", scheduledAt: "2026-10-13T08:00:00Z", publishedAt: null, plannedDay: "2026-10-13" }, "2026-10-13", KIGALI)).toBe("expired");
+    const g = groupDay([{ id: "x", status: "EXPIRED", scheduledAt: null, publishedAt: null }, { id: "m", ...moved }], "2026-10-14", KIGALI);
+    expect(g.expired.map((p) => p.id)).toEqual(["x"]);
+    expect(g.review.map((p) => p.id)).toEqual(["m"]);
   });
 
   it("labels today, yesterday and tomorrow", () => {

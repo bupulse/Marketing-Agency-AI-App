@@ -6,12 +6,15 @@ import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { SwitchToAutoBanner } from "@/components/content-board/content-actions";
 import { FilterBar } from "@/components/content-board/filter-bar";
+import { PeriodBar } from "@/components/content-board/period-bar";
 import { SubjectGrid } from "@/components/content-board/subject-grid";
 import { TodayReview } from "@/components/content-board/today-review";
 import { Button, GlassCard } from "@/components/ui";
 import { parseContentFilters } from "@/lib/content-board/filters";
 import { loadSubjectCards, loadToday, missingApps, recentAutoCount, switchableByHand } from "@/lib/content-board/queries";
-import { contentQuery } from "@/lib/content-board/filters";
+import { contentQuery, customRangeText } from "@/lib/content-board/filters";
+import { periodLabel, periodOf } from "@/lib/content-board/period";
+import { parseDay, todayIn } from "@/lib/content-flow/day";
 import { can } from "@/lib/team/roles";
 import { ConnectAppsBanner } from "@/components/content-board/connect-apps-banner";
 import { ScheduleAllButton } from "@/components/content-board/schedule-all";
@@ -25,9 +28,15 @@ export default async function ContentPage({ searchParams }: { searchParams: Sear
   const blocked = await featureGate("content");
   if (blocked) return blocked;
   const { business, entitlements, role } = await getAppContext();
-  const filters = parseContentFilters(await searchParams);
+  const parsed = parseContentFilters(await searchParams);
   const zone = business.timezone || "UTC";
   const now = new Date();
+  // The Day / Week / Month switch: none ("All") by default here; the day is kept within the date bar's range.
+  const todayKey = todayIn(zone, now);
+  const anchor = parseDay(parsed.day, zone, now);
+  const filters = { ...parsed, day: parsed.view && anchor !== todayKey ? anchor : undefined };
+  const period = filters.view ? periodOf(filters.view, anchor) : null;
+  const label = period ? periodLabel(period, todayKey) : null;
   const posting = entitlements.usable.has("calendar");
 
   const [cards, today, autoCount, context, switchable, missing] = await Promise.all([
@@ -77,13 +86,14 @@ export default async function ContentPage({ searchParams }: { searchParams: Sear
       ) : (
         <>
           {today && context && <TodayReview posts={today.posts} older={today.older} zone={zone} context={context} />}
+          <PeriodBar path="/dashboard/content" view={filters.view ?? null} anchor={anchor} today={todayKey} label={label ?? ""} query={contentQuery(filters)} allowAll custom={filters.range === "custom" ? customRangeText(filters) : null} />
           <FilterBar filters={filters} />
           {posting && (
             <div className="-mt-4 flex justify-end">
               <ScheduleAllButton query={contentQuery(filters)} />
             </div>
           )}
-          <SubjectGrid cards={cards} filters={filters} />
+          <SubjectGrid cards={cards} filters={filters} period={label} />
         </>
       )}
     </div>
