@@ -6,7 +6,7 @@ import { formatPlanPrice, formatPrice, intervalWord, yearlyDiscountPercent, type
  * A plan's price. Yearly shows what 12 monthly payments would cost crossed out, the yearly
  * price, and the discount (e.g. "17% off"). Used on the pricing page and the billing page.
  */
-export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices; interval: BillingInterval; size?: "lg" | "md" }) {
+export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices; interval: BillingInterval; size?: "lg" | "md" | "sm" }) {
   const yearly = interval === "YEAR";
   const fullYear = plan.monthlyPriceCents * 12;
   return (
@@ -19,11 +19,11 @@ export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices; in
         </del>
         {yearlyDiscountPercent(plan) > 0 && <span className="rounded-full bg-success-bg px-2 py-0.5 text-xs font-semibold text-success">{yearlyDiscountPercent(plan)}% off</span>}
       </p>
-      <p className="flex items-baseline gap-1.5">
-        <span className={cn("font-bold tracking-[-0.04em]", size === "lg" ? "text-5xl" : "text-4xl font-semibold tracking-[-0.03em]")}>
+      <p className={cn("flex items-baseline gap-1.5", size === "sm" && "flex-wrap whitespace-nowrap")}>
+        <span className={cn("font-bold tracking-[-0.04em]", size === "lg" ? "text-5xl" : size === "md" ? "text-4xl font-semibold tracking-[-0.03em]" : "text-[2rem] leading-tight tracking-[-0.03em]")}>
           {formatPlanPrice(plan, interval)}
         </span>
-        <span className="text-muted">/ {intervalWord(interval)}</span>
+        <span className={cn("text-muted", size === "sm" && "text-sm")}>/ {intervalWord(interval)}</span>
       </p>
     </div>
   );

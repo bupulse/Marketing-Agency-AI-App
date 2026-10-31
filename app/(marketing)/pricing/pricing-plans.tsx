@@ -32,6 +32,12 @@ export function PricingPlans({ plans, custom = false }: { plans: RegionalPlan[];
     return <p className="mx-auto max-w-xl rounded-2xl bg-soft px-4 py-8 text-center text-[15px] text-muted">No plans are on sale in this region yet. Get in touch and we will tell you what is coming.</p>;
   }
 
+  // Four cards side by side (with Custom): wider grid, tighter cards and smaller type so each fits a laptop screen.
+  const count = plans.length + (custom ? 1 : 0);
+  const dense = count >= 4;
+  const pointClass = dense ? "flex items-start gap-2.5 text-[15px] leading-snug" : "flex items-start gap-3";
+  const checkClass = dense ? "mt-0.5 size-4 shrink-0 text-success" : "mt-0.5 size-5 shrink-0 text-success";
+
   return (
     <div className="flex flex-col items-center gap-8">
       {/* Wrapped so the toggle centres here (it aligns to the start on the billing page). */}
@@ -41,27 +47,27 @@ export function PricingPlans({ plans, custom = false }: { plans: RegionalPlan[];
       <div
         className={cn(
           "mx-auto grid w-full gap-6",
-          plans.length + (custom ? 1 : 0) >= 4 ? "max-w-7xl md:grid-cols-2 xl:grid-cols-4" : plans.length + (custom ? 1 : 0) === 3 ? "max-w-6xl md:grid-cols-2 lg:grid-cols-3" : "max-w-4xl md:grid-cols-2",
+          dense ? "gap-5 md:grid-cols-2 xl:grid-cols-4" : count === 3 ? "max-w-6xl md:grid-cols-2 lg:grid-cols-3" : "max-w-4xl md:grid-cols-2",
         )}
       >
         {plans.map((plan) => (
           <GlassCard
             key={plan.key}
             strong={plan.highlight}
-            padding="lg"
-            className={cn("relative flex flex-col gap-6", plan.highlight && "shadow-glow ring-2 ring-pulse-violet/60")}
+            padding={dense ? "md" : "lg"}
+            className={cn("relative flex flex-col", dense ? "gap-5" : "gap-6", plan.highlight && "shadow-glow ring-2 ring-pulse-violet/60")}
           >
             {plan.highlight && (
-              <Badge tone="violet" className="absolute top-6 right-6">
+              <Badge tone="violet" className={cn("absolute", dense ? "-top-3 right-5" : "top-6 right-6")}>
                 Most popular
               </Badge>
             )}
             <div className="flex flex-col gap-2">
-              <h2 className="text-2xl font-bold tracking-tight">{plan.name}</h2>
-              <p className="text-muted">{plan.description}</p>
+              <h2 className={cn("font-bold tracking-tight", dense ? "text-xl" : "text-2xl")}>{plan.name}</h2>
+              <p className={cn("text-muted", dense && "min-h-[2.6rem] text-sm leading-snug")}>{plan.description}</p>
             </div>
             <div>
-              <PriceTag plan={plan} interval={interval} />
+              <PriceTag plan={plan} interval={interval} size={dense ? "sm" : "lg"} />
               <p className="mt-1 min-h-5 text-sm text-muted">
                 {interval === "YEAR"
                   ? yearlySavingsLabel(plan)
@@ -82,10 +88,10 @@ export function PricingPlans({ plans, custom = false }: { plans: RegionalPlan[];
                 </Badge>
               ))}
             </div>
-            <ul className="flex flex-1 flex-col gap-3">
+            <ul className={cn("flex flex-1 flex-col", dense ? "gap-2.5" : "gap-3")}>
               {plan.highlights.map((feature) => (
-                <li key={feature} className="flex items-start gap-3">
-                  <Check aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />
+                <li key={feature} className={pointClass}>
+                  <Check aria-hidden className={checkClass} />
                   <span>{feature}</span>
                 </li>
               ))}
@@ -95,19 +101,21 @@ export function PricingPlans({ plans, custom = false }: { plans: RegionalPlan[];
           </GlassCard>
         ))}
         {custom && (
-          <GlassCard padding="lg" className="relative flex flex-col gap-6">
+          <GlassCard padding={dense ? "md" : "lg"} className={cn("relative flex flex-col", dense ? "gap-5" : "gap-6")}>
             <div className="flex flex-col gap-2">
-              <h2 className="text-2xl font-bold tracking-tight">Custom</h2>
-              <p className="text-muted">Built around your business, when no plan fits as it is.</p>
+              <h2 className={cn("font-bold tracking-tight", dense ? "text-xl" : "text-2xl")}>Custom</h2>
+              <p className={cn("text-muted", dense && "min-h-[2.6rem] text-sm leading-snug")}>Built around your business, when no plan fits as it is.</p>
             </div>
             <div>
-              <p className="text-3xl font-bold tracking-tight">Price on quote</p>
+              {/* The same top gap as the plans' crossed-out yearly price, so the four prices line up. */}
+              <p aria-hidden className="min-h-6" />
+              <p className={cn("font-bold tracking-[-0.03em]", dense ? "text-[2rem] leading-tight" : "text-4xl")}>Price on quote</p>
               <p className="mt-1 min-h-5 text-sm text-muted">Monthly or yearly, as we agree</p>
             </div>
-            <ul className="flex flex-1 flex-col gap-3">
+            <ul className={cn("flex flex-1 flex-col", dense ? "gap-2.5" : "gap-3")}>
               {CUSTOM_POINTS.map((point) => (
-                <li key={point} className="flex items-start gap-3">
-                  <Check aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />
+                <li key={point} className={pointClass}>
+                  <Check aria-hidden className={checkClass} />
                   <span>{point}</span>
                 </li>
               ))}

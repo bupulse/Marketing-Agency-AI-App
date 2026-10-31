@@ -48,7 +48,8 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
         }
       />
 
-      <Container className="pb-16">
+      {/* Wider than the rest of the page: four plan cards side by side (lg screens and up). */}
+      <Container size="wide" className="pb-16 xl:max-w-[88rem]">
         {paymentBadges(region.paymentMethods).length > 0 && (
           <ul aria-label="Ways to pay" className="m-0 mb-6 flex list-none flex-wrap items-center justify-center gap-2 p-0">
             {paymentBadges(region.paymentMethods).map((name) => (
