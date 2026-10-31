@@ -6,7 +6,6 @@ import { PlanComparison } from "@/components/marketing/pages/plan-comparison";
 import { pageMetadata } from "@/components/marketing/pages/seo";
 import { Accordion, Badge, Button, Container, GlassCard, SectionHeading } from "@/components/ui";
 import { Reveal } from "@/components/motion";
-import { MomoSteps } from "./momo-steps";
 import { PlanQuiz } from "./plan-quiz";
 import { PricingPlans } from "./pricing-plans";
 import { UseMyLocation } from "./use-my-location";
@@ -62,7 +61,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
             ))}
           </ul>
         )}
-        <PricingPlans plans={plans} />
+        <PricingPlans plans={plans} custom />
         <p className="mx-auto mt-6 max-w-2xl text-center text-sm text-muted">
           {currencyNote(region.currency, region.paymentMethods)} Cancel any time; your plan stays active until the end of the period you paid for. See our{" "}
           <Link href="/refund-policy" className="font-semibold text-[color:var(--bp-link)] underline">refund policy</Link>.
@@ -72,7 +71,6 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       {plans.length > 0 && (
         <Container size="narrow" className="flex flex-col gap-6 pb-20">
           <PlanQuiz plans={plans} />
-          <MomoSteps plans={plans} paymentMethods={region.paymentMethods} />
         </Container>
       )}
 

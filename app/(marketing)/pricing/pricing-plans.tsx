@@ -13,8 +13,19 @@ import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { cn } from "@/lib/cn";
 import { ComingSoonFeatures } from "@/components/billing/coming-soon-features";
 
-/** Plan cards with a Monthly/Yearly switch. The plans and their prices are the visitor's region's (lib/region-prices.ts), via the page. */
-export function PricingPlans({ plans }: { plans: RegionalPlan[] }) {
+/** What the Custom card lists: it has no fixed price, it is built on the call (owner, 31 October 2026). */
+const CUSTOM_POINTS = [
+  "Only the features you need",
+  "More posts, videos and talking skits every week",
+  "Website chat, Autopilot or done-for-you on top",
+  "We call you, listen, and send you an offer",
+];
+
+/**
+ * Plan cards with a Monthly/Yearly switch. The plans and their prices are the visitor's region's (lib/region-prices.ts),
+ * via the page. `custom` adds a last "Custom" card, priced on a quote.
+ */
+export function PricingPlans({ plans, custom = false }: { plans: RegionalPlan[]; custom?: boolean }) {
   const [interval, setInterval] = useState<BillingInterval>("MONTH");
 
   if (plans.length === 0) {
@@ -27,7 +38,12 @@ export function PricingPlans({ plans }: { plans: RegionalPlan[] }) {
       <div>
         <IntervalToggle value={interval} onChange={setInterval} badge={yearlyBadge(plans)} />
       </div>
-      <div className={cn("mx-auto grid w-full gap-6", plans.length >= 3 ? "max-w-6xl md:grid-cols-2 lg:grid-cols-3" : "max-w-4xl md:grid-cols-2")}>
+      <div
+        className={cn(
+          "mx-auto grid w-full gap-6",
+          plans.length + (custom ? 1 : 0) >= 4 ? "max-w-7xl md:grid-cols-2 xl:grid-cols-4" : plans.length + (custom ? 1 : 0) === 3 ? "max-w-6xl md:grid-cols-2 lg:grid-cols-3" : "max-w-4xl md:grid-cols-2",
+        )}
+      >
         {plans.map((plan) => (
           <GlassCard
             key={plan.key}
@@ -78,6 +94,27 @@ export function PricingPlans({ plans }: { plans: RegionalPlan[] }) {
             <CtaButton size="lg" variant={plan.highlight ? "primary" : "ghost"} />
           </GlassCard>
         ))}
+        {custom && (
+          <GlassCard padding="lg" className="relative flex flex-col gap-6">
+            <div className="flex flex-col gap-2">
+              <h2 className="text-2xl font-bold tracking-tight">Custom</h2>
+              <p className="text-muted">Built around your business, when no plan fits as it is.</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold tracking-tight">Price on quote</p>
+              <p className="mt-1 min-h-5 text-sm text-muted">Monthly or yearly, as we agree</p>
+            </div>
+            <ul className="flex flex-1 flex-col gap-3">
+              {CUSTOM_POINTS.map((point) => (
+                <li key={point} className="flex items-start gap-3">
+                  <Check aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />
+                  <span>{point}</span>
+                </li>
+              ))}
+            </ul>
+            <CtaButton size="lg" variant="ghost" trialHref={`/signup?next=${encodeURIComponent("/custom-plan?from=pricing")}`} trialLabel="Request a custom plan" />
+          </GlassCard>
+        )}
       </div>
     </div>
   );
