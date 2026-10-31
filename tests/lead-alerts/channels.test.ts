@@ -106,7 +106,8 @@ describe("the Telegram channel", () => {
     expect(await telegramChannel.send(alert)).toBe("sent");
     const body = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body));
     expect(body.chat_id).toBe("42");
-    expect(body.text).toContain("call Test Person now");
+    expect(body.text).toContain("just requested a quote");
+    expect(body.reply_markup.inline_keyboard[0][0].text).toMatch(/^📞 Call /);
   });
 
   it("throws on a refusal, so the failure is logged", async () => {

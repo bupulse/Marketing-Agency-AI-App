@@ -49,13 +49,15 @@ async function call<T>(token: string, method: string, body: Record<string, unkno
  * callers never need to check first.
  */
 export async function sendTelegramMessage(
-  args: { chatId: string | null | undefined; text: string; token?: string | null },
+  args: { chatId: string | null | undefined; text: string; token?: string | null; buttons?: { text: string; url: string }[][] },
   fetchImpl: Fetch = fetch,
 ): Promise<TelegramResult> {
   const token = args.token === undefined ? telegramToken() : args.token;
   if (!token) return { ok: false, skipped: true, error: `${TELEGRAM_TOKEN_ENV} is not set.` };
   if (!args.chatId) return { ok: false, skipped: true, error: "No Telegram chat is connected." };
-  const r = await call(token, "sendMessage", { chat_id: args.chatId, text: args.text, parse_mode: "HTML", link_preview_options: { is_disabled: true } }, fetchImpl);
+  const body: Record<string, unknown> = { chat_id: args.chatId, text: args.text, parse_mode: "HTML", link_preview_options: { is_disabled: true } };
+  if (args.buttons?.length) body.reply_markup = { inline_keyboard: args.buttons };
+  const r = await call(token, "sendMessage", body, fetchImpl);
   return r.ok ? { ok: true } : { ok: false, error: r.error };
 }
 

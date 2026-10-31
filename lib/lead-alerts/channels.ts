@@ -4,7 +4,8 @@ import { isServiceEnabled } from "@/lib/admin/switch";
 import { logError } from "@/lib/errors";
 import { runInBackground } from "@/lib/leads/background";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
-import { alertFields, alertIntro, alertSubject, telegramText, type LeadAlert } from "./format";
+import { publicSiteUrl } from "@/lib/auth/site-url";
+import { alertFields, alertIntro, alertSubject, telegramButtons, telegramText, type LeadAlert } from "./format";
 import { sendTelegramMessage } from "./telegram";
 import { readTelegramChat } from "./telegram-settings";
 
@@ -52,7 +53,7 @@ export const telegramChannel: AlertChannel = {
     // The switch check also loads the token saved in Admin -> Services into process.env.
     if (!(await isServiceEnabled("telegram"))) return "skipped";
     const chat = await readTelegramChat();
-    const r = await sendTelegramMessage({ chatId: chat?.chatId, text: telegramText(alert) });
+    const r = await sendTelegramMessage({ chatId: chat?.chatId, text: telegramText(alert), buttons: telegramButtons(alert, publicSiteUrl()) });
     if (r.ok) return "sent";
     if (r.skipped) return "skipped";
     throw new Error(r.error);

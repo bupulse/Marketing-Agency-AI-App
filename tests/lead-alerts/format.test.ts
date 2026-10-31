@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alertFields, alertIntro, alertSubject, kigaliTime, sourceLabel, telegramText, type LeadAlert } from "@/lib/lead-alerts/format";
+import { alertFields, alertHeadline, alertIntro, alertSubject, kigaliTime, sourceLabel, telegramButtons, telegramText, type LeadAlert } from "@/lib/lead-alerts/format";
 
 const quote = (over: Partial<LeadAlert> = {}): LeadAlert => ({
   kind: "quote",
@@ -52,18 +52,41 @@ describe("lead alert text", () => {
 });
 
 describe("the Telegram message", () => {
-  it("escapes what people typed and links WhatsApp and Admin", () => {
+  it("starts with who and what they wrote, so the phone's pop-up says it before Telegram is opened", () => {
+    const lines = telegramText(quote()).split("\n");
+    expect(lines[0]).toBe("🔔 <b>Test Person from Sample Shop Ltd just requested a quote</b>");
+    expect(lines[1]).toBe("“We sell shoes &amp; bags &lt;online&gt;.”");
+  });
+
+  it("escapes what people typed and lists the details, the links being buttons", () => {
     const text = telegramText(quote());
-    expect(text.split("\n")[0]).toBe("<b>New quote request: Sample Shop Ltd — call Test Person now</b>");
     expect(text).toContain("<b>Phone:</b> +250788123456");
-    expect(text).toContain('<a href="https://wa.me/250788123456">Open a WhatsApp chat</a>');
-    expect(text).toContain("We sell shoes &amp; bags &lt;online&gt;.");
     expect(text).not.toContain("<online>");
-    expect(text).toContain('<a href="https://test.bupulse.com/admin/quotes">Open in Admin</a>');
+    expect(text).not.toContain("<b>Note:</b>");
+    expect(text).not.toContain("wa.me");
     expect(text).toContain("14:05 (Kigali time)");
+  });
+
+  it("names the person as they typed it, without a company when there is none, and says a chat is a chat", () => {
+    expect(alertHeadline(quote({ company: null }))).toBe("Test Person just requested a quote");
+    expect(alertHeadline(quote({ kind: "support_chat" }))).toBe("Test Person from Sample Shop Ltd started a chat on the website");
   });
 
   it("cuts a very long note well under Telegram's 4096 characters", () => {
     expect(telegramText(quote({ note: "x".repeat(5000) })).length).toBeLessThan(2500);
+  });
+});
+
+describe("the Telegram buttons", () => {
+  it("calls through the site's /call page, then WhatsApp, then Admin", () => {
+    expect(telegramButtons(quote(), "https://test.bupulse.com/")).toEqual([
+      [{ text: "📞 Call Test", url: "https://test.bupulse.com/call/250788123456" }],
+      [{ text: "💬 WhatsApp", url: "https://wa.me/250788123456" }],
+      [{ text: "Open in Admin", url: "https://test.bupulse.com/admin/quotes" }],
+    ]);
+  });
+
+  it("has no Call or WhatsApp button without a phone number", () => {
+    expect(telegramButtons(quote({ phone: null }), "https://test.bupulse.com").flat().map((b) => b.text)).toEqual(["Open in Admin"]);
   });
 });

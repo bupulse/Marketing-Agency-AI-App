@@ -92,18 +92,48 @@ export function escapeTelegramHtml(value: string): string {
 const TELEGRAM_NOTE_MAX = 1500;
 
 /**
- * The Telegram message (parse_mode HTML). Telegram only makes http(s) links tappable, so the phone number itself is
- * written as plain text (Telegram turns "+250..." into a tap-to-call link on phones) next to the WhatsApp link.
+ * The first line, which is what a phone shows in Telegram's pop-up before the app is opened:
+ * "Aline Uwase from Kigali Tech Hub just requested a quote". The name as they typed it: the form asks no title, and
+ * guessing Mr or Mrs from a name would get people wrong.
+ */
+export function alertHeadline(a: LeadAlert): string {
+  const company = a.company?.trim();
+  const from = company ? ` from ${company}` : "";
+  return a.kind === "quote" ? `${who(a)}${from} just requested a quote` : `${who(a)}${from} started a chat on the website`;
+}
+
+/**
+ * The Telegram message (parse_mode HTML). The headline and what they wrote come first, so the pop-up on the owner's
+ * phone already says who it is and what they want; the details follow. The Call, WhatsApp and Admin links are buttons
+ * under the message (telegramButtons).
  */
 export function telegramText(a: LeadAlert): string {
   const e = escapeTelegramHtml;
-  const lines = [`<b>${e(alertSubject(a))}</b>`, ""];
+  const note = a.note?.trim();
+  const lines = [`🔔 <b>${e(alertHeadline(a))}</b>`];
+  if (note) lines.push(`“${e(note.length > TELEGRAM_NOTE_MAX ? `${note.slice(0, TELEGRAM_NOTE_MAX)}…` : note)}”`);
+  lines.push("");
   for (const f of alertFields(a)) {
-    const value = f.label === "Note" || f.label === "First message" ? (f.value.length > TELEGRAM_NOTE_MAX ? `${f.value.slice(0, TELEGRAM_NOTE_MAX)}…` : f.value) : f.value;
-    if (f.label === "WhatsApp") lines.push(`<b>WhatsApp:</b> <a href="${e(f.value)}">Open a WhatsApp chat</a>`);
-    else if (f.label === "Page" && /^https?:/.test(f.value)) lines.push(`<b>Page:</b> <a href="${e(f.value)}">${e(f.value)}</a>`);
-    else lines.push(`<b>${e(f.label)}:</b> ${e(value)}`);
+    if (f.label === "WhatsApp" || f.label === "Note" || f.label === "First message") continue;
+    if (f.label === "Page" && /^https?:/.test(f.value)) lines.push(`<b>Page:</b> <a href="${e(f.value)}">${e(f.value)}</a>`);
+    else lines.push(`<b>${e(f.label)}:</b> ${e(f.value)}`);
   }
-  if (a.openUrl) lines.push("", `<a href="${e(a.openUrl)}">${a.kind === "quote" ? "Open in Admin" : "Open the chat"}</a>`);
   return lines.join("\n");
+}
+
+export type TelegramButton = { text: string; url: string };
+
+/**
+ * The buttons under the alert. Telegram buttons only open web addresses, not "tel:", so Call goes through the site's
+ * /call/<number> page, which hands the number straight to the phone's dialer.
+ */
+export function telegramButtons(a: LeadAlert, siteUrl: string): TelegramButton[][] {
+  const rows: TelegramButton[][] = [];
+  if (a.phone) {
+    const first = who(a).split(/\s+/)[0];
+    rows.push([{ text: `📞 Call ${first}`, url: `${siteUrl.replace(/\/$/, "")}/call/${a.phone.replace(/\D/g, "")}` }]);
+    rows.push([{ text: "💬 WhatsApp", url: whatsappHref(a.phone) }]);
+  }
+  if (a.openUrl) rows.push([{ text: a.kind === "quote" ? "Open in Admin" : "Open the chat", url: a.openUrl }]);
+  return rows;
 }
