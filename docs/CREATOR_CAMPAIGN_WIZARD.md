@@ -17,7 +17,8 @@ line and Business info, and builds the application form creators fill in, brande
 - **Drafts:** saved after every step. The list shows "Draft · step 6 of 12 · Continue".
 - **Editing:** Settings opens the same steps, any one at a time. Dates and currency still lock once live.
 - **Pay per views:** the owner picks the number of views (1,000 / 10,000 / 100,000 / 1,000,000) and the price. Floor:
-  **1,000 RWF for every 1,000 views** (about $0.68; clipping/UGC campaigns paid $0.30-$6, typically $1, in 2026). A meter
+  **1,000 RWF for every 1,000 views** (about $0.68; clipping/UGC campaigns paid $0.30-$6, typically $1, in 2026), **500
+  RWF since 31 October 2026** (see "One page" below). A meter
   shows Too low / Fair / Generous. See `lib/creators/pay-floor.ts`.
 - **Networks:** all social networks are listed; the ones BuPulse can't count views on yet say "Coming soon"
   (`lib/creators/networks.ts`). TikTok is "Coming soon" until its app is set up (COMPOSIO_TIKTOK_AUTH_CONFIG_ID).
@@ -38,6 +39,41 @@ line and Business info, and builds the application form creators fill in, brande
   company sees "Doesn't match" and why, the ones who match first. `lib/creators/requirements.ts`.
 - **Marketplace one-tap apply:** the creator's profile fills the form (they can change it); they answer only the
   company's extra questions. With none, it stays one tap.
+
+## One page (owner decision, 31 October 2026)
+
+Testers found the steps too long, so "New campaign" (`/dashboard/creators/new`) is now **one page**
+(`components/creators/company/one-page/one-page-campaign.tsx`, rules in `lib/creators/one-page.ts`). The fields, in the
+owner's order, and where each one goes:
+
+| # | Field | Stored as |
+| --- | --- | --- |
+| 1 | Language: English, Kinyarwanda, French, Swahili | `CreatorCampaign.language` (`en`/`rw`/`fr`/`sw`, new column); the AI writes in it; `requirements.languages` |
+| 2 | Description of the campaign and the tasks (the AI reads it) | `idea` (now up to 2,000 characters); its @accounts and #hashtags join the caption check (`mentions`) |
+| 3 | Pay per 1,000 views, **500 RWF at least** ("500 RWF is the minimum for 1,000 views") | `payRules.ratePerThousand`, `rateViews: 1000` (`lib/creators/pay.ts`) |
+| 4 | Campaign budget | the pay period's `budget` (one 30-day period, so the whole campaign's) |
+| 5 | Maximum payout per creator | `payRules.capPerCreator` |
+| 6 | Creators who can join, or Unlimited | `CreatorCampaign.maxCreators` (new column; null: unlimited, up to the plan's `creatorsPerCampaign`); also `requirements.creatorsWanted` |
+| 7 | Networks: Instagram, Facebook Page, TikTok (when set up) | `platforms` |
+| 8 | Background picture (upload or pick, from Photos) | `look.coverAssetId`: the /c/<slug> page and the marketplace card |
+| 9 | The product: pick it (fills the name), its pictures (its photos, more allowed) and links | `productIds`, `files.productName`, `files.productPhotoIds`, `files.productLinks` |
+
+- **Dates:** no date row. The campaign starts today (the company's timezone) and runs 30 days: one pay period, so the
+  budget and the most per creator hold for the whole campaign. Settings → When changes them while it is a draft.
+- **The rest** comes from the description through the same AI (`creatorWizard`, `lib/creators/wizard-ai.ts`), in the
+  campaign's language, or the template of its kind when the AI cannot answer: the name, kind, goal, who to look for,
+  formats, how often a brief comes, the brief and the tasks, do's and don'ts, and the application questions.
+- **Checks:** the form and the server use the same `checkOnePage()`. When max creators × max payout is more than the
+  budget, a warning shows; it never blocks (the budget then shares the pay out). The live summary reads like
+  "Up to 20 creators · 500 RWF per 1,000 views · max 50,000 RWF each · budget 500,000 RWF".
+- **After:** one "Create campaign" makes it as a draft that is set up already, and its page opens to check and go
+  live. The product's pictures and links count for the go-live list's photos and example. Settings opens every step;
+  Idea now also has the language and the product's name, pictures and links, and Creators has "how many can join" with
+  Unlimited.
+- **Places:** picking an applicant, inviting from Find creators, accepting an invitation and "places left" on the
+  marketplace use the campaign's own number when it is below the plan's.
+- **The old flow:** drafts made before keep "Continue" (quick mode) and "Detailed setup"; nothing links to the 12-step
+  creation any more.
 
 ## The 12 steps
 

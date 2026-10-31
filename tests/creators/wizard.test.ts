@@ -8,25 +8,30 @@ import { matchApplicant, readRequirements } from "@/lib/creators/requirements";
 import { goLiveProblems, readFiles, stepAt, STEP_COUNT, stepNumber } from "@/lib/creators/wizard";
 
 describe("pay floor", () => {
-  it("is 1,000 RWF per 1,000 views, scaled to the views picked", () => {
-    expect(minRate("RWF")).toBe(1_000);
-    expect(minRate("RWF", 10_000)).toBe(10_000);
+  // Owner decision (31 October 2026): 500 RWF for every 1,000 views (it was 1,000 RWF).
+  it("is 500 RWF per 1,000 views, scaled to the views picked", () => {
+    expect(minRate("RWF")).toBe(500);
+    expect(minRate("RWF", 10_000)).toBe(5_000);
     expect(minRate("USD", 100_000)).toBe(100);
-    expect(suggestedRate("RWF")).toBe(1_500);
+    expect(suggestedRate("RWF")).toBe(750);
   });
 
   it("rates the price for the meter", () => {
-    expect(rateLevel(999, 1_000, "RWF")).toBe("LOW");
-    expect(rateLevel(1_000, 1_000, "RWF")).toBe("FAIR");
+    expect(rateLevel(499, 1_000, "RWF")).toBe("LOW");
+    expect(rateLevel(500, 1_000, "RWF")).toBe("FAIR");
+    expect(rateLevel(2_999, 1_000, "RWF")).toBe("FAIR");
     expect(rateLevel(30_000, 10_000, "RWF")).toBe("GENEROUS");
+    expect(rateLevel(20_000, 1_000, "RWF")).toBe("GENEROUS");
     expect(rateLevel(25_000, 1_000, "RWF")).toBe("TOO_HIGH");
   });
 
   it("refuses a low rate in the campaign form, and lets fees alone through", () => {
-    expect(rateProblem({ ratePerThousand: 5_000, rateViews: 10_000 }, "RWF")).toMatch(/at least 10,000 RWF for every 10,000 views/);
+    expect(rateProblem({ ratePerThousand: 4_999, rateViews: 10_000 }, "RWF")).toMatch(/at least 5,000 RWF for every 10,000 views/);
+    expect(rateProblem({ ratePerThousand: 5_000, rateViews: 10_000 }, "RWF")).toBeNull();
     expect(rateProblem({ feePerPost: 100 }, "RWF")).toBeNull();
     const base = { name: "Summer", brief: "Show our juice on a hot day.", platforms: ["instagram"], startsOn: "2026-11-01", endsOn: "2026-11-30", mentions: [], currency: "RWF", questions: [] };
-    expect(campaignSchema.safeParse({ ...base, payRules: { ratePerThousand: 500 } }).success).toBe(false);
+    expect(campaignSchema.safeParse({ ...base, payRules: { ratePerThousand: 499 } }).success).toBe(false);
+    expect(campaignSchema.safeParse({ ...base, payRules: { ratePerThousand: 500 } }).success).toBe(true);
     expect(campaignSchema.safeParse({ ...base, payRules: { ratePerThousand: 15_000, rateViews: 10_000 } }).success).toBe(true);
   });
 });
@@ -94,7 +99,7 @@ describe("wizard", () => {
   });
 
   it("only takes a Google Drive folder link", () => {
-    expect(readFiles({ driveUrl: "https://example.com/x" })).toEqual({ exampleLinks: [] });
+    expect(readFiles({ driveUrl: "https://example.com/x" })).toEqual({ exampleLinks: [], productLinks: [], productPhotoIds: [] });
     expect(readFiles({ driveUrl: "https://drive.google.com/drive/folders/abc" }).driveUrl).toBe("https://drive.google.com/drive/folders/abc");
   });
 

@@ -26,7 +26,12 @@ export function CampaignCard({ card }: { card: MarketCard }) {
   const networks = card.platforms.filter(isCreatorNetwork);
   const soon = whenOf(card) === "soon";
   return (
-    <Link href={`/c/${card.slug}`} className="glass flex flex-col gap-3 rounded-glass p-4 no-underline transition-colors hover:bg-soft sm:p-5">
+    <Link href={`/c/${card.slug}`} className="glass flex flex-col gap-3 overflow-hidden rounded-glass p-4 no-underline transition-colors hover:bg-soft sm:p-5">
+      {card.coverUrl && (
+        // The campaign's background picture (docs/CREATOR_CAMPAIGN_WIZARD.md, "One page"), edge to edge on top.
+        // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed Storage URL
+        <img src={card.coverUrl} alt="" loading="lazy" className="-mx-4 -mt-4 aspect-[16/9] w-[calc(100%+2rem)] max-w-none object-cover sm:-mx-5 sm:-mt-5 sm:w-[calc(100%+2.5rem)]" />
+      )}
       <div className="flex items-center gap-3">
         <CompanyLogo name={card.company.name} url={card.company.logoUrl} />
         <div className="min-w-0">

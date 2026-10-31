@@ -2970,6 +2970,9 @@ model CreatorCampaign {
   applicationForm       Json? // ApplicationForm (lib/creators/form-fields.ts); null: the default form plus `questions`
   files                 Json? // CampaignFiles (lib/creators/wizard.ts): the Photos folders, a Drive link, example links
   look                  Json? // CampaignLook (lib/creators/wizard.ts): the application page's cover
+  // The one-page form (docs/CREATOR_CAMPAIGN_WIZARD.md, "One page", 31 October 2026).
+  language              String              @default("en") // en | rw | fr | sw: what the campaign's texts (and its AI) are written in
+  maxCreators           Int? // creators who can join (invited, joined, open offers); null: unlimited, up to the plan's creatorsPerCampaign
   createdBy             String?             @db.Uuid
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt

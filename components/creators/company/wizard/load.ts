@@ -6,6 +6,7 @@ import { tiktokAuthConfig } from "@/lib/creators/connect-flow";
 import { defaultForm } from "@/lib/creators/form-fields";
 import { logoUrls } from "@/lib/creators/logos";
 import { campaignNetworks } from "@/lib/creators/networks";
+import { languageFromName } from "@/lib/creators/one-page";
 import { dayIn } from "@/lib/creators/periods";
 import { readFiles, STEP_COUNT, type WizardStepId } from "@/lib/creators/wizard";
 import { ideaExamplesFor, type WizardAnswers } from "@/lib/creators/wizard-steps";
@@ -17,7 +18,7 @@ import { assetById, listMedia } from "@/lib/media/service";
 import type { FolderView } from "./files-step";
 import type { WizardOptions } from "./wizard";
 
-type Business = { id: string; name: string; timezone: string; industry: string | null; instagramHandle: string | null; logoUrl: string | null; brandColors: string[] };
+type Business = { id: string; name: string; timezone: string; industry: string | null; instagramHandle: string | null; logoUrl: string | null; brandColors: string[]; contentLanguage?: string | null };
 
 const FOLDER_KEYS = [
   ["images", "imagesFolderId"],
@@ -52,6 +53,9 @@ export async function wizardOptions(actor: CampaignActor, business: Business, ca
   }
   const coverId = campaign?.answers.look.coverAssetId;
   const cover = coverId && (step === "look" || step === "review") ? await assetById(business.id, coverId) : null;
+  // The product's pictures (the one-page form's), shown on Idea to add or remove some.
+  const photoIds = campaign?.answers.files.productPhotoIds ?? [];
+  const productPhotos = step === "idea" && photoIds.length ? (await Promise.all(photoIds.map((id) => assetById(business.id, id)))).flatMap((m) => (m ? [{ id: m.id, url: m.url }] : [])) : [];
   const options: WizardOptions = {
     campaignId: campaign?.id ?? null,
     slug: campaign?.slug ?? null,
@@ -70,6 +74,7 @@ export async function wizardOptions(actor: CampaignActor, business: Business, ca
     folders,
     counts,
     cover: cover ? { url: cover.url, kind: cover.kind, posterUrl: cover.posterUrl } : null,
+    productPhotos,
     problems: campaign?.problems ?? [],
   };
   return { options, files };
@@ -79,6 +84,7 @@ export async function wizardOptions(actor: CampaignActor, business: Business, ca
 export async function blankAnswers(business: Business, start: { idea?: string; name?: string; kind?: WizardAnswers["kind"]; knowledgeCampaignId?: string | null; productIds?: string[] } = {}): Promise<WizardAnswers> {
   const today = dayIn(new Date(), business.timezone);
   return {
+    language: languageFromName(business.contentLanguage),
     idea: start.idea ?? "",
     name: start.name ?? "",
     kind: start.kind ?? null,
@@ -86,6 +92,7 @@ export async function blankAnswers(business: Business, start: { idea?: string; n
     productIds: start.productIds ?? [],
     goal: null,
     requirements: { niches: [], locations: [], languages: [] },
+    maxCreators: null,
     platforms: [],
     platformMode: "ANY",
     formats: [],
@@ -106,7 +113,7 @@ export async function blankAnswers(business: Business, start: { idea?: string; n
     viewTargetCampaign: null,
     budget: null,
     applicationForm: defaultForm(),
-    files: { exampleLinks: [] },
+    files: { exampleLinks: [], productLinks: [], productPhotoIds: [] },
     look: {},
     listed: true,
     acceptingApplications: true,

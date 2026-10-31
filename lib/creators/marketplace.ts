@@ -1,15 +1,18 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { hasFeature } from "@/lib/entitlements";
+import { coverPictures } from "./campaign-files";
 import { campaignLimits } from "./campaigns";
 import { creatorPayInWords, formatsInWords, requirementsInWords } from "./describe";
 import { logoUrls } from "./logos";
 import { filterMarket, isListed, placesLeft, type MarketFilters, type MarketItem } from "./market-filters";
+import { placeLimit } from "./one-page";
 import { readPayRules } from "./pay";
 import { holdsPlace } from "./portal-groups";
 import { dayIn, ymdOf } from "./periods";
 import { NEW_RECORD, paymentRecords, type PaymentRecord } from "./record";
 import { readRequirements } from "./requirements";
+import { readLook } from "./wizard";
 
 // The public marketplace, bupulse.com/creators (docs/CREATOR_MARKETPLACE.md): the campaigns the listing rule keeps
 // (lib/creators/market-filters.ts), with what a card shows: the company and its logo, the pay in words, the places
@@ -27,17 +30,20 @@ export type MarketCard = MarketItem & {
   formats: string[];
   company: { id: string; name: string; logoUrl: string | null; industry: string | null };
   record: PaymentRecord;
+  /** The campaign's background picture (its cover, a video's poster), signed for about an hour; null without one. */
+  coverUrl: string | null;
 };
 
 const DAY = 86_400_000;
 
-/** Places a campaign has left (plan limit minus SELECTED, JOINED and open invitations). */
+/** Places a campaign has left (its creators who can join, at most the plan's, minus SELECTED, JOINED and open invitations). */
 export async function placesLeftIn(campaign: { id: string; businessId: string }, now = new Date()): Promise<number> {
-  const [{ creatorsPerCampaign }, picked] = await Promise.all([
+  const [{ creatorsPerCampaign }, picked, own] = await Promise.all([
     campaignLimits(campaign.businessId),
     prisma.campaignCreator.count({ where: { campaignId: campaign.id, ...holdsPlace(now) } }),
+    prisma.creatorCampaign.findUnique({ where: { id: campaign.id }, select: { maxCreators: true } }),
   ]);
-  return placesLeft(creatorsPerCampaign, picked);
+  return placesLeft(placeLimit(creatorsPerCampaign, own?.maxCreators), picked);
 }
 
 /**
@@ -68,6 +74,8 @@ export async function listedCampaigns(now = new Date(), opts: { details?: boolea
       viewTargetCampaign: true,
       requirements: true,
       formats: true,
+      maxCreators: true,
+      look: true,
       createdAt: true,
       businessId: true,
       business: { select: { name: true, logoUrl: true, timezone: true, industry: true, industryRef: { select: { slug: true, name: true } } } },
@@ -85,9 +93,10 @@ export async function listedCampaigns(now = new Date(), opts: { details?: boolea
   const kept = rows.filter((r) =>
     isListed({ ...r, hasFeature: features.get(r.businessId) ?? false, endsOn: ymdOf(r.endsOn), today: dayIn(now, r.business.timezone || "UTC") }),
   );
-  const [logos, records] = details
-    ? await Promise.all([logoUrls(kept.map((r) => r.business.logoUrl)), paymentRecords(kept.map((r) => r.businessId), now)])
-    : [new Map<string, string>(), new Map<string, PaymentRecord>()];
+  const coverOf = (r: (typeof kept)[number]) => readLook(r.look).coverAssetId ?? null;
+  const [logos, records, covers] = details
+    ? await Promise.all([logoUrls(kept.map((r) => r.business.logoUrl)), paymentRecords(kept.map((r) => r.businessId), now), coverPictures(kept.map((r) => ({ businessId: r.businessId, coverAssetId: coverOf(r) }))).catch(() => new Map<string, string>())])
+    : [new Map<string, string>(), new Map<string, PaymentRecord>(), new Map<string, string>()];
 
   return kept.map((r) => {
     const payRules = readPayRules(r.payRules);
@@ -102,7 +111,7 @@ export async function listedCampaigns(now = new Date(), opts: { details?: boolea
       startsOn: ymdOf(r.startsOn),
       endsOn: ymdOf(r.endsOn),
       today: dayIn(now, r.business.timezone || "UTC"),
-      placesLeft: placesLeft(limits.get(r.businessId) ?? 0, r._count.creators),
+      placesLeft: placesLeft(placeLimit(limits.get(r.businessId) ?? 0, r.maxCreators), r._count.creators),
       createdAt: r.createdAt,
       currency: r.currency,
       pay: creatorPayInWords(payRules, goals, r.currency),
@@ -111,6 +120,7 @@ export async function listedCampaigns(now = new Date(), opts: { details?: boolea
       formats: formatsInWords(r.formats ?? []),
       company: { id: r.businessId, name: r.business.name, logoUrl: r.business.logoUrl ? (logos.get(r.business.logoUrl) ?? null) : null, industry: r.business.industryRef?.name ?? r.business.industry ?? null },
       record: records.get(r.businessId) ?? NEW_RECORD,
+      coverUrl: covers.get(coverOf(r) ?? "") ?? null,
     };
   });
 }

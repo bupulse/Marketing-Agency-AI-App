@@ -103,12 +103,16 @@ export const filesSchema = z.object({
     .nullish(),
   /** Posts the owner likes, as examples (the mood board). */
   exampleLinks: z.array(z.string().trim().url("Paste full links, starting with https://").max(500)).max(10).default([]),
+  /** The product creators show (the one-page form): its name, links to it and its pictures (MediaAsset ids from Photos). */
+  productName: z.string().trim().max(120).nullish(),
+  productLinks: z.array(z.string().trim().url("Paste full links, starting with https://").max(500)).max(10).default([]),
+  productPhotoIds: z.array(z.string().min(1).max(40)).max(20).default([]),
 });
 export type CampaignFiles = z.infer<typeof filesSchema>;
 
 export function readFiles(value: unknown): CampaignFiles {
   const parsed = filesSchema.safeParse(value ?? {});
-  return parsed.success ? parsed.data : { exampleLinks: [] };
+  return parsed.success ? parsed.data : { exampleLinks: [], productLinks: [], productPhotoIds: [] };
 }
 
 /** The application page's look: the brand's logo and colours always; a cover photo or video from Photos if picked. */
@@ -127,10 +131,11 @@ export type ReadinessFacts = {
   donts: string[];
   /** Tasks with instructions. */
   tasks: number;
-  /** Files in the campaign's Images folder (logo and product photos). */
+  /** Files in the campaign's Images folder (logo and product photos), and the product's pictures picked for it. */
   images: number;
   /** Files in its Videos folder. */
   videos: number;
+  /** Example links, and links to the product. */
   exampleLinks: number;
 };
 

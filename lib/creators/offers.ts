@@ -4,7 +4,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { linkSiteUrl } from "@/lib/auth/request-site";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { askMessage, can } from "@/lib/team/roles";
-import { campaignLimits, creatorOf, CreatorCampaignError, lock, placesFullMessage, placesTaken, readHandles, type CampaignActor } from "./campaigns";
+import { campaignPlaces, creatorOf, CreatorCampaignError, lock, placesTaken, readHandles, type CampaignActor } from "./campaigns";
 import { offerExpired, offerExpiresAt } from "./company-forms";
 
 // Companies inviting marketplace creators to a campaign (docs/CREATOR_MARKETPLACE.md, "Companies finding creators"). An
@@ -47,7 +47,7 @@ async function sendOfferEmail(to: string, name: string, campaign: string, compan
  */
 export async function offerCreator(actor: CampaignActor, input: { profileId: string; campaignId: string }, now = new Date()) {
   assertManager(actor);
-  const campaign = await prisma.creatorCampaign.findFirst({ where: { id: input.campaignId, businessId: actor.businessId }, select: { id: true, name: true, status: true, business: { select: { name: true } } } });
+  const campaign = await prisma.creatorCampaign.findFirst({ where: { id: input.campaignId, businessId: actor.businessId }, select: { id: true, name: true, status: true, maxCreators: true, business: { select: { name: true } } } });
   if (!campaign) throw new CreatorCampaignError("not_found", "That campaign no longer exists.");
   if (!OPEN_FOR_OFFERS.includes(campaign.status)) throw new CreatorCampaignError("conflict", "Invite creators to a live or draft campaign.");
   const profile = await prisma.creatorProfile.findUnique({
@@ -57,7 +57,7 @@ export async function offerCreator(actor: CampaignActor, input: { profileId: str
   if (!profile || !profile.discoverable) throw new CreatorCampaignError("not_found", "This creator is not taking invitations from companies.");
   if (profile.blockedAt) throw new CreatorCampaignError("conflict", "BuPulse blocked this creator from the marketplace, so they cannot be invited.");
   const email = profile.user.email.trim().toLowerCase();
-  const { creatorsPerCampaign } = await campaignLimits(actor.businessId);
+  const places = await campaignPlaces(actor.businessId, campaign.maxCreators);
 
   const row = await prisma.$transaction(async (tx) => {
     await lock(tx, campaign.id);
@@ -69,7 +69,7 @@ export async function offerCreator(actor: CampaignActor, input: { profileId: str
       if (existing.status === "REMOVED") throw new CreatorCampaignError("conflict", "You removed this creator from this campaign.");
       if (existing.status === "DECLINED" && existing.source !== "OFFER") throw new CreatorCampaignError("conflict", "This creator applied before and was declined: pick them on Applicants with Select after all.");
     }
-    if ((await placesTaken(tx, campaign.id, now)) >= creatorsPerCampaign) throw new CreatorCampaignError("limit", placesFullMessage(creatorsPerCampaign));
+    if ((await placesTaken(tx, campaign.id, now)) >= places.limit) throw new CreatorCampaignError("limit", places.fullMessage);
     const data = {
       status: "OFFERED",
       source: "OFFER",

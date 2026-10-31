@@ -116,6 +116,16 @@ export function CampaignFiles({ campaignId, dos, donts, folders }: { campaignId:
             <FolderOpen aria-hidden className="size-4" /> Open the shared Google Drive folder <ExternalLink aria-hidden className="size-3.5" />
           </a>
         )}
+        {(folders.productName || folders.productLinks.length > 0) && (
+          <div className="flex flex-col gap-1">
+            <h3 className="text-[15px] font-semibold">The product{folders.productName ? `: ${folders.productName}` : ""}</h3>
+            {folders.productLinks.map((l) => (
+              <a key={l} href={l} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1 self-start break-all text-sm text-pulse-blue">
+                {host(l)} <ExternalLink aria-hidden className="size-3.5 shrink-0" />
+              </a>
+            ))}
+          </div>
+        )}
         {folders.exampleLinks.length > 0 && (
           <div className="flex flex-col gap-1">
             <h3 className="text-[15px] font-semibold">Posts they like</h3>

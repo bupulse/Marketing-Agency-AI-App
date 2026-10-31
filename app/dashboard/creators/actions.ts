@@ -9,6 +9,7 @@ import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
 import type { GoalsInput, TaskInput, TaskRepeat } from "@/lib/creators/company-forms";
 import {
   createDraft,
+  createOnePageCampaign,
   createTasks,
   CreatorCampaignError,
   declineApplicant,
@@ -35,7 +36,10 @@ import { reportCreator } from "@/lib/creators/finder";
 import { offerCreator, withdrawOffer } from "@/lib/creators/offers";
 import { ReportError } from "@/lib/creators/reports";
 import type { WizardStepId } from "@/lib/creators/wizard";
+import { checkOnePage } from "@/lib/creators/one-page";
 import { answersSoFarSchema, suggestCampaign } from "@/lib/creators/wizard-ai";
+import { prisma } from "@/lib/db";
+import { albumItems } from "@/lib/media/service";
 import { checkStep, isStepId, type StepInput } from "@/lib/creators/wizard-steps";
 
 export type CreatorActionResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -306,5 +310,40 @@ export async function finishSetupAction(campaignId: string) {
     await finishSetup(actor, id.parse(campaignId));
     refresh();
     return {};
+  });
+}
+
+// ---- the one-page form (docs/CREATOR_CAMPAIGN_WIZARD.md, "One page") ----
+
+/**
+ * "Create campaign" on the one-page form: the answers are checked (the same rules as the form), the AI reads the
+ * description and writes the rest in the campaign's language (the template of its kind when it cannot), and the
+ * campaign is made in one go. The form then opens the campaign's page.
+ */
+export async function createOnePageAction(input: unknown) {
+  return guarded(async () => {
+    const actor = await manager();
+    await rateLimit(`creators:campaign:${actor.actorId}`, { limit: 20, windowSeconds: 3600 });
+    // A first check before the AI is asked (the server checks again with the company's own currency).
+    const checked = checkOnePage(input);
+    if (!checked.ok) throw new CreatorCampaignError("invalid", checked.error);
+    const v = checked.data;
+    const tiktokReady = Boolean(tiktokAuthConfig());
+    const answers = answersOf({ idea: v.description, language: v.language, productIds: v.productId ? [v.productId] : [], productName: v.productName, platforms: v.platforms });
+    const suggestion = await suggestCampaign(actor, { step: "all", answers, tiktokReady });
+    const row = await createOnePageCampaign(actor, v, suggestion, { tiktokReady });
+    refresh();
+    return { id: row.id, ai: suggestion.source === "ai" };
+  });
+}
+
+/** A product's photos (its album in Photos, in album order), to fill the form's product pictures when it is picked. */
+export async function productPhotosAction(productId: string) {
+  return guarded(async () => {
+    const actor = await manager();
+    const product = await prisma.product.findFirst({ where: { id: id.parse(productId), businessId: actor.businessId }, select: { id: true } });
+    if (!product) throw new CreatorCampaignError("not_found", "That product is no longer in Business info.");
+    const photos = await albumItems(actor.businessId, "product", product.id);
+    return { photos: photos.filter((p) => p.kind !== "video").slice(0, 20).map((p) => ({ id: p.id, url: p.url })) };
   });
 }

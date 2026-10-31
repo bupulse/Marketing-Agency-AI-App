@@ -164,5 +164,6 @@ export function withRate(rules: PayRules, rate: number): PayRules {
 
 /** Budget chips a period, in whole units of the currency (RWF: 50,000 / 100,000 / 250,000). */
 export function budgetPresets(currency: string): number[] {
-  return [50, 100, 250].map((x) => minRate(currency) * x);
+  // 100, 200 and 500 times the floor: the same chips as before the floor went from 1,000 to 500 RWF (31 October 2026).
+  return [100, 200, 500].map((x) => minRate(currency) * x);
 }

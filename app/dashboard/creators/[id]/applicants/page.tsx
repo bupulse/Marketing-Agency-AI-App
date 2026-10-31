@@ -3,6 +3,7 @@ import { CampaignHeader, openCampaign } from "@/components/creators/company/camp
 import { applicantDetails } from "@/lib/creators/applicants-view";
 import { campaignLimits, listCampaignCreators } from "@/lib/creators/campaigns";
 import { offerExpired } from "@/lib/creators/company-forms";
+import { placeLimit } from "@/lib/creators/one-page";
 
 export const metadata = { title: "Campaign applicants" };
 
@@ -19,7 +20,7 @@ export default async function CampaignApplicantsPage({ params }: PageProps<"/das
   return (
     <div className="flex flex-col gap-6">
       <CampaignHeader campaign={campaign} tab="applicants" />
-      <Applicants campaignId={campaign.id} rows={rows} details={details} places={{ taken, limit: limits.creatorsPerCampaign }} ended={campaign.status === "ENDED"} />
+      <Applicants campaignId={campaign.id} rows={rows} details={details} places={{ taken, limit: placeLimit(limits.creatorsPerCampaign, campaign.maxCreators) }} ended={campaign.status === "ENDED"} />
     </div>
   );
 }

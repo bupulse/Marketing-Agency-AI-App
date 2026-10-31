@@ -11,6 +11,7 @@ import { finishSetupAction, setCampaignStatusAction } from "@/app/dashboard/crea
 import { Button, GlassCard, useToast } from "@/components/ui";
 import { formatShortDate } from "@/components/analytics/format";
 import { formatAmount, payRulesInWords, PLATFORM_LABEL, TASK_MEDIA_LABEL } from "@/lib/creators/company-forms";
+import { languageLabel } from "@/lib/creators/one-page";
 import { daysInclusive } from "@/lib/creators/periods";
 import { BRIEF_EVERY, CAMPAIGN_GOALS, CAMPAIGN_KINDS, POST_FORMATS, WIZARD_STEPS, type WizardStepId } from "@/lib/creators/wizard";
 import type { WizardAnswers } from "@/lib/creators/wizard-steps";
@@ -28,16 +29,19 @@ export function stepLines(step: WizardStepId, a: WizardAnswers, f: SummaryFacts)
     case "idea":
       return [
         a.name,
-        a.idea && a.idea.trim().toLowerCase() !== a.name.trim().toLowerCase() ? `“${a.idea}”` : "",
+        a.idea && a.idea.trim().toLowerCase() !== a.name.trim().toLowerCase() ? `“${a.idea.length > 140 ? `${a.idea.slice(0, 140)}…` : a.idea}”` : "",
+        `In ${languageLabel(a.language)}`,
         CAMPAIGN_KINDS.find((k) => k.value === a.kind)?.label ?? "",
         a.productIds.length ? `Products: ${list(a.productIds.map((id) => f.products.find((p) => p.id === id)?.label ?? "").filter(Boolean))}` : "",
         a.knowledgeCampaignId ? `Promotes: ${f.knowledgeCampaigns.find((c) => c.id === a.knowledgeCampaignId)?.label ?? "a Business info campaign"}` : "",
+        a.files.productName ? `Product: ${a.files.productName}` : "",
+        a.files.productPhotoIds.length || a.files.productLinks.length ? `${n(a.files.productPhotoIds.length, "product picture", "product pictures")}, ${n(a.files.productLinks.length, "link", "links")}` : "",
       ].filter(Boolean);
     case "goal":
       return [CAMPAIGN_GOALS.find((g) => g.value === a.goal)?.label ?? "Not picked yet"];
     case "creators": {
       const r = a.requirements;
-      return [`Topics: ${list(r.niches, "any")}`, `Places: ${list(r.locations, "anywhere")}`, `Languages: ${list(r.languages, "any")}`, r.minFollowers ? `${r.minFollowers.toLocaleString("en-US")}+ followers` : "Any number of followers", r.creatorsWanted ? n(r.creatorsWanted, "creator wanted", "creators wanted") : ""].filter(Boolean);
+      return [`Topics: ${list(r.niches, "any")}`, `Places: ${list(r.locations, "anywhere")}`, `Languages: ${list(r.languages, "any")}`, r.minFollowers ? `${r.minFollowers.toLocaleString("en-US")}+ followers` : "Any number of followers", a.maxCreators ? `Up to ${n(a.maxCreators, "creator", "creators")} can join` : "Unlimited creators (up to your plan)"].filter(Boolean);
     }
     case "where":
       return [

@@ -26,6 +26,7 @@ import {
 } from "./company-forms";
 import { defaultForm, readApplicationForm, type Answer } from "./form-fields";
 import { paysAnything, readPayRules, withoutPost, type PayoutBreakdown } from "./pay";
+import { checkOnePage, languageOf, mentionsInText, onePageCampaign, placeLimit } from "./one-page";
 import { dayIn, daysInclusive, MAX_CAMPAIGN_DAYS, periodsFor, ymdOf } from "./periods";
 import { readRequirements } from "./requirements";
 import { uniqueSlug } from "./slug";
@@ -100,8 +101,21 @@ export async function placesTaken(tx: Pick<typeof prisma, "campaignCreator">, ca
   return tx.campaignCreator.count({ where: { campaignId, OR: [{ status: { in: ["SELECTED", "JOINED"] } }, { status: "OFFERED", offeredAt: { gt: since } }] } });
 }
 
-/** The words of the refusal when every place is taken. */
-export const placesFullMessage = (limit: number) => `Your plan allows ${limit} creators in one campaign, and all places are taken. Remove someone first, or ask for a bigger plan.`;
+/** The words of the refusal when every place is taken: under the plan's limit, or under the campaign's own (`own`). */
+export const placesFullMessage = (limit: number, own = false) =>
+  own
+    ? `This campaign takes up to ${limit} ${limit === 1 ? "creator" : "creators"}, and all places are taken. Remove someone first, or raise the number in Settings (step Creators).`
+    : `Your plan allows ${limit} creators in one campaign, and all places are taken. Remove someone first, or ask for a bigger plan.`;
+
+/**
+ * The places of a campaign: the number of creators who can join it (its `maxCreators`, lib/creators/one-page.ts), at
+ * most the plan's `creatorsPerCampaign`; unlimited (null) is the plan's. With the words when they are all taken.
+ */
+export async function campaignPlaces(businessId: string, maxCreators: number | null | undefined): Promise<{ limit: number; fullMessage: string }> {
+  const { creatorsPerCampaign } = await campaignLimits(businessId);
+  const limit = placeLimit(creatorsPerCampaign, maxCreators);
+  return { limit, fullMessage: placesFullMessage(limit, limit < creatorsPerCampaign) };
+}
 
 async function company(businessId: string) {
   const b = await prisma.business.findUnique({ where: { id: businessId }, select: { name: true, timezone: true, userId: true } });
@@ -183,6 +197,10 @@ export async function getCampaign(actor: CampaignActor, id: string) {
     viewTargetPerCreator: c.viewTargetPerCreator,
     viewTargetCampaign: c.viewTargetCampaign,
     questions: readQuestions(c.questions),
+    /** The language of the campaign's texts (lib/creators/one-page.ts). */
+    language: languageOf(c.language),
+    /** Creators who can join; null: unlimited (up to the plan's limit). */
+    maxCreators: c.maxCreators,
     timezone: b.timezone,
     companyName: b.name,
     applied,
@@ -487,7 +505,7 @@ export async function deleteTask(actor: CampaignActor, taskId: string) {
 // ---- applicants and creators ----------------------------------------------------------------------------------------
 
 export async function creatorOf(actor: CampaignActor, campaignCreatorId: string) {
-  const row = await prisma.campaignCreator.findFirst({ where: { id: campaignCreatorId, campaign: { businessId: actor.businessId } }, include: { campaign: { select: { id: true, name: true, status: true } } } });
+  const row = await prisma.campaignCreator.findFirst({ where: { id: campaignCreatorId, campaign: { businessId: actor.businessId } }, include: { campaign: { select: { id: true, name: true, status: true, maxCreators: true } } } });
   if (!row) throw new CreatorCampaignError("not_found", "That creator is no longer in this campaign.");
   return row;
 }
@@ -543,10 +561,10 @@ export async function selectApplicant(actor: CampaignActor, campaignCreatorId: s
   if (row.status !== "APPLIED" && row.status !== "DECLINED") throw new CreatorCampaignError("conflict", row.status === "SELECTED" ? "Already invited. Send a new link instead." : "This creator is not waiting for an answer.");
   const profile = row.profileId ? await prisma.creatorProfile.findUnique({ where: { id: row.profileId }, select: { blockedAt: true } }) : null;
   if (profile?.blockedAt) throw new CreatorCampaignError("conflict", "BuPulse blocked this creator from the marketplace, so they cannot be picked.");
-  const { creatorsPerCampaign } = await campaignLimits(actor.businessId);
+  const places = await campaignPlaces(actor.businessId, row.campaign.maxCreators);
   const invite = await prisma.$transaction(async (tx) => {
     await lock(tx, row.campaign.id);
-    if ((await placesTaken(tx, row.campaign.id, now)) >= creatorsPerCampaign) throw new CreatorCampaignError("limit", placesFullMessage(creatorsPerCampaign));
+    if ((await placesTaken(tx, row.campaign.id, now)) >= places.limit) throw new CreatorCampaignError("limit", places.fullMessage);
     const data = profile ? { status: "JOINED", selectedAt: now, joinedAt: now, inviteTokenHash: null, inviteExpiresAt: null } : { status: "SELECTED", selectedAt: now };
     const done = await tx.campaignCreator.updateMany({ where: { id: row.id, status: row.status }, data });
     if (done.count === 0) throw new CreatorCampaignError("conflict", "Someone changed this application just now. Open the page again.");
@@ -680,18 +698,20 @@ function campaignInputOf(c: CampaignRecord): CampaignInput {
   return { name: c.name, brief: c.brief, rules: c.rules, platforms: c.platforms as Platform[], startsOn: ymdOf(c.startsOn), endsOn: ymdOf(c.endsOn), mentions: c.mentions, currency: c.currency, payRules: readPayRules(c.payRules), viewTargetPerCreator: c.viewTargetPerCreator, viewTargetCampaign: c.viewTargetCampaign, budget: null, questions: readQuestions(c.questions) };
 }
 
-/** Files in each of the campaign's Photos folders (0 for a folder not made yet). */
+/** Files in each of the campaign's Photos folders (0 for a folder not made yet), and its product pictures still in Photos. */
 async function folderCounts(businessId: string, files: CampaignFiles) {
   const n = (folderId: string | null | undefined) => (folderId ? prisma.mediaAsset.count({ where: { businessId, folderId } }) : Promise.resolve(0));
-  const [images, videos, documents] = await Promise.all([n(files.imagesFolderId), n(files.videosFolderId), n(files.documentsFolderId)]);
-  return { images, videos, documents };
+  const photos = files.productPhotoIds ?? [];
+  const [images, videos, documents, productPhotos] = await Promise.all([n(files.imagesFolderId), n(files.videosFolderId), n(files.documentsFolderId), photos.length ? prisma.mediaAsset.count({ where: { businessId, id: { in: photos } } }) : Promise.resolve(0)]);
+  return { images, videos, documents, productPhotos };
 }
 
 /** What the campaign still needs before it can go live (empty: ready). */
 export async function campaignReadiness(c: CampaignRecord): Promise<string[]> {
   const files = readFiles(c.files);
   const [tasks, counts] = await Promise.all([prisma.creatorTask.count({ where: { campaignId: c.id } }), folderCounts(c.businessId, files)]);
-  const facts: ReadinessFacts = { brief: c.brief, dos: c.dos, donts: c.donts, tasks, images: counts.images, videos: counts.videos, exampleLinks: files.exampleLinks.length };
+  // The product's pictures and links (the one-page form) count as the photos and the example the go-live list asks for.
+  const facts: ReadinessFacts = { brief: c.brief, dos: c.dos, donts: c.donts, tasks, images: counts.images + counts.productPhotos, videos: counts.videos, exampleLinks: files.exampleLinks.length + files.productLinks.length };
   return readinessProblems(campaignInputOf(c), facts);
 }
 
@@ -701,6 +721,7 @@ const oneOf = <T extends string>(list: readonly T[], v: string | null | undefine
 function answersOf(c: CampaignRecord, tasks: TaskRow[], budget: number | null): WizardAnswers {
   const formats = c.formats.filter((f): f is (typeof FORMAT_VALUES)[number] => (FORMAT_VALUES as readonly string[]).includes(f));
   return {
+    language: languageOf(c.language),
     idea: c.idea ?? "",
     name: c.name,
     kind: oneOf(KIND_VALUES, c.kind),
@@ -708,6 +729,7 @@ function answersOf(c: CampaignRecord, tasks: TaskRow[], budget: number | null): 
     productIds: c.productIds,
     goal: oneOf(GOAL_VALUES, c.goal),
     requirements: readRequirements(c.requirements),
+    maxCreators: c.maxCreators,
     platforms: c.platforms.filter((p): p is Platform => (PLATFORMS as readonly string[]).includes(p)),
     platformMode: c.platformMode === "ALL" ? "ALL" : "ANY",
     formats,
@@ -757,6 +779,13 @@ export type WizardCampaign = Awaited<ReturnType<typeof getWizardCampaign>>;
 
 async function ownKnowledgeCampaign(businessId: string, id: string | null) {
   return id ? prisma.campaign.findFirst({ where: { id, businessId }, select: { id: true, startsAt: true, endsAt: true } }) : null;
+}
+
+/** The ids that are the company's Photos (MediaAsset rows), in the order given, without repeats. */
+async function ownAssetIds(businessId: string, ids: string[]): Promise<string[]> {
+  if (!ids.length) return [];
+  const own = new Set((await prisma.mediaAsset.findMany({ where: { businessId, id: { in: ids } }, select: { id: true } })).map((a) => a.id));
+  return [...new Set(ids)].filter((id) => own.has(id));
 }
 
 /** The ids that are the company's products, in the order given. */
@@ -886,6 +915,73 @@ export async function createDraft(actor: CampaignActor, input: StepInput<"idea">
   });
 }
 
+/**
+ * The one-page form's "Create campaign" (lib/creators/one-page.ts): a DRAFT that is set up already (Settings opens every
+ * step, and it goes live from its page), running from today for 30 days: one pay period, with the budget. The owner's
+ * answers are kept as given: the language, the description (the idea the AI read), the pay per 1,000 views and the
+ * most one creator earns (payRules: ratePerThousand and capPerCreator), the budget, how many creators can join, the
+ * networks, the cover and the product. The suggestion (the AI's, written in the campaign's language, or the template
+ * of its kind) fills the rest: the name, kind, goal, who to look for, formats, the caption check (with the @accounts
+ * and #hashtags of the description), how often a brief comes, the brief and the tasks, do's and don'ts, and the form.
+ */
+export async function createOnePageCampaign(actor: CampaignActor, input: unknown, suggestion: CampaignSuggestion, opts: { tiktokReady?: boolean; now?: Date } = {}) {
+  assertManager(actor);
+  // The currency is the company's (the form shows it), so the 500 RWF floor is checked in the right one.
+  const currency = await defaultCurrency(actor.businessId);
+  const checked = checkOnePage({ ...(input && typeof input === "object" ? input : {}), currency });
+  if (!checked.ok) throw new CreatorCampaignError("invalid", checked.error);
+  const v = checked.data;
+  if (v.platforms.includes("tiktok") && !opts.tiktokReady) throw new CreatorCampaignError("invalid", "TikTok is coming soon: BuPulse cannot count its views yet.");
+  const now = opts.now ?? new Date();
+  const b = await company(actor.businessId);
+  const [productIds, limits, cover, photos] = await Promise.all([
+    ownProductIds(actor.businessId, v.productId ? [v.productId] : []),
+    campaignLimits(actor.businessId),
+    v.coverAssetId ? ownAssetIds(actor.businessId, [v.coverAssetId]) : Promise.resolve([] as string[]),
+    ownAssetIds(actor.businessId, v.productPhotoIds),
+  ]);
+  if (v.coverAssetId && !cover.length) throw new CreatorCampaignError("invalid", "That background picture is no longer in your Photos. Pick another one.");
+  if (!v.unlimitedCreators && (v.maxCreators ?? 0) > limits.creatorsPerCampaign) throw new CreatorCampaignError("limit", `Your plan allows ${limits.creatorsPerCampaign} creators in one campaign. Pick a smaller number, or Unlimited.`);
+  const m = onePageCampaign(v, dayIn(now, b.timezone));
+  const name = (suggestion.name || nameFromIdea(v.description) || (v.productName ? `${v.productName} creators` : "") || "My creator campaign").slice(0, 80);
+  const row: PrefillRow = { goal: null, requirements: null, platforms: m.platforms, formats: [], mentions: [], briefEvery: null, brief: "", dos: [], donts: [], payRules: {}, applicationForm: null, platformMode: "ANY", startsOn: day(m.startsOn), endsOn: day(m.endsOn), currency };
+  // Where and Pay are the owner's; the other steps come from the suggestion (the tasks over the owner's networks).
+  const fill = prefill(row, 0, suggestion, ["goal", "creators", "when", "content", "rules", "form"], { creatorsPerCampaign: limits.creatorsPerCampaign, tiktokReady: opts.tiktokReady === true });
+  const requirements = { ...suggestedRequirements(suggestion, null, limits.creatorsPerCampaign), languages: m.languages, creatorsWanted: m.maxCreators ?? Math.min(5, limits.creatorsPerCampaign) };
+  const mentions = [...new Set([...mentionsInText(v.description), ...suggestion.mentions])].slice(0, 10);
+  const slug = await uniqueSlug(name, async (s) => (await prisma.creatorCampaign.count({ where: { slug: s } })) > 0);
+  return prisma.creatorCampaign.create({
+    data: {
+      businessId: actor.businessId,
+      slug,
+      name,
+      idea: m.idea,
+      language: m.language,
+      kind: suggestion.kind,
+      productIds,
+      brief: "",
+      platforms: m.platforms,
+      formats: suggestion.formats,
+      mentions,
+      currency,
+      payRules: json(m.payRules),
+      questions: json([]),
+      maxCreators: m.maxCreators,
+      startsOn: day(m.startsOn),
+      endsOn: day(m.endsOn),
+      createdBy: actor.actorId,
+      setupStep: null,
+      look: json({ coverAssetId: cover[0] ?? null }),
+      files: json({ exampleLinks: [], productName: m.product.productName, productLinks: m.product.productLinks, productPhotoIds: photos }),
+      ...fill.data,
+      requirements: json(requirements),
+      periods: { create: periodsFor(m.startsOn, m.endsOn, b.timezone).map((p) => ({ index: p.index, startsAt: p.startsAt, endsAt: p.endsAt, budget: m.budget })) },
+      tasks: { create: fill.tasks.map(taskData) },
+    },
+    select: { id: true, slug: true },
+  });
+}
+
 export type SaveStepOptions = {
   /** TikTok's app is set up (lib/creators/connect-flow.ts tiktokAuthConfig): campaigns may run on it. */
   tiktokReady?: boolean;
@@ -914,6 +1010,13 @@ export async function saveStep(actor: CampaignActor, id: string, step: WizardSte
       const v = parseStep("idea", input);
       const [linked, productIds] = await Promise.all([ownKnowledgeCampaign(actor.businessId, v.knowledgeCampaignId), ownProductIds(actor.businessId, v.productIds)]);
       const data: Prisma.CreatorCampaignUncheckedUpdateInput = { idea: v.idea || null, name: v.name || nameFromIdea(v.idea) || c.name, kind: v.kind, knowledgeCampaignId: linked?.id ?? null, productIds };
+      if (v.language) data.language = v.language;
+      // The product's name, links and pictures (the one-page form's), kept with the campaign's files; only its own photos.
+      if (v.productName !== undefined || v.productLinks || v.productPhotoIds) {
+        const files = readFiles(c.files);
+        const photos = v.productPhotoIds ? await ownAssetIds(actor.businessId, v.productPhotoIds) : files.productPhotoIds;
+        data.files = json({ ...files, productName: v.productName === undefined ? files.productName : v.productName || null, productLinks: v.productLinks ?? files.productLinks, productPhotoIds: photos });
+      }
       let tasks: TaskInput[] = [];
       const tasksNow = await prisma.creatorTask.count({ where: { campaignId: id } });
       const steps = draft && opts.suggest ? emptyOpenSteps(c, tasksNow, setupStep) : [];
@@ -937,8 +1040,8 @@ export async function saveStep(actor: CampaignActor, id: string, step: WizardSte
     case "creators": {
       const v = parseStep("creators", input);
       const { creatorsPerCampaign } = await campaignLimits(actor.businessId);
-      if ((v.requirements.creatorsWanted ?? 0) > creatorsPerCampaign) throw new CreatorCampaignError("limit", `Your plan allows ${creatorsPerCampaign} creators in one campaign.`);
-      await update({ requirements: json(v.requirements) });
+      if ((v.requirements.creatorsWanted ?? 0) > creatorsPerCampaign || (v.maxCreators ?? 0) > creatorsPerCampaign) throw new CreatorCampaignError("limit", `Your plan allows ${creatorsPerCampaign} creators in one campaign.`);
+      await update({ requirements: json(v.requirements), ...(v.maxCreators === undefined ? {} : { maxCreators: v.maxCreators }) });
       return;
     }
     case "where": {

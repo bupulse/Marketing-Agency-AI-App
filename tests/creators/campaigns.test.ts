@@ -181,6 +181,17 @@ describe("picking applicants", () => {
     expect(h.prisma.campaignCreator.update).not.toHaveBeenCalled();
   });
 
+  it("refuses past the campaign's own number of creators (the one-page form), below the plan's", async () => {
+    h.limits.creatorsPerCampaign = 20;
+    h.prisma.campaignCreator.findFirst.mockResolvedValue({ ...applicant, campaign: { ...applicant.campaign, maxCreators: 3 } });
+    h.prisma.campaignCreator.count.mockResolvedValue(3);
+    expect(await code(selectApplicant(OWNER, "cc1"))).toMatch(/^limit: This campaign takes up to 3 creators, and all places are taken/);
+    // Unlimited (null) is the plan's 20: the 4th one is picked.
+    h.prisma.campaignCreator.findFirst.mockResolvedValue({ ...applicant, campaign: { ...applicant.campaign, maxCreators: null } });
+    await selectApplicant(OWNER, "cc1");
+    expect(h.prisma.campaignCreator.updateMany).toHaveBeenCalledWith({ where: { id: "cc1", status: "APPLIED" }, data: { status: "SELECTED", selectedAt: NOW } });
+  });
+
   it("adds a creator who applied with their account at once: JOINED, no invite link, and an email", async () => {
     h.prisma.campaignCreator.findFirst.mockResolvedValue({ ...applicant, source: "MARKETPLACE", profileId: "p1" });
     h.prisma.creatorProfile.findUnique.mockResolvedValue({ blockedAt: null });

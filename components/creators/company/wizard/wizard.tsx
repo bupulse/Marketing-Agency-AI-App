@@ -44,6 +44,8 @@ export type WizardOptions = {
   folders: FolderView[] | null;
   counts: { images: number; videos: number; documents: number };
   cover: { url: string; kind: string; posterUrl: string | null } | null;
+  /** The product's pictures picked for the campaign, signed, on the Idea step (empty elsewhere). */
+  productPhotos?: { id: string; url: string }[];
   problems: string[];
 };
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { campaignLimits, lock, placesTaken } from "./campaigns";
+import { placeLimit } from "./one-page";
 import { offerExpired } from "./portal-groups";
 
 // A creator answers a company's invitation (docs/CREATOR_MARKETPLACE.md, "Companies finding creators"): an OFFERED
@@ -26,7 +27,7 @@ export class OfferError extends Error {
 export async function answerOffer(profileId: string, campaignCreatorId: string, answer: OfferAnswer, now = new Date()): Promise<"JOINED" | "DECLINED"> {
   const row = await prisma.campaignCreator.findFirst({
     where: { id: campaignCreatorId, profileId },
-    select: { id: true, status: true, offeredAt: true, campaignId: true, profile: { select: { blockedAt: true } }, campaign: { select: { status: true, businessId: true } } },
+    select: { id: true, status: true, offeredAt: true, campaignId: true, profile: { select: { blockedAt: true } }, campaign: { select: { status: true, businessId: true, maxCreators: true } } },
   });
   if (!row) throw new OfferError("not_found", "That invitation no longer exists.");
   if (row.status !== "OFFERED") throw new OfferError("conflict", row.status === "JOINED" ? "You already joined this campaign." : "This invitation was already answered.");
@@ -40,13 +41,14 @@ export async function answerOffer(profileId: string, campaignCreatorId: string, 
 
   if (row.profile?.blockedAt) throw new OfferError("blocked", "Your creator account cannot join campaigns right now. Write to BuPulse if you think this is a mistake.");
   if (row.campaign.status === "ENDED") throw new OfferError("conflict", "This campaign has ended.");
-  const { creatorsPerCampaign } = await campaignLimits(row.campaign.businessId);
+  // The plan's limit, or the campaign's own number of creators when it is smaller (lib/creators/one-page.ts).
+  const limit = placeLimit((await campaignLimits(row.campaign.businessId)).creatorsPerCampaign, row.campaign.maxCreators);
   await prisma.$transaction(async (tx) => {
     // The company's picks take the same lock and count the same places (lib/creators/campaigns.ts); this invitation
     // is one of them, so the others are the count minus one.
     await lock(tx, row.campaignId);
     const picked = (await placesTaken(tx, row.campaignId, now)) - 1;
-    if (picked >= creatorsPerCampaign) throw new OfferError("limit", "All places in this campaign are taken, so the invitation cannot be accepted now.");
+    if (picked >= limit) throw new OfferError("limit", "All places in this campaign are taken, so the invitation cannot be accepted now.");
     const done = await tx.campaignCreator.updateMany({ where: { id: row.id, profileId, status: "OFFERED" }, data: { status: "JOINED", joinedAt: now } });
     if (done.count === 0) throw new OfferError("conflict", "This invitation was already answered.");
   });

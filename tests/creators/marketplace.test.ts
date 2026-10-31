@@ -12,6 +12,7 @@ vi.mock("@/lib/db", () => ({ prisma: { creatorCampaign: { findMany: h.findMany }
 vi.mock("@/lib/entitlements", () => ({ hasFeature: vi.fn(async ({ businessId }: { businessId: string }) => h.features.get(businessId) ?? false) }));
 vi.mock("@/lib/creators/campaigns", () => ({ campaignLimits: vi.fn(async (id: string) => ({ liveCampaigns: 2, creatorsPerCampaign: h.limits.get(id) ?? 20 })) }));
 vi.mock("@/lib/creators/logos", () => ({ logoUrls: vi.fn(async () => new Map([["logos/b1.png", "https://signed/b1"]])) }));
+vi.mock("@/lib/creators/campaign-files", () => ({ coverPictures: vi.fn(async (covers: { coverAssetId: string | null }[]) => new Map(covers.filter((c) => c.coverAssetId === "a1").map(() => ["a1", "https://signed/a1"]))) }));
 vi.mock("@/lib/creators/record", async (orig) => ({ ...(await orig<typeof import("@/lib/creators/record")>()), paymentRecords: vi.fn(async () => new Map()) }));
 
 import { byBestPay, filterMarket, hasFilters, isListed, marketHref, NO_FILTERS, placesLeft, readMarketFilters, whenOf, type MarketItem } from "@/lib/creators/market-filters";
@@ -122,6 +123,17 @@ describe("listedCampaigns", () => {
     expect(cards.map((c) => c.id)).toEqual(["c1"]);
     expect(cards[0]).toMatchObject({ placesLeft: 1, industrySlug: "food", company: { id: "b1", name: "Company b1", logoUrl: "https://signed/b1", industry: "Food & drink" }, record: { isNew: true } });
     expect(cards[0].pay[0]).toMatch(/2,000 RWF/);
+    expect(cards[0].coverUrl).toBeNull();
+  });
+
+  it("shows the campaign's background picture, and counts its own number of creators for the places left", async () => {
+    h.findMany.mockResolvedValue([row("c1", "b1", { look: { coverAssetId: "a1" }, maxCreators: 2, _count: { creators: 1 } }), row("c4", "b1", { maxCreators: null, _count: { creators: 1 } })]);
+    const cards = await listedCampaigns(NOW);
+    expect(cards.map((c) => [c.id, c.coverUrl, c.placesLeft])).toEqual([
+      ["c1", "https://signed/a1", 1],
+      // Unlimited: the plan's 4 places.
+      ["c4", null, 3],
+    ]);
   });
 
   it("gives the business types listed now for the filter", async () => {

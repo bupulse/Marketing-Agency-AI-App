@@ -210,7 +210,7 @@ export function Applicants({ campaignId, rows, details, places, ended }: { campa
   }
 
   const selectButton = (row: CampaignCreatorRow, label = "Select") => (
-    <Button size="sm" disabled={busy !== null || full || ended} title={full ? "All places on your plan are taken" : undefined} leading={<Check aria-hidden className="size-4" />} onClick={() => pick(row)}>
+    <Button size="sm" disabled={busy !== null || full || ended} title={full ? "All places are taken" : undefined} leading={<Check aria-hidden className="size-4" />} onClick={() => pick(row)}>
       {busy === row.id ? "One moment…" : label}
     </Button>
   );
@@ -218,7 +218,7 @@ export function Applicants({ campaignId, rows, details, places, ended }: { campa
   return (
     <div className="flex flex-col gap-5">
       <p className="px-1 text-[14px] text-muted">
-        {places.taken} of {places.limit} places taken on your plan (invited and joined creators, and invitations waiting for an answer).{full ? " Remove a creator, or cancel or withdraw an invitation, to pick someone else." : ""}
+        {places.taken} of {places.limit} places taken (invited and joined creators, and invitations waiting for an answer).{full ? " Remove a creator, or cancel or withdraw an invitation, to pick someone else." : ""}
       </p>
       <section className="flex flex-col gap-3">
         <h2 className="px-1 text-[17px] font-semibold">Waiting for your answer ({applied.length})</h2>

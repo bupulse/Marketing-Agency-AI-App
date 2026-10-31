@@ -14,6 +14,7 @@ import { applicationFormSchema, type ApplicationForm } from "./form-fields";
 import { computePeriodPay, paysAnything, payRulesSchema, type PayRules } from "./pay";
 import { rateProblem, RATE_VIEWS } from "./pay-floor";
 import { daysInclusive, MAX_CAMPAIGN_DAYS } from "./periods";
+import { LANGUAGE_CODES, MAX_PRODUCT_LINKS, MAX_PRODUCT_PHOTOS, type CampaignLanguage } from "./one-page";
 import { requirementsSchema, type CreatorRequirements } from "./requirements";
 import { BRIEF_EVERY, CAMPAIGN_GOALS, CAMPAIGN_KINDS, filesSchema, goLiveProblems, lookSchema, POST_FORMATS, WIZARD_STEPS, type ReadinessFacts, type BriefEvery, type CampaignFiles, type CampaignGoal, type CampaignKind, type CampaignLook, type PostFormat, type WizardStepId } from "./wizard";
 
@@ -26,7 +27,8 @@ export type TaskMedia = (typeof TASK_MEDIA)[number];
 /** The most tasks the wizard makes (a new brief every day works for about 4 months). */
 export const MAX_WIZARD_TASKS = 120;
 export const MAX_RULE_LINES = 20;
-export const MAX_IDEA = 300;
+/** The owner's line, or the one-page form's description of the campaign and its tasks (lib/creators/one-page.ts). */
+export const MAX_IDEA = 2_000;
 
 const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date.");
 const count = z.number().int().min(1, "Use a number above 0, or leave it empty.").max(1_000_000_000).nullable().optional();
@@ -52,13 +54,22 @@ export const STEP_SCHEMAS = {
       kind: z.enum(KIND_VALUES).nullable(),
       knowledgeCampaignId: z.string().min(1).max(60).nullable(),
       productIds: z.array(z.string().min(1).max(60)).max(30, "Pick at most 30 products."),
+      // The one-page form's answers (31 October 2026). Left out: unchanged, so older drafts and quick mode keep working.
+      language: z.enum(LANGUAGE_CODES).optional(),
+      productName: z.string().trim().max(120, "Keep the product name under 120 characters.").nullish(),
+      productLinks: z.array(z.string().trim().url("Paste full links, starting with https://").max(500)).max(MAX_PRODUCT_LINKS, `Add at most ${MAX_PRODUCT_LINKS} links.`).optional(),
+      productPhotoIds: z.array(z.string().min(1).max(40)).max(MAX_PRODUCT_PHOTOS, `Add at most ${MAX_PRODUCT_PHOTOS} pictures.`).optional(),
     })
     .superRefine((v, ctx) => {
       if (!v.idea && !v.name) ctx.addIssue({ code: "custom", path: ["idea"], message: "Write one line about the campaign." });
       if (v.name && v.name.length < 2) ctx.addIssue({ code: "custom", path: ["name"], message: "Give the campaign a name." });
     }),
   goal: z.object({ goal: z.enum(GOAL_VALUES, { error: "Pick what you want from the campaign." }) }),
-  creators: z.object({ requirements: requirementsSchema }),
+  creators: z.object({
+    requirements: requirementsSchema,
+    /** Creators who can join; null: unlimited (the plan's limit). Left out: unchanged. */
+    maxCreators: z.number().int().min(1, "At least 1 creator.").max(10_000).nullable().optional(),
+  }),
   where: z
     .object({
       platforms: z.array(z.enum(PLATFORMS)).min(1, "Pick at least one network.").max(PLATFORMS.length),
@@ -133,6 +144,8 @@ export function checkStep<S extends WizardStepId>(step: S, data: unknown): { ok:
 
 /** Every answer of the wizard, as the steps show them (lib/creators/campaigns.ts getWizardCampaign reads them). */
 export type WizardAnswers = {
+  /** The language the campaign's texts and its AI are written in (lib/creators/one-page.ts). */
+  language: CampaignLanguage;
   idea: string;
   name: string;
   kind: CampaignKind | null;
@@ -140,6 +153,8 @@ export type WizardAnswers = {
   productIds: string[];
   goal: CampaignGoal | null;
   requirements: CreatorRequirements;
+  /** Creators who can join; null: unlimited (up to the plan's creatorsPerCampaign). */
+  maxCreators: number | null;
   platforms: Platform[];
   platformMode: "ALL" | "ANY";
   formats: PostFormat[];
@@ -378,11 +393,11 @@ export function campaignFolderName(campaign: string, label: string, taken: strin
 export function stepInput(step: WizardStepId, a: WizardAnswers): unknown {
   switch (step) {
     case "idea":
-      return { idea: a.idea, name: a.name, kind: a.kind, knowledgeCampaignId: a.knowledgeCampaignId, productIds: a.productIds };
+      return { idea: a.idea, name: a.name, kind: a.kind, knowledgeCampaignId: a.knowledgeCampaignId, productIds: a.productIds, language: a.language, productName: a.files.productName?.trim() || null, productLinks: a.files.productLinks, productPhotoIds: a.files.productPhotoIds };
     case "goal":
       return { goal: a.goal };
     case "creators":
-      return { requirements: a.requirements };
+      return { requirements: a.requirements, maxCreators: a.maxCreators };
     case "where":
       return { platforms: a.platforms, platformMode: a.platformMode, formats: a.formats, mentions: a.mentions };
     case "when":

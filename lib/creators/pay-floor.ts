@@ -2,8 +2,9 @@
 // check and the tests agree.
 //
 // Owner decision (22 October 2026): the owner picks both the number of views and the price, but the price cannot be
-// low: at least 1,000 RWF for every 1,000 views (about $0.68). For comparison, clipping and UGC campaigns paid about
-// $0.30-$6 per 1,000 views in 2026, typically $1. Other currencies use about the same value in whole units.
+// low. Since 31 October 2026 (the one-page form) the floor is 500 RWF for every 1,000 views (about $0.34; it was 1,000
+// RWF). For comparison, clipping and UGC campaigns paid about $0.30-$6 per 1,000 views in 2026, typically $1. Other
+// currencies use about the same value in whole units (a dollar is the least a whole-unit USD rate can be).
 
 import type { PayRules } from "./pay";
 
@@ -11,12 +12,15 @@ import type { PayRules } from "./pay";
 export const RATE_VIEWS = [1_000, 10_000, 100_000, 1_000_000] as const;
 export type RateViews = (typeof RATE_VIEWS)[number];
 
-/** The least a campaign pays for 1,000 views, in whole units of each currency (about $0.68). */
-export const MIN_RATE_PER_THOUSAND: Record<string, number> = { RWF: 1_000, USD: 1, KES: 90, UGX: 2_500, TZS: 1_800, BIF: 2_000 };
+/** The least a campaign pays for 1,000 views, in whole units of each currency (about $0.34). */
+export const MIN_RATE_PER_THOUSAND: Record<string, number> = { RWF: 500, USD: 1, KES: 45, UGX: 1_250, TZS: 900, BIF: 1_000 };
 
-/** "Fair" up to this many times the floor, "Generous" above; more than the max is refused as a typing mistake. */
-const GENEROUS_FROM = 3;
-const MAX_TIMES = 20;
+/**
+ * "Fair" up to this many times the floor, "Generous" above; more than the max is refused as a typing mistake. Twice
+ * what they were when the floor was 1,000 RWF, so "Generous" (3,000 RWF) and the most (20,000 RWF) stay where they were.
+ */
+const GENEROUS_FROM = 6;
+const MAX_TIMES = 40;
 
 export type RateLevel = "LOW" | "FAIR" | "GENEROUS" | "TOO_HIGH";
 export const RATE_LEVEL_LABEL: Record<RateLevel, string> = { LOW: "Too low", FAIR: "Fair", GENEROUS: "Generous", TOO_HIGH: "Too high" };

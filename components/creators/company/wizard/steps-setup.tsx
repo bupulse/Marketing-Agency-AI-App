@@ -2,12 +2,15 @@
 
 // Steps 1 to 5 of the campaign wizard: Idea, Goal, Creators, Where, When (docs/CREATOR_CAMPAIGN_WIZARD.md).
 
-import { Camera, Clapperboard, Download, Eye, Globe, Image as ImageIcon, MapPin, ShoppingBag, UserPlus } from "lucide-react";
+import { Camera, Clapperboard, Download, Eye, Globe, Image as ImageIcon, MapPin, Plus, ShoppingBag, UserPlus, X } from "lucide-react";
+import { useState } from "react";
+import { MediaPicker } from "@/components/media/media-picker";
 import { Field, Input, Textarea } from "@/components/ui";
 import { NetworkIcon } from "@/components/connections/network-icon";
 import { formatShortDate } from "@/components/analytics/format";
 import { cn } from "@/lib/cn";
 import { taskSpans, type Platform } from "@/lib/creators/company-forms";
+import { CAMPAIGN_LANGUAGES, MAX_PRODUCT_LINKS, MAX_PRODUCT_PHOTOS } from "@/lib/creators/one-page";
 import { periodsFor, daysInclusive } from "@/lib/creators/periods";
 import { searchPlaces } from "@/lib/creators/places";
 import { FOLLOWER_STEPS, LANGUAGES, NICHES } from "@/lib/creators/requirements";
@@ -16,15 +19,19 @@ import { MAX_IDEA, REPEAT_OF, type TaskMedia } from "@/lib/creators/wizard-steps
 import { hashtagOf, shortBusinessName } from "@/lib/creators/wizard-suggest";
 import { addDaysYmd } from "@/lib/demo/slots";
 import type { Network } from "@/lib/social/types";
-import { ChipGroup, ChoiceCards, NumberSlider, Question, SearchPicker, Segmented, Stepper, StopSlider, TagInput, toggle } from "./controls";
+import { ChipGroup, ChoiceCards, NumberSlider, Question, SearchPicker, Segmented, Stepper, StopSlider, Switch, TagInput, toggle } from "./controls";
 import type { StepProps } from "./wizard";
 
 export function IdeaStep({ a, set, o }: StepProps) {
   const kind = CAMPAIGN_KINDS.find((k) => k.value === a.kind);
   return (
     <div className="flex flex-col gap-7">
-      <Question label="Your idea in one line" id="q-idea">
-        <Textarea aria-labelledby="q-idea" rows={2} maxLength={MAX_IDEA} value={a.idea} onChange={(e) => set({ idea: e.target.value })} placeholder={`For example: ${o.ideaExamples[0]}`} className="min-h-20 text-[16px]" />
+      <Question label="Language of the campaign" hint="Creators read the campaign in this language, and the AI writes in it." id="q-language">
+        <Segmented label="Language of the campaign" value={a.language} onChange={(language) => set({ language })} options={CAMPAIGN_LANGUAGES.map((l) => ({ value: l.code, label: l.label }))} />
+      </Question>
+
+      <Question label={a.idea.length > 120 ? "Your description of the campaign and the tasks" : "Your idea in one line"} hint={a.idea.length > 120 ? "The AI reads it to understand the tasks." : undefined} id="q-idea">
+        <Textarea aria-labelledby="q-idea" rows={a.idea.length > 120 ? 6 : 2} maxLength={MAX_IDEA} value={a.idea} onChange={(e) => set({ idea: e.target.value })} placeholder={`For example: ${o.ideaExamples[0]}`} className="min-h-20 text-[16px]" />
         <div className="flex flex-wrap gap-2" aria-label="Examples">
           {o.ideaExamples.map((ex) => (
             <button key={ex} type="button" onClick={() => set({ idea: ex })} className="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-dashed border-line px-3.5 text-left text-[14px] text-muted hover:bg-soft hover:text-text">
@@ -63,7 +70,57 @@ export function IdeaStep({ a, set, o }: StepProps) {
           <p className="text-[14px] text-muted">No products in Business info yet. Add them there and they show up here.</p>
         )}
       </Question>
+
+      <ProductExtras a={a} set={set} o={o} />
     </div>
+  );
+}
+
+/** The product's name, pictures and links that creators get with the campaign (the one-page form's, editable here). */
+function ProductExtras({ a, set, o }: Pick<StepProps, "a" | "set" | "o">) {
+  const [picking, setPicking] = useState(false);
+  const [urls, setUrls] = useState<Record<string, string>>(() => Object.fromEntries((o.productPhotos ?? []).map((p) => [p.id, p.url])));
+  const files = a.files;
+  const setFiles = (patch: Partial<typeof files>) => set({ files: { ...files, ...patch } });
+  const album = a.productIds[0] ? `product:${a.productIds[0]}` : undefined;
+  return (
+    <Question label="The product's name, pictures and links" hint="Creators get them with the campaign. Optional." id="q-product-extras">
+      <Input aria-label="Product name" value={files.productName ?? ""} maxLength={120} onChange={(e) => setFiles({ productName: e.target.value })} placeholder="Product name, e.g. Passion juice 1 litre" />
+      <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5" aria-label="Pictures of the product">
+        {files.productPhotoIds.map((id) => (
+          <li key={id} className="relative aspect-square overflow-hidden rounded-xl border border-line bg-soft">
+            {urls[id] && (
+              // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed Storage URL
+              <img src={urls[id]} alt="" className="size-full object-cover" />
+            )}
+            <button type="button" aria-label="Remove this picture" onClick={() => setFiles({ productPhotoIds: files.productPhotoIds.filter((x) => x !== id) })} className="absolute top-1 right-1 inline-flex size-9 cursor-pointer items-center justify-center rounded-full bg-black/55 text-white hover:bg-black/70">
+              <X aria-hidden className="size-4" />
+            </button>
+          </li>
+        ))}
+        {files.productPhotoIds.length < MAX_PRODUCT_PHOTOS && (
+          <li>
+            <button type="button" onClick={() => setPicking(true)} className="flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-line text-[13px] font-semibold text-muted hover:bg-soft hover:text-text">
+              <Plus aria-hidden className="size-5" /> Add
+            </button>
+          </li>
+        )}
+      </ul>
+      <TagInput label="Links to the product" values={files.productLinks} onChange={(productLinks) => setFiles({ productLinks })} placeholder="Paste a link, then press Enter" max={MAX_PRODUCT_LINKS} normalize={(l) => (/^https?:\/\//i.test(l) ? l : `https://${l}`)} />
+      <MediaPicker
+        open={picking}
+        onOpenChange={setPicking}
+        multiple
+        max={Math.max(1, MAX_PRODUCT_PHOTOS - files.productPhotoIds.length)}
+        title="Choose pictures of the product"
+        initialFolder={album}
+        saveTo={album}
+        onPick={(picked) => {
+          setUrls((cur) => ({ ...cur, ...Object.fromEntries(picked.map((p) => [p.id, p.url])) }));
+          setFiles({ productPhotoIds: [...new Set([...files.productPhotoIds, ...picked.map((p) => p.id)])].slice(0, MAX_PRODUCT_PHOTOS) });
+        }}
+      />
+    </Question>
   );
 }
 
@@ -88,7 +145,8 @@ const followers = (n: number) => (n === 0 ? "Any number" : `${n.toLocaleString("
 export function CreatorsStep({ a, set, o }: StepProps) {
   const r = a.requirements;
   const req = (patch: Partial<typeof r>) => set({ requirements: { ...r, ...patch } });
-  const wanted = Math.min(o.creatorsPerCampaign, Math.max(1, r.creatorsWanted ?? Math.min(5, o.creatorsPerCampaign)));
+  const wanted = Math.min(o.creatorsPerCampaign, Math.max(1, a.maxCreators ?? r.creatorsWanted ?? Math.min(5, o.creatorsPerCampaign)));
+  const unlimited = a.maxCreators === null;
   return (
     <div className="flex flex-col gap-7">
       <p className="rounded-2xl bg-soft px-4 py-3 text-[14px] text-muted">Creators who don&apos;t match can still apply. You see who matches first, and why the others don&apos;t.</p>
@@ -104,8 +162,10 @@ export function CreatorsStep({ a, set, o }: StepProps) {
       <Question label="Followers, at least" hint="On at least one of their accounts." id="q-followers">
         <StopSlider label="Least followers" stops={FOLLOWER_STEPS} value={r.minFollowers ?? 0} onChange={(v) => req({ minFollowers: v || null })} format={followers} />
       </Question>
-      <Question label="How many creators do you want?" hint={`Your plan allows up to ${o.creatorsPerCampaign} in one campaign.`} id="q-wanted">
-        <NumberSlider label="Creators wanted" min={1} max={o.creatorsPerCampaign} value={wanted} onChange={(v) => req({ creatorsWanted: v })} format={(n) => `${n} ${n === 1 ? "creator" : "creators"}`} />
+      <Question label="How many creators can join?" hint={`Your plan allows up to ${o.creatorsPerCampaign} in one campaign.`} id="q-wanted">
+        {/* The number is both the limit (maxCreators) and the cost estimates' count (creatorsWanted); Unlimited keeps the estimate's. */}
+        {!unlimited && <NumberSlider label="Creators who can join" min={1} max={o.creatorsPerCampaign} value={wanted} onChange={(v) => set({ maxCreators: v, requirements: { ...r, creatorsWanted: v } })} format={(n) => `${n} ${n === 1 ? "creator" : "creators"}`} />}
+        <Switch checked={unlimited} onChange={(on) => set({ maxCreators: on ? null : wanted, requirements: { ...r, creatorsWanted: wanted } })} label="Unlimited" hint={`Anyone you pick can join, up to ${o.creatorsPerCampaign} on your plan.`} />
       </Question>
     </div>
   );

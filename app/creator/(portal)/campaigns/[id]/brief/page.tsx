@@ -86,6 +86,12 @@ export default async function CampaignBriefPage({ params }: PageProps<"/creator/
         <p className="text-sm">
           {files ? `${files} file${files === 1 ? "" : "s"} from ${c.business.name}: download them on the campaign's page in BuPulse.` : "No files from the company yet."}
         </p>
+        {folders.productName && <p className="text-sm">The product: {folders.productName}</p>}
+        {folders.productLinks.map((l) => (
+          <p key={l} className="break-all text-sm">
+            Product link: {l}
+          </p>
+        ))}
         {folders.driveUrl && <p className="break-all text-sm">Shared Google Drive folder: {folders.driveUrl}</p>}
         {folders.exampleLinks.map((l) => (
           <p key={l} className="break-all text-sm">

@@ -43,6 +43,7 @@ const ctx = (over: Partial<SuggestContext> = {}): SuggestContext => ({
 });
 
 const answers = (over: Partial<WizardAnswers> = {}): WizardAnswers => ({
+  language: "en",
   idea: "Film our juice",
   name: "Juice week",
   kind: "PRODUCT_REVIEW",
@@ -50,6 +51,7 @@ const answers = (over: Partial<WizardAnswers> = {}): WizardAnswers => ({
   productIds: [],
   goal: "SALES",
   requirements: { niches: [], locations: [], languages: [] },
+  maxCreators: null,
   platforms: ["instagram"],
   platformMode: "ANY",
   formats: ["REEL"],
@@ -70,7 +72,7 @@ const answers = (over: Partial<WizardAnswers> = {}): WizardAnswers => ({
   viewTargetCampaign: null,
   budget: null,
   applicationForm: defaultForm(),
-  files: { exampleLinks: [] },
+  files: { exampleLinks: [], productLinks: [], productPhotoIds: [] },
   look: {},
   listed: true,
   acceptingApplications: true,
@@ -85,7 +87,7 @@ describe("each step checks its own answers", () => {
 
   it("keeps the pay floor and says what a milestone misses", () => {
     const pay = (payRules: object) => checkStep("pay", { currency: "RWF", payRules, viewTargetPerCreator: null, viewTargetCampaign: null, budget: null });
-    expect(pay({ ratePerThousand: 5_000, rateViews: 10_000 })).toEqual({ ok: false, error: expect.stringMatching(/at least 10,000 RWF for every 10,000 views/) });
+    expect(pay({ ratePerThousand: 4_000, rateViews: 10_000 })).toEqual({ ok: false, error: expect.stringMatching(/at least 5,000 RWF for every 10,000 views/) });
     expect(pay({})).toEqual({ ok: false, error: expect.stringMatching(/^Set how creators earn/) });
     expect(pay({ milestones: [{ views: 10_000, amount: 0 }] })).toEqual({ ok: false, error: "Give each milestone both its views and what it pays, or remove it." });
     expect(pay({ ratePerThousand: 15_000, rateViews: 10_000 }).ok).toBe(true);

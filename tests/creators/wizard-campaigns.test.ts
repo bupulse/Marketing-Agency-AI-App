@@ -112,7 +112,7 @@ describe("step 1 makes the draft", () => {
     const data = h.prisma.creatorCampaign.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ name: "Mango Madness", idea: "Film our new juice", kind: "CHALLENGE", setupStep: 2, goal: "VIEWS", platforms: ["instagram"], formats: ["REEL"], mentions: ["@leafjuice", "#LEAFChallenge"], briefEvery: "WEEK", currency: "RWF", startsOn: new Date("2026-10-26"), endsOn: new Date("2026-11-24") });
     expect(data.brief).toMatch(/LEAF challenge/);
-    expect(data.payRules).toEqual({ ratePerThousand: 1_500, rateViews: 1_000, feePerPost: null, milestones: [], capPerPost: null, capPerCreator: null });
+    expect(data.payRules).toEqual({ ratePerThousand: 750, rateViews: 1_000, feePerPost: null, milestones: [], capPerPost: null, capPerCreator: null });
     expect(data.requirements).toMatchObject({ niches: ["Food and drinks"], locations: ["Kigali"], creatorsWanted: 5 });
     expect(data.applicationForm.fields.map((f: { id: string }) => f.id)).toEqual(["camera", "adult"]);
     expect(data.tasks.create.map((t: { title: string }) => t.title)).toEqual(["Start the challenge (week 1)", "Challenge a friend (week 2)", "Your best take (week 3)", "The final round (week 4)", "Start the challenge (week 5)"]);
@@ -141,7 +141,7 @@ describe("saving a step", () => {
   });
 
   it("keeps the pay floor, the plan's creators and an ended campaign as it is", async () => {
-    expect(await code(saveStep(OWNER, "c1", "pay", { currency: "RWF", payRules: { ratePerThousand: 900 }, viewTargetPerCreator: null, viewTargetCampaign: null, budget: null }))).toMatch(/^invalid: Pay at least 1,000 RWF for every 1,000 views/);
+    expect(await code(saveStep(OWNER, "c1", "pay", { currency: "RWF", payRules: { ratePerThousand: 400 }, viewTargetPerCreator: null, viewTargetCampaign: null, budget: null }))).toMatch(/^invalid: Pay at least 500 RWF for every 1,000 views/);
     h.limits.creatorsPerCampaign = 10;
     expect(await code(saveStep(OWNER, "c1", "creators", { requirements: { niches: [], locations: [], languages: [], creatorsWanted: 11 } }))).toBe("limit: Your plan allows 10 creators in one campaign.");
     h.prisma.creatorCampaign.findFirst.mockResolvedValue(row({ status: "ENDED" }));

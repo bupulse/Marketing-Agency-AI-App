@@ -48,6 +48,7 @@ const ctx: SuggestContext = {
 function draft(): WizardAnswers {
   const s = templateSuggestion(ctx);
   let a: WizardAnswers = {
+    language: "en",
     idea: ctx.idea,
     name: s.name,
     kind: s.kind,
@@ -55,6 +56,7 @@ function draft(): WizardAnswers {
     productIds: ["p1"],
     goal: null,
     requirements: { niches: [], locations: [], languages: [] },
+    maxCreators: null,
     platforms: [],
     platformMode: "ANY",
     formats: [],
@@ -75,7 +77,7 @@ function draft(): WizardAnswers {
     viewTargetCampaign: null,
     budget: null,
     applicationForm: defaultForm(),
-    files: { exampleLinks: [] },
+    files: { exampleLinks: [], productLinks: [], productPhotoIds: [] },
     look: {},
     listed: true,
     acceptingApplications: true,
@@ -113,7 +115,7 @@ describe("the cards", () => {
   it("are refused by the same checks: no network, below the pay floor", () => {
     const a = draft();
     expect(checkStep("where", cardInputs("where", { ...a, platforms: [] })[0].input)).toEqual({ ok: false, error: "Pick at least one network." });
-    expect(checkStep("pay", cardInputs("pay", { ...a, payRules: { ratePerThousand: 900, rateViews: 1_000 } })[0].input)).toMatchObject({ ok: false, error: expect.stringMatching(/at least 1,000 RWF/) });
+    expect(checkStep("pay", cardInputs("pay", { ...a, payRules: { ratePerThousand: 499, rateViews: 1_000 } })[0].input)).toMatchObject({ ok: false, error: expect.stringMatching(/at least 500 RWF/) });
   });
 
   it("never send the tasks back (Content is saved by its detailed step)", () => {
@@ -172,7 +174,7 @@ describe("the chips and tiles", () => {
   });
 
   it("the pay slider starts at the floor and keeps the views the price is for", () => {
-    expect(rateRange("RWF", 1_000, 1_500)).toEqual({ min: 1_000, max: 5_000, step: 100 });
+    expect(rateRange("RWF", 1_000, 1_500)).toEqual({ min: 500, max: 2_500, step: 50 });
     expect(rateRange("RWF", 10_000, 80_000).max).toBe(80_000);
     expect(rateRange("RWF", 1_000, 99_000).max).toBe(20_000); // never past the typing-mistake cap
     expect(rateRange("USD", 1_000, null)).toMatchObject({ min: minRate("USD"), step: 1 });

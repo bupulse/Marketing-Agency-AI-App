@@ -52,17 +52,36 @@ export async function campaignCover(businessId: string, coverAssetId: string | n
   return row ? ((await signAssets([row]))[0] ?? null) : null;
 }
 
-export type CampaignFolders = { images: SignedAsset[]; videos: SignedAsset[]; documents: SignedAsset[]; driveUrl: string | null; exampleLinks: string[] };
+/**
+ * The covers of marketplace cards: a picture to show for each cover asset (a video's poster), keyed by the asset id.
+ * Only each campaign's own company's assets; one that cannot be signed (or a video without a poster) is left out.
+ */
+export async function coverPictures(covers: { businessId: string; coverAssetId: string | null }[]): Promise<Map<string, string>> {
+  const wanted = covers.filter((c): c is { businessId: string; coverAssetId: string } => Boolean(c.coverAssetId));
+  if (!wanted.length) return new Map();
+  const rows = await prisma.mediaAsset.findMany({ where: { OR: wanted.map((c) => ({ id: c.coverAssetId, businessId: c.businessId })) }, select: ASSET_SELECT });
+  const signed = await signAssets(rows);
+  return new Map(signed.flatMap((a) => { const url = a.kind === "video" ? a.posterUrl : a.url; return url ? [[a.id, url] as const] : []; }));
+}
 
-/** The files of the campaign's three folders (newest first, 100 each at most), its Drive link and example links. */
+export type CampaignFolders = { images: SignedAsset[]; videos: SignedAsset[]; documents: SignedAsset[]; driveUrl: string | null; exampleLinks: string[]; productName: string | null; productLinks: string[] };
+
+/**
+ * The files of the campaign's three folders (newest first, 100 each at most), its Drive link and example links. The
+ * product's pictures (the one-page form) come first among the images, followed by its name and links.
+ */
 export async function campaignFolders(businessId: string, filesValue: unknown): Promise<CampaignFolders> {
   const files = readFiles(filesValue);
   const ids = [files.imagesFolderId, files.videosFolderId, files.documentsFolderId];
-  const rows = await Promise.all(
-    ids.map((folderId) => (folderId ? prisma.mediaAsset.findMany({ where: { businessId, folderId }, orderBy: { createdAt: "desc" }, take: 100, select: ASSET_SELECT }) : Promise.resolve([] as AssetRow[]))),
-  );
-  const [images, videos, documents] = await Promise.all(rows.map(signAssets));
-  return { images, videos, documents, driveUrl: files.driveUrl ?? null, exampleLinks: files.exampleLinks };
+  const [product, ...rows] = await Promise.all([
+    files.productPhotoIds.length ? prisma.mediaAsset.findMany({ where: { businessId, id: { in: files.productPhotoIds } }, select: ASSET_SELECT }) : Promise.resolve([] as AssetRow[]),
+    ...ids.map((folderId) => (folderId ? prisma.mediaAsset.findMany({ where: { businessId, folderId }, orderBy: { createdAt: "desc" }, take: 100, select: ASSET_SELECT }) : Promise.resolve([] as AssetRow[]))),
+  ]);
+  // In the order the owner picked them, and once when a picture is in the Images folder too.
+  const picked = files.productPhotoIds.flatMap((id) => product.filter((r) => r.id === id));
+  const imageRows = [...picked, ...rows[0].filter((r) => !files.productPhotoIds.includes(r.id))];
+  const [images, videos, documents] = await Promise.all([imageRows, rows[1], rows[2]].map(signAssets));
+  return { images, videos, documents, driveUrl: files.driveUrl ?? null, exampleLinks: files.exampleLinks, productName: files.productName ?? null, productLinks: files.productLinks };
 }
 
 /**
