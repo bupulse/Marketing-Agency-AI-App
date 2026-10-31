@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import type { Prisma } from "@/lib/generated/prisma/client";
+import { Prisma } from "@/lib/generated/prisma/client";
 
 // Work to do at a given time (DueJob): resume an automation after a "wait" step, time out a question nobody answered,
 // check a social account for new comments. Any module registers a handler for its job kind; the every-minute cron
@@ -51,14 +51,15 @@ export function retryDelayMs(attempts: number): number {
   return 60_000 * 2 ** Math.max(0, attempts - 1);
 }
 
-/** Claims one due job atomically (two cron calls never get the same job). */
-async function claimOne(now: Date) {
+/** Claims one due job atomically (two cron calls never get the same job); `kinds` limits it to those job kinds. */
+async function claimOne(now: Date, kinds?: readonly string[]) {
+  const only = kinds?.length ? Prisma.sql`AND "kind" IN (${Prisma.join(kinds)})` : Prisma.empty;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     UPDATE "DueJob" SET "status" = 'RUNNING', "claimedAt" = ${now}, "attempts" = "attempts" + 1
     WHERE "id" = (
       SELECT "id" FROM "DueJob"
-      WHERE ("status" = 'PENDING' AND "runAt" <= ${now})
-         OR ("status" = 'RUNNING' AND "claimedAt" < ${new Date(now.getTime() - STALE_MS)})
+      WHERE (("status" = 'PENDING' AND "runAt" <= ${now})
+         OR ("status" = 'RUNNING' AND "claimedAt" < ${new Date(now.getTime() - STALE_MS)})) ${only}
       ORDER BY "runAt" ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -68,12 +69,12 @@ async function claimOne(now: Date) {
   return prisma.dueJob.findUnique({ where: { id: rows[0].id } });
 }
 
-/** Runs the jobs that are due, oldest first, within the batch size and time budget. */
-export async function runDueJobs(now = () => new Date()): Promise<{ ran: number; failed: number; retried: number; unknown: number }> {
+/** Runs the jobs that are due, oldest first, within the batch size and time budget; `kinds` runs only those kinds. */
+export async function runDueJobs(now = () => new Date(), kinds?: readonly string[]): Promise<{ ran: number; failed: number; retried: number; unknown: number }> {
   const started = Date.now();
   const result = { ran: 0, failed: 0, retried: 0, unknown: 0 };
   for (let i = 0; i < BATCH && Date.now() - started < BUDGET_MS; i++) {
-    const job = await claimOne(now());
+    const job = await claimOne(now(), kinds);
     if (!job) break;
     const handler = handlers.get(job.kind);
     if (!handler) {

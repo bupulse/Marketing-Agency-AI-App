@@ -3,3 +3,4 @@
 import "@/lib/automations/jobs";
 import "@/lib/social/inbox/poll";
 import "@/lib/support/jobs";
+import "@/lib/lead-alerts/reminders";

@@ -2,7 +2,9 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { publicSiteUrl } from "@/lib/auth/site-url";
+import { calledUrl } from "@/lib/lead-alerts/called-link";
 import { alertInBackground } from "@/lib/lead-alerts/channels";
+import { scheduleLeadReminder } from "@/lib/lead-alerts/reminders";
 import type { LeadAlert } from "@/lib/lead-alerts/format";
 import { publicLimited } from "@/lib/request-limits";
 import { QUOTE_FIELDS, QUOTE_KIND, quoteSchema, type QuoteFields, type QuoteFormState, type QuoteRequest } from "./schema";
@@ -14,7 +16,7 @@ import { QUOTE_FIELDS, QUOTE_KIND, quoteSchema, type QuoteFields, type QuoteForm
 const DUPLICATE_WINDOW_MS = 60_000;
 
 /** The alert for a stored request. Pure apart from the site address. */
-export function quoteAlert(q: QuoteRequest, at: Date): LeadAlert {
+export function quoteAlert(q: QuoteRequest, at: Date, id?: string): LeadAlert {
   const site = publicSiteUrl();
   return {
     kind: "quote",
@@ -27,6 +29,7 @@ export function quoteAlert(q: QuoteRequest, at: Date): LeadAlert {
     page: q.pageUrl ? `${site}${q.pageUrl}` : null,
     at,
     openUrl: `${site}/admin/quotes`,
+    calledUrl: id ? calledUrl(site, id) : null,
   };
 }
 
@@ -61,9 +64,11 @@ export async function submitQuoteRequest(formData: FormData): Promise<QuoteFormS
     if (!recent) {
       const row = await prisma.contactRequest.create({
         data: { kind: QUOTE_KIND, name: q.name, email: q.email, phone: q.phone, businessName: q.businessName, message: q.note ?? null, source: q.source, pageUrl: q.pageUrl },
-        select: { createdAt: true },
+        select: { id: true, createdAt: true },
       });
-      await alertInBackground(quoteAlert(q, row.createdAt), "quote lead alert");
+      await alertInBackground(quoteAlert(q, row.createdAt, row.id), "quote lead alert");
+      // Reminders on Telegram every 2 minutes until "✅ Called" is pressed; a failure here never fails the form.
+      await scheduleLeadReminder(row.id).catch((error) => logError(error, { source: "quote.reminder", level: "warn" }));
     }
   } catch (error) {
     await logError(error, { source: "quote.submit" });

@@ -23,6 +23,10 @@ export type LeadAlert = {
   at: Date;
   /** Where the owner opens it: Admin -> Quote requests, or the chat in the support app. */
   openUrl: string | null;
+  /** The signed "✅ Called" link of a stored quote request (called-link.ts); stops the reminders. */
+  calledUrl?: string | null;
+  /** Set on a reminder: which one of how many (reminders.ts). */
+  reminder?: { n: number; of: number } | null;
 };
 
 const KIGALI_TIME = new Intl.DateTimeFormat("en-GB", {
@@ -110,7 +114,7 @@ export function alertHeadline(a: LeadAlert): string {
 export function telegramText(a: LeadAlert): string {
   const e = escapeTelegramHtml;
   const note = a.note?.trim();
-  const lines = [`🔔 <b>${e(alertHeadline(a))}</b>`];
+  const lines = [a.reminder ? `⏰ <b>${e(reminderHeadline(a))}</b>` : `🔔 <b>${e(alertHeadline(a))}</b>`];
   if (note) lines.push(`“${e(note.length > TELEGRAM_NOTE_MAX ? `${note.slice(0, TELEGRAM_NOTE_MAX)}…` : note)}”`);
   lines.push("");
   for (const f of alertFields(a)) {
@@ -119,6 +123,13 @@ export function telegramText(a: LeadAlert): string {
     else lines.push(`<b>${e(f.label)}:</b> ${e(f.value)}`);
   }
   return lines.join("\n");
+}
+
+/** "Still waiting (2 of 5): call Aline Uwase from Kigali Tech Hub", the first line of a reminder. */
+export function reminderHeadline(a: LeadAlert): string {
+  const company = a.company?.trim();
+  const step = a.reminder ? ` (${a.reminder.n} of ${a.reminder.of})` : "";
+  return `Still waiting${step}: call ${who(a)}${company ? ` from ${company}` : ""}`;
 }
 
 export type TelegramButton = { text: string; url: string };
@@ -134,6 +145,7 @@ export function telegramButtons(a: LeadAlert, siteUrl: string): TelegramButton[]
     rows.push([{ text: `📞 Call ${first}`, url: `${siteUrl.replace(/\/$/, "")}/call/${a.phone.replace(/\D/g, "")}` }]);
     rows.push([{ text: "💬 WhatsApp", url: whatsappHref(a.phone) }]);
   }
+  if (a.calledUrl) rows.push([{ text: "✅ Called (stop reminders)", url: a.calledUrl }]);
   if (a.openUrl) rows.push([{ text: a.kind === "quote" ? "Open in Admin" : "Open the chat", url: a.openUrl }]);
   return rows;
 }
