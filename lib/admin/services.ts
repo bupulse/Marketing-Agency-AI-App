@@ -150,6 +150,7 @@ const ERROR_SOURCES: Partial<Record<ServiceId, string[]>> = {
   woocommerce: ["woo", "stores."],
   cloudflare: ["cloudflare", "domains"],
   whatsapp: ["whatsapp"],
+  telegram: ["telegram"],
 };
 
 function lastErrorOf(info: ServiceInfo, d: Loaded): ServiceView["lastError"] {

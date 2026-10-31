@@ -123,7 +123,11 @@ export const faqs = [
 
 // Plans, prices and the trial now come from the database (lib/plan-catalog.ts, managed at /admin/plans).
 
-/** The FAQ with the live trial length filled in. */
-export function fillFaq<T extends { a: string }>(items: T[], trialDays: number): T[] {
-  return items.map((f) => ({ ...f, a: f.a.replaceAll("{trialDays}", String(trialDays)) }));
+/** "How do I get started?" for Rwanda visitors, who ask for a free quote instead of a trial (lib/quote/cta.ts). */
+export const QUOTE_GET_STARTED_ANSWER =
+  "Ask for a free quote: tell us your name, phone number and business in a minute. We call you back shortly, suggest the plan that fits, and set up your account with you. You pay monthly or yearly by Mobile Money or card.";
+
+/** The FAQ with the live trial length filled in; in "quote" mode, getting started is the free quote. */
+export function fillFaq<T extends { q: string; a: string }>(items: T[], trialDays: number, mode: "quote" | "trial" = "trial"): T[] {
+  return items.map((f) => ({ ...f, a: mode === "quote" && /^how do i get started/i.test(f.q) ? QUOTE_GET_STARTED_ANSWER : f.a.replaceAll("{trialDays}", String(trialDays)) }));
 }

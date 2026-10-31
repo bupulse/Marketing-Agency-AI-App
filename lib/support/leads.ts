@@ -45,7 +45,7 @@ export async function listSupportLeads({ after, limit = SUPPORT_LEADS_PAGE }: { 
     if (!seen || seen.at < c.createdAt.getTime()) chatOf.set(v.leadId, { id: c.id, at: c.createdAt.getTime() });
   }
   return {
-    items: page.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), conversationId: chatOf.get(r.id)?.id ?? null })),
+    items: page.map((r) => ({ ...r, message: r.message ?? "", createdAt: r.createdAt.toISOString(), conversationId: chatOf.get(r.id)?.id ?? null })),
     next: rows.length > take ? (page.at(-1)?.id ?? null) : null,
   };
 }

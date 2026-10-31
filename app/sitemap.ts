@@ -4,7 +4,7 @@ import { site } from "@/lib/content/site";
 import { listedCampaigns } from "@/lib/creators/marketplace";
 import { logError } from "@/lib/errors";
 
-const pages = ["", "/pricing", "/done-for-you", "/industries", "/about", "/contact", "/partners", "/blog", "/creators", "/login", "/privacy", "/terms", "/refund-policy", "/data-deletion"];
+const pages = ["", "/pricing", "/quote", "/done-for-you", "/industries", "/about", "/contact", "/partners", "/blog", "/creators", "/login", "/privacy", "/terms", "/refund-policy", "/data-deletion"];
 
 // The marketplace's campaigns change through the day (docs/CREATOR_MARKETPLACE.md): the sitemap is made again hourly.
 export const revalidate = 3600;

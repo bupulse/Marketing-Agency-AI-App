@@ -54,7 +54,7 @@ describe("overview approval card", () => {
 
 describe("live to-do counts", () => {
   it("are one comparable string: a payment reported while the Overview is open changes it, so the console refreshes", () => {
-    const counts = { payments: 0, approvals: 0, demos: 1, requests: 0, invoices: 0, offers: 0, contests: 0, regions: 0, reports: 0, errors: 3 };
+    const counts = { quotes: 0, payments: 0, approvals: 0, demos: 1, requests: 0, invoices: 0, offers: 0, contests: 0, regions: 0, reports: 0, errors: 3 };
     expect(countsSignature(counts)).toBe(countsSignature({ ...counts }));
     expect(countsSignature({ ...counts, payments: 2 })).not.toBe(countsSignature(counts));
     expect(countsSignature(counts)).toContain("payments:0");
@@ -85,7 +85,7 @@ describe("today", () => {
 });
 
 describe("inbox by permission", () => {
-  const counts = { payments: 2, approvals: 1, demos: 3, requests: 4, invoices: 5, offers: 6, contests: 7, regions: 8, reports: 10, errors: 9 };
+  const counts = { quotes: 0, payments: 2, approvals: 1, demos: 3, requests: 4, invoices: 5, offers: 6, contests: 7, regions: 8, reports: 10, errors: 9 };
   it("counts only what each person can act on, never errors", () => {
     expect(inboxTotalFor(counts, ALL_PERMISSIONS)).toBe(46);
     expect(inboxTotalFor(counts, permissionsOf("finance"))).toBe(2 + 1 + 4 + 5 + 6);

@@ -24,6 +24,8 @@ export const PUBLIC_LIMITS = {
   confirmCode: { ip: { limit: 30, windowSeconds: 15 * 60 }, email: { limit: 10, windowSeconds: 15 * 60 } },
   resetCode: { ip: { limit: 30, windowSeconds: 15 * 60 }, email: { limit: 10, windowSeconds: 15 * 60 } },
   contact: { ip: { limit: 10, windowSeconds: HOUR } },
+  // "Get a free quote" (lib/quote): every request alerts the owner at once (email and Telegram), so per address too.
+  quote: { ip: { limit: 10, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: 24 * HOUR } },
   demoBook: { ip: { limit: 10, windowSeconds: HOUR } },
   // The partner application on /partners (stored for the admin; nothing is emailed).
   partnerApply: { ip: { limit: 5, windowSeconds: HOUR }, email: { limit: 3, windowSeconds: 24 * HOUR } },

@@ -12,6 +12,7 @@ import { broadcast } from "./realtime";
 import { getSupportSettings, teamHours } from "./settings";
 import { sha256Hex, newId, topicSecret } from "./tokens";
 import { scheduleTranscript } from "./emails";
+import { alertNewSupportChat } from "./lead-alert";
 import { noteLeadQuestion } from "./prechat";
 import { agentOf, conversationSelect, messageSelect, toConversationView, toMessageViews } from "./views";
 import type { VisitorSession } from "./visits";
@@ -115,6 +116,8 @@ export async function startConversation(session: VisitorSession, body: z.infer<t
   });
   await prisma.supportEvent.create({ data: { name: "conversation_started", conversationId: id } });
   await noteLeadQuestion(session.visitor.leadId, body.text ?? "");
+  // A new chat on the marketing site alerts the owner at once (email, Telegram), after the response (lead-alert.ts).
+  await alertNewSupportChat(session, id, body.text ?? "");
   await addVisitorMessage(id, body, ctx);
   return { conversation: await view(id) };
 }

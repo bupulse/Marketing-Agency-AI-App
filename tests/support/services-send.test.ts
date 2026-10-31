@@ -14,6 +14,7 @@ const m = vi.hoisted(() => {
   rateLimit: vi.fn(),
   broadcast: vi.fn(),
   scheduleJob: vi.fn(),
+  alertNewSupportChat: vi.fn(),
   };
 });
 
@@ -30,6 +31,7 @@ vi.mock("@/lib/support/realtime", () => ({ broadcast: m.broadcast }));
 vi.mock("@/lib/support/handover", () => ({ handOver: vi.fn(), handoverText: () => "A person will reply." }));
 vi.mock("@/lib/support/emails", () => ({ scheduleTranscript: vi.fn() }));
 vi.mock("@/lib/support/prechat", () => ({ noteLeadQuestion: vi.fn() }));
+vi.mock("@/lib/support/lead-alert", () => ({ alertNewSupportChat: m.alertNewSupportChat }));
 vi.mock("@/lib/support/jobs", () => ({ scheduleSweep: vi.fn() }));
 vi.mock("@/lib/support/identity", () => ({ signedInPerson: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/lib/support/settings", () => ({ getSupportSettings: vi.fn().mockResolvedValue({ hours: {} }), teamHours: () => ({ open: true }) }));
@@ -132,6 +134,26 @@ describe("idempotent sends", () => {
     expect(data).toMatchObject({ visitorId: "v1", visitId: "visit1", surface: "public" });
     expect(data.topicTokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(res.conversation.id).toBe(data.id);
+  });
+});
+
+describe("the owner's alert for a new chat (lib/support/lead-alert.ts)", () => {
+  it("goes once when a chat starts, with the first message", async () => {
+    m.prisma.supportConversation.create.mockResolvedValue({});
+    m.prisma.supportConversation.findUniqueOrThrow.mockImplementation(async ({ where }: { where: { id: string } }) => conv({ id: where.id }));
+    await startConversation(session(), body, ctx);
+    const id = m.prisma.supportConversation.create.mock.calls[0][0].data.id;
+    expect(m.alertNewSupportChat).toHaveBeenCalledTimes(1);
+    expect(m.alertNewSupportChat).toHaveBeenCalledWith(expect.objectContaining({ surface: "public", visitorId: "v1" }), id, "hello");
+  });
+
+  it("never for a message in a chat that already exists, nor for a retried first message", async () => {
+    await sendMessage(session(), "c1", body, ctx);
+    m.prisma.supportConversation.findFirst.mockResolvedValue({ id: "c1" });
+    await startConversation(session(), { ...body, clientMsgId: "client-msg-2" }, ctx);
+    m.prisma.supportMessage.findFirst.mockResolvedValue({ conversationId: "c1" });
+    await startConversation(session(), body, ctx);
+    expect(m.alertNewSupportChat).not.toHaveBeenCalled();
   });
 });
 

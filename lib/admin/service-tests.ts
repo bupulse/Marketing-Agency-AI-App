@@ -5,6 +5,7 @@ import { paddleApi } from "@/lib/billing/paddle";
 import { serviceInfo, type ServiceId } from "./service-catalog";
 import { scrubSecrets } from "./scrub";
 import { loadServiceKeys } from "./service-keys";
+import { getTelegramBot } from "@/lib/lead-alerts/telegram";
 
 // One cheap "Test now" per service. Each is a free (or almost free) call that proves the key works; OAuth-only services
 // check that their configuration is present. Messages are scrubbed before they are stored or shown.
@@ -112,6 +113,11 @@ const PROBES: Partial<Record<ServiceId, Probe>> = {
   cloudflare: async () => {
     const res = await get("https://api.cloudflare.com/client/v4/ips");
     return res.ok ? { ok: true, message: "Cloudflare's API is reachable (each client uses their own token)." } : { ok: false, message: `Cloudflare's API returned ${res.status}.` };
+  },
+  telegram: async () => {
+    // getMe is free and names the bot, which proves the token (lib/lead-alerts/telegram.ts keeps the token out of errors).
+    const bot = await getTelegramBot(env("TELEGRAM_BOT_TOKEN"));
+    return bot.ok ? { ok: true, message: `Telegram accepted the token (bot @${bot.username}). Connect your chat in Settings, Lead alerts.` } : { ok: false, message: bot.error };
   },
 };
 

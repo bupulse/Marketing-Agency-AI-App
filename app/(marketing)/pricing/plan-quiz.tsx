@@ -7,6 +7,7 @@ import { Button, GlassCard } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { PLAN_PICK_COOKIE, PLAN_PICK_MAX_AGE, QUIZ_QUESTIONS, parseAnswers, recommendPlan, type QuizAnswers } from "@/lib/plan-quiz";
 import type { RegionalPlan } from "@/lib/region-prices";
+import { CtaButton, useCtaMode } from "@/components/marketing/quote/cta";
 
 const CUSTOM_PLAN_SIGNUP = `/signup?next=${encodeURIComponent("/custom-plan?from=quiz")}`;
 
@@ -21,13 +22,16 @@ function rememberPick(planKey: string) {
 
 /**
  * "Pick your plan in 30 seconds": three questions, then one recommendation from the visitor's region plans (the same
- * plans and prices as the cards above), with Start your free trial and Sign up and pay.
+ * plans and prices as the cards above), with Start your free trial and Sign up and pay. Rwanda visitors get "Get a
+ * free quote" instead and no sign-up link (lib/quote/cta.ts).
  */
 export function PlanQuiz({ plans }: { plans: RegionalPlan[] }) {
   const [answers, setAnswers] = useState<Partial<QuizAnswers>>({});
   const complete = parseAnswers(answers);
   const result = complete ? recommendPlan(complete, plans) : null;
   const step = QUIZ_QUESTIONS.findIndex((q) => !answers[q.key]);
+  const quote = useCtaMode() === "quote";
+  const arrow = <ArrowRight aria-hidden className="size-4" />;
 
   return (
     <GlassCard as="section" padding="lg" className="flex flex-col gap-6" aria-labelledby="plan-quiz-title">
@@ -82,34 +86,29 @@ export function PlanQuiz({ plans }: { plans: RegionalPlan[] }) {
           <div className="flex flex-wrap gap-3">
             {result.kind === "plan" && (
               <>
-                <Button href="/signup" onClick={() => rememberPick(result.plan.key)} trailing={<ArrowRight aria-hidden className="size-4" />}>
-                  Start your free trial
-                </Button>
-                <Button href="/signup" variant="outline" onClick={() => rememberPick(result.plan.key)}>
-                  Sign up and pay now
-                </Button>
+                <CtaButton onTrialClick={() => rememberPick(result.plan.key)} trailing={arrow} />
+                {!quote && (
+                  <Button href="/signup" variant="outline" onClick={() => rememberPick(result.plan.key)}>
+                    Sign up and pay now
+                  </Button>
+                )}
               </>
             )}
             {result.kind === "managed" && (
               <>
-                <Button href="/signup" trailing={<ArrowRight aria-hidden className="size-4" />}>
-                  Start your free trial
-                </Button>
+                <CtaButton trailing={arrow} />
                 <Button href="/done-for-you" variant="outline">
                   See done-for-you
                 </Button>
               </>
             )}
-            {result.kind === "custom" && (
-              <Button href={CUSTOM_PLAN_SIGNUP} trailing={<ArrowRight aria-hidden className="size-4" />}>
-                Request a custom plan
-              </Button>
-            )}
+            {/* A custom plan is a quote too: in Rwanda the same pop-up, no sign-up first. */}
+            {result.kind === "custom" && <CtaButton trialHref={CUSTOM_PLAN_SIGNUP} trialLabel="Request a custom plan" trailing={arrow} />}
             <Button type="button" variant="outline" onClick={() => setAnswers({})} leading={<RotateCcw aria-hidden className="size-4" />}>
               Start again
             </Button>
           </div>
-          {result.kind === "plan" && <p className="text-[13px] text-muted">Paying now? After signing up, start your trial on {result.plan.name}, then pay from the Billing page whenever you are ready.</p>}
+          {result.kind === "plan" && !quote && <p className="text-[13px] text-muted">Paying now? After signing up, start your trial on {result.plan.name}, then pay from the Billing page whenever you are ready.</p>}
         </div>
       )}
     </GlassCard>

@@ -5,7 +5,8 @@ import { useState } from "react";
 import { IntervalToggle } from "@/components/billing/interval-toggle";
 import { formatPrice, yearlyBadge, yearlySavingsLabel, yearlySavingsMinor } from "@/components/billing/helpers";
 import { PriceTag } from "@/components/billing/price-tag";
-import { Badge, Button, GlassCard } from "@/components/ui";
+import { Badge, GlassCard } from "@/components/ui";
+import { CtaButton } from "@/components/marketing/quote/cta";
 import { paymentMethodLabel } from "@/lib/region-format";
 import type { RegionalPlan } from "@/lib/region-prices";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
@@ -74,9 +75,7 @@ export function PricingPlans({ plans }: { plans: RegionalPlan[] }) {
               ))}
               <ComingSoonFeatures features={plan.features} className="gap-3" />
             </ul>
-            <Button href="/signup" size="lg" variant={plan.highlight ? "primary" : "ghost"}>
-              Start your free trial
-            </Button>
+            <CtaButton size="lg" variant={plan.highlight ? "primary" : "ghost"} />
           </GlassCard>
         ))}
       </div>

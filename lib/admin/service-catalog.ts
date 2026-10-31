@@ -26,6 +26,7 @@ export const SERVICE_IDS = [
   "premium3d",
   "composio",
   "studio",
+  "telegram",
 ] as const;
 export type ServiceId = (typeof SERVICE_IDS)[number];
 
@@ -328,6 +329,15 @@ export const SERVICES: ServiceInfo[] = [
     killable: true,
     defaultOff: true,
     whenOff: "Clients see \"Video Studio: coming soon\" instead of the button, and nobody new can sign in to the studio. Their Videos library, scheduled videos and credits stay as they are.",
+  },
+  {
+    id: "telegram",
+    name: "Telegram (lead alerts)",
+    purpose: "Free instant alerts to the owner's phone the moment someone asks for a quote or starts a chat on bupulse.com (lib/lead-alerts). Make a bot with @BotFather, paste its token here, send /start to the bot, then press Connect in Admin -> Settings, Lead alerts.",
+    env: ["TELEGRAM_BOT_TOKEN"],
+    features: ["Telegram alerts for quote requests", "Telegram alerts for new website chats"],
+    killable: true,
+    whenOff: "No Telegram alerts are sent; the alert emails to the admin addresses carry on and every request stays in Admin -> Quote requests.",
   },
 ];
 

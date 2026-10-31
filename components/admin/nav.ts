@@ -24,6 +24,7 @@ import {
   MessageSquarePlus,
   Music,
   Palette,
+  PhoneCall,
   Plug,
   Quote,
   Receipt,
@@ -52,7 +53,7 @@ import type { Permission } from "@/lib/staff/permissions";
 // breadcrumbs, the page headers and the search (Cmd/Ctrl+K) all read this list, so a page added here is findable
 // everywhere. The files live in matching route groups: app/admin/(console)/(clients|money|content|ai|system)/.
 
-export type BadgeKey = "inbox" | "approvals" | "payments" | "requests" | "reports" | "health" | "errors";
+export type BadgeKey = "inbox" | "quotes" | "approvals" | "payments" | "requests" | "reports" | "health" | "errors";
 /** `perm`: the permission the page needs (any of a list); the page checks it and the menu hides what you cannot open. */
 export type AdminNavItem = { href: string; perm: Permission | readonly Permission[]; label: string; icon: LucideIcon; description: string; badge?: BadgeKey; keywords?: string };
 export type AdminNavGroup = { id: string; title: string | null; icon?: LucideIcon; items: AdminNavItem[] };
@@ -71,6 +72,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     title: "Sales",
     icon: Handshake,
     items: [
+      { href: "/admin/quotes", perm: "requests", label: "Quote requests", icon: PhoneCall, badge: "quotes", description: "\"Get a free quote\" requests from the website, newest first: call or WhatsApp them, then mark them called.", keywords: "leads quote call phone instagram facebook rwanda telegram" },
       { href: "/admin/sales", perm: "clients.own", label: "My clients", icon: Contact, description: "Your clients: contact, plan, trial days left, last sign-in, posts and payment status, and your referral link.", keywords: "agent referral link whatsapp" },
       { href: "/admin/sales/team", perm: "sales.team", label: "Sales team", icon: Users, description: "Every agent and every client's agent; reassign a client with a reason.", keywords: "reassign agents manager" },
       { href: "/admin/sales/leaderboard", perm: "sales.board", label: "Leaderboard", icon: Medal, description: "This month's sales per agent: own sales, team share and total.", keywords: "ranking performance" },

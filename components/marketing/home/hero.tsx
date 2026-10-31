@@ -1,6 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import { RotatingWords } from "@/components/motion";
 import { Button } from "@/components/ui";
+import { CtaButton, ForCta } from "@/components/marketing/quote/cta";
 import { heroWords } from "@/lib/content/site";
 import { HeroScene } from "./hero-scene";
 
@@ -26,15 +27,16 @@ export function Hero() {
           visitors, so you can get back to running the business.
         </p>
         <div className="animate-rise flex flex-wrap gap-3 [animation-delay:360ms]">
-          <Button href="/signup" size="lg" trailing={<ArrowRight aria-hidden className="size-[18px]" />}>
-            Start your free trial
-          </Button>
+          <CtaButton size="lg" trailing={<ArrowRight aria-hidden className="size-[18px]" />} />
           <Button href="#how" variant="ghost" size="lg">
             See how it works
           </Button>
         </div>
         <p className="animate-rise m-0 text-[13px] text-muted [animation-delay:360ms]">
-          Free trial, no card needed · No marketing experience needed · Cancel anytime
+          <ForCta
+            trial="Free trial, no card needed · No marketing experience needed · Cancel anytime"
+            quote="A free quote for your business · We call you back · No marketing experience needed"
+          />
         </p>
       </div>
       <HeroScene />

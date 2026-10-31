@@ -16,6 +16,8 @@ import { geoLookupAvailable } from "@/lib/geo/availability";
 import { displayRegionWithOverride } from "@/lib/region";
 import { currencyNote, paymentBadges } from "@/lib/region-format";
 import { getRegionPlans } from "@/lib/region-prices";
+import { CtaButton } from "@/components/marketing/quote/cta";
+import { ctaModeForRegion } from "@/lib/quote/cta";
 
 // Plans and prices depend on where the visitor is (lib/region.ts) and change in the admin console, so the page is
 // rendered per request (the plan, price and region catalogs are cached for 30 seconds).
@@ -33,13 +35,20 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const region = await displayRegionWithOverride(sp.region);
   const [plans, trialDays, canLocate] = await Promise.all([getRegionPlans(region.key), getSetting("trialDays"), geoLookupAvailable()]);
   const days = `${trialDays} ${trialDays === 1 ? "day" : "days"}`;
-  const pricingFaqs = fillFaq(faqs, trialDays).filter((f) => /get started|marketing experience|type of business|done-for-you/i.test(f.q));
+  // Rwanda visitors ask for a free quote instead of starting a trial (lib/quote/cta.ts): the steps, the custom plan
+  // card and the FAQ say so, and no line here sends them to the trial.
+  const quote = ctaModeForRegion(region.key) === "quote";
+  const pricingFaqs = fillFaq(faqs, trialDays, quote ? "quote" : "trial").filter((f) => /get started|marketing experience|type of business|done-for-you/i.test(f.q));
   return (
     <>
       <PageHero
         eyebrow="Pricing"
         title="Simple pricing for every small business"
-        text={`Prices for ${region.name}. Try it free for ${days}, no card needed, then pay monthly or yearly.`}
+        text={
+          quote
+            ? `Prices for ${region.name}. Ask for a free quote and we call you back with the plan that fits, then pay monthly or yearly.`
+            : `Prices for ${region.name}. Try it free for ${days}, no card needed, then pay monthly or yearly.`
+        }
       />
 
       <Container className="pb-16">
@@ -71,16 +80,23 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
         <Reveal>
           <GlassCard padding="lg" className="flex flex-col gap-3">
             <h2 className="text-2xl font-bold tracking-tight">How it works</h2>
-            <ol className="flex flex-col gap-2 text-muted">
-              <li><strong className="text-text">1. Sign up.</strong> Tell us about your business in a few minutes.</li>
-              <li><strong className="text-text">2. Choose the plan you want to try.</strong> Your free trial starts right away.</li>
-              <li><strong className="text-text">3. Try it free for {days}.</strong> With everything your plan includes. No card needed.</li>
-              <li><strong className="text-text">4. Keep going.</strong> Pay to continue. If you do nothing, nothing is charged and your work stays saved.</li>
-            </ol>
+            {quote ? (
+              <ol className="flex flex-col gap-2 text-muted">
+                <li><strong className="text-text">1. Ask for a free quote.</strong> Tell us about your business in a minute.</li>
+                <li><strong className="text-text">2. We call you.</strong> We listen to what you need and suggest the plan that fits.</li>
+                <li><strong className="text-text">3. We set it up with you.</strong> Your account, your brand and your first posts.</li>
+                <li><strong className="text-text">4. Pay monthly or yearly.</strong> By Mobile Money or card. Cancel any time.</li>
+              </ol>
+            ) : (
+              <ol className="flex flex-col gap-2 text-muted">
+                <li><strong className="text-text">1. Sign up.</strong> Tell us about your business in a few minutes.</li>
+                <li><strong className="text-text">2. Choose the plan you want to try.</strong> Your free trial starts right away.</li>
+                <li><strong className="text-text">3. Try it free for {days}.</strong> With everything your plan includes. No card needed.</li>
+                <li><strong className="text-text">4. Keep going.</strong> Pay to continue. If you do nothing, nothing is charged and your work stays saved.</li>
+              </ol>
+            )}
             <div>
-              <Button href="/signup" trailing={<ArrowRight aria-hidden className="size-4" />}>
-                Start your free trial
-              </Button>
+              <CtaButton trailing={<ArrowRight aria-hidden className="size-4" />} />
             </div>
           </GlassCard>
         </Reveal>
@@ -91,12 +107,17 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
           <GlassCard padding="lg" className="flex flex-col gap-3">
             <h2 className="text-2xl font-bold tracking-tight">Need something different?</h2>
             <p className="text-muted">
-              Only some features, more posts, website chat or Autopilot on top of a plan, or the BuPulse team running it for you: request a custom plan. Sign up first (it takes a few minutes; already have an account? you go straight to the form), tell us what you need, and we send you an offer (and can talk it through on a short call if you like).
+              {quote
+                ? "Only some features, more posts, website chat or Autopilot on top of a plan, or the BuPulse team running it for you: ask for a free quote, tell us what you need, and we call you back with an offer."
+                : "Only some features, more posts, website chat or Autopilot on top of a plan, or the BuPulse team running it for you: request a custom plan. Sign up first (it takes a few minutes; already have an account? you go straight to the form), tell us what you need, and we send you an offer (and can talk it through on a short call if you like)."}
             </p>
             <div>
-              <Button href={`/signup?next=${encodeURIComponent("/custom-plan?from=pricing")}`} variant="outline" trailing={<ArrowRight aria-hidden className="size-4" />}>
-                Request a custom plan
-              </Button>
+              <CtaButton
+                trialHref={`/signup?next=${encodeURIComponent("/custom-plan?from=pricing")}`}
+                trialLabel="Request a custom plan"
+                variant="outline"
+                trailing={<ArrowRight aria-hidden className="size-4" />}
+              />
             </div>
           </GlassCard>
         </Reveal>

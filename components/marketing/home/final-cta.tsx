@@ -1,5 +1,6 @@
 import { Reveal } from "@/components/motion";
 import { Button, Container } from "@/components/ui";
+import { CtaButton } from "@/components/marketing/quote/cta";
 
 export function FinalCta() {
   return (
@@ -13,9 +14,7 @@ export function FinalCta() {
             </h2>
             <p className="relative m-0 text-lg">Simple plans priced for where you are, or let our team run it for you.</p>
             <div className="relative flex flex-wrap justify-center gap-3">
-              <Button href="/signup" variant="white" size="lg">
-                Start your free trial
-              </Button>
+              <CtaButton variant="white" size="lg" />
               <Button
                 href="/done-for-you"
                 size="lg"

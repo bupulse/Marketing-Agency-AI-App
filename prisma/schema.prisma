@@ -983,13 +983,18 @@ model ErrorLog {
 // Meta data-deletion callbacks. Read by admins only (server-side).
 model ContactRequest {
   id           String   @id @default(cuid())
-  kind         String // "contact" | "done_for_you" | "meta_data_deletion"
+  kind         String // "contact" | "done_for_you" | "meta_data_deletion" | "support_chat" | "quote"
   name         String
   email        String
-  phone        String?
+  phone        String? // a quote's is E.164 ("+250788123456"); the others keep what was typed
   businessName String?
   industry     String?
-  message      String
+  /// Optional only for quotes (their note is optional); every other kind always has one.
+  message      String?
+  /// Where a quote request came from: "instagram", "facebook", "website"... (/quote?src=, lib/quote/source.ts).
+  source       String?
+  /// The page the quote form was sent from: the path of the page the pop-up was opened on, or /quote.
+  pageUrl      String?
   createdAt    DateTime @default(now())
   handled      Boolean  @default(false)
 

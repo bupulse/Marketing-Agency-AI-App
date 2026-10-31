@@ -2,6 +2,7 @@ import { Heart, Target, Users } from "lucide-react";
 import { PageHero } from "@/components/marketing/pages/page-hero";
 import { pageMetadata } from "@/components/marketing/pages/seo";
 import { Button, Container, GlassCard, SectionHeading } from "@/components/ui";
+import { CtaButton } from "@/components/marketing/quote/cta";
 
 export const metadata = pageMetadata({
   title: "About",
@@ -62,7 +63,7 @@ export default function AboutPage() {
         </section>
 
         <div className="flex flex-wrap gap-3">
-          <Button href="/signup" size="lg">Start your free trial</Button>
+          <CtaButton size="lg" />
           <Button href="/contact" size="lg" variant="ghost">Get in touch</Button>
         </div>
       </Container>

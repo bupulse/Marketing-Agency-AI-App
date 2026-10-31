@@ -2,7 +2,8 @@ import { ArrowRight } from "lucide-react";
 import { Reveal } from "@/components/motion";
 import { PageHero } from "@/components/marketing/pages/page-hero";
 import { pageMetadata } from "@/components/marketing/pages/seo";
-import { Button, Chip, Container, GlassCard } from "@/components/ui";
+import { CtaButton } from "@/components/marketing/quote/cta";
+import { Chip, Container, GlassCard } from "@/components/ui";
 import { industries } from "@/lib/content/site";
 
 export const metadata = pageMetadata({
@@ -45,9 +46,7 @@ export default function IndustriesPage() {
         <GlassCard strong padding="lg" className="mt-12 flex flex-col items-center gap-4 text-center">
           <h2 className="text-2xl font-bold tracking-tight">Do not see your business?</h2>
           <p className="max-w-xl text-muted">BuPulse is not limited to this list. If you can describe what you offer, it can help you promote it.</p>
-          <Button href="/signup" size="lg" trailing={<ArrowRight aria-hidden className="size-4" />}>
-            Start your free trial
-          </Button>
+          <CtaButton size="lg" trailing={<ArrowRight aria-hidden className="size-4" />} />
         </GlassCard>
       </Container>
     </>

@@ -5,7 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { buttonClasses } from "@/components/ui";
+import { QUOTE_LABEL } from "@/lib/quote/cta";
 import { accountLinks } from "./account-menu";
+import { useQuoteCta } from "./quote/cta";
 
 type MobileMenuProps = { links: { label: string; href: string }[]; email?: string | null };
 
@@ -18,6 +20,7 @@ export function MobileMenu({ links, email = null }: MobileMenuProps) {
   const setOpen = (next: boolean | ((o: boolean) => boolean)) =>
     setOpenOn((cur) => ((typeof next === "function" ? next(cur === pathname) : next) ? pathname : null));
   const panelId = useId();
+  const { mode, openQuote } = useQuoteCta();
 
   useEffect(() => {
     if (!open) return;
@@ -82,9 +85,24 @@ export function MobileMenu({ links, email = null }: MobileMenuProps) {
             <Link href="/login" onClick={close} className={buttonClasses({ variant: "ghost" })}>
               Log in
             </Link>
-            <Link href="/signup" onClick={close} className={buttonClasses({ variant: "primary" })}>
-              Start your free trial
-            </Link>
+            {mode === "quote" ? (
+              // Rwanda: no trial link at all (lib/quote/cta.ts). The menu closes first, then the pop-up opens.
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                onClick={() => {
+                  close();
+                  openQuote();
+                }}
+                className={buttonClasses({ variant: "primary" })}
+              >
+                {QUOTE_LABEL}
+              </button>
+            ) : (
+              <Link href="/signup" onClick={close} className={buttonClasses({ variant: "primary" })}>
+                Start your free trial
+              </Link>
+            )}
           </div>
         )}
       </div>

@@ -16,6 +16,7 @@ import { publicSiteUrl, siteUrl } from "@/lib/auth/site-url";
 import { cardUsdCents, formatMinor } from "@/lib/region-format";
 import { DEMO_TIME_ZONE, WEEKDAY_NAMES } from "@/lib/demo/slots";
 import { googleCalendarStatus } from "@/lib/google-calendar/calendar";
+import { telegramStatus } from "@/lib/lead-alerts/telegram-settings";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured, mtnMomoPayDial } from "@/lib/billing/momo-shared";
 import { PADDLE_SECRETS, SECRET_LABEL } from "@/lib/billing/paddle-config";
@@ -23,6 +24,9 @@ import { PADDLE_WEBHOOK_PATH, paddleStatus } from "@/lib/billing/paddle-setup";
 import {
   addAvailabilityAction,
   clearPaddleSettingsAction,
+  connectTelegramAction,
+  disconnectTelegramAction,
+  testTelegramAction,
   disconnectGoogleCalendarAction,
   googleCalendarIdAction,
   recomputeCardPricesAction,
@@ -42,7 +46,7 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const [s, windows, google, momo, paddle, previewCost, daily] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus(), previewCostSummary(), dailyPostsToday()]);
+  const [s, windows, google, momo, paddle, previewCost, daily, telegram] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus(), previewCostSummary(), dailyPostsToday(), telegramStatus()]);
   const eur = await effectiveUsdToEur(s);
   const dial = mtnMomoPayDial(momo.merchantCode);
   const example = cardUsdCents(15000, "RWF", s.usdToRwf, s.cardMarginPercent);
@@ -297,6 +301,57 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </div>
         </form>
       </Panel>
+
+      <div id="lead-alerts">
+        <Panel
+          title="Lead alerts → Telegram"
+          description="The moment someone asks for a free quote or starts a chat on bupulse.com, BuPulse emails the admin addresses (always on) and, once connected here, sends the same alert to your Telegram, free: name, a tap-to-call number, a WhatsApp link, the company and what they wrote."
+          action={!telegram.enabled ? <Badge tone="neutral">Switched off</Badge> : telegram.chat && telegram.hasToken ? <Badge tone="success">Connected</Badge> : <Badge tone="neutral">Not connected</Badge>}
+        >
+          <div className="flex flex-col gap-4">
+            <ol className="ml-5 list-decimal space-y-1 text-sm text-muted">
+              <li>
+                In Telegram, open <strong className="text-text">@BotFather</strong>, send <code>/newbot</code>, and give the bot a name (for example &quot;BuPulse alerts&quot;). BotFather answers with a token like <code>123456789:AA…</code>.
+              </li>
+              <li>
+                Paste the token on the <strong className="text-text">Telegram (lead alerts)</strong> card in{" "}
+                <Link href="/admin/services" className="underline">Services</Link> (TELEGRAM_BOT_TOKEN), then Test now there.{telegram.hasToken ? " Done: the token is set." : ""}
+              </li>
+              <li>Open your new bot in Telegram (the link BotFather gave) and send it <code>/start</code> from the phone that should get the alerts.</li>
+              <li>Come back here within a few minutes and press Connect. Only a private chat is used, never a group.</li>
+            </ol>
+            {telegram.chat ? (
+              <p className="text-sm">
+                Alerts go to <strong>{telegram.chat.name || "your Telegram chat"}</strong>
+                {telegram.chat.connectedAt ? <span className="text-muted"> since {dateTime(telegram.chat.connectedAt)}</span> : null}.
+                {!telegram.hasToken && <span className="text-danger"> The bot token is missing in Services, so nothing is sent until it is back.</span>}
+              </p>
+            ) : (
+              <p className="text-sm text-muted">No chat connected yet: alerts go by email only.</p>
+            )}
+            <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
+              <form action={connectTelegramAction}>
+                <Button type="submit" size="sm" disabled={!telegram.hasToken}>{telegram.chat ? "Connect again" : "Connect"}</Button>
+              </form>
+              {telegram.chat && (
+                <>
+                  <form action={testTelegramAction}>
+                    <Button type="submit" size="sm" variant="outline" disabled={!telegram.hasToken}>Send test alert</Button>
+                  </form>
+                  <ConfirmButton
+                    action={disconnectTelegramAction}
+                    fields={{}}
+                    label="Disconnect"
+                    title="Disconnect Telegram?"
+                    description="Lead alerts stop going to this Telegram chat; the alert emails carry on. Written to the audit log."
+                    confirmLabel="Disconnect"
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        </Panel>
+      </div>
 
       <div id="google-calendar">
         <Panel

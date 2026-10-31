@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Clock } from "lucide-react";
 import { Fragment } from "react";
-import { Button, Container } from "@/components/ui";
+import { CtaButton } from "@/components/marketing/quote/cta";
+import { Container } from "@/components/ui";
 import { getAllPosts, getPost } from "@/lib/content/blog";
 import { site } from "@/lib/content/site";
 
@@ -84,7 +85,7 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
       </div>
       <div className="mt-14 flex flex-col items-start gap-4 border-t border-line pt-8">
         <p className="text-lg font-semibold">Want help putting this into practice?</p>
-        <Button href="/signup">Start your free trial</Button>
+        <CtaButton />
       </div>
     </Container>
   );

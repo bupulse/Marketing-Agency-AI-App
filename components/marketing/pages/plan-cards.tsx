@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
-import { Badge, Button, GlassCard } from "@/components/ui";
+import { Badge, GlassCard } from "@/components/ui";
+import { CtaButton } from "@/components/marketing/quote/cta";
 import type { PublicPlan } from "@/lib/plan-catalog";
 import { cn } from "@/lib/cn";
 import { formatPrice } from "@/components/billing/helpers";
@@ -36,9 +37,7 @@ export function PlanCards({ plans }: { plans: PublicPlan[] }) {
               </li>
             ))}
           </ul>
-          <Button href="/signup" size="lg" variant={plan.highlight ? "primary" : "ghost"}>
-            Start your free trial
-          </Button>
+          <CtaButton size="lg" variant={plan.highlight ? "primary" : "ghost"} />
         </GlassCard>
       ))}
     </div>

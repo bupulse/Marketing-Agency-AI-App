@@ -12,15 +12,18 @@ import type { Permission } from "@/lib/staff/permissions";
 import { kigaliDayStart } from "@/lib/time/kigali";
 import { TO_CHECK_WHERE } from "@/lib/billing/momo-shared";
 import { REPORT_REASON_LABEL, type ReportReason } from "@/lib/creators/report-reasons";
+import { formatPhone } from "@/lib/phone";
+import { QUOTE_KIND } from "@/lib/quote/source";
 
 export type InboxItem = { id: string; text: string; sub?: string; href: string; at?: string };
 export type InboxSection = { key: InboxKey; title: string; why: string; href: string; count: number; tone: "danger" | "violet" | "neutral"; items: InboxItem[] };
-export type InboxKey = "payments" | "approvals" | "demos" | "requests" | "invoices" | "offers" | "contests" | "regions" | "reports" | "errors";
+export type InboxKey = "quotes" | "payments" | "approvals" | "demos" | "requests" | "invoices" | "offers" | "contests" | "regions" | "reports" | "errors";
 
 const SHOW = 5;
 
 /** Who sees each kind of to-do: the permission of the page where it is done. */
 export const INBOX_PERMISSION: Record<InboxKey, readonly Permission[]> = {
+  quotes: ["requests"],
   payments: ["payments.approve", "payments.view"],
   approvals: ["approvals.decide"],
   demos: ["demos"],
@@ -52,7 +55,8 @@ const safe = async <T>(p: Promise<T>, empty: T): Promise<T> => p.catch(() => emp
 export const getInboxCounts = cache(async (): Promise<Record<InboxKey, number> & { total: number }> => {
   const now = new Date();
   const since24h = new Date(now.getTime() - 24 * HOUR);
-  const [payments, approvals, demos, requests, invoices, offers, contests, regions, reports, errors] = await Promise.all([
+  const [quotes, payments, approvals, demos, requests, invoices, offers, contests, regions, reports, errors] = await Promise.all([
+    safe(prisma.contactRequest.count({ where: QUOTE_WHERE }), 0),
     safe(prisma.manualPayment.count({ where: TO_CHECK_WHERE }), 0),
     safe(prisma.adminApproval.count({ where: { status: "pending", createdAt: { gt: new Date(now.getTime() - APPROVAL_TTL_MS) } } }), 0),
     safe(prisma.demoBooking.count({ where: demoWhere(now) }), 0),
@@ -64,9 +68,9 @@ export const getInboxCounts = cache(async (): Promise<Record<InboxKey, number> &
     safe(prisma.creatorReport.count({ where: { status: "OPEN" } }), 0),
     safe(prisma.errorLog.count({ where: { level: "error", createdAt: { gte: since24h } } }), 0),
   ]);
-  const counts = { payments, approvals, demos, requests, invoices, offers, contests, regions, reports, errors };
+  const counts = { quotes, payments, approvals, demos, requests, invoices, offers, contests, regions, reports, errors };
   // Errors are shown, but they are not a to-do item of their own (Health and Errors own them).
-  return { ...counts, total: payments + approvals + demos + requests + invoices + offers + contests + regions + reports };
+  return { ...counts, total: quotes + payments + approvals + demos + requests + invoices + offers + contests + regions + reports };
 });
 
 /** Who the console keeps the counts live for: anyone who sees one of the counted lists (or the Overview). */
@@ -76,6 +80,9 @@ export const LIVE_COUNT_PERMISSIONS: readonly Permission[] = ["payments.view", "
 export const countsSignature = (counts: Record<InboxKey, number>): string => (Object.keys(INBOX_PERMISSION) as InboxKey[]).map((k) => `${k}:${counts[k] ?? 0}`).join(",");
 
 const startOfDay = kigaliDayStart;
+
+/** "Get a free quote" requests nobody has called yet (lib/quote/admin.ts). */
+const QUOTE_WHERE = { kind: QUOTE_KIND, handled: false };
 
 /** Demos from 2 hours ago to 48 hours ahead still "booked", and past ones never marked done or no-show. */
 const demoWhere = (now: Date) => ({ status: "booked", startsAt: { lte: new Date(now.getTime() + 48 * HOUR) } });
@@ -91,7 +98,8 @@ async function contestCount(): Promise<number> {
 export async function getInbox(now = new Date()): Promise<{ sections: InboxSection[]; total: number; errors24h: number }> {
   const counts = await getInboxCounts();
   const since24h = new Date(now.getTime() - 24 * HOUR);
-  const [payments, approvals, demos, requests, invoices, offers, contests, regions, reports, errors] = await Promise.all([
+  const [quotes, payments, approvals, demos, requests, invoices, offers, contests, regions, reports, errors] = await Promise.all([
+    safe(prisma.contactRequest.findMany({ where: QUOTE_WHERE, orderBy: { createdAt: "desc" }, take: SHOW, select: { id: true, name: true, businessName: true, phone: true, source: true, createdAt: true } }), []),
     safe(prisma.manualPayment.findMany({ where: TO_CHECK_WHERE, orderBy: { submittedAt: "asc" }, take: SHOW, select: { id: true, reference: true, amountMinor: true, currency: true, network: true, submittedAt: true, user: { select: { email: true, business: { select: { name: true } } } } } }), []),
     safe(prisma.adminApproval.findMany({ where: { status: "pending", createdAt: { gt: new Date(now.getTime() - APPROVAL_TTL_MS) } }, orderBy: { createdAt: "asc" }, take: SHOW, select: { id: true, kind: true, requestedBy: true, createdAt: true } }), []),
     safe(prisma.demoBooking.findMany({ where: demoWhere(now), orderBy: { startsAt: "asc" }, take: SHOW, select: { id: true, kind: true, startsAt: true, planKey: true, business: { select: { id: true, name: true } } } }), []),
@@ -108,6 +116,10 @@ export async function getInbox(now = new Date()): Promise<{ sections: InboxSecti
   ]);
 
   const all: InboxSection[] = [
+    {
+      key: "quotes", title: "Quote requests to call", why: "People asked for a free quote on the website and expect a call. Call them, then mark them called.", href: "/admin/quotes", count: counts.quotes, tone: "danger",
+      items: quotes.map((q) => ({ id: q.id, text: `${q.businessName ?? q.name}: call ${q.name}`, sub: [q.phone ? formatPhone(q.phone) : null, q.source ? `from ${q.source.replace(/[_-]+/g, " ")}` : null].filter(Boolean).join(" · ") || undefined, href: "/admin/quotes", at: q.createdAt.toISOString() })),
+    },
     {
       key: "payments", title: "Payments to confirm", why: "Clients say they paid by Mobile Money. Check the money arrived, then confirm or reject.", href: "/admin/payments", count: counts.payments, tone: "danger",
       items: payments.map((p) => ({ id: p.id, text: `${p.user.business?.name ?? p.user.email} paid ${money(p.amountMinor, p.currency)}`, sub: `${p.network ?? "MoMo"} · reference ${p.reference}`, href: "/admin/payments", at: p.submittedAt?.toISOString() })),

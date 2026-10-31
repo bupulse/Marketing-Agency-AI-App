@@ -1,0 +1,109 @@
+import { telHref, whatsappHref } from "@/lib/quote/phone";
+
+// What an instant lead alert says, whichever channel carries it (channels.ts): a quote request from the website, or a
+// visitor who started a help chat on BuPulse's own marketing site. Written so the owner can act from a phone screen in
+// seconds: who, the number as a tap-to-call link and a WhatsApp link, the company, what they wrote, where they came
+// from and when (Kigali time). Pure, so every channel and the tests share it.
+
+export type LeadAlertKind = "quote" | "support_chat";
+
+export type LeadAlert = {
+  kind: LeadAlertKind;
+  name: string;
+  /** E.164 when known ("+250788123456"); null when the person left none. */
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+  /** The quote's note, or the first message of the chat. */
+  note: string | null;
+  /** "instagram", "website"... (quotes); null for chats. */
+  source: string | null;
+  /** The page it was sent from, a full address. */
+  page: string | null;
+  at: Date;
+  /** Where the owner opens it: Admin -> Quote requests, or the chat in the support app. */
+  openUrl: string | null;
+};
+
+const KIGALI_TIME = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Africa/Kigali",
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/** "Sat, 31 Oct 2026, 14:05 (Kigali time)". */
+export function kigaliTime(at: Date): string {
+  return `${KIGALI_TIME.format(at).replace(/ at /, ", ")} (Kigali time)`;
+}
+
+/** A source tag as people say it: "instagram" -> "Instagram", "quote_page" -> "Quote page". */
+export function sourceLabel(source: string | null): string | null {
+  if (!source) return null;
+  const words = source.replace(/[_-]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : null;
+}
+
+const who = (a: LeadAlert) => a.name.trim() || a.email || "someone";
+
+/** "New quote request: Sample Shop Ltd — call Test Person now". */
+export function alertSubject(a: LeadAlert): string {
+  const company = a.company?.trim() || who(a);
+  const what = a.kind === "quote" ? "New quote request" : "New website chat";
+  const act = a.phone ? `call ${who(a)} now` : `reply to ${who(a)} now`;
+  return `${what}: ${company} — ${act}`;
+}
+
+/** One line under the subject: what happened, in a sentence. */
+export function alertIntro(a: LeadAlert): string {
+  return a.kind === "quote"
+    ? `${who(a)} asked for a free quote on the BuPulse website. They expect a call shortly.`
+    : `${who(a)} started a chat on the BuPulse website. The AI is answering; a quick call or WhatsApp can win them.`;
+}
+
+export type AlertField = { label: string; value: string; href?: string };
+
+/** The details, in the order the owner needs them. Empty values are left out. */
+export function alertFields(a: LeadAlert): AlertField[] {
+  const fields: (AlertField | null)[] = [
+    { label: "Name", value: a.name.trim() || "Not given" },
+    a.phone ? { label: "Phone", value: a.phone, href: telHref(a.phone) } : null,
+    a.phone ? { label: "WhatsApp", value: whatsappHref(a.phone), href: whatsappHref(a.phone) } : null,
+    a.email ? { label: "Email", value: a.email, href: `mailto:${a.email}` } : null,
+    a.company?.trim() ? { label: "Company", value: a.company.trim() } : null,
+    a.note?.trim() ? { label: a.kind === "quote" ? "Note" : "First message", value: a.note.trim() } : null,
+    sourceLabel(a.source) ? { label: "Source", value: sourceLabel(a.source)! } : null,
+    a.page ? { label: "Page", value: a.page, href: a.page } : null,
+    { label: "Time", value: kigaliTime(a.at) },
+  ];
+  return fields.filter((f): f is AlertField => f !== null);
+}
+
+/** Telegram's HTML mode needs only these three escaped. */
+export function escapeTelegramHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Telegram allows 4096 characters a message; a long note is cut well before that. */
+const TELEGRAM_NOTE_MAX = 1500;
+
+/**
+ * The Telegram message (parse_mode HTML). Telegram only makes http(s) links tappable, so the phone number itself is
+ * written as plain text (Telegram turns "+250..." into a tap-to-call link on phones) next to the WhatsApp link.
+ */
+export function telegramText(a: LeadAlert): string {
+  const e = escapeTelegramHtml;
+  const lines = [`<b>${e(alertSubject(a))}</b>`, ""];
+  for (const f of alertFields(a)) {
+    const value = f.label === "Note" || f.label === "First message" ? (f.value.length > TELEGRAM_NOTE_MAX ? `${f.value.slice(0, TELEGRAM_NOTE_MAX)}…` : f.value) : f.value;
+    if (f.label === "WhatsApp") lines.push(`<b>WhatsApp:</b> <a href="${e(f.value)}">Open a WhatsApp chat</a>`);
+    else if (f.label === "Page" && /^https?:/.test(f.value)) lines.push(`<b>Page:</b> <a href="${e(f.value)}">${e(f.value)}</a>`);
+    else lines.push(`<b>${e(f.label)}:</b> ${e(value)}`);
+  }
+  if (a.openUrl) lines.push("", `<a href="${e(a.openUrl)}">${a.kind === "quote" ? "Open in Admin" : "Open the chat"}</a>`);
+  return lines.join("\n");
+}

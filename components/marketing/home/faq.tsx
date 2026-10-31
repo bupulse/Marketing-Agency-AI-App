@@ -2,9 +2,11 @@ import { Reveal } from "@/components/motion";
 import { Accordion, Container } from "@/components/ui";
 import { faqs, fillFaq } from "@/lib/content/site";
 import { getSetting } from "@/lib/admin/settings";
+import { visitorCtaMode } from "@/lib/quote/cta-server";
 
 export async function Faq() {
-  const items = fillFaq(faqs, await getSetting("trialDays"));
+  const [trialDays, mode] = await Promise.all([getSetting("trialDays"), visitorCtaMode()]);
+  const items = fillFaq(faqs, trialDays, mode);
   return (
     <section aria-labelledby="faq-title" className="py-16">
       <Container size="narrow">

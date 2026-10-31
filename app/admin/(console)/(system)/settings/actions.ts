@@ -9,6 +9,7 @@ import { disconnectGoogleCalendar, setGoogleCalendarId, testGoogleCalendar } fro
 import { AdminError } from "@/lib/admin/types";
 import { clearPaddleSettings, savePaddleSettings, SECRET_LABEL } from "@/lib/billing/paddle-config";
 import { setUpPaddleStep, testPaddleConnection, type SetUpStep, type StepResult } from "@/lib/billing/paddle-setup";
+import { connectTelegram, disconnectTelegram, sendTelegramTestAlert } from "@/lib/lead-alerts/telegram-settings";
 
 const BACK = "/admin/settings";
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -109,4 +110,24 @@ export async function paddleSetUpStepAction(step: string, attempted: string[] = 
   } catch (error) {
     return { ok: false, error: actionMessage(error) };
   }
+}
+
+// ---- Lead alerts: Telegram (the bot token is saved in Admin -> Services; lib/lead-alerts/telegram-settings.ts) ------------
+
+const ALERTS = `${BACK}#lead-alerts`;
+
+/** "Connect": finds the chat that sent /start to the bot and saves it. Audited. */
+export async function connectTelegramAction() {
+  const ctx = await adminAction("system");
+  await finish(ALERTS, (chat) => `Telegram connected: alerts now go to ${chat.name}. The bot sent a hello there.`, () => connectTelegram(ctx));
+}
+
+export async function testTelegramAction() {
+  await adminAction("system"); // sends a message with placeholder details only; nothing to audit
+  await finish(ALERTS, (r) => `Test alert sent to ${r.name} on Telegram.`, () => sendTelegramTestAlert());
+}
+
+export async function disconnectTelegramAction() {
+  const ctx = await adminAction("system");
+  await finish(ALERTS, (r) => (r.name ? `Telegram disconnected (${r.name}). Alerts still go by email.` : "Telegram was not connected."), () => disconnectTelegram(ctx));
 }
