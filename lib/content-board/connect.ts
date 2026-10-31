@@ -6,6 +6,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { accountUsable, bestTimesFor, scheduleAtFreeSlot, type Owner } from "@/lib/publishing/service";
 import { LEAD_MINUTES } from "@/lib/publishing/best-time";
+import { pagesFirst } from "@/lib/social/choices";
 import { SAFETY_SELECT, safetyReasons } from "./auto";
 
 export const NO_FREE_TIME = "No free time was found for this post on the account. Pick a time and approve it.";
@@ -16,7 +17,8 @@ export async function connectByHandPosts(owner: Owner, postIds: string[], now = 
   if (ids.length === 0) return out;
   const [posts, connections] = await Promise.all([
     prisma.post.findMany({ where: { id: { in: ids }, businessId: owner.businessId, remindOnly: true, connectionId: null, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] }, lockedAt: null }, select: { id: true, network: true, status: true, scheduledAt: true } }),
-    prisma.connection.findMany({ where: { businessId: owner.businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } }),
+    // A LinkedIn Page before the profile: the client who picked their Page gets these posts there.
+    prisma.connection.findMany({ where: { businessId: owner.businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } }).then(pagesFirst),
   ]);
   const toCheck: { id: string; scheduledAt: Date | null }[] = [];
   for (const post of posts) {

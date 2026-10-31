@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { accountUsable } from "@/lib/publishing/service";
 import { isNetwork } from "@/lib/social/registry";
+import { pagesFirst } from "@/lib/social/choices";
 import { holidaysBetween } from "./calendar";
 import { labSchedule } from "@/lib/training-lab/schedule-reader";
 import { buildProfile, withLab } from "./learning";
@@ -164,8 +165,9 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
  * ("network:<app>") its account once one is connected (so the posts publish on their own), else the app itself, whose
  * posts become reminders to post yourself (docs/CONTENT.md).
  */
-export function planConnections(all: { id: string; provider: string; status: string; postingMode: string }[], chosen: string[]): { id: string; network: Network }[] {
-  const usable = all.filter((c) => isNetwork(c.provider) && accountUsable(c));
+export function planConnections(all: { id: string; provider: string; status: string; postingMode: string; accountType?: string | null }[], chosen: string[]): { id: string; network: Network }[] {
+  // An app chosen before it was connected gets its LinkedIn Page, not the profile, when both are connected.
+  const usable = pagesFirst(all).filter((c) => isNetwork(c.provider) && accountUsable(c));
   const out: { id: string; network: Network }[] = usable.filter((c) => chosen.includes(c.id)).map((c) => ({ id: c.id, network: c.provider as Network }));
   for (const id of chosen) {
     const network = byHandNetwork(id);

@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { accountUsable, createPosts, PublishingError, type Owner } from "@/lib/publishing/service";
 import type { Network } from "@/lib/social/types";
+import { accountName, pagesFirst } from "@/lib/social/choices";
 import { scoreCaption, type CaptionScore } from "@/lib/video-engine/brain/score";
 import { seedanceOverlayCaption } from "@/lib/video-engine/seedance-overlay";
 import type { Ratio } from "@/lib/video-engine/spec";
@@ -80,10 +81,11 @@ export async function scheduleOptions(businessId: string, jobId: string): Promis
   const job = await readyJob(businessId, jobId);
   const [facts, connections, business] = await Promise.all([
     loadBriefFacts(businessId, job.productId),
-    prisma.connection.findMany({ where: { businessId, kind: "SOCIAL", provider: { in: [...STUDIO_NETWORKS] } }, orderBy: { createdAt: "asc" }, select: { id: true, provider: true, displayName: true, status: true, postingMode: true } }),
+    prisma.connection.findMany({ where: { businessId, kind: "SOCIAL", provider: { in: [...STUDIO_NETWORKS] } }, orderBy: { createdAt: "asc" }, select: { id: true, provider: true, displayName: true, accountType: true, status: true, postingMode: true } }),
     prisma.business.findUnique({ where: { id: businessId }, select: { timezone: true } }),
   ]);
-  const accounts = connections.map((c) => ({ id: c.id, network: c.provider as Network, name: c.displayName ?? LABEL[c.provider as Network], usable: accountUsable(c) }));
+  // A LinkedIn Page comes before the profile and reads "LinkedIn · <Page name>" (lib/social/choices.ts).
+  const accounts = pagesFirst(connections).map((c) => ({ id: c.id, network: c.provider as Network, name: accountName(c.provider, LABEL[c.provider as Network], c.displayName, c.accountType), usable: accountUsable(c) }));
   const captions: Partial<Record<Network, NetworkCaption>> = {};
   for (const network of new Set(accounts.map((a) => a.network))) captions[network] = defaultCaption(job, facts, network);
   return { accounts, captions, credit: creditOf(job.music), timezone: business?.timezone || "UTC" };

@@ -1,4 +1,6 @@
 import "server-only";
+import { LINKEDIN_VERSION } from "../providers/linkedin";
+import { completePages, logosFromImages, pageChoice, pagesFromAcls, pagesFromLookup, type LinkedInPage } from "../providers/linkedin/pages";
 import { escapeLittleText } from "../providers/linkedin/text";
 import { TIKTOK_PRIVACY_LEVEL } from "../providers/tiktok";
 import { finalStage, SocialError, type AccountChoice, type ConnectionCredentials, type MetricsSnapshot, type Network, type PublishRequest, type PublishResult } from "../types";
@@ -162,6 +164,31 @@ const instagram: ComposioNetwork = {
 
 // ---- LinkedIn (the member's profile and the Pages they administer) ----
 
+const LINKEDIN_REST = "https://api.linkedin.com/rest";
+
+/**
+ * Names and logos for Pages the access list gave only as numbers. Composio has no tool that looks a Page up by id, so
+ * LinkedIn's own organizations batch get goes through Composio's proxy with the member's sign-in, then one
+ * LINKEDIN_GET_IMAGES call turns the logos' image URNs into links. Both are best effort (at most 2 calls): a Page
+ * LinkedIn says nothing more about keeps "LinkedIn Page <number>" and no logo.
+ */
+async function linkedinPageDetails(who: Account, pages: LinkedInPage[]): Promise<LinkedInPage[]> {
+  if (!pages.length) return pages;
+  const unnamed = pages.filter((p) => !p.name || (!p.logoUrl && !p.logoUrn)).map((p) => p.id);
+  const lookup = unnamed.length
+    ? await proxyRequest("linkedin", who.account, who.userId, {
+        endpoint: `${LINKEDIN_REST}/organizations?ids=List(${unnamed.join(",")})`,
+        method: "GET",
+        headers: { "LinkedIn-Version": LINKEDIN_VERSION, "X-Restli-Protocol-Version": "2.0.0" },
+      }).then(pagesFromLookup, () => new Map<string, LinkedInPage>())
+    : new Map<string, LinkedInPage>();
+  const named = completePages(pages, lookup);
+  const urns = [...new Set(named.filter((p) => !p.logoUrl && p.logoUrn).map((p) => p.logoUrn!))];
+  if (!urns.length) return named;
+  const logos = await runTool("linkedin", "LINKEDIN_GET_IMAGES", who.account, who.userId, { ids: urns }).then(logosFromImages, () => new Map<string, string>());
+  return completePages(named, new Map(), logos);
+}
+
 const linkedin: ComposioNetwork = {
   async accounts(account, userId) {
     const me = await runTool("linkedin", "LINKEDIN_GET_MY_INFO", account, userId, {});
@@ -174,9 +201,8 @@ const linkedin: ComposioNetwork = {
       accounts.push({ externalAccountId: memberId, displayName: text(field(me, "name")) ?? ([first, last].filter(Boolean).join(" ") || "LinkedIn member"), avatarUrl: text(field(me, "picture")), accountType: "member" });
     }
     // Pages are a bonus: Composio's app may not have the organization permissions, and then the member is enough.
-    const orgs = await runTool("linkedin", "LINKEDIN_GET_COMPANY_INFO", account, userId, { role: "ADMINISTRATOR", state: "APPROVED", count: 50 }).catch(() => null);
-    const ids = new Set([...JSON.stringify(orgs ?? {}).matchAll(/urn:li:organization:(\d+)/g)].map((m) => m[1]));
-    for (const id of ids) accounts.push({ externalAccountId: id, displayName: `LinkedIn Page ${id}`, accountType: "organization" });
+    const acls = await runTool("linkedin", "LINKEDIN_GET_COMPANY_INFO", account, userId, { role: "ADMINISTRATOR", state: "APPROVED", count: 50 }).catch(() => null);
+    for (const page of await linkedinPageDetails({ account, userId }, pagesFromAcls(acls))) accounts.push(pageChoice(page));
     if (!accounts.length) throw new SocialError("No LinkedIn profile found for this login", "invalid", "linkedin");
     return accounts;
   },

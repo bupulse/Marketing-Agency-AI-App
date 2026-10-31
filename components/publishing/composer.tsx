@@ -11,6 +11,7 @@ import { MAX_MEDIA_PER_POST } from "@/lib/publishing/schemas";
 import { addDays, dayKey, parseDayKey, toLocalInput, zonedTimeToUtc } from "@/lib/publishing/time";
 import type { CalendarPost, ComposerAccount, ComposerContext, ComposerPrefill, MediaItem, Overrides, PostOutcome, When } from "@/lib/publishing/types";
 import { formatFor, scriptExplanation, validatePost, type RuleSummary } from "@/lib/publishing/validate";
+import { bareName } from "@/lib/social/choices";
 import type { Network } from "@/lib/social/types";
 import { MediaAttach } from "./media-attach";
 import { AccountAvatar, NetworkIcon, networkName } from "./network-icon";
@@ -323,8 +324,8 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
                     type="button"
                     disabled={!a.usable || editing}
                     aria-pressed={on}
-                    aria-label={`${a.label}: ${a.displayName}${a.problem ? `. ${a.problem}` : ""}`}
-                    title={a.problem ?? `${a.label}: ${a.displayName}`}
+                    aria-label={`${a.label}: ${bareName(a.displayName, a.label)}${a.problem ? `. ${a.problem}` : ""}`}
+                    title={a.problem ?? `${a.label}: ${bareName(a.displayName, a.label)}`}
                     onClick={() => toggleAccount(a.id)}
                     className={cn("relative cursor-pointer rounded-full p-1 transition-[opacity,box-shadow] disabled:cursor-default", on ? "ring-2 ring-pulse-blue" : "opacity-60 hover:opacity-100", !a.usable && "opacity-30")}
                   >

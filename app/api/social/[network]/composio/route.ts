@@ -3,6 +3,7 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { safeNext } from "@/lib/auth/safe-next";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { askWhereToPost } from "@/lib/social/choices";
 import { saveConnections } from "@/lib/social/connections";
 import { done, readCookie } from "@/lib/social/callback-response";
 import { openState, sameString, sealPending, STATE_COOKIE } from "@/lib/social/oauth";
@@ -61,7 +62,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
     if (!accounts.length) return drop({ error: "no_accounts" });
     const result: OAuthResult = { accessToken: accountId, scopes: [COMPOSIO_SCOPE, accountScope(accountId)], accounts };
 
-    if (accounts.length === 1) {
+    // One account is saved at once, except LinkedIn: its sign-in always ends on "Where should BuPulse post?".
+    if (!askWhereToPost(network, accounts)) {
       await saveConnections(business.id, network, result, [accounts[0].externalAccountId], "AUTO");
       return done(next, { connected: network });
     }

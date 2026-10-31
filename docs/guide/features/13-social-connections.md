@@ -55,8 +55,12 @@ The admin can change what each plan includes in Admin → Plans.
    switch it in the Instagram app first (profile settings, Account type and tools, switch to a professional account).
 4. Press the **Connect** button in the window. You are sent to the network's sign-in page (through Composio's secure
    page for BuPulse-Socials networks). Sign in and approve.
-5. If your login has several accounts (for example several Facebook Pages, or a LinkedIn profile and its Pages),
-   BuPulse shows a list: tick the ones to add and press save.
+5. If your login has several accounts (for example several Facebook Pages), BuPulse shows a list: tick the ones to
+   add and press save. LinkedIn always ends on **Where should BuPulse post?**: your company Pages first (logo, name and
+   a "Company Page" tag; the only Page is ticked for you), then your profile ("Your profile"). Tick one or more; each
+   one becomes its own account. With no Page, a note under the profile says you must be an admin of the company's
+   LinkedIn Page (and that BuPulse may not have LinkedIn Page access yet). A Page shows as "LinkedIn · <Page name>" in
+   the post pickers and on posts, and daily posts go to the Page rather than the profile.
 6. Back on Channels the account shows **Active**. It is now offered when you schedule a post in the
    [Calendar](07-calendar-and-publishing.md).
 7. To stop, press **Disconnect** on the account. Scheduled posts for it go back to drafts, so nothing is published to an
@@ -68,7 +72,7 @@ What each network does through BuPulse-Socials:
 |---|---|---|---|
 | Facebook | The Pages the login manages | Text, a link, one photo, several photos, or one video on its own | Likes (reactions), comments, shares |
 | Instagram | One Business or Creator account | One photo (JPEG), a carousel of up to 10 photos, or one MP4 video as a Reel | Likes, comments |
-| LinkedIn | The person's profile; company Pages they administer when Composio's app may list them (shown as "LinkedIn Page <number>") | Text and photos (no video) | None |
+| LinkedIn | The person's profile; company Pages they administer when Composio's app may list them, with their real name and logo (`lib/social/providers/linkedin/pages.ts`; "LinkedIn Page <number>" only when LinkedIn gives no name) | Text and photos (no video) | None |
 | YouTube | The channels of the login | Video scripts with reminders; BuPulse does not upload videos yet | None |
 | TikTok (with BuPulse's TikTok app in Composio) | The TikTok account of the login | One video (MP4, MOV or WebM). Before TikTok's audit: sent to the TikTok inbox at the scheduled time, the client adds the caption and posts it in TikTok (at most 5 waiting a day). After it (`TIKTOK_DIRECT_POST=true`): posted directly. Photo posts and scripts stay reminders | Views, likes, comments, shares, once the video is public and passed TikTok's checks |
 | X (with BuPulse's X app in Composio, X switched on) | The X profile of the login | Text up to 280 characters (a link is added at the end), up to 4 photos (JPEG, PNG, WebP, GIF), or one MP4 video up to 140 seconds | Views, likes, replies, reposts, saves, read about once a week |
@@ -109,7 +113,7 @@ TikTok video posts are reminders with the video attached. Accounts connected tha
 | Page | `app/dashboard/connections/page.tsx` (`pageGate("channels")` then `featureGate("calendar")`; per network `viaComposio` and the `composio` switch decide BuPulse-Socials) |
 | Server actions | `app/dashboard/connections/actions.ts`: `disconnectAction`, `savePickedAccountsAction`, `cancelPickAction` |
 | Components | `components/connections/channel-list.tsx`, `connect-dialog.tsx`, `account-picker.tsx`, `connect-toast.tsx`, `disconnect-button.tsx`, `network-icon.tsx`, `types.ts`; `components/connectors/connector-card.tsx`; `components/settings/canva-card.tsx` |
-| Logic | `lib/social/registry.ts`, `lib/social/connections.ts`, `lib/social/oauth.ts`, `lib/social/connect-errors.ts`, `lib/social/callback-response.ts`, `lib/social/graph.ts`, `lib/social/providers/{instagram,facebook,linkedin,tiktok,youtube,twitter}.ts` (`twitter` has no sign-in of its own), `lib/social/composio/client.ts`, `lib/social/composio/ways.ts` (which networks go through it, pure) and `lib/social/composio/networks.ts` (BuPulse-Socials, per network), `lib/connectors/catalog.ts` (the Apps cards) |
+| Logic | `lib/social/registry.ts`, `lib/social/connections.ts`, `lib/social/choices.ts` (the "Where should BuPulse post?" rules, Pages first), `lib/social/oauth.ts`, `lib/social/connect-errors.ts`, `lib/social/callback-response.ts`, `lib/social/graph.ts`, `lib/social/providers/{instagram,facebook,linkedin,tiktok,youtube,twitter}.ts` (`twitter` has no sign-in of its own), `lib/social/composio/client.ts`, `lib/social/composio/ways.ts` (which networks go through it, pure) and `lib/social/composio/networks.ts` (BuPulse-Socials, per network), `lib/connectors/catalog.ts` (the Apps cards) |
 | Database | `Connection` (`kind` SOCIAL, `provider`, `method` DIRECT/OWN_COMPOSIO/COMPOSIO, `postingMode` AUTO/NOTIFY, `status` ACTIVE/EXPIRING/EXPIRED/REVOKED/ERROR, encrypted tokens; for COMPOSIO the encrypted "token" is the Composio connected-account id); `Post.connectionId`; `AdminSetting` `socials.composio.authConfigs` (the Composio auth config per network). Migration `prisma/migrations/20261021100000_connection_method_composio` |
 | API routes | `app/api/social/[network]/connect/route.ts`, `app/api/social/[network]/callback/route.ts` (BuPulse's own apps), `app/api/social/[network]/composio/route.ts` (BuPulse-Socials return), `app/api/meta/data-deletion/route.ts`, `app/api/meta/deauthorize/route.ts` |
 | Cron jobs | `app/api/cron/social-refresh/route.ts`, called daily at 04:43 UTC by `.github/workflows/social-refresh.yml` |

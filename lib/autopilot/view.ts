@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { signPaths } from "@/lib/publishing/media";
 import { accountUsable } from "@/lib/publishing/service";
 import { getProvider, isNetwork } from "@/lib/social/registry";
+import { accountName, pagesFirst } from "@/lib/social/choices";
 import type { Network } from "@/lib/social/types";
 import { createClient } from "@/lib/supabase/server";
 import { loadVisuals, pickVisuals } from "@/lib/visuals/queries";
@@ -89,14 +90,14 @@ export async function loadAutopilotView(userId: string, now = new Date()): Promi
       },
       orderBy: { scheduledAt: "asc" },
       take: 120,
-      include: { connection: { select: { displayName: true } } },
+      include: { connection: { select: { displayName: true, accountType: true } } },
     }),
     prisma.mediaAsset.count({ where: { businessId: business.id } }),
   ]);
 
-  const real: ViewAccount[] = connections.flatMap((c) =>
+  const real: ViewAccount[] = pagesFirst(connections).flatMap((c) =>
     isNetwork(c.provider)
-      ? [{ id: c.id, network: c.provider, label: getProvider(c.provider).rules.label, displayName: c.displayName ?? getProvider(c.provider).rules.label, avatarUrl: c.avatarUrl, usable: accountUsable(c) }]
+      ? [{ id: c.id, network: c.provider, label: getProvider(c.provider).rules.label, displayName: accountName(c.provider, getProvider(c.provider).rules.label, c.displayName, c.accountType), avatarUrl: c.avatarUrl, usable: accountUsable(c) }]
       : [],
   );
   // Apps without a usable account can still be written for: their posts come as reminders to post yourself.
@@ -139,7 +140,7 @@ export async function loadAutopilotView(userId: string, now = new Date()): Promi
       text: p.text,
       hashtags: p.hashtags,
       scheduledAt: p.scheduledAt?.toISOString() ?? null,
-      accountName: p.connection?.displayName ?? getProvider(p.network).rules.label,
+      accountName: accountName(p.network, getProvider(p.network).rules.label, p.connection?.displayName, p.connection?.accountType),
       mediaUrls: p.mediaPaths.flatMap((m) => (urls.get(m) ? [urls.get(m)!] : [])),
       needsPicture: p.status === "DRAFT" && !!p.lastError,
     });

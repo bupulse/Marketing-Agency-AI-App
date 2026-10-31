@@ -54,6 +54,8 @@ describe("linkedin finishOAuth", () => {
     const fetchMock = mockFetch(
       jsonResponse({ access_token: "A", expires_in: 5184000, scope: "openid,profile,w_member_social" }),
       jsonResponse({ sub: "p1", name: "Jane Doe", picture: "https://pic" }),
+      // The profile login also asks for Pages; this member runs none.
+      jsonResponse({ elements: [] }),
     );
     const result = await linkedinProvider.finishOAuth({ code: "code", redirectUri: "https://x/cb" });
     const token = callAt(fetchMock, 0);
@@ -91,6 +93,37 @@ describe("linkedin finishOAuth", () => {
     ]);
   });
 
+  it("offers the profile and the member's Pages, with names and logos, from one profile login", async () => {
+    const fetchMock = mockFetch(
+      jsonResponse({ access_token: "A", expires_in: 100 }),
+      jsonResponse({ sub: "p1", name: "Jane" }),
+      jsonResponse({ elements: [{ organization: "urn:li:organization:11" }] }),
+      jsonResponse({ results: { "11": { localizedName: "Acme", logoV2: { cropped: "urn:li:digitalmediaAsset:L1", original: "urn:li:digitalmediaAsset:L2" } } } }),
+      jsonResponse({ results: { "urn:li:image:L1": { downloadUrl: "https://media.licdn.com/placeholder/l1.png" } } }),
+    );
+    const result = await linkedinProvider.finishOAuth({ code: "c", redirectUri: "https://x/cb" });
+    expect(callAt(fetchMock, 4).url).toBe("https://api.linkedin.com/rest/images?ids=List(urn%3Ali%3Aimage%3AL1)");
+    expect(callAt(fetchMock, 4).headers["Linkedin-Version"]).toBe(LINKEDIN_VERSION);
+    expect(result.accounts).toEqual([
+      { externalAccountId: "p1", displayName: "Jane", avatarUrl: undefined, accountType: "member" },
+      { externalAccountId: "11", displayName: "Acme", avatarUrl: "https://media.licdn.com/placeholder/l1.png", accountType: "organization" },
+    ]);
+  });
+
+  it("keeps the profile when LinkedIn refuses the Page list", async () => {
+    mockFetch(jsonResponse({ access_token: "A", expires_in: 100 }), jsonResponse({ sub: "p1", name: "Jane" }), jsonResponse({ message: "Not enough permissions" }, { status: 403 }));
+    const result = await linkedinProvider.finishOAuth({ code: "c", redirectUri: "https://x/cb" });
+    expect(result.accounts.map((a) => a.accountType)).toEqual(["member"]);
+  });
+
+  it("asks for no Pages on a profile login without the Community Management product", async () => {
+    vi.stubEnv("LINKEDIN_COMMUNITY_MANAGEMENT", "");
+    const fetchMock = mockFetch(jsonResponse({ access_token: "A", expires_in: 100 }), jsonResponse({ sub: "p1", name: "Jane" }));
+    const result = await linkedinProvider.finishOAuth({ code: "c", redirectUri: "https://x/cb" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.accounts.map((a) => a.accountType)).toEqual(["member"]);
+  });
+
   it("fails clearly when the member administers no Pages", async () => {
     mockFetch(jsonResponse({ access_token: "A", expires_in: 100 }), jsonResponse({ sub: "p1" }), jsonResponse({ elements: [] }));
     await expect(linkedinProvider.finishOAuth({ code: "c", redirectUri: "https://x/cb", variant: "organization" })).rejects.toMatchObject({ kind: "invalid", message: expect.stringMatching(/^No /) });
@@ -103,7 +136,7 @@ describe("linkedin finishOAuth", () => {
   });
 
   it("gives both variants the same scopes and member id", async () => {
-    mockFetch(jsonResponse({ access_token: "A", expires_in: 100, scope: "s" }), jsonResponse({ sub: "p1", name: "Jane" }));
+    mockFetch(jsonResponse({ access_token: "A", expires_in: 100, scope: "s" }), jsonResponse({ sub: "p1", name: "Jane" }), jsonResponse({ elements: [] }));
     const member = await linkedinProvider.finishOAuth({ code: "c", redirectUri: "https://x/cb" });
     mockFetch(jsonResponse({ access_token: "B", expires_in: 100, scope: "s" }), jsonResponse({ sub: "p1" }), jsonResponse({ elements: [{ organization: "urn:li:organization:11" }] }), jsonResponse({ results: { "11": { localizedName: "Acme" } } }));
     const org = await linkedinProvider.finishOAuth({ code: "c", redirectUri: "https://x/cb", variant: "organization" });

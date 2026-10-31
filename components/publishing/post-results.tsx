@@ -5,6 +5,7 @@ import { Bookmark, ExternalLink, Eye, Heart, MessageCircle, Share2, Users, type 
 import { formatCompact } from "@/components/analytics/format";
 import { timeAgo } from "@/components/leads/format";
 import { cn } from "@/lib/cn";
+import { bareName } from "@/lib/social/choices";
 import { badgeResults, knownResults, resultLabel, resultsNote, type PostResults, type ResultKey } from "@/lib/publishing/results";
 import type { CalendarPost } from "@/lib/publishing/types";
 import { formatDateTime } from "./helpers";
@@ -66,7 +67,7 @@ function ResultsRow({ post, zone }: { post: CalendarPost; zone: string }) {
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <NetworkIcon network={post.network} size={18} />
         <span className="text-[14px] font-semibold">{label}</span>
-        {post.accountName !== label && <span className="min-w-0 truncate text-[13px] text-muted">{post.accountName}</span>}
+        {post.accountName !== label && <span className="min-w-0 truncate text-[13px] text-muted">{bareName(post.accountName, label)}</span>}
         {results.state === "ready" && (
           <span className="ml-auto text-[13px] text-muted">
             Updated <time dateTime={results.updatedAt} title={formatDateTime(results.updatedAt, zone)}>{timeAgo(results.updatedAt)}</time>

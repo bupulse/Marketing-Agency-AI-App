@@ -20,7 +20,8 @@ vi.mock("@/lib/db", () => ({
         state.rows.set(row.id, row);
         return row;
       }),
-      findMany: vi.fn(async ({ where }) => [...state.rows.values()].filter((row) => linkedinMatch(row, where)).map((row) => ({ id: row.id }))),
+      // BuPulse-Socials asks which Composio sign-ins it replaces (none in these tests); the rest is the shared LinkedIn token.
+      findMany: vi.fn(async ({ where }) => (where.method === "COMPOSIO" ? [] : [...state.rows.values()].filter((row) => linkedinMatch(row, where)).map((row) => ({ id: row.id })))),
       updateMany: vi.fn(async ({ where, data }) => {
         let count = 0;
         for (const row of state.rows.values()) {
@@ -64,5 +65,35 @@ describe("connecting both LinkedIn variants", () => {
     await saveConnections("biz1", "linkedin", org, ["11"]);
     expect(await decrypt(state.rows.get(other)!.accessTokenEncrypted as string)).toBe("X");
     expect(await decrypt(state.rows.get(elsewhere)!.accessTokenEncrypted as string)).toBe("T1");
+  });
+});
+
+describe("saving the picked LinkedIn accounts", () => {
+  // Placeholder names: one sign-in that found the profile and two Pages.
+  const signIn = {
+    accessToken: "ca_9",
+    scopes: ["composio", "composio_account:ca_9"],
+    accounts: [
+      { externalAccountId: "p1", displayName: "Placeholder Person", accountType: "member" },
+      { externalAccountId: "11", displayName: "Sample Bakery", avatarUrl: "https://media.licdn.com/placeholder/11.png", accountType: "organization" },
+      { externalAccountId: "12", displayName: "Sample Shop", accountType: "organization" },
+    ],
+  };
+
+  it("makes one connection per account ticked, and none for the rest", async () => {
+    const ids = await saveConnections("biz1", "linkedin", signIn, ["11", "p1"]);
+    expect(ids).toHaveLength(2);
+    const rows = ids.map((id) => state.rows.get(id)!);
+    expect(rows.map((r) => [r.externalAccountId, r.accountType, r.displayName, r.method])).toEqual([
+      ["p1", "member", "Placeholder Person", "COMPOSIO"],
+      ["11", "organization", "Sample Bakery", "COMPOSIO"],
+    ]);
+    expect(rows[1].avatarUrl).toBe("https://media.licdn.com/placeholder/11.png");
+    expect([...state.rows.values()].some((r) => r.externalAccountId === "12")).toBe(false);
+  });
+
+  it("saves a Page on its own when only the Page is ticked", async () => {
+    const ids = await saveConnections("biz1", "linkedin", signIn, ["12"]);
+    expect(ids.map((id) => state.rows.get(id)!.accountType)).toEqual(["organization"]);
   });
 });

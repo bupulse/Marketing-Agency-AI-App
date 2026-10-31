@@ -9,7 +9,7 @@ import { InboxSwitch } from "./inbox-switch";
 import { NetworkIcon } from "./network-icon";
 import { canConnect, connectHref, primaryVariant, SOON_CHANNELS, type AccountInfo, type ChannelInfo } from "./types";
 
-const TYPE_LABEL: Record<string, string> = { business: "Business", creator: "Creator", personal: "Personal", page: "Page", member: "Profile", profile: "Profile", organization: "Organization", channel: "Channel" };
+const TYPE_LABEL: Record<string, string> = { business: "Business", creator: "Creator", personal: "Personal", page: "Page", member: "Profile", profile: "Profile", organization: "Company Page", channel: "Channel" };
 
 function status(a: AccountInfo): { label: string; tone: BadgeTone; reconnect: boolean } {
   if (a.postingMode === "NOTIFY") return { label: "Reminder posting", tone: "violet", reconnect: false };

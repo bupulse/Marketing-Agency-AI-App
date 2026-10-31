@@ -11,6 +11,7 @@ import type { PostStatusName } from "@/lib/publishing/status";
 import type { CalendarPost } from "@/lib/publishing/types";
 import type { PostFormatName } from "@/lib/publishing/validate";
 import { getProvider, isNetwork } from "@/lib/social/registry";
+import { accountName } from "@/lib/social/choices";
 import { NETWORKS, type Network } from "@/lib/social/types";
 import { createClient } from "@/lib/supabase/server";
 import { readItems } from "@/lib/visuals/service";
@@ -129,7 +130,7 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       groupId: r.groupId,
       network,
       connectionId: r.connectionId,
-      accountName: r.connection?.displayName ?? (isNetwork(r.network) ? getProvider(r.network).rules.label : r.network),
+      accountName: accountName(r.network, isNetwork(r.network) ? getProvider(r.network).rules.label : r.network, r.connection?.displayName, r.connection?.accountType),
       accountAvatar: r.connection?.avatarUrl ?? null,
       notify: r.connection?.postingMode === "NOTIFY" || (!r.connection && r.remindOnly),
       status: r.status as PostStatusName,

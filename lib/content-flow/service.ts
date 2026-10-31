@@ -24,6 +24,7 @@ import { KnowledgeError, writingSubject, type WritingSubject } from "@/lib/knowl
 import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { accountUsable } from "@/lib/publishing/service";
 import { getProvider, isNetwork } from "@/lib/social/registry";
+import { pagesFirst } from "@/lib/social/choices";
 import { NETWORKS, type Network } from "@/lib/social/types";
 import { configuredModel } from "@/lib/studio/service";
 import { consumeUsage, getUsageSummary, refundUsage, UsageLimitError } from "@/lib/usage";
@@ -151,9 +152,12 @@ async function recentUses(businessId: string, scope: ContentScope, since: Date):
   return uses;
 }
 
-/** The accounts a run posts to: the first usable one per network; a network without one gets a reminder post. */
+/**
+ * The accounts a run posts to: the first usable one per network (a LinkedIn Page before the profile); a network
+ * without one gets a reminder post.
+ */
 async function targetsFor(businessId: string, networks: Network[]) {
-  const connections = (await prisma.connection.findMany({ where: { businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } })).filter((c) => isNetwork(c.provider) && accountUsable(c));
+  const connections = pagesFirst(await prisma.connection.findMany({ where: { businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } })).filter((c) => isNetwork(c.provider) && accountUsable(c));
   return networks.map((network) => ({ network, connection: connections.find((c) => c.provider === network) ?? null }));
 }
 

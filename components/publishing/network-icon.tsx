@@ -74,7 +74,8 @@ export function NetworkIcon({ network, size = 20, className }: { network: Networ
 
 /** The account's picture with its network badge in the corner; falls back to the badge alone. */
 export function AccountAvatar({ network, name, src, size = 44 }: { network: Network; name: string; src?: string | null; size?: number }) {
-  const initial = name.trim()[0]?.toUpperCase() ?? "?";
+  // "LinkedIn · Acme" (a LinkedIn Page, lib/social/choices.ts) shows the Page's letter, not the network's.
+  const initial = (name.split(" · ").pop() ?? name).trim()[0]?.toUpperCase() ?? "?";
   return (
     <span className="relative inline-flex shrink-0" style={{ width: size, height: size }}>
       {src ? (

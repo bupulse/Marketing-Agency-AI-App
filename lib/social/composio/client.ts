@@ -102,14 +102,16 @@ export async function proxyRequest<T = Record<string, unknown>>(
   network: Network,
   connectedAccountId: string,
   userId: string | undefined,
-  request: { endpoint: string; method: "GET" | "POST"; body?: Record<string, unknown> },
+  request: { endpoint: string; method: "GET" | "POST"; body?: Record<string, unknown>; headers?: Record<string, string> },
   options: CallOptions = {},
 ): Promise<T> {
+  // Composio passes extra headers as `parameters` (LinkedIn's REST API needs its version header).
+  const parameters = Object.entries(request.headers ?? {}).map(([name, value]) => ({ name, value, type: "header" }));
   const r = await composioApi<ProxyResponse>(
     network,
     "POST",
     "/tools/execute/proxy",
-    { connected_account_id: connectedAccountId, ...(userId ? { user_id: userId } : {}), endpoint: request.endpoint, method: request.method, ...(request.body ? { body: request.body } : {}) },
+    { connected_account_id: connectedAccountId, ...(userId ? { user_id: userId } : {}), endpoint: request.endpoint, method: request.method, ...(request.body ? { body: request.body } : {}), ...(parameters.length ? { parameters } : {}) },
     options,
   );
   const status = typeof r.status === "number" ? r.status : 200;

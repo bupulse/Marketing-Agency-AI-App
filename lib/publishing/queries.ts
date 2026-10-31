@@ -3,6 +3,7 @@ import { publishTimingNote } from "@/lib/platform/limits";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
+import { accountName, pagesFirst } from "@/lib/social/choices";
 import { NETWORKS, type Network } from "@/lib/social/types";
 import { createClient } from "@/lib/supabase/server";
 import { signPaths } from "./media";
@@ -39,7 +40,8 @@ export async function loadComposerContext(businessId: string): Promise<ComposerC
     prisma.business.findUnique({ where: { id: businessId }, select: { timezone: true } }),
     prisma.autopilotSettings.findUnique({ where: { businessId }, select: { postingTimes: true } }),
   ]);
-  const accounts: ComposerAccount[] = connections.flatMap((c) => {
+  // A LinkedIn Page comes before the profile and is named "LinkedIn · <Page name>" (lib/social/choices.ts).
+  const accounts: ComposerAccount[] = pagesFirst(connections).flatMap((c) => {
     if (!isNetwork(c.provider)) return [];
     const usable = accountUsable(c);
     return [
@@ -47,7 +49,7 @@ export async function loadComposerContext(businessId: string): Promise<ComposerC
         id: c.id,
         network: c.provider,
         label: getProvider(c.provider).rules.label,
-        displayName: c.displayName ?? getProvider(c.provider).rules.label,
+        displayName: accountName(c.provider, getProvider(c.provider).rules.label, c.displayName, c.accountType),
         avatarUrl: c.avatarUrl,
         accountType: c.accountType,
         notify: c.postingMode === "NOTIFY",
@@ -80,7 +82,7 @@ export async function toCalendarPosts(businessId: string, rows: PostRow[], now =
     groupId: r.groupId,
     network: r.network as Network,
     connectionId: r.connectionId,
-    accountName: r.connection?.displayName ?? (isNetwork(r.network) ? getProvider(r.network).rules.label : r.network),
+    accountName: accountName(r.network, isNetwork(r.network) ? getProvider(r.network).rules.label : r.network, r.connection?.displayName, r.connection?.accountType),
     accountAvatar: r.connection?.avatarUrl ?? null,
     notify: r.connection?.postingMode === "NOTIFY" || (!r.connection && r.remindOnly),
     status: r.status as PostStatusName,

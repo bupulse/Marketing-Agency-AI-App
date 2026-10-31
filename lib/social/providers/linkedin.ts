@@ -1,3 +1,4 @@
+import { completePages, logosFromImages, pageChoice, pagesFromAcls, pagesFromLookup } from "./linkedin/pages";
 import { escapeLittleText } from "./linkedin/text";
 import { errorFrom, socialFetch } from "./http";
 import {
@@ -96,21 +97,27 @@ async function memberAccount(accessToken: string): Promise<AccountChoice> {
   return { externalAccountId: body.sub, displayName: body.name ?? "LinkedIn member", avatarUrl: body.picture, accountType: "member" };
 }
 
-const orgId = (urn: string) => urn.split(":").pop() as string;
-
 async function organizationAccounts(accessToken: string): Promise<AccountChoice[]> {
   // https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/organization-access-control-by-role
   const acls = await socialFetch("linkedin", `${API}/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&count=100`, { headers: restHeaders(accessToken) });
   if (!acls.ok) throw await errorFrom("linkedin", acls);
-  const urns = [...new Set(((await acls.json()) as { elements?: { organization?: string }[] }).elements?.map((e) => e.organization).filter((u): u is string => !!u))];
-  if (urns.length === 0) throw new SocialError("No LinkedIn Pages found where this account is an administrator", "invalid", "linkedin");
+  const pages = pagesFromAcls(await acls.json());
+  if (pages.length === 0) throw new SocialError("No LinkedIn Pages found where this account is an administrator", "invalid", "linkedin");
 
   // https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/organization-lookup-api (batch get)
-  const ids = urns.map(orgId);
+  const ids = pages.map((p) => p.id);
   const lookup = await socialFetch("linkedin", `${API}/rest/organizations?ids=List(${ids.join(",")})`, { headers: restHeaders(accessToken) });
-  const names: Record<string, { localizedName?: string }> = lookup.ok ? ((await lookup.json()) as { results?: Record<string, { localizedName?: string }> }).results ?? {} : {};
-  // The logo is an image URN that needs another call per Page, so Pages are listed without an avatar.
-  return ids.map((id) => ({ externalAccountId: id, displayName: names[id]?.localizedName ?? `LinkedIn Page ${id}`, accountType: "organization" }));
+  const named = completePages(pages, lookup.ok ? pagesFromLookup(await lookup.json().catch(() => ({}))) : new Map());
+  // The logos are image URNs: one batch get of the Images API turns them into links (best effort, a Page without a
+  // logo shows its first letter). https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/images-api
+  const urns = [...new Set(named.filter((p) => !p.logoUrl && p.logoUrn).map((p) => p.logoUrn!))];
+  let withLogos = named;
+  if (urns.length) {
+    const images = await socialFetch("linkedin", `${API}/rest/images?ids=List(${urns.map(encodeURIComponent).join(",")})`, { headers: restHeaders(accessToken) }).catch(() => null);
+    const logos = images?.ok ? logosFromImages(await images.json().catch(() => ({}))) : new Map<string, string>();
+    withLogos = completePages(named, new Map(), logos);
+  }
+  return withLogos.map(pageChoice);
 }
 
 function authorUrn(credentials: ConnectionCredentials): string {
@@ -174,7 +181,10 @@ export const linkedinProvider: SocialProvider = {
       throw new SocialError("No LinkedIn Pages available: the Community Management API is not enabled for BuPulse yet", "invalid", "linkedin");
     }
     const member = await memberAccount(tokens.accessToken);
-    const accounts = variantOf(variant) === "organization" ? await organizationAccounts(tokens.accessToken) : [member];
+    // A profile login also offers the Pages the member runs (once LinkedIn lets BuPulse post to Pages), so the client
+    // picks where to post in one go. No Page, or LinkedIn refusing the list, leaves the profile on its own.
+    const accounts =
+      variantOf(variant) === "organization" ? await organizationAccounts(tokens.accessToken) : [member, ...(pagesEnabled() ? await organizationAccounts(tokens.accessToken).catch(() => []) : [])];
     const scopes = [...(tokens.scopes.length ? tokens.scopes : requestedScopes()), `${LINKEDIN_MEMBER_SCOPE_PREFIX}${member.externalAccountId}`];
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: tokens.expiresAt, scopes, accounts };
   },

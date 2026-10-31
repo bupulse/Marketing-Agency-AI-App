@@ -116,6 +116,14 @@ describe("publishing through BuPulse-Socials", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("posts on a LinkedIn Page as the organization", async () => {
+    const fetch = mockFetch(ok({ x_restli_id: "urn:li:share:8" }));
+    const result = await getProvider("linkedin").publish(viaSocials("linkedin", "42", "organization"), { format: "POST", text: "New bread today", media: [] });
+    expect(result).toEqual({ externalId: "urn:li:share:8", permalink: "https://www.linkedin.com/feed/update/urn:li:share:8" });
+    expect(callAt(fetch, 0).url).toMatch(/\/tools\/execute\/LINKEDIN_CREATE_LINKED_IN_POST$/);
+    expect(body(fetch, 0)).toMatchObject({ connected_account_id: "ca_123", user_id: "biz1", arguments: { author: "urn:li:organization:42", commentary: "New bread today" } });
+  });
+
   it("posts LinkedIn text as the member, escaped for LinkedIn", async () => {
     const fetch = mockFetch(ok({ x_restli_id: "urn:li:share:7" }));
     const result = await getProvider("linkedin").publish(viaSocials("linkedin", "abc", "member"), { format: "POST", text: "Open (Mon-Sat) #Kigali", media: [] });
@@ -141,6 +149,53 @@ describe("listing accounts after sign-in", () => {
       ["abc", "member"],
       ["42", "organization"],
     ]);
+  });
+
+  it("names LinkedIn Pages from a projected access list without more calls", async () => {
+    const fetch = mockFetch(
+      ok({ sub: "abc", name: "Diane U." }),
+      ok({ elements: [{ organization: "urn:li:organization:42", "organization~": { localizedName: "Sample Bakery", logoV2: { "original~": { elements: [{ identifiers: [{ identifier: "https://media.licdn.com/placeholder/logo_200.png" }] }] } } } }] }),
+    );
+    const accounts = await composioNetwork("linkedin").accounts("ca_1", "biz1");
+    expect(accounts[1]).toEqual({ externalAccountId: "42", displayName: "Sample Bakery", avatarUrl: "https://media.licdn.com/placeholder/logo_200.png", accountType: "organization" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("looks up the names and logos of Pages the access list gave only as numbers", async () => {
+    const fetch = mockFetch(
+      ok({ sub: "abc", name: "Diane U." }),
+      ok({ elements: [{ organization: "urn:li:organization:42" }, { organization: "urn:li:organization:43" }] }),
+      jsonResponse({ status: 200, data: { results: { "42": { localizedName: "Sample Bakery", logoV2: { cropped: "urn:li:digitalmediaAsset:D1" } }, "43": { localizedName: "Sample Shop" } } } }),
+      ok({ results: { "urn:li:image:D1": { downloadUrl: "https://media.licdn.com/placeholder/d1.png" } } }),
+    );
+    const accounts = await composioNetwork("linkedin").accounts("ca_1", "biz1");
+    expect(accounts.slice(1)).toEqual([
+      { externalAccountId: "42", displayName: "Sample Bakery", avatarUrl: "https://media.licdn.com/placeholder/d1.png", accountType: "organization" },
+      { externalAccountId: "43", displayName: "Sample Shop", avatarUrl: undefined, accountType: "organization" },
+    ]);
+    // The lookup goes through Composio's proxy with the member's sign-in and LinkedIn's version header.
+    expect(callAt(fetch, 2).url).toMatch(/\/tools\/execute\/proxy$/);
+    expect(body(fetch, 2)).toMatchObject({
+      connected_account_id: "ca_1",
+      user_id: "biz1",
+      method: "GET",
+      endpoint: "https://api.linkedin.com/rest/organizations?ids=List(42,43)",
+      parameters: expect.arrayContaining([{ name: "LinkedIn-Version", value: expect.stringMatching(/^\d{6}$/), type: "header" }]),
+    });
+    expect(callAt(fetch, 3).url).toMatch(/\/tools\/execute\/LINKEDIN_GET_IMAGES$/);
+    expect(body(fetch, 3).arguments).toEqual({ ids: ["urn:li:image:D1"] });
+  });
+
+  it("keeps LinkedIn Page <number> when LinkedIn will not say a Page's name", async () => {
+    mockFetch(ok({ sub: "abc", name: "Diane U." }), ok({ elements: [{ organization: "urn:li:organization:42" }] }), jsonResponse({ status: 403, data: { message: "Not enough permissions", status: 403 } }));
+    const accounts = await composioNetwork("linkedin").accounts("ca_1", "biz1");
+    expect(accounts[1]).toEqual({ externalAccountId: "42", displayName: "LinkedIn Page 42", avatarUrl: undefined, accountType: "organization" });
+  });
+
+  it("offers the profile alone when Composio's app may not list Pages", async () => {
+    mockFetch(ok({ sub: "abc", name: "Diane U." }), failed("Not enough permissions to access: organizationAcls"));
+    const accounts = await composioNetwork("linkedin").accounts("ca_1", "biz1");
+    expect(accounts).toEqual([{ externalAccountId: "abc", displayName: "Diane U.", avatarUrl: undefined, accountType: "member" }]);
   });
 
   it("takes Instagram professional accounts only", async () => {
