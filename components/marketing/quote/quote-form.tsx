@@ -3,7 +3,7 @@
 import { CircleCheck, Send } from "lucide-react";
 import Link from "next/link";
 import { useActionState, type ReactNode } from "react";
-import { Button, Field, GlassCard, Input, Textarea } from "@/components/ui";
+import { Button, Field, GlassCard, Input, PhoneInput, Textarea } from "@/components/ui";
 import type { QuoteFormState } from "@/lib/quote/schema";
 import { submitQuoteForm } from "./quote-action";
 
@@ -22,7 +22,8 @@ type QuoteFormProps = {
 
 /**
  * "Get a free quote": name, phone, email, company and an optional note. BuPulse calls back, so the phone number is the
- * important part: typed the Rwandan way (0788 123 456) or with any country code; the server stores it as +250...
+ * important part: Rwanda (+250) is picked for them and "0788 123 456" drops its 0, another country is one tap away;
+ * the server stores it as +250...
  */
 export function QuoteForm({ source, pageUrl, framed = false, onClose }: QuoteFormProps) {
   const [state, action, pending] = useActionState(submitQuoteForm, initial);
@@ -73,9 +74,7 @@ export function QuoteForm({ source, pageUrl, framed = false, onClose }: QuoteFor
           <Input name="name" autoComplete="name" defaultValue={values.name} />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Phone" hint="We call you on this number." error={errors.phone} required>
-            <Input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="0788 123 456" defaultValue={values.phone} />
-          </Field>
+          <PhoneInput name="phone" label="Phone" hint="We call you on this number." error={errors.phone} required defaultValue={values.phone} />
           <Field label="Email" error={errors.email} required>
             <Input name="email" type="email" inputMode="email" autoComplete="email" defaultValue={values.email} />
           </Field>

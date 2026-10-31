@@ -1,4 +1,4 @@
-import { Button, Field, Input, Textarea } from "@/components/ui";
+import { Button, Field, Input, PhoneInput, Textarea } from "@/components/ui";
 import type { SupportSettings } from "@/lib/support/settings";
 import { AI_LIMITS, GREETING_LIMITS, WEEKDAYS } from "@/lib/support/settings-form";
 import { Panel } from "../ui";
@@ -82,7 +82,7 @@ export function AiForm({ settings, save }: { settings: Pick<SupportSettings, "ai
         </label>
         <Field label="Rules for the AI" hint={`Tone and policy, in plain words. Up to ${AI_LIMITS.rules} characters.`}><Textarea name="aiRules" rows={8} maxLength={AI_LIMITS.rules} defaultValue={settings.aiRules} /></Field>
         <Field label="Hand-over topics" hint={`One per line, up to ${AI_LIMITS.topics}. The AI passes these chats to a person straight away.`}><Textarea name="handoverTopics" rows={6} defaultValue={settings.handoverTopics.join("\n")} /></Field>
-        <Field label="Support WhatsApp number" hint="With the country code, like +250788000000. Leave it empty to hide the Continue on WhatsApp button."><Input name="whatsapp" type="tel" inputMode="tel" maxLength={20} defaultValue={settings.whatsapp} placeholder="+250788000000" /></Field>
+        <PhoneInput name="whatsapp" label="Support WhatsApp number" hint="Leave it empty to hide the Continue on WhatsApp button." defaultValue={settings.whatsapp} />
         <div><Button type="submit">Save AI rules</Button></div>
       </form>
     </Panel>

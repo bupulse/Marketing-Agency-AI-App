@@ -5,6 +5,7 @@ export { Textarea, type TextareaProps } from "./textarea";
 export { Select, type SelectProps } from "./select";
 export { Label } from "./label";
 export { Field } from "./field";
+export { PhoneInput, type PhoneInputProps } from "./phone-input";
 export { Badge, type BadgeTone } from "./badge";
 export { Chip, type ChipProps } from "./chip";
 export { Tabs, type TabItem } from "./tabs";

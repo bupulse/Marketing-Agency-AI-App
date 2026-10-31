@@ -3,7 +3,7 @@
 import { CircleCheck, Send } from "lucide-react";
 import Link from "next/link";
 import { useActionState } from "react";
-import { Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
+import { Button, Field, GlassCard, Input, PhoneInput, Select, Textarea } from "@/components/ui";
 import type { ContactFormState } from "@/lib/contact";
 import { submitContactForm } from "./contact-action";
 
@@ -60,9 +60,7 @@ export function ContactForm({ kind, industries, submitLabel, messageLabel = "Mes
         {kind === "done_for_you" && (
           <>
             <div className="grid gap-5 sm:grid-cols-2">
-              <Field label="Phone" hint="Optional, only if you prefer a call." error={errors.phone}>
-                <Input name="phone" type="tel" autoComplete="tel" defaultValue={values.phone} />
-              </Field>
+              <PhoneInput name="phone" label="Phone" hint="Optional, only if you prefer a call." error={errors.phone} defaultValue={values.phone} />
               <Field label="Business name" error={errors.businessName}>
                 <Input name="businessName" autoComplete="organization" defaultValue={values.businessName} />
               </Field>

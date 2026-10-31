@@ -13,7 +13,8 @@ import { UploadProgress } from "@/components/media/upload-progress";
 import { useGalleryUpload } from "@/components/media/use-gallery-upload";
 import { useImporter } from "@/components/media/use-importer";
 import { Chips, GuessTag, KeepOrDrop, QuestionHead, QuizFrame, RoundDone, ScoreRing, TextAnswer, ThisOrThat, Thinking, Tiles, useQuiz, type TileOption } from "@/components/quiz";
-import { Button, GlassCard, Input, Textarea } from "@/components/ui";
+import { Button, GlassCard, Input, PhoneInput, Textarea } from "@/components/ui";
+import { phoneCountry } from "@/lib/phone";
 import { cn } from "@/lib/cn";
 import { extractColorsFromFile } from "@/lib/brand/image-colors";
 import { LOGO_TYPES, MAX_COLORS } from "@/lib/brand/schemas";
@@ -1007,7 +1008,10 @@ function Question({ id, head, answers: a, set, setNote, media, stored, places, s
       return (
         <>
           {head("Your phone or WhatsApp number", "Customers tap it to call or chat with you.")}
-          <TextAnswer label="Phone or WhatsApp" value={a.find.phone} onChange={(phone) => set("find", { phone })} inputMode="tel" placeholder="e.g. 0788 000 000" maxLength={30} />
+          <label htmlFor="quiz-find-phone" className="sr-only">
+            Phone or WhatsApp
+          </label>
+          <PhoneInput id="quiz-find-phone" value={a.find.phone} onChange={(phone) => set("find", { phone })} defaultCountry={phoneCountry(places.country)} />
         </>
       );
     case "find.area": {

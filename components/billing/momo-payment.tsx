@@ -3,7 +3,7 @@
 import { CheckCircle2, Copy, ImageUp, Loader2, Phone, Smartphone, XCircle } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Field, GlassCard, Input, Select, useToast } from "@/components/ui";
+import { Badge, Button, Field, GlassCard, Input, PhoneInput, Select, useToast } from "@/components/ui";
 import { cancelMomoPayment, momoPaymentStatus, startMomoPayment, startMomoProofUpload, submitMomoProof } from "@/app/dashboard/billing/actions";
 import { checkingText, formatMomoAmount, MOMO_NETWORKS, mtnMomoPayDial, NETWORK_LABEL, PROOF_BUCKET, PROOF_TYPES, proofFileProblem, proofSchema, ussdHref, type ManualPaymentView, type MomoPayDetails } from "@/lib/billing/momo-shared";
 import { scaledSize } from "@/lib/media/rules";
@@ -305,9 +305,8 @@ export function MomoPayment({ payment, details }: Props) {
                 ))}
               </Select>
             </Field>
-            <Field label="Phone number you paid from" error={errors.payerPhone} required>
-              <Input name="payerPhone" value={payerPhone} onChange={(e) => setPayerPhone(e.target.value)} autoComplete="tel" inputMode="tel" placeholder="078 123 4567" />
-            </Field>
+            {/* Mobile Money here is Rwandan only: the +250 shows but does not change. */}
+            <PhoneInput name="payerPhone" label="Phone number you paid from" error={errors.payerPhone} required lockedCountry="RW" value={payerPhone} onChange={setPayerPhone} placeholder="788 123 456" />
             <div className="flex flex-col gap-2 sm:col-span-2">
               <Field label="Transaction id" hint="In the confirmation SMS, e.g. “Financial Transaction Id: 1234567890”." error={errors.transactionId} required={!noTransactionId}>
                 <Input name="transactionId" value={noTransactionId ? "" : transactionId} onChange={(e) => setTransactionId(e.target.value)} disabled={noTransactionId} autoComplete="off" inputMode="text" placeholder="e.g. 1234567890" />

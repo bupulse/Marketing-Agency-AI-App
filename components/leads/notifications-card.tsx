@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { saveToggles, saveWhatsappToggle } from "@/app/dashboard/leads/actions";
 import { Switch } from "@/components/autopilot/switch";
-import { Button, GlassCard, Input, useToast } from "@/components/ui";
+import { Button, GlassCard, PhoneInput, useToast } from "@/components/ui";
 
 export type NotificationsCardProps = {
   initial: { notifyInstant: boolean; notifyDaily: boolean };
@@ -73,6 +73,7 @@ function WhatsappRow({ initial }: { initial: { enabled: boolean; number: string 
   const { toast } = useToast();
   const [enabled, setEnabled] = useState(initial.enabled);
   const [number, setNumber] = useState(initial.number ?? "");
+  const numberId = `wa${useId().replace(/:/g, "")}`;
   const [pending, start] = useTransition();
   const target = number.trim() || initial.fallback;
 
@@ -105,10 +106,10 @@ function WhatsappRow({ initial }: { initial: { enabled: boolean; number: string 
           save({ enabled, number }, "Number saved.");
         }}
       >
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-[13px] font-medium text-muted">
-          WhatsApp number for alerts
-          <Input type="tel" inputMode="tel" autoComplete="tel" value={number} onChange={(e) => setNumber(e.target.value)} placeholder={initial.fallback ?? "+250 788 123 456"} maxLength={40} />
-        </label>
+        <div className="flex min-w-0 flex-1 flex-col gap-1 text-[13px] font-medium text-muted">
+          <label htmlFor={numberId}>WhatsApp number for alerts</label>
+          <PhoneInput id={numberId} value={number} onChange={setNumber} />
+        </div>
         <Button type="submit" variant="outline" size="sm" disabled={pending}>
           Save number
         </Button>

@@ -10,6 +10,7 @@ import { CanvaCard } from "@/components/settings/canva-card";
 import { CanvaReturnToast } from "@/components/designs/canva-return-toast";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/team/roles";
+import { phoneCountryCode } from "@/lib/business-info/contacts";
 import { formatPhone } from "@/lib/phone";
 
 export const metadata = { title: "Settings" };
@@ -40,6 +41,7 @@ export default async function SettingsPage() {
           organisationName: business.name,
           ceoName: business.ceoName ?? "",
           phone: formatPhone(business.phone),
+          phoneCountry: business.phone ? (phoneCountryCode(business.phone) ?? "") : "",
           website: business.website ?? "",
         }}
       />

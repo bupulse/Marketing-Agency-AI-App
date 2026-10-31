@@ -3,7 +3,7 @@
 import { CircleCheck, Send } from "lucide-react";
 import Link from "next/link";
 import { useActionState } from "react";
-import { Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
+import { Button, Field, GlassCard, Input, PhoneInput, Select, Textarea } from "@/components/ui";
 import { PARTNER_KINDS, PARTNER_KIND_LABEL, type PartnerFormState } from "@/lib/partners/shared";
 import { applyPartnerAction } from "./actions";
 
@@ -63,9 +63,7 @@ export function PartnerForm() {
           <Field label="Email" error={errors.email} required>
             <Input name="email" type="email" autoComplete="email" defaultValue={values.email} />
           </Field>
-          <Field label="Mobile Money number" hint="We pay your commission here." error={errors.phone} required>
-            <Input name="phone" type="tel" autoComplete="tel" placeholder="+250 788 123 456" defaultValue={values.phone} />
-          </Field>
+          <PhoneInput name="phone" label="Mobile Money number" hint="We pay your commission here." error={errors.phone} required defaultValue={values.phone} />
         </div>
 
         <Field label="Town or district" hint="Optional" error={errors.city}>

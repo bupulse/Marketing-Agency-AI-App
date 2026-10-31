@@ -11,6 +11,7 @@ import { QuickApplyForm } from "@/components/creators/portal/quick-apply-form";
 import { ReportCampaign } from "@/components/creators/portal/report-campaign";
 import { reportCampaignAction } from "@/app/creator/(portal)/actions";
 import { splitName } from "@/lib/creators/application";
+import { phoneCountry } from "@/lib/phone";
 import { canPreview, loadPublicCampaign, takesApplications, type PublicCampaign } from "@/lib/creators/apply";
 import { publicViewer } from "@/lib/creators/auth";
 import { brandLook } from "@/lib/creators/brand-look";
@@ -182,7 +183,7 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
         </Section>
 
         {preview ? (
-          <ApplyForm apply={applyAction.bind(null, campaign.slug)} startUpload={startUpload} form={campaign.form} platforms={campaign.platforms} currency={campaign.currency} companyName={campaign.company.name} preview />
+          <ApplyForm apply={applyAction.bind(null, campaign.slug)} startUpload={startUpload} form={campaign.form} platforms={campaign.platforms} currency={campaign.currency} companyName={campaign.company.name} phoneCountry={phoneCountry(campaign.company.country)} preview />
         ) : viewer.kind === "creator" && viewer.applied ? (
           <GlassCard strong padding="lg" role="status" className="flex flex-col items-start gap-3">
             <p className="text-[15px] font-medium">{viewer.applied.status === "OFFERED" ? `${campaign.company.name} invited you to this campaign. Answer on your Campaigns page.` : viewer.applied.status === "JOINED" ? "You are in this campaign." : "You applied to this campaign."}</p>
@@ -218,6 +219,7 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
               currency={campaign.currency}
               companyName={campaign.company.name}
               slug={campaign.slug}
+              phoneCountry={phoneCountry(campaign.company.country)}
             />
           ) : null
         ) : (
@@ -229,7 +231,7 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
                 <Button href="/creators/signup" size="sm">Make one</Button>
               </div>
             </GlassCard>
-            <ApplyForm apply={applyAction.bind(null, campaign.slug)} startUpload={startUpload} form={campaign.form} platforms={campaign.platforms} currency={campaign.currency} companyName={campaign.company.name} />
+            <ApplyForm apply={applyAction.bind(null, campaign.slug)} startUpload={startUpload} form={campaign.form} platforms={campaign.platforms} currency={campaign.currency} companyName={campaign.company.name} phoneCountry={phoneCountry(campaign.company.country)} />
           </>
         )}
 

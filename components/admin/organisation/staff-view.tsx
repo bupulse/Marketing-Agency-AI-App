@@ -1,4 +1,4 @@
-import { Badge, Button, Field, Input, Select } from "@/components/ui";
+import { Badge, Button, Field, Input, PhoneInput, Select } from "@/components/ui";
 import { dateTime } from "@/lib/admin/format";
 import type { RoleView, StaffView } from "@/lib/staff/service";
 import { ConfirmButton } from "../confirm-button";
@@ -22,7 +22,7 @@ export function StaffView({ staff, roles, grantable, me, actions }: { staff: Sta
         <form action={actions.invite} className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
           <Field label="Email" required><Input name="email" type="email" required maxLength={254} placeholder="name@example.com" /></Field>
           <Field label="Name"><Input name="name" maxLength={80} /></Field>
-          <Field label="Phone (optional)"><Input name="phone" maxLength={30} inputMode="tel" /></Field>
+          <PhoneInput name="phone" label="Phone (optional)" />
           <Field label="Role" required>
             <Select name="roleKey" defaultValue="sales_agent" required>
               {options.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}

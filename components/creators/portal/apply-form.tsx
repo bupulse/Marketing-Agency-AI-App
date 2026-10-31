@@ -2,7 +2,7 @@
 
 import { CircleCheck } from "lucide-react";
 import { useActionState } from "react";
-import { Button, Field, GlassCard, Input } from "@/components/ui";
+import { Button, Field, GlassCard, Input, PhoneInput } from "@/components/ui";
 import type { ApplyState } from "@/app/c/[slug]/actions";
 import { BRAND_BUTTON, FieldInput, holdWhileUploading, type StartUpload, type Values } from "@/components/creators/apply/field-input";
 import { SocialsPicker } from "@/components/creators/apply/socials-picker";
@@ -51,7 +51,7 @@ export function FormProblems({ state }: { state: { error?: string; errors?: Part
  * email, WhatsApp number and best posts as the company set them, the social accounts, then the company's own fields.
  * `apply`: applyAction bound to the slug. `preview`: the company looking at a campaign that is not live (nothing is sent).
  */
-export function ApplyForm({ apply, startUpload, form, platforms, currency, companyName, preview }: { apply: (prev: ApplyState, form: FormData) => Promise<ApplyState>; startUpload: StartUpload; form: ApplicationForm; platforms: string[]; currency: string; companyName: string; preview?: boolean }) {
+export function ApplyForm({ apply, startUpload, form, platforms, currency, companyName, phoneCountry, preview }: { apply: (prev: ApplyState, form: FormData) => Promise<ApplyState>; startUpload: StartUpload; form: ApplicationForm; platforms: string[]; currency: string; companyName: string; /** ISO code of the company's country: the phone picker starts there. */ phoneCountry?: string | null; preview?: boolean }) {
   const [state, action, pending] = useActionState(apply, initial);
   const errors = state.errors ?? {};
   const values: Values = state.values ?? {};
@@ -96,9 +96,7 @@ export function ApplyForm({ apply, startUpload, form, platforms, currency, compa
             <Input name="email" type="email" autoComplete="email" placeholder="ana@example.com" defaultValue={one(values.email)} />
           </Field>
           {form.phone !== "HIDDEN" && (
-            <Field label="WhatsApp number" required={form.phone === "REQUIRED"} hint="The company may message you here." error={errors.phone}>
-              <Input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+250 791 954 277" defaultValue={one(values.phone)} />
-            </Field>
+            <PhoneInput name="phone" label="WhatsApp number" required={form.phone === "REQUIRED"} hint="The company may message you here." error={errors.phone} defaultValue={one(values.phone)} defaultCountry={phoneCountry} />
           )}
         </div>
 

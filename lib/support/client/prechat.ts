@@ -1,4 +1,6 @@
-// The pre-chat form's checks (name, email and business required; WhatsApp optional, after +250). Pure, so tested.
+// The pre-chat form's checks (name, email and business required; WhatsApp optional, after the flag and dial code
+// picker, Rwanda's +250 to start with). Pure, so tested.
+import { toE164 } from "@/lib/phone";
 import { prechatBody } from "../contract";
 import { COPY } from "./copy";
 
@@ -15,9 +17,21 @@ export function rwandaWhatsapp(raw: string): string | null {
   return /^7\d{8}$/.test(d) ? `+250${d}` : null;
 }
 
+/**
+ * The number from the phone field: a Rwandan one the usual ways (above), or another country's, which the field only
+ * gives with its own dial code ("+254 712 345678") once that country is picked. "" stays empty; anything else is null.
+ */
+export function prechatWhatsapp(raw: string): string | null {
+  const rwanda = rwandaWhatsapp(raw);
+  if (rwanda !== null) return rwanda;
+  const compact = raw.replace(/[\s().-]/g, "");
+  if (!compact.startsWith("+") || compact.startsWith("+250")) return null;
+  return toE164(compact, null);
+}
+
 export function checkPrechat(v: PrechatValues): { ok: true; body: { name: string; email: string; business: string; whatsapp?: string } } | { ok: false; errors: PrechatErrors } {
   const errors: PrechatErrors = {};
-  const wa = rwandaWhatsapp(v.whatsapp);
+  const wa = prechatWhatsapp(v.whatsapp);
   if (!v.name.trim()) errors.name = COPY.needName;
   if (!prechatBody.shape.email.safeParse(v.email.trim()).success) errors.email = COPY.needEmail;
   if (!v.business.trim()) errors.business = COPY.needBusiness;

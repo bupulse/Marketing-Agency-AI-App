@@ -7,7 +7,7 @@
 
 import type { BrandValues, LocationValue } from "@/components/brand-profile/steps";
 import type { KnowledgeInput } from "@/lib/brand/schemas";
-import { isPhoneType } from "@/lib/business-info/contacts";
+import { countryNameForCode, isPhoneType, phoneCountryCode } from "@/lib/business-info/contacts";
 import { DAYS, type DayKey, type Schedule } from "@/lib/business-info/hours";
 import { INDUSTRY_DESCRIPTION_MAX, INDUSTRY_DESCRIPTION_MIN } from "@/lib/industries/shared";
 import { AGE_RANGES, type AgeRange, type Gender, type IncomeBand, type PersonaFormValues, type PersonaInput } from "./audience";
@@ -513,9 +513,12 @@ export function knowledgeInputFrom(stored: BrandValues, a: QuizAnswers["find"], 
   const phone = a.phone.trim();
   let phoneChanged = false;
   if (given("find.phone") && phone && phone !== mainPhone(stored.contacts)) {
+    // The quiz's phone field has its own country picker and gives "+254 712 345678": the contact takes that country
+    // (the save checks the number against it). A number without its dial code keeps the contact's country.
+    const picked = phone.startsWith("+") ? countryNameForCode(phoneCountryCode(phone.replace(/\s/g, ""))) : null;
     const i = contacts.findIndex((c) => isPhoneType(c.type));
-    if (i >= 0) contacts[i] = { ...contacts[i], value: phone };
-    else contacts.unshift({ type: "whatsapp_call", value: phone, country, primary: !contacts.some((c) => c.value.trim()) });
+    if (i >= 0) contacts[i] = { ...contacts[i], value: phone, country: picked ?? contacts[i].country };
+    else contacts.unshift({ type: "whatsapp_call", value: phone, country: picked ?? country, primary: !contacts.some((c) => c.value.trim()) });
     phoneChanged = true;
   }
 

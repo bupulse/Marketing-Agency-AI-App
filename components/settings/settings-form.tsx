@@ -8,7 +8,8 @@ import { saveBusiness, saveProfile, type SettingsState } from "@/app/dashboard/s
 import { PhoneField } from "@/components/auth/phone-field";
 
 /** Settings -> Business: the details the owner may change. The sector lives on the Brand page; the country is fixed. */
-export type BusinessDetailsValues = { organisationName: string; ceoName: string; phone: string; website: string };
+/** `phoneCountry`: the ISO code on the phone field's picker (the stored number's country to start with). */
+export type BusinessDetailsValues = { organisationName: string; ceoName: string; phone: string; phoneCountry: string; website: string };
 
 function Section({ id, title, text, children }: { id: string; title: string; text: string; children: ReactNode }) {
   return (
@@ -115,7 +116,7 @@ export function BusinessSection({ defaults, country, industryLabel }: { defaults
         <Field label="Country" hint="Decides your prices and currency. To change it, contact us.">
           <Input name="countryDisplay" value={country || "Not set"} readOnly />
         </Field>
-        <PhoneField value={values.phone} country={country} error={errors.phone} onChange={(v) => set("phone", v)} />
+        <PhoneField value={values.phone} country={country} error={errors.phone} onChange={(v) => set("phone", v)} onCountryChange={(c) => set("phoneCountry", c)} />
         <Field label="Website (optional)" error={errors.website}>
           <Input name="website" type="url" inputMode="url" autoComplete="url" placeholder="yourbusiness.com" value={values.website} onChange={(e) => set("website", e.target.value)} />
         </Field>

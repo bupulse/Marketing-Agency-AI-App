@@ -48,6 +48,7 @@ export async function saveBusiness(_prev: SettingsState, formData: FormData): Pr
     organisationName: formData.get("organisationName") ?? "",
     ceoName: formData.get("ceoName") ?? "",
     phone: formData.get("phone") ?? "",
+    phoneCountry: String(formData.get("phoneCountry") ?? ""),
     website: formData.get("website") ?? "",
   });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };

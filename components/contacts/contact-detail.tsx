@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { merge, saveContact } from "@/app/dashboard/contacts/actions";
 import { tagContact } from "@/app/dashboard/inbox/actions";
-import { Badge, Button, Field, GlassCard, Input, Select, useToast } from "@/components/ui";
+import { Badge, Button, Field, GlassCard, Input, PhoneInput, Select, useToast } from "@/components/ui";
 import { timeAgo } from "@/components/leads/format";
 import { CHANNEL_LABELS } from "@/lib/inbox/labels";
 import type { ContactDetail as Detail, ContactRow } from "@/lib/contacts/service";
@@ -70,9 +70,7 @@ export function ContactDetail({ contact, fields, similar, canManage }: { contact
             <Field label="Name">
               <Input value={form.name} maxLength={120} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>
-            <Field label="Phone">
-              <Input value={form.phone} maxLength={40} inputMode="tel" onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            </Field>
+            <PhoneInput label="Phone" value={form.phone} onChange={(phone) => setForm({ ...form, phone })} />
             <Field label="Email">
               <Input value={form.email} maxLength={200} type="email" onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </Field>

@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Input } from "@/components/ui";
+import { Input, PhoneInput } from "@/components/ui";
 import { COPY } from "@/lib/support/client/copy";
 import { checkPrechat, type PrechatErrors, type PrechatValues } from "@/lib/support/client/prechat";
-import { cn } from "@/lib/cn";
 
 const LABEL = "flex flex-col gap-1.5 text-[13px] font-semibold";
 
@@ -66,27 +65,21 @@ export function PrechatForm({ firstRef, onSubmit }: { firstRef: React.RefObject<
         <Input name="organization" autoComplete="organization" placeholder={COPY.businessHint} value={v.business} onChange={set("business")} invalid={!!errors.business} aria-describedby={errors.business ? "sc-business-err" : undefined} required />
         {err("business")}
       </label>
-      <label className={LABEL}>
-        <span>
+      {/* Not a wrapping <label>: a click on it would open the country picker, which comes first. */}
+      <div className={LABEL}>
+        <label htmlFor="sc-whatsapp">
           {COPY.whatsappField} <span className="font-normal text-muted">{COPY.optional}</span>
-        </span>
-        <span className={cn("flex overflow-hidden rounded-field border focus-within:border-pulse-blue focus-within:shadow-ring", errors.whatsapp ? "border-danger" : "border-line")}>
-          <span className="flex items-center border-r border-line bg-soft px-3 text-[15px] font-medium">+250</span>
-          <input
-            type="tel"
-            name="whatsapp"
-            autoComplete="tel-national"
-            inputMode="tel"
-            placeholder={COPY.phoneHint}
-            value={v.whatsapp}
-            onChange={set("whatsapp")}
-            aria-invalid={!!errors.whatsapp || undefined}
-            aria-describedby={errors.whatsapp ? "sc-whatsapp-err" : undefined}
-            className="min-h-12 min-w-0 flex-1 border-0 bg-transparent px-3.5 text-[15px] font-normal text-text outline-none placeholder:text-muted/80"
-          />
-        </span>
+        </label>
+        <PhoneInput
+          id="sc-whatsapp"
+          name="whatsapp"
+          value={v.whatsapp}
+          onChange={(whatsapp) => setV((o) => ({ ...o, whatsapp }))}
+          invalid={!!errors.whatsapp}
+          aria-describedby={errors.whatsapp ? "sc-whatsapp-err" : undefined}
+        />
         {err("whatsapp")}
-      </label>
+      </div>
       {failed && (
         <p role="alert" className="m-0 text-sm text-danger">
           {failed}

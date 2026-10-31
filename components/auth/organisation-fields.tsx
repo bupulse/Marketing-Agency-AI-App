@@ -13,6 +13,8 @@ export type OrganisationValues = IndustryFieldValues & {
   ceoName: string;
   country: string;
   phone: string;
+  /** The ISO code picked on the phone field ("" until it moves): the number is checked against it. */
+  phoneCountry: string;
   website: string;
 };
 
@@ -55,7 +57,7 @@ export function OrganisationFields({
           ))}
         </Select>
       </Field>
-      <PhoneField value={values.phone} country={values.country} error={errors.phone} onChange={(v) => onChange("phone", v)} />
+      <PhoneField value={values.phone} country={values.country} error={errors.phone} onChange={(v) => onChange("phone", v)} onCountryChange={(c) => onChange("phoneCountry", c)} />
       <Field label="Website (optional)" error={errors.website}>
         <Input
           name="website"

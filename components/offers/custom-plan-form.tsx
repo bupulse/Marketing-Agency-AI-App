@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CalendarClock, CheckCircle2 } from "lucide-react";
 import { useActionState, useState } from "react";
 import { requestCustomPlanAction, type RequestState } from "@/app/custom-plan/actions";
-import { Badge, Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Field, GlassCard, PhoneInput, Select, Textarea } from "@/components/ui";
 import { featureLabel, type FeatureKey } from "@/lib/features";
 import { BUDGET_RANGES, lockedRequestFeatures, REQUESTABLE_FEATURES, toggleRequestFeature, type RequestSource } from "@/lib/offers/shared";
 
@@ -103,9 +103,7 @@ export function CustomPlanForm({ source, initial, owned = [], back, call = null 
             ))}
           </Select>
         </Field>
-        <Field label="Phone or WhatsApp (optional)">
-          <Input name="phone" type="tel" defaultValue={initial.phone} maxLength={40} autoComplete="tel" />
-        </Field>
+        <PhoneInput name="phone" label="Phone or WhatsApp (optional)" defaultValue={initial.phone} />
       </div>
       {state.error && (
         <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">

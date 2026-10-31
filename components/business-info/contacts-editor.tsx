@@ -4,8 +4,7 @@ import { useId } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { PhoneField } from "@/components/auth/phone-field";
 import { Button, Field, Input, Select } from "@/components/ui";
-import { CONTACT_LABELS, CONTACT_TYPES, MAX_CONTACTS, isPhoneType, type ContactType } from "@/lib/business-info/contacts";
-import { countries } from "@/lib/content/countries";
+import { CONTACT_LABELS, CONTACT_TYPES, MAX_CONTACTS, countryNameForCode, isPhoneType, type ContactType } from "@/lib/business-info/contacts";
 import type { ContactValue } from "@/components/brand-profile/steps";
 
 const PLACEHOLDERS: Partial<Record<ContactType, string>> = {
@@ -17,7 +16,7 @@ const PLACEHOLDERS: Partial<Record<ContactType, string>> = {
 };
 
 /**
- * Contacts: WhatsApp and phone numbers (country picker, then grouped as typed: +250 791 954 277), email, website and
+ * Contacts: WhatsApp and phone numbers (flag and dial code picker, then grouped as typed: 791 954 277), email, website and
  * social profiles. One is the main contact: the chat widget's WhatsApp and Call buttons prefer it.
  */
 export function ContactsEditor({
@@ -67,19 +66,16 @@ export function ContactsEditor({
               </Select>
             </Field>
             {isPhoneType(c.type) ? (
-              <>
-                <Field label="Country">
-                  <Select autoComplete="country-name" value={c.country} onChange={(e) => update(i, { country: e.target.value })}>
-                    <option value="">Select a country</option>
-                    {countries.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <PhoneField label="Number" value={c.value} country={c.country} error={error} onChange={(value) => update(i, { value })} />
-              </>
+              // The number's own country picker (flag and dial code) is the contact's country; one outside the
+              // sign-up list leaves it empty, and the number is then checked as the international number it is.
+              <PhoneField
+                label="Number"
+                value={c.value}
+                country={c.country}
+                error={error}
+                onChange={(value) => update(i, { value })}
+                onCountryChange={(code) => update(i, { country: countryNameForCode(code) ?? "" })}
+              />
             ) : (
               <Field label={c.type === "email" ? "Email" : c.type === "website" ? "Website" : `${CONTACT_LABELS[c.type]} handle or link`} error={error}>
                 <Input

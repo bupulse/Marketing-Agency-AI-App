@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ChevronDown, CircleCheck } from "lucide-react";
 import { useActionState } from "react";
-import { Button, Field, GlassCard, Input } from "@/components/ui";
+import { Button, Field, GlassCard, Input, PhoneInput } from "@/components/ui";
 import type { QuickApplyState } from "@/app/c/[slug]/actions";
 import { BRAND_BUTTON, FieldInput, holdWhileUploading, type StartUpload, type Values } from "@/components/creators/apply/field-input";
 import type { ApplicationForm, FormField } from "@/lib/creators/form-fields";
@@ -30,8 +30,10 @@ export function QuickApplyForm(props: {
   currency: string;
   companyName: string;
   slug: string;
+  /** ISO code of the company's country: the phone picker starts there. */
+  phoneCountry?: string | null;
 }) {
-  const { apply, startUpload, form, asks, prefill, currency, companyName, slug } = props;
+  const { apply, startUpload, form, asks, prefill, currency, companyName, slug, phoneCountry } = props;
   const [state, action, pending] = useActionState(apply, initial);
   const errors = state.errors ?? {};
   const values: Values = state.values ?? { firstName: prefill.firstName, lastName: prefill.lastName, phone: prefill.phone ?? "" };
@@ -60,9 +62,7 @@ export function QuickApplyForm(props: {
         </Field>
       </div>
       {form.phone !== "HIDDEN" && (
-        <Field label="WhatsApp number" required={form.phone === "REQUIRED"} error={errors.phone}>
-          <Input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+250 791 954 277" defaultValue={one(values.phone)} />
-        </Field>
+        <PhoneInput name="phone" label="WhatsApp number" required={form.phone === "REQUIRED"} error={errors.phone} defaultValue={one(values.phone)} defaultCountry={phoneCountry} />
       )}
       <p className="text-[13px] text-muted">
         Changes here are for this application only. {prefill.accounts.length > 0 && <>Your accounts: {prefill.accounts.join(" · ")}. </>}

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { countries } from "@/lib/content/countries";
 import { industries } from "@/lib/content/site";
 import { checkIndustryOther, industryFields } from "@/lib/industries/shared";
-import { phoneCountry, phoneErrorMessage, toE164 } from "@/lib/phone";
+import { phoneCountry, phoneErrorFor, phoneErrorMessage, pickerCountry, toE164 } from "@/lib/phone";
 
 // Shared by the sign-up wizard (client-side step checks) and the server actions.
 
@@ -54,6 +54,22 @@ export const websiteSchema = z
 // The phone is checked against the chosen country (see withOrganisationChecks): here only the shape and length.
 const phoneSchema = z.string().trim().max(30, "That phone number is too long.");
 
+// The country picked on the phone field itself (an ISO code, "KE"). Missing on older forms and in the tests: then the
+// business country decides, as before. Picking it is deliberate (the flag shows), so a Kenyan number with Kenya picked
+// is fine on a Rwandan company; "+254..." typed with Rwanda still showing stays a typo.
+const phoneCountrySchema = z.string().trim().max(3).optional();
+
+/** The ISO code the phone is checked against: the picked one, else the business country's. */
+function phoneCheckCountry(picked: string | undefined, countryName: string | null | undefined) {
+  return pickerCountry(picked) ?? phoneCountry(countryName);
+}
+
+/** The business country's message ("Enter a valid Rwandan number..."), or the picked country's when it differs. */
+function phoneMessage(picked: string | undefined, countryName: string | null | undefined) {
+  const code = pickerCountry(picked);
+  return code && code !== phoneCountry(countryName) ? phoneErrorFor(code) : phoneErrorMessage(countryName);
+}
+
 export const countrySchema = z
   .string()
   .min(1, "Choose your country.")
@@ -66,10 +82,11 @@ const organisationShape = {
   ...industryFields,
   country: countrySchema,
   phone: phoneSchema,
+  phoneCountry: phoneCountrySchema,
   website: websiteSchema,
 };
 
-type OrganisationIn = { industry: string; industryOther: string; country: string; phone: string };
+type OrganisationIn = { industry: string; industryOther: string; country: string; phone: string; phoneCountry?: string };
 
 // Zod skips object-level checks when a field already failed; run them regardless so every problem shows at once.
 const always = { when: () => true } as const;
@@ -80,13 +97,13 @@ const always = { when: () => true } as const;
  */
 function organisationChecks(v: OrganisationIn, ctx: z.RefinementCtx) {
   checkIndustryOther({ industry: String(v.industry ?? ""), industryOther: String(v.industryOther ?? "") }, ctx);
-  if (typeof v.phone === "string" && v.phone && !toE164(v.phone, phoneCountry(v.country))) {
-    ctx.addIssue({ code: "custom", path: ["phone"], message: phoneErrorMessage(v.country) });
+  if (typeof v.phone === "string" && v.phone && !toE164(v.phone, phoneCheckCountry(v.phoneCountry, v.country))) {
+    ctx.addIssue({ code: "custom", path: ["phone"], message: phoneMessage(v.phoneCountry, v.country) });
   }
 }
 
 function withPhoneE164<T extends OrganisationIn>(v: T): Omit<T, "phone"> & { phone: string | undefined } {
-  return { ...v, phone: v.phone ? (toE164(v.phone, phoneCountry(v.country)) ?? undefined) : undefined };
+  return { ...v, phone: v.phone ? (toE164(v.phone, phoneCheckCountry(v.phoneCountry, v.country)) ?? undefined) : undefined };
 }
 
 export const organisationSchema = z.object(organisationShape).superRefine(organisationChecks, always).transform(withPhoneE164);
@@ -103,11 +120,11 @@ export const welcomeSchema = z
  */
 export function businessDetailsSchema(country: string | null | undefined) {
   return z
-    .object({ organisationName: organisationShape.organisationName, ceoName: organisationShape.ceoName, phone: phoneSchema, website: websiteSchema })
+    .object({ organisationName: organisationShape.organisationName, ceoName: organisationShape.ceoName, phone: phoneSchema, phoneCountry: phoneCountrySchema, website: websiteSchema })
     .superRefine((v, ctx) => {
-      if (typeof v.phone === "string" && v.phone && !toE164(v.phone, phoneCountry(country))) ctx.addIssue({ code: "custom", path: ["phone"], message: phoneErrorMessage(country) });
+      if (typeof v.phone === "string" && v.phone && !toE164(v.phone, phoneCheckCountry(v.phoneCountry, country))) ctx.addIssue({ code: "custom", path: ["phone"], message: phoneMessage(v.phoneCountry, country) });
     }, always)
-    .transform((v) => ({ ...v, phone: v.phone ? (toE164(v.phone, phoneCountry(country)) ?? undefined) : undefined }));
+    .transform((v) => ({ ...v, phone: v.phone ? (toE164(v.phone, phoneCheckCountry(v.phoneCountry, country)) ?? undefined) : undefined }));
 }
 
 /** Brand -> Industry: the sector, the "Other" text and the description, editable by the owner at any time. */

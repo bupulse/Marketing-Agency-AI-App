@@ -85,6 +85,7 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     industryDescription: formData.get("industryDescription") ?? "",
     country: formData.get("country") ?? "",
     phone: formData.get("phone") ?? "",
+    phoneCountry: String(formData.get("phoneCountry") ?? ""),
     website: formData.get("website") ?? "",
     password: formData.get("password") ?? "",
     confirmPassword: formData.get("confirmPassword") ?? "",

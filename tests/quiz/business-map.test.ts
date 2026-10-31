@@ -360,6 +360,15 @@ describe("📍 Find us -> saveKnowledge", () => {
     expect(checked.ok).toBe(true);
   });
 
+  it("gives the contact the country picked on the phone field", () => {
+    const find = { hours: "weekdays" as const, custom: HOURS_PRESETS.weekdays[0], phone: "+254 712 345678", address: "KN 4 Ave, Kiyovu, Kigali", area: { choice: "", text: "" } };
+    const input = knowledgeInputFrom(brand, find, all, "Rwanda");
+    expect(input!.contacts?.[0]).toMatchObject({ value: "+254 712 345678", country: "Kenya" });
+    expect(validateKnowledge(input!, { country: "Rwanda", requireEssentials: true }).ok).toBe(true);
+    // The picker's own Rwanda number stays Rwandan.
+    expect(knowledgeInputFrom(brand, { ...find, phone: "+250 788 000 000" }, all, "Rwanda")!.contacts?.[0]).toMatchObject({ country: "Rwanda" });
+  });
+
   it("knows the presets back from stored hours", () => {
     expect(hoursChoiceOf([])).toBe("");
     expect(hoursChoiceOf(HOURS_PRESETS.always)).toBe("always");

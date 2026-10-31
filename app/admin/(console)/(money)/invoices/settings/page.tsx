@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Panel, notice } from "@/components/admin/ui";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
-import { Button, Field, Input, Textarea } from "@/components/ui";
+import { Button, Field, Input, PhoneInput, Textarea } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
@@ -49,7 +49,7 @@ export default async function InvoiceSettingsPage({ searchParams }: { searchPara
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Business / legal name" required><Input name="businessName" defaultValue={s.businessName} maxLength={L.businessName} required /></Field>
                 <Field label="Email"><Input name="email" type="email" defaultValue={s.email} maxLength={L.email} /></Field>
-                <Field label="Phone"><Input name="phone" defaultValue={s.phone} maxLength={L.phone} inputMode="tel" /></Field>
+                <PhoneInput name="phone" label="Phone" defaultValue={s.phone} />
                 <Field label="Website"><Input name="website" defaultValue={s.website} maxLength={L.website} placeholder="https://bupulse.com" /></Field>
                 <Field label="TIN (optional)" hint="Printed when filled in."><Input name="tin" defaultValue={s.tin} maxLength={L.tin} /></Field>
                 <Field label="VAT rate % (optional)" hint="Empty = no tax line (the default). 18 adds an 18% VAT line."><Input name="vatRatePercent" defaultValue={s.vatRatePercent ?? ""} inputMode="decimal" placeholder="None" /></Field>

@@ -53,6 +53,7 @@ const empty = {
   industryDescription: "",
   country: "",
   phone: "",
+  phoneCountry: "",
   website: "",
   password: "",
   confirmPassword: "",

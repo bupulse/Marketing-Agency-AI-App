@@ -28,6 +28,7 @@ export async function saveOrganisation(_prev: WelcomeState, formData: FormData):
     industryDescription: formData.get("industryDescription") ?? "",
     country: lockedCountry ?? formData.get("country") ?? "",
     phone: formData.get("phone") ?? "",
+    phoneCountry: String(formData.get("phoneCountry") ?? ""),
     website: formData.get("website") ?? "",
     terms: formData.get("terms") === "true",
   });

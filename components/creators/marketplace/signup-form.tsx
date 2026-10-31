@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { MailCheck } from "lucide-react";
 import { useActionState, useState } from "react";
-import { Button, Field, Input } from "@/components/ui";
+import { Button, Field, Input, PhoneInput } from "@/components/ui";
 import { PasswordChecks } from "@/components/auth/password-checks";
 import { PasswordInput } from "@/components/auth/password-input";
 import { EmailCodeForm } from "@/components/auth/email-code-form";
@@ -66,9 +66,7 @@ export function CreatorSignUpForm({ turnstileSiteKey }: { turnstileSiteKey: stri
       <Field label="Email" required hint="Your login. Companies email you here." error={errors.email}>
         <Input name="email" type="email" autoComplete="email" defaultValue={values.email} />
       </Field>
-      <Field label="WhatsApp number" required hint="Companies you apply to may message you here." error={errors.phone}>
-        <Input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+250 791 954 277" defaultValue={values.phone} />
-      </Field>
+      <PhoneInput name="phone" label="WhatsApp number" required hint="Companies you apply to may message you here." error={errors.phone} defaultValue={values.phone} />
       <Field label="Password" required error={errors.password}>
         <PasswordInput name="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>

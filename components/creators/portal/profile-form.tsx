@@ -2,7 +2,7 @@
 
 import { BadgeCheck, CircleCheck } from "lucide-react";
 import { useActionState } from "react";
-import { Badge, Button, Field, GlassCard, Input, Textarea } from "@/components/ui";
+import { Badge, Button, Field, GlassCard, Input, PhoneInput, Textarea } from "@/components/ui";
 import { saveProfileAction, type ProfileState } from "@/app/creator/(portal)/actions";
 import { CREATOR_NETWORKS, NETWORK_LABEL, type CreatorNetwork } from "@/lib/creators/describe";
 import { BIO_MAX, LOCATION_MAX } from "@/lib/creators/profile-form";
@@ -38,9 +38,7 @@ export function ProfileForm({ profile, verified, next }: { profile: ProfileFormV
           <Input name="name" autoComplete="name" defaultValue={val("name", profile.name)} />
         </Field>
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="WhatsApp number" required hint="Companies you apply to may message you here." error={errors.phone}>
-            <Input name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+250 791 954 277" defaultValue={val("phone", profile.phone)} />
-          </Field>
+          <PhoneInput name="phone" label="WhatsApp number" required hint="Companies you apply to may message you here." error={errors.phone} defaultValue={val("phone", profile.phone)} />
           <Field label="Where you are" hint="Your district or city, e.g. Kigali, Gasabo." error={errors.location}>
             <Input name="location" maxLength={LOCATION_MAX} defaultValue={val("location", profile.location)} />
           </Field>
