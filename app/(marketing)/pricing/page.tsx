@@ -8,10 +8,8 @@ import { Accordion, Badge, Button, Container, GlassCard, SectionHeading } from "
 import { Reveal } from "@/components/motion";
 import { PlanQuiz } from "./plan-quiz";
 import { PricingPlans } from "./pricing-plans";
-import { UseMyLocation } from "./use-my-location";
 import { faqs, fillFaq } from "@/lib/content/site";
 import { getSetting } from "@/lib/admin/settings";
-import { geoLookupAvailable } from "@/lib/geo/availability";
 import { displayRegionWithOverride } from "@/lib/region";
 import { currencyNote, paymentBadges } from "@/lib/region-format";
 import { getRegionPlans } from "@/lib/region-prices";
@@ -32,7 +30,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   // ?region= only counts when REGION_OVERRIDE=1 (local development); see lib/region.ts.
   const region = await displayRegionWithOverride(sp.region);
-  const [plans, trialDays, canLocate] = await Promise.all([getRegionPlans(region.key), getSetting("trialDays"), geoLookupAvailable()]);
+  const [plans, trialDays] = await Promise.all([getRegionPlans(region.key), getSetting("trialDays")]);
   const days = `${trialDays} ${trialDays === 1 ? "day" : "days"}`;
   // Rwanda visitors ask for a free quote instead of starting a trial (lib/quote/cta.ts): the steps, the custom plan
   // card and the FAQ say so, and no line here sends them to the trial.
@@ -51,7 +49,6 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       />
 
       <Container className="pb-16">
-        {canLocate && <UseMyLocation />}
         {paymentBadges(region.paymentMethods).length > 0 && (
           <ul aria-label="Ways to pay" className="m-0 mb-6 flex list-none flex-wrap items-center justify-center gap-2 p-0">
             {paymentBadges(region.paymentMethods).map((name) => (
