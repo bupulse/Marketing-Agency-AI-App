@@ -110,7 +110,7 @@ describe("one company's day", () => {
     expect(await runDailyPosts("b1", night)).toEqual({ status: "made", posts: 1, scheduled: 0, reason: null });
     const [owner, input] = mocks.runDayContent.mock.calls[0];
     expect(owner).toEqual({ userId: "u1", businessId: "b1", service: true });
-    expect(input).toMatchObject({ scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["instagram"], price: "auto", daily: { maxPosts: 1, room: { instagram: 1 }, maxAiImages: 0, maxVideos: 0, avoidAngles: [] } });
+    expect(input).toMatchObject({ scope: { kind: "product", id: "p1" }, mode: "ai", design: "ai", networks: ["instagram"], price: "auto", daily: { maxPosts: 1, room: { instagram: 1 }, maxAiImages: 1, maxVideos: 0, avoidAngles: [] } });
     expect(mocks.prisma.dailyPostRun.update).toHaveBeenCalledWith({ where: { id: "run1" }, data: expect.objectContaining({ status: "DONE", posts: 1, subjectKind: "product", subjectId: "p1", angles: ["tips"] }) });
   });
 

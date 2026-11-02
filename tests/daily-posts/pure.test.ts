@@ -114,9 +114,9 @@ describe("when and what", () => {
 });
 
 describe("daily posts settings", () => {
-  it("are on by default, one post per app, the connected apps, free designs", () => {
+  it("are on by default, one post per app, the connected apps, AI pictures", () => {
     expect(readDailySettings(null)).toEqual(DEFAULT_DAILY_SETTINGS);
-    expect(DEFAULT_DAILY_SETTINGS).toEqual({ enabled: true, perApp: 1, apps: null, design: "free", videoQuality: "simple" });
+    expect(DEFAULT_DAILY_SETTINGS).toEqual({ enabled: true, perApp: 1, apps: null, design: "ai", videoQuality: "simple" });
   });
 
   it("read field by field, so one bad value does not reset the rest", () => {

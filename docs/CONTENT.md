@@ -198,7 +198,7 @@ posts are created every day for them, without having to say 'create posts'." Cod
 - **Settings** (Content -> Settings, "Daily posts made for you"; `Business.dailyPostSettings`, `readDailySettings`,
   read field by field): on (default) or off, posts per app per day (1 by default, up to the plan's
   `postsPerAppPerDay`), which apps (default: the connected ones, Instagram and Facebook while none is connected; apps
-  not connected get the usual reminder posts) and the design style (free designs by default; AI photos only while the
+  not connected get the usual reminder posts) and the design style (AI pictures by default on every plan since 2 November 2026; AI photos only while the
   image allowance lasts). Owners and Admins (`contentSettings`), audited as `content.daily_posts` with before and after
   in the same transaction. Changes apply from the next day's posts.
 - **When.** The cron `/api/cron/daily-posts` runs hourly at :13 (`DAILY_POSTS_CRON`, `wrangler.jsonc`,

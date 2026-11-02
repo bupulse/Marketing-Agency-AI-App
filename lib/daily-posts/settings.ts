@@ -1,6 +1,6 @@
 // Daily posts made for you (docs/CONTENT.md "Daily posts"): the company's choices in Content -> Settings. Stored as
 // Business.dailyPostSettings (JSON), validated here. Pure and client-safe, so the page, the actions, the cron and the
-// tests share it. Missing or unreadable means the defaults: on, one post per app, the connected apps, free designs.
+// tests share it. Missing or unreadable means the defaults: on, one post per app, the connected apps, AI pictures.
 import { z } from "zod";
 import { dayKey } from "@/lib/publishing/time";
 import { NETWORKS, type Network } from "@/lib/social/types";
@@ -15,13 +15,16 @@ export interface DailyPostSettings {
   perApp: number;
   /** The apps to make posts for; null: the connected ones (Instagram and Facebook while none is connected). */
   apps: Network[] | null;
-  /** Free designs (your photos and BuPulse designs) by default; AI photos only while the plan's images last. */
+  /**
+   * AI pictures by default on every plan (owner, 2 November 2026), while the plan has AI photos and its images last;
+   * then free designs (your photos and BuPulse designs). A company that saved "free" keeps it.
+   */
   design: DailyDesign;
   /** Simple videos by default; "mix" or "ai" add real AI clips, paid in studio credits (lib/visuals/video-quality.ts). */
   videoQuality: VideoQuality;
 }
 
-export const DEFAULT_DAILY_SETTINGS: DailyPostSettings = { enabled: true, perApp: 1, apps: null, design: "free", videoQuality: DEFAULT_VIDEO_QUALITY };
+export const DEFAULT_DAILY_SETTINGS: DailyPostSettings = { enabled: true, perApp: 1, apps: null, design: "ai", videoQuality: DEFAULT_VIDEO_QUALITY };
 
 /** The apps a company with no connected app gets posts for (reminders to post them yourself until connected). */
 export const DEFAULT_DAILY_APPS: readonly Network[] = ["instagram", "facebook"];
