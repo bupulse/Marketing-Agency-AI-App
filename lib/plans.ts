@@ -45,6 +45,8 @@ export type PlanLimits = Record<UsageMetric, number> & {
   creatorsPerCampaign?: number;
   /** Apps "Daily posts made for you" makes posts for each day (docs/CONTENT.md "Daily posts"); 0 or missing: every app. */
   dailyPostApps?: number;
+  /** Talking skits a week (lib/skits): 0 or missing for none (Business 2, Business Pro 3). */
+  skitsPerWeek?: number;
 };
 export const SEATS_MIN = 1;
 export const SEATS_MAX = 1000;
@@ -63,6 +65,14 @@ export const DAILY_POST_APPS_MAX = 10;
 export function dailyPostAppsLimit(limits: Pick<PlanLimits, "dailyPostApps"> | null | undefined): number | null {
   const v = limits?.dailyPostApps;
   return typeof v === "number" && Number.isInteger(v) && v > 0 ? Math.min(v, DAILY_POST_APPS_MAX) : null;
+}
+
+export const SKITS_PER_WEEK_MAX = 7;
+
+/** Talking skits a plan makes a week (0 to 7; 0 when missing: no skits). */
+export function skitsPerWeekLimit(limits: Pick<PlanLimits, "skitsPerWeek"> | null | undefined): number {
+  const v = limits?.skitsPerWeek;
+  return typeof v === "number" && Number.isInteger(v) ? Math.min(Math.max(v, 0), SKITS_PER_WEEK_MAX) : 0;
 }
 
 /** Creator campaigns (docs/CREATOR_CAMPAIGNS.md, "Limits"): the defaults of a plan that does not set its own. */

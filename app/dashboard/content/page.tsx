@@ -18,6 +18,7 @@ import { parseDay, todayIn } from "@/lib/content-flow/day";
 import { can } from "@/lib/team/roles";
 import { ConnectAppsBanner } from "@/components/content-board/connect-apps-banner";
 import { ScheduleAllButton } from "@/components/content-board/schedule-all";
+import { SkitSection } from "@/components/skits/skit-section";
 import { loadComposerContext } from "@/lib/publishing/queries";
 
 export const metadata = { title: "Posts" };
@@ -86,6 +87,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Sear
       ) : (
         <>
           {today && context && <TodayReview posts={today.posts} older={today.older} zone={zone} context={context} />}
+          {entitlements.usable.has("video") && <SkitSection businessId={business.id} zone={zone} canRecord={can(role, "content") && !entitlements.block} />}
           <PeriodBar path="/dashboard/content" view={filters.view ?? null} anchor={anchor} today={todayKey} label={label ?? ""} query={contentQuery(filters)} allowAll custom={filters.range === "custom" ? customRangeText(filters) : null} />
           <FilterBar filters={filters} />
           {posting && (

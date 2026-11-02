@@ -60,6 +60,8 @@ export type Settings = {
   firstPostPreview: boolean;
   /** Daily posts made for clients every night (lib/daily-posts). On by default; off pauses them for everyone (cost safety). */
   dailyPosts: boolean;
+  /** Talking skit videos made with Seedance 2.0 on Higgsfield (lib/skits). Off by default until the owner's lip-sync test: skits then wait as "Voice received". */
+  skitVideos: boolean;
 };
 export type SettingName = keyof Settings;
 
@@ -81,6 +83,7 @@ const KEYS: Record<SettingName, string> = {
   goalStartMonth: "sales.goalStartMonth",
   firstPostPreview: "sales.firstPostPreview",
   dailyPosts: "content.dailyPosts",
+  skitVideos: "content.skitVideos",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -101,6 +104,7 @@ export const DEFAULT_SETTINGS: Settings = {
   goalStartMonth: DEFAULT_GOAL_START_MONTH,
   firstPostPreview: false,
   dailyPosts: true,
+  skitVideos: false,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -155,6 +159,7 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   revenueGoalRwf: number("The monthly income goal (RWF)", 0, 10_000_000_000),
   firstPostPreview: (value) => value === true || value === "on" || value === "true" || value === "1",
   dailyPosts: (value) => value === true || value === "on" || value === "true" || value === "1",
+  skitVideos: (value) => value === true || value === "on" || value === "true" || value === "1",
   goalStartMonth: (value) => {
     const v = String(value ?? "").trim();
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new AdminError("invalid", "The launch month must look like 2026-11 (year and month).");

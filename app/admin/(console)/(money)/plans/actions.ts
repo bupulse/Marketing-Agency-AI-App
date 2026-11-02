@@ -49,6 +49,8 @@ function readForm(f: FormData, isTrial: boolean, priced = true): Partial<PlanInp
       ...(text(f, "limit_liveCampaigns") ? { liveCampaigns: numberOf(f, "limit_liveCampaigns", "Live creator campaigns") } : {}),
       ...(text(f, "limit_creatorsPerCampaign") ? { creatorsPerCampaign: numberOf(f, "limit_creatorsPerCampaign", "Creators per campaign") } : {}),
       ...(text(f, "limit_dailyPostApps") ? { dailyPostApps: numberOf(f, "limit_dailyPostApps", "Daily posts: apps a day") } : {}),
+      // Talking skits a week (lib/skits): only when the form sends it.
+      ...(text(f, "limit_skitsPerWeek") ? { skitsPerWeek: numberOf(f, "limit_skitsPerWeek", "Talking skits a week") } : {}),
     },
     highlights: String(f.get("highlights") ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
     // The checklist; the service validates prerequisites and refuses "coming soon" keys (the form only guides).

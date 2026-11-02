@@ -17,10 +17,11 @@ import { featureStatus } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { hasShortRequestLimit, timeBudget } from "@/lib/platform/limits";
-import { dailyPostAppsLimit, postsPerAppLimit, videosLeftNow } from "@/lib/plans";
+import { dailyPostAppsLimit, postsPerAppLimit, skitsPerWeekLimit, videosLeftNow } from "@/lib/plans";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { addDays, dayKey } from "@/lib/publishing/time";
 import { pushToLeadWatchers } from "@/lib/push/service";
+import { isSkitDay } from "@/lib/skits/schedule";
 import type { Network } from "@/lib/social/types";
 import { alertRecipients } from "@/lib/team/recipients";
 import { kigaliDayOf, kigaliMonthOf, kigaliMonthRange } from "@/lib/time/kigali";
@@ -182,6 +183,8 @@ export async function runDailyPosts(businessId: string, now = new Date()): Promi
       return { status: "skipped", reason: "nothing" };
     }
     const yesterday = history.find((h) => dateDay(h.day) === addDays(day, -1));
+    // On the plan's skit days the talking skit (lib/skits) is the day's video: no slideshow video then.
+    const skitDay = isSkitDay(skitsPerWeekLimit(usage.limits), day);
     const networks = apps.filter((n) => (room[n] ?? 0) > 0);
     const result = await runDayContent(
       owner,
@@ -192,7 +195,7 @@ export async function runDailyPosts(businessId: string, now = new Date()): Promi
         networks,
         perApp: Math.max(...networks.map((n) => room[n] ?? 0)),
         price: "auto",
-        daily: { maxPosts: budget.maxPosts, room, maxAiImages: budget.maxAiImages, maxVideos: budget.maxVideos, avoidAngles: yesterday?.angles ?? [], videoQuality: settings.videoQuality },
+        daily: { maxPosts: budget.maxPosts, room, maxAiImages: budget.maxAiImages, maxVideos: skitDay ? 0 : budget.maxVideos, avoidAngles: yesterday?.angles ?? [], videoQuality: settings.videoQuality },
         requestKey: `daily-${claim.id}-${claim.attempts}`,
       },
       now,

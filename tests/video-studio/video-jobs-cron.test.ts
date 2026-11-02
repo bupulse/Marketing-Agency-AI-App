@@ -34,6 +34,8 @@ vi.mock("@/lib/video-studio/seedance-jobs", () => ({ sweepSeedanceJobs: vi.fn(as
 // The content videos' AI clips run in the same sweep (tests/visuals/ai-clips.test.ts covers them).
 const AI_CLIPS = vi.hoisted(() => ({ started: 0, fallback: 0, made: 0, done: 0, refunded: 0, credits: 0 }));
 vi.mock("@/lib/visuals/ai-clips", () => ({ runAiClips: vi.fn(async () => AI_CLIPS) }));
+// The talking skits run in the same cron (tests/skits/sweep.test.ts covers them).
+vi.mock("@/lib/skits/sweep", () => ({ sweepSkits: vi.fn(async () => ({ carried: { moved: 0, expired: 0 }, written: 0, notices: 0, started: 0, ready: 0, failed: 0 })) }));
 
 import { sweepVideoJobs, STRANDED_MESSAGE } from "@/lib/video-studio/sweep";
 import { POST } from "@/app/api/cron/video-jobs/route";

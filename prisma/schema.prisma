@@ -137,6 +137,7 @@ model Business {
   autopilot        AutopilotSettings?
   autopilotRuns    AutopilotRun[]
   dailyPostRuns    DailyPostRun[]
+  skits            Skit[]
   imageConcepts    ImageConcept[]
   reelPresenter    ReelPresenter?
   reelJobs         ReelJob[]
@@ -1301,6 +1302,51 @@ model DailyPostRun {
 
   @@unique([businessId, day])
   @@index([day, status])
+}
+
+// A talking skit (lib/skits): a short scene of people talking on camera, made on the plan's skit days
+// (PlanLimits.skitsPerWeek). BuPulse writes the lines, the client records them (one voice note per speaker), then
+// Seedance 2.0 reference-to-video on Higgsfield makes the video with those voices (behind Admin -> Settings "Skit
+// videos", off until the owner's lip-sync test), which becomes a post waiting for approval. One planned skit per company
+// and day (slot 0); an extra skit ordered at 5,000 RWF takes the next slot. A skit not recorded by the end of its day
+// moves to the next day like a post (lib/content-board/carry-over.ts: 3 moves, then EXPIRED).
+model Skit {
+  id            String    @id @default(cuid())
+  businessId    String
+  business      Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  day           DateTime  @db.Date // the business-local skit day it was written for
+  slot          Int       @default(0) // 0: the plan's skit of the day; 1, 2...: extra skits ordered that day
+  extra         Boolean   @default(false)
+  // ORDERED (an extra, waiting for BuPulse to confirm) | WRITING | WRITE_FAILED (tried again a few times) |
+  // WAITING_VOICE | VOICE_RECEIVED | MAKING | READY | FAILED (the video could not be made) | EXPIRED (never recorded)
+  status        String    @default("WRITING")
+  attempts      Int       @default(1)
+  // The day it waits on now: `day` until a missed day moved it.
+  plannedDay    DateTime  @db.Date
+  carryCount    Int       @default(0)
+  language      String    @default("English")
+  title         String    @default("")
+  scene         String    @default("") // where it happens and who is there, for the video prompt
+  lines         Json      @default("[]") // [{ speaker: 1, text: "..." }] in order
+  speakers      Json      @default("[]") // [{ name: "Seller", look: "..." }]: speaker n is speakers[n - 1]
+  caption       String    @default("")
+  hashtags      String[]
+  subjectKind   String? // product | campaign | general
+  subjectId     String?
+  voicePaths    String[] // "media" bucket paths, one per speaker in order ("" while missing)
+  voiceAt       DateTime?
+  taskId        String? // the Higgsfield request id while MAKING
+  taskStartedAt DateTime?
+  videoPath     String? // "media" bucket path of the finished MP4
+  postGroupId   String? // the posts it became (Post.groupId)
+  error         String?
+  notifiedAt    DateTime? // the "Record your skit" notice
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([businessId, day, slot])
+  @@index([status, plannedDay])
+  @@index([businessId, plannedDay])
 }
 
 // The image engine's memory (docs/IMAGE_ENGINE.md, lib/image-engine): one row per picture idea. The Director reads

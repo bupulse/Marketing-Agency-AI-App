@@ -21,7 +21,7 @@ import {
   type PlanView,
 } from "@/lib/plan-catalog";
 import { comingSoonIn, validateFeatureSet, type FeatureKey } from "@/lib/features";
-import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY, CREATORS_PER_CAMPAIGN, CREATORS_PER_CAMPAIGN_MAX, LIVE_CAMPAIGNS, LIVE_CAMPAIGNS_MAX, DAILY_POST_APPS_MAX } from "@/lib/plans";
+import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY, CREATORS_PER_CAMPAIGN, CREATORS_PER_CAMPAIGN_MAX, LIVE_CAMPAIGNS, LIVE_CAMPAIGNS_MAX, DAILY_POST_APPS_MAX, SKITS_PER_WEEK_MAX } from "@/lib/plans";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -36,7 +36,7 @@ export const NOTICE_DAYS = 30;
 export const CUSTOM_PRICE_MESSAGE = "A custom plan's price comes from its offer and cannot be changed here. To change it, make a new offer from the company's page.";
 
 /** Every limit a plan sets: the usage metrics and the plain numbers next to them. */
-type LimitKey = UsageMetric | "seats" | "postsPerAppPerDay" | "videosPerDay" | "liveCampaigns" | "creatorsPerCampaign" | "dailyPostApps";
+type LimitKey = UsageMetric | "seats" | "postsPerAppPerDay" | "videosPerDay" | "liveCampaigns" | "creatorsPerCampaign" | "dailyPostApps" | "skitsPerWeek";
 
 export type PlanInput = {
   key?: string;
@@ -51,7 +51,8 @@ export type PlanInput = {
   /**
    * The usage limits, `seats` (users per company, 1 to 1000), `postsPerAppPerDay` (1 to 10, docs/CONTENT.md), and the
    * creator campaign limits `liveCampaigns` (1 to 50) and `creatorsPerCampaign` (1 to 1000, docs/CREATOR_CAMPAIGNS.md), and
-   * `dailyPostApps` (0 to 10: apps daily posts are made for each day, 0 for every app).
+   * `dailyPostApps` (0 to 10: apps daily posts are made for each day, 0 for every app), and `skitsPerWeek` (0 to 7:
+   * talking skits a week, lib/skits).
    */
   limits?: Partial<Record<LimitKey, number>>;
   /** Marketing bullets on the pricing card. */
@@ -163,7 +164,11 @@ export function mergePlan(base: Snapshot, patch: Partial<PlanInput>, isTrial: bo
         next.limits.dailyPostApps = int(value, "Daily posts: apps a day", 0, DAILY_POST_APPS_MAX);
         continue;
       }
-      if (!(USAGE_METRICS as string[]).includes(metric)) throw new AdminError("invalid", `Unknown limit "${metric}". Use: seats, postsPerAppPerDay, videosPerDay, liveCampaigns, creatorsPerCampaign, dailyPostApps, ${USAGE_METRICS.join(", ")}.`);
+      if (metric === "skitsPerWeek") {
+        next.limits.skitsPerWeek = int(value, "Talking skits a week", 0, SKITS_PER_WEEK_MAX);
+        continue;
+      }
+      if (!(USAGE_METRICS as string[]).includes(metric)) throw new AdminError("invalid", `Unknown limit "${metric}". Use: seats, postsPerAppPerDay, videosPerDay, liveCampaigns, creatorsPerCampaign, dailyPostApps, skitsPerWeek, ${USAGE_METRICS.join(", ")}.`);
       next.limits[metric as UsageMetric] = int(value, `The ${metric} limit`, 0, MAX_LIMIT);
     }
   }
@@ -712,6 +717,12 @@ export async function setPlanLimits(ctx: AdminContext, input: { plan: string; li
       if (value === null) patch.dailyPostApps = SEED_PLANS[plan.key]?.limits.dailyPostApps ?? 0;
       else if (!Number.isInteger(value) || value < 0 || value > DAILY_POST_APPS_MAX) throw new AdminError("invalid", `dailyPostApps must be a whole number from 0 (every app) to ${DAILY_POST_APPS_MAX}, or null to reset.`);
       else patch.dailyPostApps = value;
+      continue;
+    }
+    if (metric === "skitsPerWeek") {
+      if (value === null) patch.skitsPerWeek = SEED_PLANS[plan.key]?.limits.skitsPerWeek ?? 0;
+      else if (!Number.isInteger(value) || value < 0 || value > SKITS_PER_WEEK_MAX) throw new AdminError("invalid", `skitsPerWeek must be a whole number from 0 to ${SKITS_PER_WEEK_MAX}, or null to reset.`);
+      else patch.skitsPerWeek = value;
       continue;
     }
     if (metric === "postsPerAppPerDay") {

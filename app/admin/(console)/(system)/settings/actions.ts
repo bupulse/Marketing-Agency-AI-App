@@ -28,6 +28,8 @@ export async function saveSettingsAction(f: FormData) {
     if (f.has("previewPanel")) await setSetting(ctx, "firstPostPreview", f.get("firstPostPreview") === "on");
     // Daily posts made for clients (cost safety): off stops them for everyone at once.
     if (f.has("dailyPanel")) await setSetting(ctx, "dailyPosts", f.get("dailyPosts") === "on");
+    // Talking skit videos (paid Higgsfield calls): off until the owner's lip-sync test.
+    if (f.has("skitPanel")) await setSetting(ctx, "skitVideos", f.get("skitVideos") === "on");
   });
 }
 

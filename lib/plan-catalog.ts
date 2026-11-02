@@ -15,6 +15,7 @@ import {
   type UsageMetric,
   postsPerAppLimit,
   DAILY_POST_APPS_MAX,
+  skitsPerWeekLimit,
   liveCampaignsLimit,
   creatorsPerCampaignLimit,
 } from "@/lib/plans";
@@ -121,6 +122,8 @@ export function cleanLimits(value: unknown, base?: PlanLimits): PlanLimits {
     if (typeof live === "number" && Number.isInteger(live)) out.liveCampaigns = liveCampaignsLimit({ liveCampaigns: live });
     const dailyApps = (value as Record<string, unknown>).dailyPostApps;
     if (typeof dailyApps === "number" && Number.isInteger(dailyApps) && dailyApps >= 0) out.dailyPostApps = Math.min(dailyApps, DAILY_POST_APPS_MAX);
+    const skits = (value as Record<string, unknown>).skitsPerWeek;
+    if (typeof skits === "number" && Number.isInteger(skits)) out.skitsPerWeek = skitsPerWeekLimit({ skitsPerWeek: skits });
     const creators = (value as Record<string, unknown>).creatorsPerCampaign;
     if (typeof creators === "number" && Number.isInteger(creators)) out.creatorsPerCampaign = creatorsPerCampaignLimit({ creatorsPerCampaign: creators });
   }

@@ -253,6 +253,25 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Panel>
       </div>
 
+      <div id="skit-videos">
+        <Panel
+          title="Talking skit videos"
+          description="On skit days (Business: 2 a week, Business Pro: 3) BuPulse writes a short skit and the client records the lines. With this on, their voice notes go to Seedance 2.0 on Higgsfield (paid, about 10 seconds at 480p each) and the video becomes a post for approval. Off: skits wait as “Voice received — video coming soon”. Keep it off until the lip-sync test passes."
+          action={s.skitVideos ? <Badge tone="success">On</Badge> : <Badge tone="neutral">Off</Badge>}
+        >
+          <form action={saveSettingsAction} className="flex flex-col gap-3">
+            <input type="hidden" name="skitPanel" value="1" />
+            <label className="flex min-h-11 items-center gap-2 text-[15px]">
+              <input type="checkbox" name="skitVideos" defaultChecked={s.skitVideos} className="size-5" />
+              Make skit videos with Higgsfield
+            </label>
+            <div>
+              <Button type="submit">Save</Button>
+            </div>
+          </form>
+        </Panel>
+      </div>
+
       <div id="first-post-preview">
         <Panel
           title="Free first-post preview"
