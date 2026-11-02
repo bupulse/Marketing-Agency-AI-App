@@ -15,6 +15,10 @@ Code: `lib/ai/tts.ts`, `lib/voice/`, `lib/music/`, `components/visuals/video-ren
   and female. Content → Settings picks the company's voice and plays each voice's public sample (free). The list is
   code: to add African English voices from the ElevenLabs Voice Library, add their ids there (check them with
   "Listen" first).
+- **Language** (owner decision, 2 November 2026; docs/CONTENT.md "Languages"): a video speaks the language of its plan
+  (`VideoPlan.language`, the post's language). Kinyarwanda and Swahili are spoken only by the voice the owner approved
+  for them in Admin -> Settings (AdminSetting `voice.kinyarwanda` / `voice.swahili`); until then those videos have no
+  voiceover (music and subtitles, a note on the video) and no characters are spent.
 - **What is spoken** (`lib/voice/speech.ts`): one sentence per scene, taken from the scene captions (the video plan
   already removed timestamps, labels and stage directions), each ended with a full stop. Scripts BuPulse writes are
   held to the voiceover length up front (`lib/visuals/script.ts`: 3 to 5 scenes, at most 330 spoken characters), so

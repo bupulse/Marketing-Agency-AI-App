@@ -245,6 +245,28 @@ posts are created every day for them, without having to say 'create posts'." Cod
   so its posts always exist before that day's daily run. A company that wants only Autopilot's weekly plan switches
   daily posts off in Content -> Settings.
 
+## Languages (`lib/content-languages`)
+
+Posts -> Settings, "Languages" (owner decision, 2 November 2026): the language is chosen separately for **pictures and
+captions** (the words on the picture and the caption), **daily videos** (voice-over, subtitles and caption) and
+**talking skits** (what the people say, `lib/skits`). Each is one language, or a mix of two to four: BuPulse then picks
+one language per post and day (`pickLanguage`: the mix in turn by day, and the posts of one part on one day take the
+next ones), never two languages in one post. The owner's brief may ask for one ("in English", "mu Kinyarwanda", or a
+brief written in Kinyarwanda): it wins when it is part of the mix. Stored as `Business.dailyPostSettings.languages`
+(no migration; saving the daily posts keeps it). Never saved: Kinyarwanda for a business in Rwanda, else
+`contentLanguage`, else English, part by part.
+
+- **Create today's content and Daily posts** (`makeDayContent`): each post's language is picked before the pack is
+  written; one language for the whole run is the pack's language as before, several put "Language: ..." on each post's
+  line. `GeneratedContent.language` keeps it; the image engine writes the picture's words in it (`PictureRequest.language`),
+  the script writer writes the video script in it, and the video plan carries it (`VideoPlan.language`).
+- **Autopilot**: one language per idea (a video idea follows the videos choice), by the idea's day.
+- **No voice yet** (`lib/content-languages/voice.ts`): until the owner approves a voice for Kinyarwanda or Swahili in
+  Admin -> Settings, "Voices for Kinyarwanda and Swahili" (AdminSetting `voice.kinyarwanda` / `voice.swahili` =
+  `{ approvedVoiceId }`, audited), a video in that language has no voice-over: music, subtitles and caption in that
+  language, and the video says why. The settings card says the same under "Daily videos". Older plans without a
+  language are read from their text (`looksKinyarwanda`).
+
 ## Caption, script and headlines; Generate again; Versions
 
 Every post BuPulse writes ("Create today's content", content packs, `/api/generate`) comes with its caption and
