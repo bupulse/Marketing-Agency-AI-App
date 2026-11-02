@@ -15,7 +15,8 @@ import { publicSiteUrl } from "@/lib/auth/site-url";
 import { autoSchedule } from "@/lib/content-board/auto";
 import { carryStep } from "@/lib/content-board/carry-over";
 import { dateDay, dayDate } from "@/lib/content-flow/day";
-import { pickLanguage, readContentLanguages } from "@/lib/content-languages/settings";
+import { getContentLanguages } from "@/lib/content-languages/service";
+import { pickLanguage } from "@/lib/content-languages/settings";
 import { chooseSubject, READY_HOUR, type Subject } from "@/lib/daily-posts/plan";
 import { dailyApps, readDailySettings } from "@/lib/daily-posts/settings";
 import { prisma } from "@/lib/db";
@@ -121,7 +122,7 @@ async function subjectsFor(businessId: string, day: string): Promise<Subject[]> 
  * (lib/content-languages). Returns the skit id, or null when there was nothing to do.
  */
 export async function writeDaySkit(businessId: string, day: string, now = new Date()): Promise<string | null> {
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true, userId: true, name: true, description: true, industryDescription: true, country: true, contentLanguage: true, dailyPostSettings: true } });
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { id: true, userId: true, name: true, description: true, industryDescription: true } });
   if (!business) return null;
   const claim = await claimSkit(businessId, day, now);
   if (!claim) return null;
@@ -129,9 +130,7 @@ export async function writeDaySkit(businessId: string, day: string, now = new Da
     const recent = await prisma.skit.findMany({ where: { businessId, id: { not: claim.id }, status: { notIn: ["WRITING", "WRITE_FAILED", "ORDERED"] } }, orderBy: { day: "desc" }, take: 20, select: { title: true, subjectKind: true, subjectId: true } });
     const subject = chooseSubject(await subjectsFor(businessId, day), recent.map((r) => ({ kind: r.subjectKind, id: r.subjectId })));
     const [about, kb] = await Promise.all([subject && subject.kind !== "general" ? writingSubject(businessId, subject) : null, writerKnowledge(businessId)]);
-    const settings = (business.dailyPostSettings && typeof business.dailyPostSettings === "object" ? business.dailyPostSettings : {}) as Record<string, unknown>;
-    const langs = readContentLanguages(settings.languages, { country: business.country, contentLanguage: business.contentLanguage });
-    const language = pickLanguage(langs.skits, { dayKey: day });
+    const language = pickLanguage((await getContentLanguages(businessId)).skits, { dayKey: day });
     const request: SkitRequest = {
       businessName: business.name,
       description: business.description ?? business.industryDescription ?? null,

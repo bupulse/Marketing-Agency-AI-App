@@ -35,6 +35,7 @@ vi.mock("@/lib/studio/service", () => ({ configuredModel: () => "fake-model" }))
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => mocks.storage } }) }));
 vi.mock("@/lib/knowledge/writer-context", () => ({ writerKnowledge: async () => ({ knowledgeBase: null, voiceProfile: null }) }));
 vi.mock("@/lib/knowledge/service", () => ({ writingSubject: async () => ({ title: "Red umbrella", context: "<<<P\nRed\nP>>>", price: "5,000 RWF", photoPaths: ["u1/gallery/a.jpg"] }) }));
+vi.mock("@/lib/content-languages/service", () => ({ getContentLanguages: async () => ({ images: { mode: "one", language: "Kinyarwanda" }, videos: { mode: "one", language: "Kinyarwanda" }, skits: { mode: "one", language: "Kinyarwanda" } }) }));
 vi.mock("@/lib/plan-catalog", () => ({ getPlans: mocks.getPlans, getPlanLimits: mocks.getPlanLimits }));
 vi.mock("@/lib/publishing/email", () => ({ renderEmail: (x: { heading: string }) => ({ html: x.heading, text: x.heading }), sendEmail: mocks.sendEmail }));
 vi.mock("@/lib/push/service", () => ({ pushToLeadWatchers: mocks.push }));
@@ -92,7 +93,7 @@ describe("writing the day's skit", () => {
     expect(await claimSkit("b1", "2026-11-03", NOW)).toBeNull();
   });
 
-  it("writes the lines in the skit language (Kinyarwanda in Rwanda) and waits for the voice", async () => {
+  it("writes the lines in the skit language (Posts -> Settings, Languages) and waits for the voice", async () => {
     mocks.prisma.skit.create.mockResolvedValueOnce({ id: "s1" });
     expect(await writeDaySkit("b1", "2026-11-03", NOW)).toBe("s1");
     expect(mocks.generate.mock.calls[0][0].prompt).toContain("Write the lines and the caption in Kinyarwanda");
