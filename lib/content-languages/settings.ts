@@ -6,6 +6,7 @@
 // means the default, part by part: Kinyarwanda for a business in Rwanda, else its content language, else English.
 import { z } from "zod";
 import { CONTENT_LANGUAGES, isContentLanguage, type ContentLanguage } from "@/lib/brand/languages";
+import { looksKinyarwanda } from "@/lib/video-engine/voice-language";
 
 export type LanguageChoice = { mode: "one"; language: ContentLanguage } | { mode: "mix"; languages: ContentLanguage[] };
 
@@ -116,4 +117,42 @@ export function pickLanguage(choice: LanguageChoice, opts: { dayKey: string; hin
   if (hinted && langs.includes(hinted)) return hinted;
   const n = dayNumber(opts.dayKey) + Math.max(0, Math.floor(opts.offset ?? 0));
   return langs[((n % langs.length) + langs.length) % langs.length];
+}
+
+/** The key of the choices inside Business.dailyPostSettings. */
+export const LANGUAGES_KEY = "languages";
+
+/** The stored choices inside Business.dailyPostSettings (unknown until readContentLanguages reads them). */
+export function storedLanguages(dailyPostSettings: unknown): unknown {
+  return dailyPostSettings && typeof dailyPostSettings === "object" ? (dailyPostSettings as Record<string, unknown>)[LANGUAGES_KEY] : undefined;
+}
+
+/**
+ * The language of each post of one run, in order: `parts` says whether each post is a picture post ("images") or a
+ * video ("videos"). A mix turns by day, and the posts of the same part on one day take the next languages in turn.
+ */
+export function pickLanguages(languages: ContentLanguages, parts: readonly LanguagePart[], opts: { dayKey: string; hint?: string | null }): ContentLanguage[] {
+  const seen: Partial<Record<LanguagePart, number>> = {};
+  return parts.map((part) => {
+    const offset = seen[part] ?? 0;
+    seen[part] = offset + 1;
+    return pickLanguage(languages[part], { ...opts, offset });
+  });
+}
+
+// "in English", "mu Kinyarwanda", "en français", "kwa Kiswahili", and the Kinyarwanda names of the languages.
+const NAMED = /\b(?:in|en|mu|kwa|na)\s+(english|icyongereza|french|fran[cç]ais|igifaransa|kinyarwanda|ikinyarwanda|swahili|kiswahili|igiswahili)\b/i;
+const NAMED_AS: Record<string, ContentLanguage> = { icyongereza: "English", igifaransa: "French", francais: "French", français: "French", igiswahili: "Swahili" };
+
+/**
+ * A hint for pickLanguage from the owner's own words (the "Describe today's content" brief): the language it asks for
+ * ("in English", "mu Kinyarwanda"), else the language it is written in when that is plainly Kinyarwanda. Null when it
+ * says nothing. Pure.
+ */
+export function languageHint(text: string | null | undefined): ContentLanguage | null {
+  const t = (text ?? "").trim();
+  if (!t) return null;
+  const named = NAMED.exec(t)?.[1]?.toLowerCase();
+  if (named) return NAMED_AS[named] ?? toContentLanguage(named);
+  return looksKinyarwanda(t) ? "Kinyarwanda" : null;
 }

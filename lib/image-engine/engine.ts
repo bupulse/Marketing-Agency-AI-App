@@ -32,6 +32,7 @@ import { fixImageWords, type BusinessFacts, type PlannerInput, type SubjectFacts
 import { labLanguage } from "@/lib/training-lab/language-reader";
 import { labFor } from "@/lib/training-lab/reader";
 import { sectorFromText } from "@/lib/video-engine/brain/select";
+import { toContentLanguage } from "@/lib/content-languages/settings";
 
 export class EngineError extends Error {}
 
@@ -279,7 +280,16 @@ async function stepRow(owner: Owner, row: ConceptRow): Promise<{ outcome: "done"
   }
 }
 
-export type PictureRequest = { source: BatchSource; subjectId?: string | null; aspectRatio: AspectRatio; photoPath?: string | null; brief?: string | null; caption?: string | null };
+export type PictureRequest = {
+  source: BatchSource;
+  subjectId?: string | null;
+  aspectRatio: AspectRatio;
+  photoPath?: string | null;
+  brief?: string | null;
+  caption?: string | null;
+  /** The post's language (Posts -> Settings, "Languages"); the business's content language when missing. */
+  language?: string | null;
+};
 export type PictureStep = { status: "working" } | { status: "failed" } | { status: "done"; id: string; designId: string; path: string };
 
 /**
@@ -292,6 +302,9 @@ export type PictureStep = { status: "working" } | { status: "failed" } | { statu
 export async function startPicture(owner: Owner, request: PictureRequest): Promise<{ id: string }> {
   if ((await featureStatus(owner.businessId, "aiPhotos")) !== "ok") throw new EngineError("AI pictures are not in your plan.");
   const loaded = await loadFacts(owner, request.subjectId);
+  // The words on the picture are written in the post's language.
+  const language = toContentLanguage(request.language);
+  if (language) loaded.facts.language = language;
   const recent = await prisma.imageConcept.findMany({ where: { businessId: owner.businessId }, orderBy: { createdAt: "desc" }, take: 60, select: { pattern: true, shot: true, light: true, layout: true, camera: true, title: true, scene: true, tier: true, planner: true } });
   const tier = postTier(await creditsLeft(owner.userId), recent.slice(0, PRO_EVERY - 1).map((r) => r.tier as Tier));
   if (!tier) throw new EngineError("You have no AI image credits left this month.");

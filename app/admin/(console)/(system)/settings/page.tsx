@@ -17,6 +17,9 @@ import { cardUsdCents, formatMinor } from "@/lib/region-format";
 import { DEMO_TIME_ZONE, WEEKDAY_NAMES } from "@/lib/demo/slots";
 import { googleCalendarStatus } from "@/lib/google-calendar/calendar";
 import { telegramStatus } from "@/lib/lead-alerts/telegram-settings";
+import { approvedVoices } from "@/lib/content-languages/service";
+import { APPROVAL_LANGUAGES } from "@/lib/content-languages/voice";
+import { saveLanguageVoiceAction } from "./voice-actions";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured, mtnMomoPayDial } from "@/lib/billing/momo-shared";
 import { PADDLE_SECRETS, SECRET_LABEL } from "@/lib/billing/paddle-config";
@@ -46,7 +49,7 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const [s, windows, google, momo, paddle, previewCost, daily, telegram] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus(), previewCostSummary(), dailyPostsToday(), telegramStatus()]);
+  const [s, windows, google, momo, paddle, previewCost, daily, telegram, voices] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus(), previewCostSummary(), dailyPostsToday(), telegramStatus(), approvedVoices()]);
   const eur = await effectiveUsdToEur(s);
   const dial = mtnMomoPayDial(momo.merchantCode);
   const example = cardUsdCents(15000, "RWF", s.usdToRwf, s.cardMarginPercent);
@@ -301,6 +304,25 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </div>
         </form>
       </Panel>
+
+      <div id="language-voices">
+        <Panel
+          title="Voices for Kinyarwanda and Swahili"
+          description="The voice-over voice cannot speak Kinyarwanda or Swahili well, so daily videos in those languages have music with subtitles and caption in that language, and no voice-over. Once you have listened to an ElevenLabs voice and approve it, paste its voice id here: those videos then speak with it. Clear the field to go back to no voice-over."
+        >
+          <div className="flex flex-col gap-4">
+            {APPROVAL_LANGUAGES.map((language) => (
+              <form key={language} action={saveLanguageVoiceAction} className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="language" value={language} />
+                <Field label={`${language} voice id`} hint={voices[language] ? `Approved: ${language} videos speak with this voice.` : `None yet: ${language} videos have no voice-over.`}>
+                  <Input name="voiceId" defaultValue={voices[language] ?? ""} placeholder="ElevenLabs voice id" pattern="[A-Za-z0-9]{8,40}" />
+                </Field>
+                <Button type="submit" size="sm">Save</Button>
+              </form>
+            ))}
+          </div>
+        </Panel>
+      </div>
 
       <div id="lead-alerts">
         <Panel

@@ -117,6 +117,8 @@ export interface ImagePlan {
    * photo pictures the group's posts got meanwhile. The AI picture replaces only those, never a picture the owner picked.
    */
   deferredFrom?: string[];
+  /** The post's language (Posts -> Settings, "Languages"), for the words of an AI picture made later. */
+  language?: string | null;
 }
 
 export type Motion = "zoom-in" | "zoom-out" | "pan-left" | "pan-right";
@@ -172,6 +174,12 @@ export interface VideoPlan {
   quality?: "simple" | "ai";
   /** Why the AI clips were not (all) made, in the owner's words (lib/visuals/clip-scenes.ts). */
   aiNote?: string | null;
+  /**
+   * The language of the scene texts (the subtitles) and the voice-over (Posts -> Settings, "Languages"). A language
+   * with no approved voice yet (Kinyarwanda, Swahili: lib/content-languages/voice.ts) gets no voice-over. Missing on
+   * plans made before the setting: read from the text.
+   */
+  language?: string | null;
 }
 
 export interface VideoVoice {

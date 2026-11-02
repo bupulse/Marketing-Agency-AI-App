@@ -7,6 +7,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { getUsageSummary } from "@/lib/usage";
 import { dailyPostAppsLimit, postsPerAppLimit } from "@/lib/plans";
 import { can, ForbiddenError, type Role } from "@/lib/team/roles";
+import { LANGUAGES_KEY, storedLanguages } from "@/lib/content-languages/settings";
 import { appsText, dailySettingsSchema, readDailySettings, type DailyPostSettings, type DailySettingsInput } from "./settings";
 
 export class DailySettingsError extends Error {}
@@ -35,7 +36,9 @@ export async function saveDailySettings(actor: { actorId: string; role: Role; bu
     const row = await tx.business.findUnique({ where: { id: actor.businessId }, select: { dailyPostSettings: true } });
     if (!row) throw new DailySettingsError("We could not find your business.");
     const before = readDailySettings(row.dailyPostSettings);
-    await tx.business.update({ where: { id: actor.businessId }, data: { dailyPostSettings: next as unknown as Prisma.InputJsonValue } });
+    // The content languages live in the same JSON (lib/content-languages/service.ts): kept as they are.
+    const languages = storedLanguages(row.dailyPostSettings);
+    await tx.business.update({ where: { id: actor.businessId }, data: { dailyPostSettings: { ...next, ...(languages === undefined ? {} : { [LANGUAGES_KEY]: languages }) } as unknown as Prisma.InputJsonValue } });
     await writeAudit(tx, { actor: `user:${actor.actorId}`, ip: null, viaApi: false }, "content.daily_posts", `company:${actor.businessId}`, { ...before }, { ...next });
   });
   return next;

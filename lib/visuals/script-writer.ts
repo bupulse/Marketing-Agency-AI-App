@@ -92,7 +92,7 @@ export async function writeVideoScript(provider: TextProvider, req: ScriptReques
  * fails). Throws VisualError the owner can read when the plan has no text generation left.
  */
 export async function writeContentScript(owner: Owner, contentId: string, feature = "content"): Promise<string> {
-  const content = await prisma.generatedContent.findFirst({ where: { id: contentId, businessId: owner.businessId }, select: { id: true, caption: true, angle: true, network: true, productId: true, campaignId: true } });
+  const content = await prisma.generatedContent.findFirst({ where: { id: contentId, businessId: owner.businessId }, select: { id: true, caption: true, angle: true, network: true, productId: true, campaignId: true, language: true } });
   if (!content) throw new VisualError("We could not find that content.");
   const [business, kb, subject] = await Promise.all([
     prisma.business.findUnique({ where: { id: owner.businessId }, select: { name: true, tone: true, contentLanguage: true, marketingProfile: true } }),
@@ -106,7 +106,8 @@ export async function writeContentScript(owner: Owner, contentId: string, featur
     tone: business.tone,
     voiceProfile: kb.voiceProfile,
     knowledgeBase: kb.knowledgeBase,
-    languageLine: languageLine(business.contentLanguage, languageMixOf(readMarketingProfile(business.marketingProfile)), network),
+    // The post's own language (Posts -> Settings, "Languages"), else the business's.
+    languageLine: languageLine(content.language || business.contentLanguage, languageMixOf(readMarketingProfile(business.marketingProfile)), network),
     subject: subject ? { title: subject.title, context: subject.context } : null,
     angle: content.angle && isAngleId(content.angle) ? { label: ANGLES[content.angle].label, brief: ANGLES[content.angle].brief } : null,
     caption: content.caption,

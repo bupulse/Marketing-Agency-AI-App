@@ -154,11 +154,13 @@ export interface PlanInput {
   precomputed?: ImagePlan;
   /** Skip the AI art director (the rules choose). */
   rulesOnly?: boolean;
+  /** The video's language (its subtitles and voice-over): the post's language. */
+  language?: string | null;
 }
 
 const mimeOf = (path: string) => (/\.png$/i.test(path) ? "image/png" : /\.jpe?g$/i.test(path) ? "image/jpeg" : /\.webp$/i.test(path) ? "image/webp" : null);
 
-export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "videoQuality" | "image" | "subjectId" | "aiExhausted" | "precomputed">): DirectionContext {
+export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "videoQuality" | "image" | "subjectId" | "aiExhausted" | "precomputed" | "language">): DirectionContext {
   return {
     subjectType: input.subjectType,
     title: input.title,
@@ -183,8 +185,8 @@ function kindOf(plan: ImagePlan): VisualKind {
 async function drawContextOf(row: { businessId: string; contentId: string | null; groupId: string | null }): Promise<DrawContext> {
   try {
     if (row.contentId) {
-      const c = await prisma.generatedContent.findFirst({ where: { id: row.contentId, businessId: row.businessId }, select: { brief: true, caption: true } });
-      return { source: "content", brief: c?.brief ?? null, caption: c?.caption ?? null };
+      const c = await prisma.generatedContent.findFirst({ where: { id: row.contentId, businessId: row.businessId }, select: { brief: true, caption: true, language: true } });
+      return { source: "content", brief: c?.brief ?? null, caption: c?.caption ?? null, language: c?.language ?? null };
     }
     if (row.groupId) {
       const p = await prisma.post.findFirst({ where: { businessId: row.businessId, groupId: row.groupId }, select: { text: true }, orderBy: { createdAt: "asc" } });
@@ -246,6 +248,7 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
       video.mood = mood;
       video.music = await trackForVideo(mood, "contentId" in input.target ? input.target.contentId : input.target.groupId);
       if (videoGetsAiClips(input.videoQuality, seed)) video.quality = "ai";
+      if (input.language) video.language = input.language;
       const v = await prisma.contentVisual.create({
         // A video marked for AI clips waits for them (lib/visuals/ai-clips.ts) before it is rendered.
         data: { businessId: input.owner.businessId, ...input.target, kind: "video", status: "pending", plan: json(video), items: json([]), ...(video.quality === "ai" ? { clipState: "waiting" } : {}) },
@@ -309,6 +312,8 @@ export type DrawContext = {
    * made in this call (Autopilot's nightly run waits for it).
    */
   stepwise?: boolean;
+  /** The post's language (Posts -> Settings, "Languages"): the words on the picture are written in it. */
+  language?: string | null;
 };
 
 /**
@@ -348,7 +353,7 @@ export async function drawSlide(
       try {
         if (context?.stepwise) {
           // Planned and paid now, painted in the next calls; saved at once so it is never paid for twice.
-          const { id } = await startPicture({ ...owner, service: owner.service }, { source: context.source, subjectId, aspectRatio: plan.aspectRatio, photoPath: slide.photoPath, brief: context.brief ?? null, caption: context.caption ?? slide.headline });
+          const { id } = await startPicture({ ...owner, service: owner.service }, { source: context.source, subjectId, aspectRatio: plan.aspectRatio, photoPath: slide.photoPath, brief: context.brief ?? null, caption: context.caption ?? slide.headline, language: context.language ?? null });
           state.aiMade += 1;
           const started: VisualSlide = { ...next, source: "ai", conceptId: id };
           await onAiPhoto?.(started);
@@ -356,7 +361,7 @@ export async function drawSlide(
         }
         const made = await paintOne(
           { ...owner, service: owner.service },
-          { source: context?.source ?? "content", subjectId, aspectRatio: plan.aspectRatio, photoPath: slide.photoPath, brief: context?.brief ?? null, caption: context?.caption ?? slide.headline },
+          { source: context?.source ?? "content", subjectId, aspectRatio: plan.aspectRatio, photoPath: slide.photoPath, brief: context?.brief ?? null, caption: context?.caption ?? slide.headline, language: context?.language ?? null },
         );
         state.aiMade += 1;
         if (made) {
@@ -431,7 +436,8 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
   let error: string | null = null;
 
   // The post's brief and caption guide the AI picture's idea.
-  const context = await drawContextOf(row);
+  const found = await drawContextOf(row);
+  const context: DrawContext = { ...found, language: plan.language ?? found.language ?? null };
   for (let i = 0; i < plan.slides.length; i++) {
     if (plan.slides[i].path || plan.slides[i].skipped) continue;
     if (Date.now() - started > budget) break;

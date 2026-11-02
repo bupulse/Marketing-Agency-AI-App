@@ -88,6 +88,44 @@ beforeEach(() => {
   draw.value = 0.99;
 });
 
+describe("languages (Posts -> Settings, Languages)", () => {
+  const rwanda = (languages: unknown) => ({ id: "b1", name: "Green Kigali", timezone: "Africa/Kigali", contentLanguage: "English", country: "Rwanda", dailyPostSettings: languages ? { languages } : null, industry: null, industryRef: null, description: null, audience: null, tone: "friendly", website: null, knowledge: null, profile: null, marketingProfile: null, brandColors: [] });
+  const keepLanguage = () => {
+    let n = 0;
+    prisma.generatedContent.create.mockImplementation(async ({ data }: { data: { caption: string; adHeadlines: string[]; videoScript: string; language: string } }) => ({ id: `content-${++n}`, caption: data.caption, adHeadlines: data.adHeadlines, videoScript: data.videoScript, language: data.language }));
+  };
+
+  it("a business in Rwanda that never chose writes in Kinyarwanda", async () => {
+    prisma.business.findUnique.mockResolvedValue(rwanda(null));
+    await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["facebook", "linkedin"] }, NOW);
+    expect(ai.generate.mock.calls[0][0].prompt).toContain("Write all content in Kinyarwanda.");
+    expect(prisma.generatedContent.create.mock.calls.map((c) => c[0].data.language)).toEqual(["Kinyarwanda", "Kinyarwanda"]);
+  });
+
+  it("a mix gives each post one language, named on its line; videos follow their own choice down to the video plan", async () => {
+    prisma.productPhoto.findMany.mockResolvedValue([album[0]]);
+    prisma.business.findUnique.mockResolvedValue(rwanda({ images: { mode: "mix", languages: ["English", "Kinyarwanda"] }, videos: { mode: "one", language: "Kinyarwanda" } }));
+    keepLanguage();
+    await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["facebook", "linkedin", "tiktok"] }, NOW);
+    const prompt = ai.generate.mock.calls[0][0].prompt as string;
+    expect(prompt).toContain("never two languages in one post");
+    const contents = prisma.generatedContent.create.mock.calls.map((c) => c[0].data);
+    const byNetwork = Object.fromEntries(contents.map((c) => [c.network, c.language]));
+    expect(byNetwork.tiktok).toBe("Kinyarwanda");
+    expect(new Set([byNetwork.facebook, byNetwork.linkedin])).toEqual(new Set(["English", "Kinyarwanda"]));
+    for (const c of contents) expect(prompt).toContain(`only in ${c.language}.`);
+    const video = visuals.planVisuals.mock.calls.map((c) => c[0]).find((p) => p.video);
+    expect(video).toMatchObject({ video: true, language: "Kinyarwanda" });
+  });
+
+  it("the owner's brief asking for a language picks it from the mix", async () => {
+    prisma.business.findUnique.mockResolvedValue(rwanda({ images: { mode: "mix", languages: ["English", "Kinyarwanda"] } }));
+    await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "describe", brief: "Our weekend offer, in English please", design: "free", networks: ["facebook", "linkedin"] }, NOW);
+    expect(prisma.generatedContent.create.mock.calls.map((c) => c[0].data.language)).toEqual(["English", "English"]);
+    expect(ai.generate.mock.calls[0][0].prompt).toContain("Write all content in English.");
+  });
+});
+
 describe("AI makes it for me (a content pack for the day)", () => {
   it("writes one post per app in one call (one text generation each), new angles, album video first, drafted for today", async () => {
     // Instagram's draw falls under its video share (0.55), Facebook's not (0.35).

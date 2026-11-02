@@ -72,6 +72,7 @@ export async function makeGroupImages(group: PlannedGroup, image: ImageText, ctx
         photoPath: cover?.path ?? null,
         brief: [group.idea.name, image.headline].filter(Boolean).join(": ") || null,
         caption: options.caption ?? null,
+        language: ctx.language,
       });
       if (made) {
         for (const a of aspects) result.designs[a] = made.path;

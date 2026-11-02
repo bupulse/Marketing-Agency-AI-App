@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { choiceText, contentLanguagesSchema, defaultContentLanguages, pickLanguage, readContentLanguages, toContentLanguage, type LanguageChoice } from "@/lib/content-languages/settings";
+import { choiceText, contentLanguagesSchema, defaultContentLanguages, languageHint, pickLanguage, pickLanguages, readContentLanguages, storedLanguages, toContentLanguage, type LanguageChoice } from "@/lib/content-languages/settings";
 
 const mix: LanguageChoice = { mode: "mix", languages: ["English", "Kinyarwanda"] };
 
@@ -49,5 +49,32 @@ describe("content languages", () => {
     expect(toContentLanguage(" FRENCH ")).toBe("French");
     expect(toContentLanguage("xx")).toBeNull();
     expect(choiceText(mix)).toBe("Mix: English, Kinyarwanda");
+  });
+});
+
+describe("languages of one run", () => {
+  it("picture posts follow the images choice and videos the videos choice; posts of one part take turns", () => {
+    const languages = { images: mix, videos: { mode: "one", language: "French" } as LanguageChoice, skits: mix };
+    const day = "2026-11-02";
+    const [a, b, video, c] = pickLanguages(languages, ["images", "images", "videos", "images"], { dayKey: day });
+    expect(video).toBe("French");
+    expect(a).toBe(pickLanguage(mix, { dayKey: day }));
+    expect(b).not.toBe(a);
+    expect(c).toBe(a);
+    expect(pickLanguages(languages, ["images", "images"], { dayKey: day, hint: "Kinyarwanda" })).toEqual(["Kinyarwanda", "Kinyarwanda"]);
+  });
+
+  it("hint from the owner's brief: the language it asks for, else plain Kinyarwanda", () => {
+    expect(languageHint("A post about our new shoes, in English please")).toBe("English");
+    expect(languageHint("Andika mu Kinyarwanda")).toBe("Kinyarwanda");
+    expect(languageHint("Promo en français pour le week-end")).toBe("French");
+    expect(languageHint("Murakaza neza, mugure inkweto nshya ubu nonaha")).toBe("Kinyarwanda");
+    expect(languageHint("New shoes for the weekend")).toBeNull();
+    expect(languageHint(null)).toBeNull();
+  });
+
+  it("read the choices stored inside the daily posts settings", () => {
+    expect(storedLanguages({ enabled: true, languages: { images: mix } })).toEqual({ images: mix });
+    expect(storedLanguages(null)).toBeUndefined();
   });
 });

@@ -6,6 +6,8 @@ import { ContentSettingsError, saveContentSettings } from "@/lib/content-board/s
 import type { ContentSettingsInput } from "@/lib/content-board/settings";
 import { DailySettingsError, saveDailySettings } from "@/lib/daily-posts/settings-service";
 import type { DailySettingsInput } from "@/lib/daily-posts/settings";
+import { ContentLanguagesError, saveContentLanguages } from "@/lib/content-languages/service";
+import type { ContentLanguagesInput } from "@/lib/content-languages/settings";
 import { draftPostsFromContent } from "@/lib/content-board/drafts";
 import { parseContentFilters, type ContentScope } from "@/lib/content-board/filters";
 import { scheduleAll, schedulablePosts, type ScheduleAllResult, type SchedulablePost } from "@/lib/content-board/schedule-all";
@@ -59,6 +61,29 @@ export async function saveDailySettingsAction(input: DailySettingsInput): Promis
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     if (error instanceof ForbiddenError || error instanceof DailySettingsError) return { ok: false, error: error.message };
     await logError(error, { source: "content.daily-settings" });
+    return { ok: false, error: "We could not save that. Please try again." };
+  }
+  revalidatePath("/dashboard/content", "layout");
+  return { ok: true };
+}
+
+/** Posts -> Settings, "Languages": images + captions, daily videos and talking skits. Owners and Admins, audited. */
+export async function saveContentLanguagesAction(input: ContentLanguagesInput): Promise<SettingsResult> {
+  let user: Awaited<ReturnType<typeof requireActiveUser>>;
+  try {
+    user = await requireActiveUser("contentSettings", "throw");
+    await assertFeature(user.businessId, "content");
+  } catch (error) {
+    if (error instanceof ForbiddenError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
+    throw error;
+  }
+  try {
+    await rateLimit(`content:settings:${user.actorId}`, { limit: 30, windowSeconds: 60 * 60 });
+    await saveContentLanguages({ actorId: user.actorId, role: user.role, businessId: user.businessId }, input);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    if (error instanceof ForbiddenError || error instanceof ContentLanguagesError) return { ok: false, error: error.message };
+    await logError(error, { source: "content.languages" });
     return { ok: false, error: "We could not save that. Please try again." };
   }
   revalidatePath("/dashboard/content", "layout");

@@ -27,6 +27,9 @@ import type { VideoPlan } from "@/lib/visuals/types";
 import { readVideoPlan, withSceneTexts } from "@/lib/visuals/video-plan";
 import { estimateSpeechMs, fitPlanToVoice, lineTimings, MAX_SPEECH_MS, speechText, spokenLines, type Timing } from "./speech";
 import { DEFAULT_VOICE_ID, isVoiceId } from "./voices";
+import { approvedVoices } from "@/lib/content-languages/service";
+import { languageVoice, needsApprovedVoice } from "@/lib/content-languages/voice";
+import { looksKinyarwanda } from "@/lib/video-engine/voice-language";
 
 export const VOICE_FEATURE = "voice";
 
@@ -191,7 +194,7 @@ export async function ensureVoiceover(owner: Owner, visualId: string): Promise<V
     return { plan: next, ...(voiceDataUrl ? { voiceDataUrl } : {}) };
   };
   const settings = await getContentSettings(owner.businessId).catch(() => null);
-  const voiceId = isVoiceId(plan.voice?.voiceId) ? plan.voice!.voiceId : (settings?.voiceId ?? DEFAULT_VOICE_ID);
+  let voiceId = isVoiceId(plan.voice?.voiceId) ? plan.voice!.voiceId : (settings?.voiceId ?? DEFAULT_VOICE_ID);
   const take = plan.voice?.take ?? 0;
   if (plan.voice && plan.voice.enabled === false) return { plan };
   if ((await featureStatus(owner.businessId, "voice").catch(() => "plan_unknown")) !== "ok") return save(withoutVoice(plan, voiceId, null));
@@ -200,6 +203,12 @@ export async function ensureVoiceover(owner: Owner, visualId: string): Promise<V
 
   let lines = spokenLines(plan);
   let { text, ranges } = speechText(lines);
+  // The video's language (Posts -> Settings, "Languages"; read from the text on older plans): Kinyarwanda and Swahili
+  // are spoken only by the voice the owner approved for them, and until then the video has music and subtitles only.
+  const language = plan.language ?? (looksKinyarwanda(text) ? "Kinyarwanda" : null);
+  const spoken = languageVoice(language, needsApprovedVoice(language) ? await approvedVoices() : {});
+  if (spoken.speak === "none") return save(withoutVoice(plan, voiceId, spoken.note));
+  if (spoken.speak === "approved") voiceId = spoken.voiceId;
   const fits = () => estimateSpeechMs(text) <= MAX_SPEECH_MS && text.length <= MAX_VOICE_CHARS;
   if (!fits()) {
     const shorter = await shortenLines(owner, lines, Math.min(MAX_VOICE_CHARS - 40, Math.floor(MAX_SPEECH_MS / 70)));

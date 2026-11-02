@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     contentVisual: { findFirst: vi.fn(), update: vi.fn(), count: vi.fn() },
     voiceClip: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), delete: vi.fn() },
+    adminSetting: { findMany: vi.fn() },
   },
   featureStatus: vi.fn(),
   consumeUsage: vi.fn(),
@@ -86,6 +87,43 @@ beforeEach(() => {
   mocks.storage.info.mockResolvedValue({ data: { size: 5000 }, error: null });
   mocks.mediaUsage.mockResolvedValue({ count: 0, bytes: 0 });
   mocks.rateLimit.mockResolvedValue(undefined);
+  mocks.prisma.adminSetting.findMany.mockResolvedValue([]);
+});
+
+describe("ensureVoiceover: the video's language (Posts -> Settings, Languages)", () => {
+  const kinyarwanda = () => ({ ...basePlan(), language: "Kinyarwanda" });
+
+  it("a Kinyarwanda video with no approved voice gets no voice-over: music and subtitles, an honest note, nothing paid", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row(kinyarwanda()));
+    const { plan } = (await ensureVoiceover(owner, "v1"))!;
+    expect(plan.voice).toMatchObject({ enabled: true, path: null, hash: null });
+    expect(plan.voice?.note).toMatch(/no Kinyarwanda voice yet/);
+    expect(mocks.speak).not.toHaveBeenCalled();
+    expect(mocks.consumeUsage).not.toHaveBeenCalled();
+  });
+
+  it("an older plan without a language whose text is plainly Kinyarwanda is treated the same", async () => {
+    const plan = buildVideoPlan({ script: "Hook: Murakaza neza muri iduka ryacu.\nVO: Mugure ubu nonaha, ni byiza cyane.", hook: "Murakaza neza", businessName: "Kigali Phones", photos: [], pack: "clean" });
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row(plan));
+    const out = (await ensureVoiceover(owner, "v1"))!;
+    expect(out.plan.voice?.note).toMatch(/no Kinyarwanda voice yet/);
+    expect(mocks.speak).not.toHaveBeenCalled();
+  });
+
+  it("once the owner approved a Kinyarwanda voice, that voice speaks it", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row(kinyarwanda()));
+    mocks.prisma.adminSetting.findMany.mockResolvedValue([{ key: "voice.kinyarwanda", value: { approvedVoiceId: "RwandaVoice123" } }]);
+    const { plan } = (await ensureVoiceover(owner, "v1"))!;
+    expect(mocks.speak).toHaveBeenCalledWith({ text: text(), voiceId: "RwandaVoice123" });
+    expect(plan.voice).toMatchObject({ voiceId: "RwandaVoice123", hash: voiceHash("RwandaVoice123", MODEL, text(), 0), note: null });
+  });
+
+  it("an English or French video is spoken by the company's voice, without reading the approvals", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row({ ...basePlan(), language: "French" }));
+    await ensureVoiceover(owner, "v1");
+    expect(mocks.speak).toHaveBeenCalledWith({ text: text(), voiceId: VOICE });
+    expect(mocks.prisma.adminSetting.findMany).not.toHaveBeenCalled();
+  });
 });
 
 describe("ensureVoiceover", () => {

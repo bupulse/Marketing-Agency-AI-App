@@ -34,6 +34,7 @@ import { localDateISO, nextWeekStart, safeZone, weekdayOfISO, weekKey, weekStart
 import { fixWrittenSpellings, writeGroup, type WriteRequest, type WriterBrand } from "./writer";
 import { labFor } from "@/lib/training-lab/reader";
 import { labLanguage } from "@/lib/training-lab/language-reader";
+import { pickLanguage, readContentLanguages, storedLanguages } from "@/lib/content-languages/settings";
 import { sectorFromText } from "@/lib/video-engine/brain/select";
 import { planAutopilotAngles } from "@/lib/content-flow/autopilot";
 import type { AutopilotAngle } from "@/lib/content-flow/autopilot";
@@ -159,6 +160,14 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     // the prompt, and the spellings to fix afterwards. An empty Lab or an error changes nothing.
     const sector = sectorFromText([business.industry, business.description].filter(Boolean).join(" "));
     const [lab, languageExtra] = await Promise.all([labFor({ engine: "post", kinds: ["image", "voice"], sector, language: business.contentLanguage }), labLanguage(business.contentLanguage)]);
+    // Each idea's language (Posts -> Settings, "Languages"): a video idea follows the videos choice, the rest the images
+    // choice; a mix turns by day. The spellings to fix are read once per language.
+    const languages = readContentLanguages(storedLanguages(business.dailyPostSettings), business);
+    const extras = new Map<string, ReturnType<typeof labLanguage>>([[business.contentLanguage, Promise.resolve(languageExtra)]]);
+    const extraFor = (language: string) => {
+      if (!extras.has(language)) extras.set(language, labLanguage(language));
+      return extras.get(language)!;
+    };
     const brand: WriterBrand = {
       businessName: business.name,
       industry: business.industry,
@@ -215,7 +224,8 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       try {
         const targets = group.networks.map((network) => ({ network, format: group.posts.find((p) => p.network === network)!.format }));
         const trends = (await trendSource.trends({ network: targets[0].network, country: business.country, industry: business.industry }).catch(() => [])).slice(0, 3);
-        const request: WriteRequest = { brand, idea: group.idea, facts: { ...factsFor(group, angles.get(group.groupId)), trends }, targets };
+        const language = pickLanguage(languages[group.posts.every((p) => p.format === "SCRIPT") ? "videos" : "images"], { dayKey: group.day });
+        const request: WriteRequest = { brand: { ...brand, contentLanguage: language }, idea: group.idea, facts: { ...factsFor(group, angles.get(group.groupId)), trends }, targets };
         const written = fixWrittenSpellings(
           await withLedger(
             { userId, businessId, feature: "autopilot" },
@@ -223,7 +233,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
             () => writeGroup(getTextProvider(), request),
             (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
           ),
-          languageExtra,
+          await extraFor(language),
           [business.name, group.project?.title],
         );
 
@@ -232,7 +242,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         const images = await makeGroupVisuals(
           group,
           written,
-          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed: videoAllowed && !albumVideo, videoQuality: input.config.videoQuality, audience },
+          { userId, businessId, businessName: business.name, language, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed: videoAllowed && !albumVideo, videoQuality: input.config.videoQuality, audience },
           visualRun,
         );
         if (images.aiStopped) aiStopped = true;

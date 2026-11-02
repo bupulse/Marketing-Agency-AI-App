@@ -37,6 +37,13 @@ describe("daily posts settings on the server", () => {
     expect((await saveDailySettings(admin, { ...input, videoQuality: "ai" })).videoQuality).toBe("ai");
   });
 
+  it("keeps the content languages saved in the same JSON", async () => {
+    const languages = { images: { mode: "mix", languages: ["English", "Kinyarwanda"] } };
+    prisma.tx.business.findUnique.mockResolvedValue({ dailyPostSettings: { enabled: false, languages } });
+    await saveDailySettings(admin, input);
+    expect(prisma.tx.business.update.mock.calls[0][0].data.dailyPostSettings).toEqual({ ...input, videoQuality: "simple", languages });
+  });
+
   it("refuses a Member, more posts per app than the plan allows, and bad input, before writing", async () => {
     await expect(saveDailySettings({ ...admin, role: "MEMBER" }, input)).rejects.toBeInstanceOf(ForbiddenError);
     usage.getUsageSummary.mockResolvedValueOnce({ limits: { postsPerAppPerDay: 1 } });
