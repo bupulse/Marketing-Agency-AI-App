@@ -43,6 +43,8 @@ type ShellProps = {
   role: Role;
   /** The features of the company's plan (lib/features.ts). Pages for the others show "Add to your plan". */
   features: FeatureKey[];
+  /** Features that do not exist in the company's region (Creator campaigns outside Rwanda): never offered. */
+  notOffered?: FeatureKey[];
   /** Things that need the owner's attention, shown under the bell (for example apps to connect). */
   notices?: ShellNotice[];
   /**
@@ -102,8 +104,8 @@ function NoticesBell({ notices }: { notices: ShellNotice[] }) {
 }
 
 /** Built features of the app the plan does not include: offered in a small group under the navigation. */
-function addable(features: FeatureKey[]) {
-  return FEATURES.filter((f) => f.status === "built" && f.kind === "app" && !features.includes(f.key));
+function addable(features: FeatureKey[], notOffered: FeatureKey[]) {
+  return FEATURES.filter((f) => f.status === "built" && f.kind === "app" && !features.includes(f.key) && !notOffered.includes(f.key));
 }
 
 // The "Account & settings" group's open or closed choice, remembered on this device. Storage may be refused (private
@@ -225,6 +227,7 @@ type SidebarProps = {
   businessName: string;
   brand: ShellBrand;
   features: FeatureKey[];
+  notOffered: FeatureKey[];
   studio: StudioLink;
   inboxUnread: number;
   actions: CreateAction[];
@@ -270,9 +273,9 @@ function FoldedGroup({ group, pathname, children }: { group: NavGroup; pathname:
   );
 }
 
-function Sidebar({ pathname, plan, businessName, brand, role, features, studio, inboxUnread, actions, createOpen, onCreate, onFind, onNavigate }: SidebarProps) {
+function Sidebar({ pathname, plan, businessName, brand, role, features, notOffered, studio, inboxUnread, actions, createOpen, onCreate, onFind, onNavigate }: SidebarProps) {
   // Members get no purchase prompts; Admins see what could be added so they can ask the owner (lib/team/roles.ts).
-  const missing = can(role, "upgrade") ? addable(features) : [];
+  const missing = can(role, "upgrade") ? addable(features, notOffered) : [];
   const groups = useMemo(() => navFor(role, features), [role, features]);
   const hint = useSyncExternalStore(noSubscribe, shortcutHint, () => null);
   const uid = useId();
@@ -528,7 +531,7 @@ function Drawer({ onClose, ...sidebar }: Omit<SidebarProps, "onNavigate"> & { on
   );
 }
 
-export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, notices = [], studio = null, inboxUnread = 0, children }: ShellProps) {
+export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, notOffered = [], notices = [], studio = null, inboxUnread = 0, children }: ShellProps) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   // The + Create menu: open with the button's place (the computer menu opens under it), or closed (null).
@@ -581,7 +584,7 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
     [refocus],
   );
 
-  const sidebar = { pathname, plan, role, features, studio, businessName, brand, inboxUnread, actions, createOpen: create !== null, onCreate: openCreate, onFind: openFinder };
+  const sidebar = { pathname, plan, role, features, notOffered, studio, businessName, brand, inboxUnread, actions, createOpen: create !== null, onCreate: openCreate, onFind: openFinder };
 
   return (
     <div

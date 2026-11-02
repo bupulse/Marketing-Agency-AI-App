@@ -37,7 +37,7 @@ const status = (key: FeatureKey): "ok" | FeatureBlockReason => (state.block ? "n
 
 export async function companyEntitlements() {
   const all = state.planUnknown ? [] : (await import("@/lib/features")).FEATURE_KEYS.filter((k) => !missing.has(k));
-  return { inPlan: new Set(all), usable: new Set(all.filter((k) => !serviceOff.has(k))), resolved: !state.planUnknown || state.block !== null, block: state.block };
+  return { inPlan: new Set(all), usable: new Set(all.filter((k) => !serviceOff.has(k))), resolved: !state.planUnknown || state.block !== null, block: state.block, outOfRegion: new Set() };
 }
 export function blockReason(e: { inPlan: Set<FeatureKey>; resolved: boolean }, key: FeatureKey): FeatureBlockReason {
   return e.inPlan.has(key) ? "service_off" : e.resolved ? "not_in_plan" : "plan_unknown";

@@ -17,8 +17,8 @@ import { consoleContext } from "@/lib/admin/types";
 
 const CONSOLE = consoleContext("198.51.100.1");
 
-function company(id: string, plan: string, status = "ACTIVE", extra: Record<string, unknown> = {}) {
-  h.db.business.rows.push({ id, userId: `u_${id}`, user: { suspendedAt: null, subscription: { plan, status, chosenPlan: null, trialEndsAt: null, ...extra } } });
+function company(id: string, plan: string, status = "ACTIVE", extra: Record<string, unknown> = {}, pricingRegion = "RW") {
+  h.db.business.rows.push({ id, userId: `u_${id}`, pricingRegion, user: { suspendedAt: null, subscription: { plan, status, chosenPlan: null, trialEndsAt: null, ...extra } } });
 }
 
 beforeEach(() => {
@@ -207,5 +207,20 @@ describe("coming-soon features a plan still lists (the inbox and automations, ow
     const code = async (p: Promise<unknown>) => p.then(() => null, (e: { code: string; message: string }) => `${e.code}: ${e.message}`);
     expect(await code(updatePlan(CONSOLE, "STANDARD", { features: [...CORE_FEATURES, "inbox"] }))).toMatch(/^invalid: Inbox and contacts is coming soon/);
     expect(await code(updatePlan(CONSOLE, "biz", { limits: { creatorsPerCampaign: 0 } }))).toMatch(/^invalid: Creators per campaign must be a whole number from 1 to 1000/);
+  });
+});
+
+describe("features of one region (Creator campaigns: Rwanda only, owner decision 2 November 2026)", () => {
+  it("are granted in Rwanda and never elsewhere, even when the plan lists them", async () => {
+    await createPlan(CONSOLE, { key: "biz", name: "Business", monthlyPriceCents: 1000, yearlyPriceCents: 10000, features: ["content", "designs", "calendar", "gallery", "creators"] });
+    resetPlanCache();
+    company("kigali", "biz");
+    company("nairobi", "biz", "ACTIVE", {}, "GLOBAL");
+    expect(await hasFeature("kigali", "creators")).toBe(true);
+    const abroad = await companyEntitlements("nairobi");
+    expect(abroad.inPlan.has("creators")).toBe(false);
+    expect(abroad.outOfRegion.has("creators")).toBe(true);
+    expect(abroad.inPlan.has("content")).toBe(true);
+    expect(await featureStatus("nairobi", "creators")).toBe("not_in_plan");
   });
 });

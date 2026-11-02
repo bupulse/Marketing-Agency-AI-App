@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 import { AddToPlan } from "./add-to-plan";
 import { getAppContext } from "./context";
@@ -31,6 +32,8 @@ export async function pageGate(permission: Permission) {
 export async function featureGate(feature: FeatureKey) {
   const { role, entitlements, business } = await getAppContext();
   if (entitlements.usable.has(feature)) return null;
+  // Not offered in the company's region at all (Creator campaigns outside Rwanda): the page does not exist for them.
+  if (entitlements.outOfRegion.has(feature)) notFound();
   const reason = blockReason(entitlements, feature);
   const addOnBilling = reason === "not_in_plan" && !entitlements.block && can(role, "billing") ? await addableOnBilling(business, feature).catch(() => false) : false;
   return <AddToPlan feature={feature} reason={reason} block={entitlements.block} role={role} inPlan={entitlements.inPlan} addOnBilling={addOnBilling} />;

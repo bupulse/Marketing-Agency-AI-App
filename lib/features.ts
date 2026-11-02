@@ -63,6 +63,11 @@ export interface FeatureDef {
   kind: "app" | "service";
   /** Dashboard routes (prefixes) the feature unlocks. The sidebar hides items under them when it is missing. */
   routes: string[];
+  /**
+   * Pricing regions (Business.pricingRegion) the feature exists in; missing means everywhere. Elsewhere it is never
+   * granted, sold or offered, and its pages are not found.
+   */
+  regions?: string[];
 }
 
 export const FEATURES: readonly FeatureDef[] = [
@@ -313,6 +318,9 @@ export const FEATURES: readonly FeatureDef[] = [
     status: "built",
     kind: "app",
     routes: ["/dashboard/creators"],
+    // Rwanda only for now (owner, 2 November 2026): BuPulse pays the creators there by Mobile Money and knows them;
+    // paying creators abroad needs a payout system that does not exist yet.
+    regions: ["RW"],
   },
 ];
 
@@ -330,6 +338,12 @@ export function isFeatureKey(value: unknown): value is FeatureKey {
  */
 export function featuresNotSetUp(isSetUp: (service: ServiceId) => boolean): FeatureKey[] {
   return FEATURES.filter((f) => f.status === "built" && f.services.length > 0 && !f.services.some(isSetUp)).map((f) => f.key);
+}
+
+/** True when the feature exists for a company in this pricing region (FeatureDef.regions). */
+export function featureInRegion(key: FeatureKey, region: string | null | undefined): boolean {
+  const regions = BY_KEY[key].regions;
+  return !regions || (region != null && regions.includes(region));
 }
 
 export function featureOf(key: FeatureKey): FeatureDef {

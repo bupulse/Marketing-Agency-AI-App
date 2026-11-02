@@ -2,7 +2,7 @@
 // imports), so the admin editor's live total, the server's frozen total and the tests all compute the same thing.
 
 import { z } from "zod";
-import { featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
+import { featureInRegion, featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { addMonths as addMonthsUtc } from "@/lib/billing/period";
 import { cardUsdCents } from "@/lib/region-format";
 import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_VIDEOS, VOICE_PLAN_CHARACTERS, type PlanLimits, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit } from "@/lib/plans";
@@ -354,7 +354,7 @@ export function additionFits(addition: Pick<OfferAddition, "currentPlanKey" | "p
 export function selfServeFeatures(owned: readonly FeatureKey[], prices: readonly AddonPriceRow[], regionKey: string, currency: string, notSetUp: readonly FeatureKey[] = []): FeatureKey[] {
   const has = new Set(owned);
   const priced = (k: FeatureKey) => prices.some((p) => p.addonKey === k && p.regionKey === regionKey && p.currency.toUpperCase() === currency.toUpperCase() && p.monthlyMinor >= 0);
-  return FEATURES.filter((f) => f.status === "built" && f.key !== "managed" && !has.has(f.key) && withPrerequisites([f.key]).every((k) => has.has(k) || (priced(k) && !notSetUp.includes(k)))).map((f) => f.key);
+  return FEATURES.filter((f) => f.status === "built" && f.key !== "managed" && !has.has(f.key) && featureInRegion(f.key, regionKey) && withPrerequisites([f.key]).every((k) => has.has(k) || (priced(k) && !notSetUp.includes(k)))).map((f) => f.key);
 }
 
 /** Features not in the plan that cannot be sold yet because they are not set up: "Coming soon" on Billing and in the editor. */

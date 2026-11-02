@@ -130,6 +130,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         businessName={businessName}
         role={role}
         features={[...entitlements.inPlan]}
+        notOffered={[...entitlements.outOfRegion]}
         notices={notices}
         studio={studio}
         inboxUnread={inboxUnread}

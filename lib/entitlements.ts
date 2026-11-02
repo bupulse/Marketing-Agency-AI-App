@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { disabledServices, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
-import { featureLabel, featureOf, type FeatureKey } from "@/lib/features";
+import { FEATURE_KEYS, featureInRegion, featureLabel, featureOf, type FeatureKey } from "@/lib/features";
 import { getPlan } from "@/lib/plan-catalog";
 import { periodState, type PeriodSubscription } from "@/lib/billing/period";
 import type { ServiceId } from "@/lib/admin/service-catalog";
@@ -68,19 +68,25 @@ export class FeatureRequiredError extends Error {
 }
 
 type SubscriptionBits = PeriodSubscription & { status: string; chosenPlan: string | null };
+type CompanyBits = { sub: SubscriptionBits | null; region: string | null };
 
-/** The subscription of a company. Cached per request, like getAppContext. */
-const subscriptionOf = cache(async (businessId: string): Promise<SubscriptionBits | null> => {
-  if (!businessId) return null;
+/** The subscription and pricing region of a company. Cached per request, like getAppContext. */
+const companyOf = cache(async (businessId: string): Promise<CompanyBits> => {
+  if (!businessId) return { sub: null, region: null };
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    select: { user: { select: { subscription: { select: { plan: true, status: true, chosenPlan: true, trialEndsAt: true, provider: true, cancelAtPeriodEnd: true, currentPeriodEnd: true } } } } },
+    select: { pricingRegion: true, user: { select: { subscription: { select: { plan: true, status: true, chosenPlan: true, trialEndsAt: true, provider: true, cancelAtPeriodEnd: true, currentPeriodEnd: true } } } } },
   });
   const sub = business?.user.subscription;
-  return sub
-    ? { plan: sub.plan, status: sub.status, chosenPlan: sub.chosenPlan ?? null, trialEndsAt: sub.trialEndsAt ?? null, provider: sub.provider ?? null, cancelAtPeriodEnd: sub.cancelAtPeriodEnd ?? false, currentPeriodEnd: sub.currentPeriodEnd ?? null }
-    : null;
+  return {
+    sub: sub
+      ? { plan: sub.plan, status: sub.status, chosenPlan: sub.chosenPlan ?? null, trialEndsAt: sub.trialEndsAt ?? null, provider: sub.provider ?? null, cancelAtPeriodEnd: sub.cancelAtPeriodEnd ?? false, currentPeriodEnd: sub.currentPeriodEnd ?? null }
+      : null,
+    region: business?.pricingRegion ?? null,
+  };
 });
+
+const subscriptionOf = async (businessId: string) => (await companyOf(businessId)).sub;
 
 /**
  * Which plan's features a company has (pure, so tests can check the rule):
@@ -129,6 +135,8 @@ export type CompanyEntitlements = {
   resolved: boolean;
   /** Set while the account is read-only (demo pending, trial over, past due, ended): nothing in `usable` may be acted on. */
   block: AccountBlock | null;
+  /** Features that do not exist in the company's region (FeatureDef.regions): never in the plan, never offered. */
+  outOfRegion: Set<FeatureKey>;
 };
 
 const serviceUp = (key: FeatureKey, off: Set<ServiceId>) => {
@@ -143,7 +151,7 @@ export function blockReason(e: Pick<CompanyEntitlements, "inPlan" | "resolved">,
 
 /** What a company's plan includes and which of those are usable now. One lookup per request. */
 export const companyEntitlements = cache(async (businessId: string): Promise<CompanyEntitlements> => {
-  const sub = await subscriptionOf(businessId);
+  const { sub, region } = await companyOf(businessId);
   const block = accountBlock(sub);
   const planKey = featurePlanKey(sub);
   // A chosen plan that was retired since falls back to the plan the subscription is on.
@@ -152,8 +160,10 @@ export const companyEntitlements = cache(async (businessId: string): Promise<Com
   // A read-only account keeps its plan's features for viewing; `block` says they may not be acted on. Its answer is
   // definite (resolved), never "plan_unknown": a company waiting for its demo is refused with 403, not 503.
   // A coming-soon feature a plan still lists is dormant (lib/features.ts): never granted, whatever the plan says.
-  const inPlan = new Set<FeatureKey>((plan?.features ?? []).filter((k) => featureOf(k).status === "built"));
-  return { inPlan, usable: new Set([...inPlan].filter((k) => serviceUp(k, off))), resolved: plan !== null || block !== null, block };
+  // A feature of another region (Creator campaigns outside Rwanda) is not granted even when the plan lists it.
+  const outOfRegion = new Set<FeatureKey>(FEATURE_KEYS.filter((k) => !featureInRegion(k, region)));
+  const inPlan = new Set<FeatureKey>((plan?.features ?? []).filter((k) => featureOf(k).status === "built" && !outOfRegion.has(k)));
+  return { inPlan, usable: new Set([...inPlan].filter((k) => serviceUp(k, off))), resolved: plan !== null || block !== null, block, outOfRegion };
 });
 
 /** The features a company can use right now. */
