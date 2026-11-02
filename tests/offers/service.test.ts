@@ -567,10 +567,10 @@ describe("included amounts and features that are not set up", () => {
     seed();
     withDrivePrice();
     const draft = { ...DRAFT, features: ["websiteChat", "driveImport"] };
-    expect(await msg(offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft }))).toMatch(/Drive and Dropbox import is coming soon/);
-    expect(await msg(offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: { ...draft, mode: "addon" } }))).toMatch(/Drive and Dropbox import is coming soon/);
+    expect(await msg(offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft }, NOW))).toMatch(/Drive and Dropbox import is coming soon/);
+    expect(await msg(offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: { ...draft, mode: "addon" } }, NOW))).toMatch(/Drive and Dropbox import is coming soon/);
     process.env.DROPBOX_APP_KEY = "dropbox-key";
-    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft });
+    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft }, NOW);
     expect(offerRow(saved.id).featureKeys).toContain("driveImport");
   });
 
