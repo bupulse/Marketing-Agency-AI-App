@@ -4,10 +4,11 @@ import { choiceText, contentLanguagesSchema, defaultContentLanguages, languageHi
 const mix: LanguageChoice = { mode: "mix", languages: ["English", "Kinyarwanda"] };
 
 describe("content languages", () => {
-  it("default to Kinyarwanda in Rwanda, else the content language, else English", () => {
+  it("default to Kinyarwanda in Rwanda and English everywhere else, whatever the content language", () => {
     expect(defaultContentLanguages({ country: "Rwanda", contentLanguage: "English" }).videos).toEqual({ mode: "one", language: "Kinyarwanda" });
     expect(defaultContentLanguages({ country: "RW" }).skits).toEqual({ mode: "one", language: "Kinyarwanda" });
-    expect(defaultContentLanguages({ country: "France", contentLanguage: "French" }).images).toEqual({ mode: "one", language: "French" });
+    expect(defaultContentLanguages({ country: "France", contentLanguage: "French" }).images).toEqual({ mode: "one", language: "English" });
+    expect(defaultContentLanguages({ country: "Kenya", contentLanguage: "Swahili" }).videos).toEqual({ mode: "one", language: "English" });
     expect(defaultContentLanguages({ country: "Kenya", contentLanguage: "Klingon" }).images).toEqual({ mode: "one", language: "English" });
     expect(defaultContentLanguages({}).images).toEqual({ mode: "one", language: "English" });
   });

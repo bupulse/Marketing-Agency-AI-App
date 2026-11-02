@@ -14,7 +14,7 @@ export class ContentLanguagesError extends Error {}
 
 const SELECT = { country: true, contentLanguage: true, dailyPostSettings: true } as const;
 
-/** The business's choices, or the defaults (Kinyarwanda in Rwanda, else its content language). */
+/** The business's choices, or the defaults (Kinyarwanda in Rwanda, else English). */
 export async function getContentLanguages(businessId: string): Promise<ContentLanguages> {
   const row = await prisma.business.findUnique({ where: { id: businessId }, select: SELECT });
   return readContentLanguages(storedLanguages(row?.dailyPostSettings), { country: row?.country, contentLanguage: row?.contentLanguage });

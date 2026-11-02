@@ -27,7 +27,7 @@ describe("content languages on the server", () => {
     prisma.business.findUnique.mockResolvedValue({ country: "Rwanda", contentLanguage: "English", dailyPostSettings: null });
     expect(await getContentLanguages("b1")).toEqual({ images: one("Kinyarwanda"), videos: one("Kinyarwanda"), skits: one("Kinyarwanda") });
     prisma.business.findUnique.mockResolvedValue({ country: "Kenya", contentLanguage: "Swahili", dailyPostSettings: { enabled: true } });
-    expect((await getContentLanguages("b1")).images).toEqual(one("Swahili"));
+    expect((await getContentLanguages("b1")).images).toEqual(one("English"));
   });
 
   it("an Owner or Admin saves them beside the daily posts choices, audited", async () => {

@@ -3,7 +3,7 @@
 // say). Each is one language, or a mix: BuPulse picks one language per post and day (never two inside one post).
 // Stored as Business.dailyPostSettings.languages (JSON, beside the daily posts choices; no migration), validated here.
 // Pure and client-safe, so the settings form, the engines, the skits and the tests share it. Missing or unreadable
-// means the default, part by part: Kinyarwanda for a business in Rwanda, else its content language, else English.
+// means the default, part by part: Kinyarwanda for a business in Rwanda, else English (owner, 2 November 2026).
 import { z } from "zod";
 import { CONTENT_LANGUAGES, isContentLanguage, type ContentLanguage } from "@/lib/brand/languages";
 import { looksKinyarwanda } from "@/lib/video-engine/voice-language";
@@ -42,7 +42,10 @@ export const contentLanguagesSchema = z.object({ images: languageChoiceSchema, v
 
 export type ContentLanguagesInput = z.input<typeof contentLanguagesSchema>;
 
-/** What the business is: its sign-up country (a name like "Rwanda" or a code like "RW") and Business.contentLanguage. */
+/**
+ * What the business is: its sign-up country (a name like "Rwanda" or a code like "RW"). `contentLanguage` is accepted
+ * for callers that pass the business row, but no longer sets the default (owner, 2 November 2026: English outside Rwanda).
+ */
 export type LanguageContext = { country?: string | null; contentLanguage?: string | null };
 
 const ALIASES: Record<string, ContentLanguage> = { rw: "Kinyarwanda", kin: "Kinyarwanda", ikinyarwanda: "Kinyarwanda", en: "English", eng: "English", fr: "French", francais: "French", français: "French", sw: "Swahili", kiswahili: "Swahili" };
@@ -61,10 +64,9 @@ export function inRwanda(country: string | null | undefined): boolean {
   return c === "rwanda" || c === "rw";
 }
 
-/** The default language: Kinyarwanda in Rwanda, else the content language, else English. */
+/** The default language: Kinyarwanda in Rwanda, English everywhere else. The client changes it in Posts -> Settings. */
 export function defaultLanguage(ctx: LanguageContext): ContentLanguage {
-  if (inRwanda(ctx.country)) return "Kinyarwanda";
-  return toContentLanguage(ctx.contentLanguage) ?? "English";
+  return inRwanda(ctx.country) ? "Kinyarwanda" : "English";
 }
 
 export function defaultContentLanguages(ctx: LanguageContext): ContentLanguages {

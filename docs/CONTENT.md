@@ -253,8 +253,8 @@ captions** (the words on the picture and the caption), **daily videos** (voice-o
 one language per post and day (`pickLanguage`: the mix in turn by day, and the posts of one part on one day take the
 next ones), never two languages in one post. The owner's brief may ask for one ("in English", "mu Kinyarwanda", or a
 brief written in Kinyarwanda): it wins when it is part of the mix. Stored as `Business.dailyPostSettings.languages`
-(no migration; saving the daily posts keeps it). Never saved: Kinyarwanda for a business in Rwanda, else
-`contentLanguage`, else English, part by part.
+(no migration; saving the daily posts keeps it). Never saved: Kinyarwanda for a business in Rwanda, English everywhere
+else (owner, 2 November 2026; `contentLanguage` no longer sets it), part by part.
 
 - **Create today's content and Daily posts** (`makeDayContent`): each post's language is picked before the pack is
   written; one language for the whole run is the pack's language as before, several put "Language: ..." on each post's
