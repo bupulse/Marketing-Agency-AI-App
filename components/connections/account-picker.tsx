@@ -11,7 +11,7 @@ const WHAT: Partial<Record<Network, string>> = { facebook: "Pages", instagram: "
  * After a sign-in with several accounts (Facebook Pages, a LinkedIn profile and its Pages): tick the ones BuPulse may
  * post to; each one ticked becomes its own connection. LinkedIn asks "Where should BuPulse post?" with its Pages first.
  */
-export function AccountPicker({ network, label, accounts }: { network: Network; label: string; accounts: AccountChoice[] }) {
+export function AccountPicker({ network, label, accounts, pageAccess = false }: { network: Network; label: string; accounts: AccountChoice[]; pageAccess?: boolean }) {
   const ordered = orderChoices(network, accounts);
   const ticked = new Set(preselectedChoices(network, accounts));
   const linkedin = network === "linkedin";
@@ -53,7 +53,10 @@ export function AccountPicker({ network, label, accounts }: { network: Network; 
                 </label>
                 {noPage && a.accountType === "member" && (
                   <p className="pb-2 pl-12 pr-2 text-[13px] text-muted">
-                    No LinkedIn Page found. To post as your company, you must be an admin of its LinkedIn Page. If you are an admin and your Page is still missing, BuPulse may not have LinkedIn Page access yet. We are working on it. For now BuPulse can post on your profile.
+                    {/* pageAccess: the sign-in went through a LinkedIn app that can see Pages (Upload-Post), so a missing Page means the person is not its admin. */}
+                    {pageAccess
+                      ? "No LinkedIn Page found. To post as your company, you must be an admin of its LinkedIn Page: ask the Page's admin to add you, then connect LinkedIn again. For now BuPulse can post on your profile."
+                      : "No LinkedIn Page found. To post as your company, you must be an admin of its LinkedIn Page. If you are an admin and your Page is still missing, BuPulse may not have LinkedIn Page access yet. We are working on it. For now BuPulse can post on your profile."}
                   </p>
                 )}
               </li>

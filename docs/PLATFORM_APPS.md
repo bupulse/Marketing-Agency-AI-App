@@ -273,6 +273,35 @@ Sources: https://learn.microsoft.com/en-us/linkedin/marketing/community-manageme
 - Changing app functionality after review can trigger a re-review.
 - Because this needs a legal entity, **BuPulse must have its legal entity details ready** (name, registered address, website, privacy policy).
 
+### 3c. LinkedIn through Upload-Post (company Pages without BuPulse's own app)
+
+BuPulse-Socials (Composio) never returned the client's Pages, and BuPulse's own app needs a registered company for the
+Community Management API. Upload-Post's LinkedIn app is already approved for company Pages, so once
+`UPLOAD_POST_API_KEY` is set (Admin -> Services -> Upload-Post) LinkedIn Connect goes through it instead
+(lib/social/uploadpost). Without the key, or with Upload-Post switched off, LinkedIn keeps the BuPulse-Socials path.
+
+- Owner setup: sign up at upload-post.com (free plan), make an API key in the dashboard, paste it on the Upload-Post card
+  in Admin -> Services and press "Test now" (it calls `GET /api/uploadposts/me`). Do not connect social accounts in the
+  Upload-Post dashboard: each client connects their own from BuPulse.
+- Connect: BuPulse makes one Upload-Post profile per business (`bupulse_<business id>`, `POST /api/uploadposts/users`,
+  a 409 means it exists and is reused), asks `POST /api/uploadposts/users/generate-jwt` for a LinkedIn-only connect page
+  with `redirect_url` = `/api/social/linkedin/uploadpost?state=...` and sends the client there. On "Back to BuPulse" it
+  reads the profile (`GET /api/uploadposts/users/<profile>`, `social_accounts.linkedin`) and the Pages
+  (`GET /api/uploadposts/linkedin/pages?profile=<profile>`, a 404 means none), and shows "Where should BuPulse post?",
+  Pages first with their names and logos.
+- Saved connections are ordinary LinkedIn rows (method DIRECT) whose scopes hold `uploadpost` and
+  `uploadpost_profile:<profile>`; a Page keeps its organization number as the account id, so a Page connected before
+  through Composio is updated in place.
+- Posting: `POST /api/upload_text` (text, `linkedin_link_url` for the link card), `/api/upload_photos` (`photos[]` as the
+  signed links) or `/api/upload` (`video` as the signed link), with `target_linkedin_page_id=urn:li:organization:<id>`
+  for a Page, `async_upload=true` and BuPulse's own `request_id`; then up to 3 checks of `GET /api/uploadposts/status`.
+  A post still on its way after them is saved as published under `uploadpost:<request id>` (Upload-Post carries on).
+- Limits: the free plan holds **2 profiles (2 businesses)** and **10 uploads a month** for the whole account. A full plan
+  shows the client "paused on our side" at Connect; a used-up month makes posts wait and retry (6 hours apart) with a clear
+  message. Both are logged in Admin -> Errors (source `social.uploadpost`). Using the same key on the test site counts
+  against the same 2 profiles.
+- Not yet: post numbers (Upload-Post has an analytics API; these posts show no results), and comments.
+
 ---
 
 ## 4. Google and YouTube Data API v3

@@ -19,6 +19,7 @@ import { isInstagramViaFacebookConfigured } from "@/lib/social/providers/instagr
 import { allProviders, isNetwork } from "@/lib/social/registry";
 import { viaComposio } from "@/lib/social/composio/client";
 import { tiktokDirectPost } from "@/lib/social/composio/ways";
+import { isUploadPostResult, viaUploadPost } from "@/lib/social/uploadpost/ways";
 import type { Network } from "@/lib/social/types";
 import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
 import { inboxStates } from "@/lib/social/inbox/accounts";
@@ -55,17 +56,20 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
   // networks fall back to their own apps (or "Coming soon" when those are not set up). TikTok and X go through it once
   // BuPulse's own TikTok and X apps are added in Composio. A network switched off in Admin -> Services (X is off until
   // the owner switches it on: it costs per post) shows "Coming soon" too.
-  const [composioOn, offNetworks] = await Promise.all([isServiceEnabled("composio"), disabledNetworks()]);
+  // LinkedIn goes through Upload-Post instead once its key is set (lib/social/uploadpost), unless it is switched off.
+  const [composioOn, uploadPostOn, offNetworks] = await Promise.all([isServiceEnabled("composio"), isServiceEnabled("uploadpost"), disabledNetworks()]);
   const channels: ChannelInfo[] = allProviders().map((p) => {
     const off = offNetworks.includes(p.network);
-    const composio = !off && composioOn && viaComposio(p.network);
+    const uploadPost = !off && uploadPostOn && viaUploadPost(p.network);
+    const composio = !off && !uploadPost && composioOn && viaComposio(p.network);
     return {
       network: p.network,
       label: p.rules.label,
       note: NOTES[p.network] ?? "",
-      configured: !off && (composio || p.isConfigured()),
+      configured: !off && (uploadPost || composio || p.isConfigured()),
       viaFacebook: p.network === "instagram" && !composio && !off ? isInstagramViaFacebookConfigured() : undefined,
       viaComposio: composio || undefined,
+      viaUploadPost: uploadPost || undefined,
       detail: detailFor(p.network, composio),
     };
   });
@@ -89,7 +93,12 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
         <ConnectToast />
       </Suspense>
       {picking && (
-        <AccountPicker network={picking.network} label={channels.find((c) => c.network === picking.network)?.label ?? ""} accounts={picking.result.accounts} />
+        <AccountPicker
+          network={picking.network}
+          label={channels.find((c) => c.network === picking.network)?.label ?? ""}
+          accounts={picking.result.accounts}
+          pageAccess={isUploadPostResult(picking.result.scopes)}
+        />
       )}
       <section aria-label="Social accounts" className="flex flex-col gap-3">
         <h2 className="px-1 text-lg font-semibold">Social accounts</h2>

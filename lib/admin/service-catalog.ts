@@ -25,6 +25,7 @@ export const SERVICE_IDS = [
   "veo",
   "premium3d",
   "composio",
+  "uploadpost",
   "studio",
   "telegram",
 ] as const;
@@ -306,6 +307,15 @@ export const SERVICES: ServiceInfo[] = [
     features: ["Connecting Facebook, Instagram, LinkedIn and YouTube (BuPulse-Socials), and TikTok and X once their apps are added", "Posting and post numbers for accounts connected that way"],
     killable: true,
     whenOff: "New social connections use BuPulse's own apps instead (\"Coming soon\" where those are not set up). Accounts already connected through BuPulse-Socials keep posting through it.",
+  },
+  {
+    id: "uploadpost",
+    name: "Upload-Post",
+    purpose: "Connects clients' LinkedIn through Upload-Post's approved LinkedIn app, so they can post as their company Page (BuPulse-Socials never got Pages back). Each business becomes one Upload-Post profile (no Upload-Post account for the client): they sign in to LinkedIn on Upload-Post's page, come back to BuPulse and choose their Page or their profile. The API key is made in the Upload-Post dashboard (app.upload-post.com, API keys). The free plan holds 2 profiles (2 businesses) and 10 uploads a month: past that, Connect and posts say so and wait.",
+    env: ["UPLOAD_POST_API_KEY"],
+    features: ["Connecting LinkedIn (profile and company Pages) through Upload-Post", "Posting text, photos and videos to LinkedIn for accounts connected that way"],
+    killable: true,
+    whenOff: "LinkedIn Connect goes back to BuPulse-Socials (Composio), or \"Coming soon\" when that is off too. LinkedIn accounts already connected through Upload-Post keep posting through it.",
   },
   {
     id: "premium3d",

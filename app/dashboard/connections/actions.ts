@@ -8,9 +8,10 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { hasFeature, upgradeHref } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
-import { disconnect, saveConnections } from "@/lib/social/connections";
+import { disconnect, forgetUnusedUploadPost, saveConnections } from "@/lib/social/connections";
 import { openPending, PENDING_PATH, pendingCookieNames } from "@/lib/social/oauth";
 import { deleteConnectedAccount, isComposioResult, scopeAccount } from "@/lib/social/composio/client";
+import { isUploadPostResult, scopeProfile } from "@/lib/social/uploadpost/ways";
 import { setInboxEnabled } from "@/lib/social/inbox/accounts";
 
 async function businessIdFor(userId: string) {
@@ -60,6 +61,9 @@ export async function cancelPickAction() {
   // A BuPulse-Socials sign-in nobody picked an account from is removed from Composio too.
   const composioAccount = pending && isComposioResult(pending.result.scopes) ? scopeAccount(pending.result.scopes) : null;
   if (pending && composioAccount) await deleteConnectedAccount(pending.network, composioAccount);
+  // An Upload-Post sign-in too, unless an account already connected uses it.
+  const uploadPostProfile = pending && isUploadPostResult(pending.result.scopes) ? scopeProfile(pending.result.scopes) : null;
+  if (pending && uploadPostProfile) await forgetUnusedUploadPost(pending.network, uploadPostProfile).catch(() => {});
   await clearPending();
   redirect("/dashboard/connections");
 }

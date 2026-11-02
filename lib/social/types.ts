@@ -94,6 +94,11 @@ export interface ConnectionCredentials {
   method?: "DIRECT" | "OWN_COMPOSIO" | "COMPOSIO";
   /** BuPulse-Socials only: the Composio user the account belongs to (the business id); Composio asks for it on every call. */
   composioUserId?: string;
+  /**
+   * Connected through Upload-Post (lib/social/uploadpost): the business's Upload-Post profile, which every call names.
+   * accessToken then holds the same name, not a token.
+   */
+  uploadPostProfile?: string;
 }
 
 export interface SocialProvider {

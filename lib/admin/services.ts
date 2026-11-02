@@ -151,6 +151,7 @@ const ERROR_SOURCES: Partial<Record<ServiceId, string[]>> = {
   cloudflare: ["cloudflare", "domains"],
   whatsapp: ["whatsapp"],
   telegram: ["telegram"],
+  uploadpost: ["uploadpost"],
 };
 
 function lastErrorOf(info: ServiceInfo, d: Loaded): ServiceView["lastError"] {

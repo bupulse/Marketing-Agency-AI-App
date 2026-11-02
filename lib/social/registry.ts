@@ -6,6 +6,7 @@ import { twitterProvider } from "./providers/twitter";
 import { youtubeProvider } from "./providers/youtube";
 import { COMPOSIO_NETWORKS } from "./composio/client";
 import { composioNetwork } from "./composio/networks";
+import { publishLinkedIn } from "./uploadpost/linkedin";
 import { NETWORKS, type ConnectionCredentials, type Network, type SocialProvider } from "./types";
 
 const DIRECT: Record<Network, SocialProvider> = {
@@ -19,6 +20,7 @@ const DIRECT: Record<Network, SocialProvider> = {
 };
 
 const isComposio = (c: ConnectionCredentials) => c.method === "COMPOSIO";
+const isUploadPost = (c: ConnectionCredentials) => !!c.uploadPostProfile;
 const hasComposioMetrics = (network: Network) => viaComposioPossible(network) && !!composioNetwork(network).metrics;
 
 /**
@@ -31,16 +33,19 @@ const viaComposioPossible = (network: Network) => COMPOSIO_NETWORKS.includes(net
 function withComposio(direct: SocialProvider): SocialProvider {
   return {
     ...direct,
-    publish: (c, post) => (isComposio(c) ? composioNetwork(direct.network).publish(c, post) : direct.publish(c, post)),
+    // Upload-Post accounts (LinkedIn through Upload-Post: lib/social/uploadpost) post through Upload-Post.
+    publish: (c, post) => (isUploadPost(c) ? publishLinkedIn(c, post) : isComposio(c) ? composioNetwork(direct.network).publish(c, post) : direct.publish(c, post)),
     // Only where one of the ways can read numbers; an account whose way cannot gives an empty snapshot (not saved).
+    // Upload-Post accounts have no numbers yet.
     metrics: direct.metrics || hasComposioMetrics(direct.network)
       ? async (c, externalId) => {
+          if (isUploadPost(c)) return {};
           if (isComposio(c)) return hasComposioMetrics(direct.network) ? composioNetwork(direct.network).metrics!(c, externalId) : {};
           return direct.metrics ? direct.metrics(c, externalId) : {};
         }
       : undefined,
-    // Composio accounts are removed from Composio by lib/social/connections.ts (several Pages can share one sign-in).
-    revoke: direct.revoke ? async (c) => (isComposio(c) ? undefined : direct.revoke!(c)) : undefined,
+    // Composio and Upload-Post accounts are removed there by lib/social/connections.ts (several Pages can share one sign-in).
+    revoke: direct.revoke ? async (c) => (isComposio(c) || isUploadPost(c) ? undefined : direct.revoke!(c)) : undefined,
   };
 }
 

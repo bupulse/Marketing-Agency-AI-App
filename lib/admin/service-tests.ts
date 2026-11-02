@@ -110,6 +110,16 @@ const PROBES: Partial<Record<ServiceId, Probe>> = {
     if (res.status === 401 || res.status === 403) return { ok: false, message: `Composio rejected the key (${res.status}).` };
     return { ok: false, message: `Composio returned ${res.status}.` };
   },
+  uploadpost: async () => {
+    // GET /api/uploadposts/me is free and names the plan (docs.upload-post.com/api/current-user).
+    const res = await get("https://api.upload-post.com/api/uploadposts/me", { authorization: `Apikey ${env("UPLOAD_POST_API_KEY")}` });
+    if (res.ok) {
+      const plan = ((await res.json().catch(() => ({}))) as { plan?: unknown }).plan;
+      return { ok: true, message: `Upload-Post accepted the key${typeof plan === "string" && plan ? ` (plan: ${plan.slice(0, 40)})` : ""}.` };
+    }
+    if (res.status === 401 || res.status === 403) return { ok: false, message: `Upload-Post rejected the key (${res.status}).` };
+    return { ok: false, message: `Upload-Post returned ${res.status}.` };
+  },
   cloudflare: async () => {
     const res = await get("https://api.cloudflare.com/client/v4/ips");
     return res.ok ? { ok: true, message: "Cloudflare's API is reachable (each client uses their own token)." } : { ok: false, message: `Cloudflare's API returned ${res.status}.` };

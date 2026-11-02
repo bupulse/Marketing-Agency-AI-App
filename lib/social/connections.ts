@@ -5,6 +5,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { logError } from "@/lib/errors";
 import { getProvider } from "./registry";
 import { deleteConnectedAccount, isComposioResult, scopeAccount } from "./composio/client";
+import { disconnectNetwork, isUploadPostResult, profileScope, scopeProfile } from "./uploadpost/client";
 import { NETWORKS, SocialError, type ConnectionCredentials, type Network, type OAuthResult } from "./types";
 
 // Everything that touches stored connections: saving after OAuth, handing the publisher decrypted
@@ -82,9 +83,11 @@ export async function saveConnections(
   postingMode: PostingMode = "AUTO",
 ): Promise<string[]> {
   const chosen = oauth.accounts.filter((a) => selectedAccountIds.includes(a.externalAccountId));
+  // Upload-Post connections are DIRECT rows marked by their scopes (the "uploadpost" entry and the profile's name).
   const method = isComposioResult(oauth.scopes) ? ("COMPOSIO" as const) : ("DIRECT" as const);
-  // Reconnecting through BuPulse-Socials makes a new Composio sign-in; the one it replaces is removed afterwards.
-  const replaced = method === "COMPOSIO" ? await composioAccountsOf({ businessId, provider: network, externalAccountId: { in: chosen.map((a) => a.externalAccountId) } }) : [];
+  // Reconnecting through BuPulse-Socials makes a new Composio sign-in; the one it replaces is removed afterwards (also
+  // when a LinkedIn account that was connected through Composio is connected again through Upload-Post).
+  const replaced = method === "COMPOSIO" || isUploadPostResult(oauth.scopes) ? await composioAccountsOf({ businessId, provider: network, externalAccountId: { in: chosen.map((a) => a.externalAccountId) } }) : [];
   const ids: string[] = [];
   for (const account of chosen) {
     const own = oauth.accountTokens?.[account.externalAccountId];
@@ -159,7 +162,16 @@ async function shareLinkedInToken(businessId: string, network: Network, oauth: O
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.connection.findUnique>>>;
 
 function credentialsOf(row: Row, accessToken: string): ConnectionCredentials {
-  return { connectionId: row.id, externalAccountId: row.externalAccountId, accountType: row.accountType, accessToken, method: row.method, ...(row.method === "COMPOSIO" ? { composioUserId: row.businessId } : {}) };
+  const uploadPostProfile = isUploadPostResult(row.scopes) ? scopeProfile(row.scopes) : null;
+  return {
+    connectionId: row.id,
+    externalAccountId: row.externalAccountId,
+    accountType: row.accountType,
+    accessToken,
+    method: row.method,
+    ...(row.method === "COMPOSIO" ? { composioUserId: row.businessId } : {}),
+    ...(uploadPostProfile ? { uploadPostProfile } : {}),
+  };
 }
 
 const inflight = new Map<string, Promise<string>>();
@@ -305,7 +317,19 @@ export async function disconnect(connectionId: string, scope: { businessId?: str
   // Several Pages can share one BuPulse-Socials sign-in: Composio forgets it once the last of them is gone.
   const composioAccount = row.method === "COMPOSIO" ? scopeAccount(row.scopes) : null;
   if (composioAccount) await forgetUnusedComposioAccounts(row.provider as Network, [composioAccount]).catch(() => {});
+  // The same for Upload-Post: the profile's LinkedIn is unlinked once no connection of it is left.
+  const uploadPostProfile = isUploadPostResult(row.scopes) ? scopeProfile(row.scopes) : null;
+  if (uploadPostProfile) await forgetUnusedUploadPost(row.provider as Network, uploadPostProfile).catch(() => {});
   return true;
+}
+
+/**
+ * Unlinks a network from an Upload-Post profile (best effort) when no connection uses it any more, so Upload-Post
+ * forgets its tokens. Also used when a sign-in ends without a saved account.
+ */
+export async function forgetUnusedUploadPost(network: Network, username: string): Promise<void> {
+  const still = await prisma.connection.count({ where: { provider: network, scopes: { has: profileScope(username) } } });
+  if (!still) await disconnectNetwork(network, username);
 }
 
 /** Deletes connection rows (and so their tokens) and returns their posts to a safe state. No network calls. */

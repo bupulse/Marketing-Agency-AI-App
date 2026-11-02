@@ -46,6 +46,8 @@ export type SocialState = {
   next: string;
   /** BuPulse-Socials only: the Composio connected account this sign-in fills in (verifier is then empty). */
   composioAccount?: string;
+  /** Upload-Post only: the business's Upload-Post profile this sign-in connects LinkedIn to (verifier is then empty). */
+  uploadPostProfile?: string;
   expiresAt: number;
 };
 

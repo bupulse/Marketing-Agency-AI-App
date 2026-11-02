@@ -13,6 +13,7 @@ import { NETWORK_SERVICE } from "@/lib/admin/service-catalog";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { hasFeature, upgradeHref } from "@/lib/entitlements";
 import { createConnectLink, viaComposio } from "@/lib/social/composio/client";
+import { connectLink, ensureProfile, profileUsername, UploadPostError, viaUploadPost } from "@/lib/social/uploadpost/client";
 import { inboxScopesFor } from "@/lib/social/inbox/scopes";
 import { getInboxSettings } from "@/lib/social/inbox/settings";
 
@@ -43,7 +44,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   // Switched off in the admin console: a friendly "unavailable" instead of starting the sign-in.
   if (NETWORK_SERVICE[network] && !(await isServiceEnabled(NETWORK_SERVICE[network]))) return back(next, "unavailable");
   const variant = requested ?? VARIANTS[network]?.[0];
-  const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
+  const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true, name: true } });
   if (!business) return back(next, "failed");
 
   try {
@@ -51,6 +52,26 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   } catch (error) {
     if (error instanceof RateLimitError) return back(next, "rate_limit");
     throw error;
+  }
+
+  // Upload-Post: LinkedIn (profile and company Pages) through Upload-Post's approved app once its key is set
+  // (lib/social/uploadpost). The business gets its Upload-Post profile, the person connects LinkedIn on Upload-Post's
+  // page and comes back to /api/social/<network>/uploadpost, which checks this sealed cookie like the other callbacks.
+  // Upload-Post switched off in Admin -> Services: the BuPulse-Socials path below, as before.
+  if (viaUploadPost(network) && (await isServiceEnabled("uploadpost"))) {
+    try {
+      const state = newState();
+      const username = profileUsername(business.id);
+      await ensureProfile(network, username, business.name ?? "");
+      const url = await connectLink(network, username, `${await requestSiteUrl()}/api/social/${network}/uploadpost?state=${state}`);
+      const response = NextResponse.redirect(url);
+      response.cookies.set(STATE_COOKIE, await sealState({ state, verifier: "", userId: user.id, network, variant, next, uploadPostProfile: username }), await cookieOptions("/api/social"));
+      return response;
+    } catch (error) {
+      await logError(error, { source: "social.connect.uploadpost", userId: user.id, network });
+      // BuPulse's Upload-Post plan is full (2 profiles on the free plan) or blocked: "paused on our side".
+      return back(next, error instanceof UploadPostError && (error.status === 403 || error.status === 429) ? "full" : "failed");
+    }
   }
 
   // BuPulse-Socials: while BuPulse's own apps wait for the networks' approval, sign-in goes through BuPulse's Composio
