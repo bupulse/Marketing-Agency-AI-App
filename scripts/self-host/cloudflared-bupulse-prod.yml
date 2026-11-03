@@ -1,0 +1,10 @@
+# BuPulse production: bupulse.com and www.bupulse.com -> the production server on this Mac (next start on localhost:3002,
+# started by ~/bupulse-prod/start-server.mjs). A bridge until hosting is paid for or the home Windows PC takes over.
+tunnel: <tunnel-id>
+credentials-file: /Users/<you>/.cloudflared/<tunnel-id>.json
+ingress:
+  - hostname: bupulse.com
+    service: http://localhost:3002
+  - hostname: www.bupulse.com
+    service: http://localhost:3002
+  - service: http_status:404
