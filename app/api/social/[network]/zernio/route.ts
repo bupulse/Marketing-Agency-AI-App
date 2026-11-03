@@ -54,7 +54,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   const zernioError = query.get("error");
   if (zernioError) {
     if (zernioError === "oauth_denied" || zernioError === "missing_tiktok_permissions") {
-      await logError(new Error(`Zernio sign-in ended with ${zernioError}`), { source: "social.callback.zernio", userId: user.id, network, level: "warn" });
+      // The reason codes Zernio passes on (TikTok's own, e.g. error_reason or platform_error), not error_message.
+      const reasons = [...query.entries()]
+        .filter(([k]) => k !== "error" && k !== "error_message" && /error|reason/i.test(k))
+        .map(([k, v]) => `${k}=${v.slice(0, 120)}`)
+        .join(" ");
+      await logError(new Error(`Zernio sign-in ended with ${zernioError}${reasons ? ` (${reasons})` : ""}`.slice(0, 600)), { source: "social.callback.zernio", userId: user.id, network, level: "warn" });
       // oauth_denied also comes back when TikTok itself refuses (seen 3 November 2026), so it is not called a cancellation.
       return done(next, { error: zernioError === "oauth_denied" ? "refused" : "denied" });
     }
