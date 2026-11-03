@@ -89,8 +89,8 @@ describe("Add to queue slots", () => {
   });
 
   it("falls back to default times when the saved ones are unusable", () => {
-    expect(cleanSlotTimes([])).toEqual(["09:00", "18:00"]);
-    expect(cleanSlotTimes(["25:00", "nine"])).toEqual(["09:00", "18:00"]);
+    expect(cleanSlotTimes([])).toEqual(["11:30", "12:00", "12:30", "13:00", "13:30"]);
+    expect(cleanSlotTimes(["25:00", "nine"])).toEqual(["11:30", "12:00", "12:30", "13:00", "13:30"]);
     expect(cleanSlotTimes(["18:00", "09:00", "09:00"])).toEqual(["09:00", "18:00"]);
   });
 });

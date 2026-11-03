@@ -86,7 +86,7 @@ describe("saving settings", () => {
     expect((await saveSettings("user1", { ...valid, postsPerWeek: 2.5 })).ok).toBe(false);
     expect((await saveSettings("user1", { ...valid, postingTimes: ["25:00"] })).ok).toBe(false);
     expect((await saveSettings("user1", { ...valid, postingTimes: [] })).ok).toBe(false);
-    expect((await saveSettings("user1", { ...valid, postingTimes: ["06:00", "07:00", "08:00", "09:00", "10:00"] })).ok).toBe(false);
+    expect((await saveSettings("user1", { ...valid, postingTimes: ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00"] })).ok).toBe(false);
     expect(mocks.prisma.autopilotSettings.upsert).not.toHaveBeenCalled();
   });
 

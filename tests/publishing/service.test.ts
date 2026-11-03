@@ -134,10 +134,10 @@ describe("createPosts", () => {
 
   describe("when", () => {
     it("Add to queue uses the next free slot of the business, in its time zone", async () => {
-      // 10:00 in Kigali: the 09:00 slot has passed; 18:00 Kigali is 16:00 UTC.
+      // 10:00 in Kigali: the first default slot, 11:30 Kigali, is 09:30 UTC.
       const result = await createPosts(owner, compose({ when: { mode: "queue" } }), now);
-      expect(result.scheduledAt?.toISOString()).toBe("2026-10-07T16:00:00.000Z");
-      expect(prisma.post.create.mock.calls[0][0].data.scheduledAt.toISOString()).toBe("2026-10-07T16:00:00.000Z");
+      expect(result.scheduledAt?.toISOString()).toBe("2026-10-07T09:30:00.000Z");
+      expect(prisma.post.create.mock.calls[0][0].data.scheduledAt.toISOString()).toBe("2026-10-07T09:30:00.000Z");
     });
 
     it("Add to queue skips slots the chosen accounts already use and honours saved posting times", async () => {
@@ -398,7 +398,8 @@ describe("approvePosts", () => {
     await approvePosts("b1", ["late"], now);
     const data = prisma.post.updateMany.mock.calls[0][0].data;
     expect(data.status).toBe("SCHEDULED");
-    expect(data.scheduledAt.toISOString()).toBe("2026-10-07T16:00:00.000Z");
+    // The next free slot: 11:30 Kigali, 09:30 UTC.
+    expect(data.scheduledAt.toISOString()).toBe("2026-10-07T09:30:00.000Z");
   });
 
   it("never approves a contest before the owner confirmed its prize and rules", async () => {

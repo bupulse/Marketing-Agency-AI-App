@@ -10,7 +10,7 @@ describe("orderTimes", () => {
   it("tries the posting time nearest a preferred hour first", () => {
     expect(orderTimes(["09:00", "18:00"], [12, 19])).toEqual(["18:00", "09:00"]);
     expect(orderTimes(["09:00", "18:00"], [8, 12])).toEqual(["09:00", "18:00"]);
-    expect(orderTimes(["bad"], [])).toEqual(["09:00", "18:00"]);
+    expect(orderTimes(["bad"], [])).toEqual(["11:30", "12:00", "12:30", "13:00", "13:30"]);
   });
 });
 

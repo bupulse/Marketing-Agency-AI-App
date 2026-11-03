@@ -6,8 +6,9 @@ import { minutesOf } from "./timezone";
 
 export const MIN_POSTS_PER_WEEK = 2;
 export const MAX_POSTS_PER_WEEK = 14;
-export const MAX_POSTING_TIMES = 4;
-export const DEFAULT_POSTING_TIMES = ["09:00", "18:00"];
+export const MAX_POSTING_TIMES = 5;
+// Owner, 3 November 2026: posts do best around lunchtime, 11:30 AM to 1:30 PM local, so every half hour in that window.
+export const DEFAULT_POSTING_TIMES = ["11:30", "12:00", "12:30", "13:00", "13:30"];
 
 export interface AutopilotConfig {
   enabled: boolean;

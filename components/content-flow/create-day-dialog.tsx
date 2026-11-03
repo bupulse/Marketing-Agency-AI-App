@@ -150,8 +150,11 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
       setBrief("");
       setCaption("");
       setMedia([]);
-      router.push(path, { scroll: false });
-      router.refresh();
+      // Already on the page: refresh it. A push to the same address followed by a refresh raced, and the page could keep
+      // showing "Nothing for today yet" until a reload (found 3 November 2026). Elsewhere, the push loads fresh data
+      // (the action revalidated the Posts pages).
+      if (`${window.location.pathname}${window.location.search}` === path) router.refresh();
+      else router.push(path, { scroll: false });
     });
   }
 

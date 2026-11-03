@@ -20,7 +20,7 @@ describe("autopilot settings mapping", () => {
     const row = { enabled: true, autoPublish: false, postsPerWeek: 99, connectionIds: [], postingTimes: ["nonsense"], useAiImages: false, skipReligiousHolidays: false, videoQuality: "fancy" };
     const config = readConfig(row);
     expect(config.postsPerWeek).toBe(14);
-    expect(config.postingTimes).toEqual(["09:00", "18:00"]);
+    expect(config.postingTimes).toEqual(["11:30", "12:00", "12:30", "13:00", "13:30"]);
     expect(config.videoQuality).toBe("simple");
   });
 

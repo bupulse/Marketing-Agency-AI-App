@@ -441,6 +441,19 @@ company's local midnight (`notFromPastDaySql`): it waits for the carry-over inst
 
 ## Approval and auto-approval
 
+**Autopilot card** (owner, 3 November 2026; `components/content-board/autopilot-card.tsx`), first on Post settings: two
+switches that save at once. "Make new posts every day" is the daily posts switch (`dailyPostSettings.enabled`; shown
+off with a link to the plans when the plan has no daily posts). "Approve and post them on their own" turns approval
+off for every app (`withApprovalForAll`); "Some apps" differ when the per-app list below is mixed. The detailed cards
+below remount when these change, so a later save there never writes stale switches back. "See today's posts" opens the
+Posts page.
+
+**Best times** (owner, 3 November 2026): the default posting times are every half hour from 11:30 AM to 1:30 PM local
+(`DEFAULT_POSTING_TIMES`, `DEFAULT_SLOT_TIMES`, the `AutopilotSettings.postingTimes` default; migration
+`20261103090000_lunchtime_posting_times` moved businesses still on the old 09:00 and 18:00). Each app's preferred hour
+picks which of them comes first (LinkedIn and Instagram 12:00, Facebook 13:00, TikTok and YouTube 13:30). Up to 5
+posting times (`MAX_POSTING_TIMES`).
+
 **Settings** (`/dashboard/content/settings`): one switch, "Ask me to approve posts before they go out" (on by default:
 every app waits; off: every app is scheduled at its best time; "Some apps" when they differ, `approvalMode`), with each
 app underneath to fine-tune. Stored as

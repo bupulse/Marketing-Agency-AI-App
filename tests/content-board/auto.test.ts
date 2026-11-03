@@ -55,8 +55,8 @@ describe("autoSchedule", () => {
     expect(await autoSchedule("b1", ["a"], now)).toEqual({ scheduled: 1, waiting: 0 });
     const [call] = scheduledCalls();
     expect(call.where).toEqual({ id: "a", businessId: "b1", status: "PENDING_APPROVAL", updatedAt: read });
-    // Facebook defaults: 13:00 and 18:00 on Tuesday to Thursday and Saturday; the posting times are 09:00 and 18:00.
-    expect(call.data).toEqual({ status: "SCHEDULED", scheduledAt: new Date("2026-10-13T16:00:00Z"), autoScheduledAt: now, reviewNote: null });
+    // Facebook prefers 13:00 on Tuesday to Thursday and Saturday; the default posting times are 11:30 to 13:30, so 13:00 Kigali (11:00 UTC).
+    expect(call.data).toEqual({ status: "SCHEDULED", scheduledAt: new Date("2026-10-13T11:00:00Z"), autoScheduledAt: now, reviewNote: null });
   });
 
   it("never schedules a contest on its own, confirmed or not", async () => {
@@ -146,12 +146,12 @@ describe("autoSchedule", () => {
     prisma.post.findFirst.mockResolvedValueOnce({ id: "other" }).mockResolvedValue(null);
     let queued = 0;
     prisma.post.findMany.mockImplementation(async (args: { where: { status?: unknown } }) =>
-      args.where.status === "PENDING_APPROVAL" ? pending : queued++ === 0 ? [] : [{ connectionId: "c1", scheduledAt: new Date("2026-10-13T16:00:00Z") }],
+      args.where.status === "PENDING_APPROVAL" ? pending : queued++ === 0 ? [] : [{ connectionId: "c1", scheduledAt: new Date("2026-10-13T11:00:00Z") }],
     );
     expect((await autoSchedule("b1", ["a"], now)).scheduled).toBe(1);
     expect(prisma.$executeRaw).toHaveBeenCalled();
     const at = scheduledCalls()[0].data.scheduledAt as Date;
-    expect(Math.abs(at.getTime() - new Date("2026-10-13T16:00:00Z").getTime())).toBeGreaterThanOrEqual(150 * 60_000);
+    expect(Math.abs(at.getTime() - new Date("2026-10-13T11:00:00Z").getTime())).toBeGreaterThanOrEqual(150 * 60_000);
   });
 
   it("clears a note once the post can go", async () => {
@@ -177,8 +177,9 @@ describe("approvePosts (Approve and Approve all)", () => {
     );
     expect(await approvePosts("b1", ["ig", "li"], now)).toEqual({ approved: 2, skipped: 0 });
     const calls = prisma.post.updateMany.mock.calls.map((c) => c[0]);
-    // Instagram prefers Wednesday evening; LinkedIn mornings, Tuesday to Thursday: today's 18:00 is the only time left today.
-    expect(calls[0].data).toEqual({ status: "SCHEDULED", reviewNote: null, scheduledAt: new Date("2026-10-14T16:00:00Z") });
-    expect(calls[1].data).toEqual({ status: "SCHEDULED", reviewNote: null, scheduledAt: new Date("2026-10-13T16:00:00Z") });
+    // Instagram prefers noon and Wednesdays: 12:00 Kigali on Wednesday (10:00 UTC).
+    expect(calls[0].data).toEqual({ status: "SCHEDULED", reviewNote: null, scheduledAt: new Date("2026-10-14T10:00:00Z") });
+    // LinkedIn prefers noon, Tuesday to Thursday: today at 12:00 Kigali (10:00 UTC).
+    expect(calls[1].data).toEqual({ status: "SCHEDULED", reviewNote: null, scheduledAt: new Date("2026-10-13T10:00:00Z") });
   });
 });

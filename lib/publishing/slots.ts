@@ -1,7 +1,10 @@
 import { addDays, dayKey, parseDayKey, zonedTimeToUtc } from "./time";
 
-/** Local posting times used by "Add to queue" when the business has not set its own (AutopilotSettings.postingTimes). */
-export const DEFAULT_SLOT_TIMES = ["09:00", "18:00"];
+/**
+ * Local posting times used by "Add to queue" when the business has not set its own (AutopilotSettings.postingTimes):
+ * the owner's best times (3 November 2026), every half hour from 11:30 AM to 1:30 PM, as Autopilot's defaults.
+ */
+export const DEFAULT_SLOT_TIMES = ["11:30", "12:00", "12:30", "13:00", "13:30"];
 
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
