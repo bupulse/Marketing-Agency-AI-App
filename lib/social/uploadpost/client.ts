@@ -1,11 +1,12 @@
 import "server-only";
 import { logError } from "@/lib/errors";
 import { SocialError, type Network } from "../types";
+import { uploadPostLabel } from "./ways";
 
 // Upload-Post (upload-post.com): BuPulse's own account (UPLOAD_POST_API_KEY, Admin -> Services -> Upload-Post) connects
-// the clients' LinkedIn through Upload-Post's approved LinkedIn app, Pages included. Clients never need an Upload-Post
-// account: each business is one Upload-Post "profile" (./ways.ts profileUsername), and Upload-Post keeps the LinkedIn
-// tokens. BuPulse stores only the profile's name on the connection.
+// the clients' LinkedIn (Pages included) and TikTok through Upload-Post's approved apps. Clients never need an
+// Upload-Post account: each business is one Upload-Post "profile" (./ways.ts profileUsername) holding both networks,
+// and Upload-Post keeps their tokens. BuPulse stores only the profile's name on the connection.
 // https://docs.upload-post.com/api/user-profiles and https://docs.upload-post.com/guides/user-profile-integration
 
 export { isUploadPostResult, profileScope, profileUsername, scopeProfile, UPLOAD_POST_SCOPE, viaUploadPost } from "./ways";
@@ -55,7 +56,8 @@ async function tellOwner(network: Network, status: number, detail: string) {
  */
 export async function uploadPostApi<T>(network: Network, method: "GET" | "POST" | "DELETE", path: string, body?: Record<string, unknown> | FormData, options: CallOptions = {}): Promise<T> {
   const key = process.env.UPLOAD_POST_API_KEY?.trim();
-  if (!key) throw new UploadPostError("LinkedIn through Upload-Post is not set up yet", "temporary", network, 0);
+  const label = uploadPostLabel(network);
+  if (!key) throw new UploadPostError(`${label} through Upload-Post is not set up yet`, "temporary", network, 0);
   const form = body instanceof FormData;
   const stage = options.final ? ("final" as const) : ("before" as const);
   let response: Response;
@@ -68,7 +70,7 @@ export async function uploadPostApi<T>(network: Network, method: "GET" | "POST" 
       signal: AbortSignal.timeout(options.timeoutMs ?? TIMEOUT_MS),
     });
   } catch {
-    throw new UploadPostError("Could not reach Upload-Post, BuPulse's LinkedIn partner", "temporary", network, 0, undefined, undefined, stage);
+    throw new UploadPostError(`Could not reach Upload-Post, BuPulse's ${label} partner`, "temporary", network, 0, undefined, undefined, stage);
   }
   const json = (await response.json().catch(() => ({}))) as T & Answer;
   if (response.ok) return json;
@@ -83,17 +85,20 @@ export async function uploadPostApi<T>(network: Network, method: "GET" | "POST" 
   if (status === 429) {
     await tellOwner(network, status, detail || "limit reached");
     const used = json.usage?.limit ? ` (${json.usage.count ?? json.usage.limit} of ${json.usage.limit} this month)` : "";
-    throw new UploadPostError(`BuPulse reached its LinkedIn posting limit with Upload-Post${used}. BuPulse support has been told; the post will be tried again later.`, "rate_limit", network, status, code, Number(response.headers.get("retry-after")) || LIMIT_RETRY_SECONDS);
+    throw new UploadPostError(`BuPulse reached its ${label} posting limit with Upload-Post${used}. BuPulse support has been told; the post will be tried again later.`, "rate_limit", network, status, code, Number(response.headers.get("retry-after")) || LIMIT_RETRY_SECONDS);
   }
   if (status === 403) {
     await tellOwner(network, status, `${code ?? ""} ${detail}`.trim() || "plan restriction");
     throw new UploadPostError("BuPulse's Upload-Post plan does not allow this right now. BuPulse support has been told; the post will be tried again later.", "rate_limit", network, status, code, LIMIT_RETRY_SECONDS);
   }
-  if (status === 404) throw new UploadPostError("This LinkedIn connection is no longer there. Reconnect LinkedIn in Channels.", "auth", network, status, code);
-  // "None of the requested platforms are valid for profile ...: no Linkedin account configured": LinkedIn was removed.
-  if (status === 400 && /no \w+ account configured|not valid for profile|not associated with any profile/i.test(detail)) {
-    throw new UploadPostError("LinkedIn is no longer connected. Reconnect LinkedIn in Channels.", "auth", network, status, code);
+  if (status === 404) throw new UploadPostError(`This ${label} connection is no longer there. Reconnect ${label} in Channels.`, "auth", network, status, code);
+  // "None of the requested platforms are valid for profile ...: no Linkedin account configured": the network was
+  // removed. tiktok_reconnect_required: TikTok's sign-in expired (docs.upload-post.com/guides/post-to-tiktok-api).
+  if (status === 400 && (code === "tiktok_reconnect_required" || /no \w+ account configured|not valid for profile|not associated with any profile/i.test(detail))) {
+    throw new UploadPostError(`${label} is no longer connected. Reconnect ${label} in Channels.`, "auth", network, status, code);
   }
+  // TikTok's own daily cap on Upload-Post's app (passes within the day; not BuPulse's plan).
+  if (code === "reached_active_user_cap") throw new UploadPostError("TikTok is busy for today. The post will be tried again later.", "rate_limit", network, status, code, LIMIT_RETRY_SECONDS);
   if (status >= 500) throw new UploadPostError(`Upload-Post had a problem${detail ? `: ${detail.slice(0, 200)}` : ""}`, "temporary", network, status, code, undefined, stage);
   throw new UploadPostError(detail ? detail.slice(0, 300) : `Upload-Post answered ${status}`, "invalid", network, status, code);
 }
@@ -116,7 +121,7 @@ export async function ensureProfile(network: Network, username: string, displayN
   }
 }
 
-/** The profile and its connected accounts (`social_accounts.linkedin` once LinkedIn is connected), or null when it does not exist. */
+/** The profile and its connected accounts (`social_accounts.linkedin` / `.tiktok` once connected), or null when it does not exist. */
 export async function getProfile(network: Network, username: string): Promise<UploadPostProfile | null> {
   try {
     const r = await uploadPostApi<{ profile?: UploadPostProfile }>(network, "GET", `/uploadposts/users/${encodeURIComponent(username)}`);
@@ -126,6 +131,11 @@ export async function getProfile(network: Network, username: string): Promise<Up
     throw error;
   }
 }
+
+const CONNECT_TEXT = {
+  linkedin: { connect_title: "Connect LinkedIn to BuPulse", connect_description: "Press LinkedIn and sign in. Then press Back to BuPulse to choose where BuPulse posts: your company Page or your profile." },
+  tiktok: { connect_title: "Connect TikTok to BuPulse", connect_description: "Press TikTok and sign in to your TikTok account. Then press Back to BuPulse." },
+};
 
 /**
  * Upload-Post's hosted connect page for this profile, showing only `network`, which sends the person back to
@@ -137,8 +147,7 @@ export async function connectLink(network: Network, username: string, redirectUr
     redirect_url: redirectUrl,
     platforms: [network],
     show_calendar: false,
-    connect_title: "Connect LinkedIn to BuPulse",
-    connect_description: "Press LinkedIn and sign in. Then press Back to BuPulse to choose where BuPulse posts: your company Page or your profile.",
+    ...CONNECT_TEXT[network === "tiktok" ? "tiktok" : "linkedin"],
     redirect_button_text: "Back to BuPulse",
   });
   if (!r.access_url || !/^https:\/\//.test(r.access_url)) throw new UploadPostError("Upload-Post did not return a sign-in link", "temporary", network, 200);
@@ -157,6 +166,12 @@ export async function linkedinPages(username: string): Promise<UploadPostPage[]>
     throw error;
   }
 }
+
+/** What the profile's TikTok account allows (GET /uploadposts/tiktok/settings: docs.upload-post.com/api/get-tiktok-settings). */
+export type TikTokSettings = { privacy_level_options?: unknown; max_video_post_duration_sec?: unknown };
+
+/** The profile's TikTok publishing settings, cached a few minutes on Upload-Post's side. */
+export const tiktokSettings = (username: string) => uploadPostApi<TikTokSettings>("tiktok", "GET", `/uploadposts/tiktok/settings?profile=${encodeURIComponent(username)}`, undefined, { timeoutMs: 10_000 });
 
 /** Unlinks one network from the profile (best effort): Upload-Post then forgets its tokens. */
 export async function disconnectNetwork(network: Network, username: string): Promise<void> {

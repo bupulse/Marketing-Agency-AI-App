@@ -7,7 +7,8 @@ import { youtubeProvider } from "./providers/youtube";
 import { COMPOSIO_NETWORKS } from "./composio/client";
 import { composioNetwork } from "./composio/networks";
 import { publishLinkedIn } from "./uploadpost/linkedin";
-import { NETWORKS, type ConnectionCredentials, type Network, type SocialProvider } from "./types";
+import { publishTikTok } from "./uploadpost/tiktok";
+import { NETWORKS, SocialError, type ConnectionCredentials, type Network, type SocialProvider } from "./types";
 
 const DIRECT: Record<Network, SocialProvider> = {
   instagram: instagramProvider,
@@ -21,6 +22,10 @@ const DIRECT: Record<Network, SocialProvider> = {
 
 const isComposio = (c: ConnectionCredentials) => c.method === "COMPOSIO";
 const isUploadPost = (c: ConnectionCredentials) => !!c.uploadPostProfile;
+/** Upload-Post's posting for each network it connects (lib/social/uploadpost). */
+const UPLOAD_POST_PUBLISH: Partial<Record<Network, SocialProvider["publish"]>> = { linkedin: publishLinkedIn, tiktok: publishTikTok };
+const uploadPostPublish = (network: Network): SocialProvider["publish"] =>
+  UPLOAD_POST_PUBLISH[network] ?? (async () => { throw new SocialError(`${network} cannot post through Upload-Post`, "invalid", network); });
 const hasComposioMetrics = (network: Network) => viaComposioPossible(network) && !!composioNetwork(network).metrics;
 
 /**
@@ -33,8 +38,8 @@ const viaComposioPossible = (network: Network) => COMPOSIO_NETWORKS.includes(net
 function withComposio(direct: SocialProvider): SocialProvider {
   return {
     ...direct,
-    // Upload-Post accounts (LinkedIn through Upload-Post: lib/social/uploadpost) post through Upload-Post.
-    publish: (c, post) => (isUploadPost(c) ? publishLinkedIn(c, post) : isComposio(c) ? composioNetwork(direct.network).publish(c, post) : direct.publish(c, post)),
+    // Upload-Post accounts (LinkedIn and TikTok through Upload-Post: lib/social/uploadpost) post through Upload-Post.
+    publish: (c, post) => (isUploadPost(c) ? uploadPostPublish(direct.network)(c, post) : isComposio(c) ? composioNetwork(direct.network).publish(c, post) : direct.publish(c, post)),
     // Only where one of the ways can read numbers; an account whose way cannot gives an empty snapshot (not saved).
     // Upload-Post accounts have no numbers yet.
     metrics: direct.metrics || hasComposioMetrics(direct.network)

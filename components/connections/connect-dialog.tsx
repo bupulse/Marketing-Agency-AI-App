@@ -7,8 +7,11 @@ import { connectHref, primaryVariant, showFacebookLink, type ChannelInfo } from 
 
 // BuPulse-Socials: the sign-in page is Composio's, so say who that is before the person sees its name.
 const COMPOSIO_NOTE = "You sign in on a secure page from Composio, the partner BuPulse uses to connect social accounts. We never see your password.";
-// Upload-Post: its page shows a LinkedIn button, then a "Back to BuPulse" button once LinkedIn is connected.
-const UPLOAD_POST_NOTE = "A secure page from Upload-Post, the partner BuPulse uses to connect LinkedIn, opens. Press LinkedIn and sign in, then press Back to BuPulse to choose your company Page or your profile. We never see your password.";
+// Upload-Post: its page shows the network's button, then a "Back to BuPulse" button once it is connected.
+const UPLOAD_POST_NOTE: Partial<Record<ChannelInfo["network"], string>> = {
+  linkedin: "A secure page from Upload-Post, the partner BuPulse uses to connect LinkedIn, opens. Press LinkedIn and sign in, then press Back to BuPulse to choose your company Page or your profile. We never see your password.",
+  tiktok: "A secure page from Upload-Post, the partner BuPulse uses to connect TikTok, opens. Press TikTok and sign in, then press Back to BuPulse. We never see your password.",
+};
 
 // BuPulse-Socials reads likes and comments only; a direct connection also reads reach and saves (lib/publishing/results.ts).
 const professional = (viaComposio: boolean) => ["Posts automatically at the time you choose", "Photos and carousels of up to 10 images", viaComposio ? "Likes and comments in your reports" : "Reach, likes and saves in your reports", "For Business and Creator accounts"];
@@ -72,8 +75,8 @@ export function ConnectDialog({ channel, onClose }: { channel: ChannelInfo; onCl
         <div className="flex flex-col items-center gap-5 py-2 text-center">
           <NetworkIcon network={channel.network} className="size-14" />
           <p className="max-w-sm text-[15px] text-muted">
-            {channel.viaUploadPost
-              ? UPLOAD_POST_NOTE
+            {channel.viaUploadPost && UPLOAD_POST_NOTE[channel.network]
+              ? UPLOAD_POST_NOTE[channel.network]
               : channel.viaComposio
                 ? `You will sign in to ${channel.label} and choose what BuPulse may post to. ${COMPOSIO_NOTE}`
                 : `You will sign in on ${channel.label} and choose what BuPulse may post to. We never see your password.`}

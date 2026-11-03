@@ -10,15 +10,17 @@ import { openState, sameString, sealPending, STATE_COOKIE } from "@/lib/social/o
 import { isNetwork } from "@/lib/social/registry";
 import { profileScope, profileUsername, UPLOAD_POST_SCOPE, UPLOAD_POST_NETWORKS } from "@/lib/social/uploadpost/ways";
 import { linkedinAccounts } from "@/lib/social/uploadpost/linkedin";
+import { tiktokAccounts } from "@/lib/social/uploadpost/tiktok";
 import type { OAuthResult } from "@/lib/social/types";
 import { NETWORK_SERVICE } from "@/lib/admin/service-catalog";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { hasFeature } from "@/lib/entitlements";
 
 /**
- * Upload-Post's connect page sends the person back here ("Back to BuPulse") after they connected LinkedIn there. The
- * sealed cookie names the business's Upload-Post profile; it must be this business's. Then the profile's LinkedIn
- * member and the Pages they administer are listed and offered in "Where should BuPulse post?", Pages first.
+ * Upload-Post's connect page sends the person back here ("Back to BuPulse") after they connected LinkedIn or TikTok
+ * there. The sealed cookie names the business's Upload-Post profile; it must be this business's. Then the profile's
+ * LinkedIn member and the Pages they administer are listed and offered in "Where should BuPulse post?", Pages first;
+ * the profile's one TikTok account is saved straight away.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ network: string }> }) {
   const { network } = await params;
@@ -43,7 +45,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return done(next, { error: "failed" });
   if (username !== profileUsername(business.id)) return done(next, { error: "state" });
-  // Anything but a saved connection leaves no LinkedIn sign-in at Upload-Post that no connection uses.
+  // Anything but a saved connection leaves no LinkedIn or TikTok sign-in at Upload-Post that no connection uses.
   const drop = async (outcome: Parameters<typeof done>[1]) => {
     await forgetUnusedUploadPost(network, username).catch(() => {});
     return done(next, outcome);
@@ -53,8 +55,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   if (!(await isServiceEnabled("uploadpost")) || !(await hasFeature(user, "calendar"))) return drop({ error: "unavailable" });
 
   try {
-    const accounts = await linkedinAccounts(username);
-    // Back without connecting LinkedIn on Upload-Post's page.
+    const accounts = network === "tiktok" ? await tiktokAccounts(username) : await linkedinAccounts(username);
+    // Back without connecting the network on Upload-Post's page.
     if (!accounts) return done(next, { error: "denied" });
     const result: OAuthResult = { accessToken: username, scopes: [UPLOAD_POST_SCOPE, profileScope(username)], accounts };
     if (!askWhereToPost(network, accounts)) {

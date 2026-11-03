@@ -35,8 +35,9 @@ const NOTES: Record<string, string> = {
   twitter: "Posts, photos and videos",
 };
 
-/** The extra line in the Connect window for networks that work a little differently through BuPulse-Socials. */
-function detailFor(network: Network, composio: boolean): string | undefined {
+/** The extra line in the Connect window for networks that work a little differently through BuPulse-Socials or Upload-Post. */
+function detailFor(network: Network, composio: boolean, uploadPost: boolean): string | undefined {
+  if (uploadPost && network === "tiktok") return "BuPulse posts your videos and photo posts at the time you choose, for everyone to see (a private TikTok account keeps its own setting).";
   if (!composio) return undefined;
   if (network === "tiktok") return tiktokDirectPost() ? "BuPulse posts your videos at the time you choose. Photo posts come to you as reminders." : "At the time you choose, BuPulse sends your video to your TikTok inbox. Open TikTok, tap the notification, add the caption and post. Photo posts come to you as reminders.";
   if (network === "twitter") return "BuPulse posts text with up to 4 photos, or one MP4 video. Views and likes come in your reports about once a week.";
@@ -56,7 +57,8 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
   // networks fall back to their own apps (or "Coming soon" when those are not set up). TikTok and X go through it once
   // BuPulse's own TikTok and X apps are added in Composio. A network switched off in Admin -> Services (X is off until
   // the owner switches it on: it costs per post) shows "Coming soon" too.
-  // LinkedIn goes through Upload-Post instead once its key is set (lib/social/uploadpost), unless it is switched off.
+  // LinkedIn and TikTok go through Upload-Post instead once its key is set (lib/social/uploadpost; TikTok also needs
+  // UPLOAD_POST_TIKTOK), unless it is switched off.
   const [composioOn, uploadPostOn, offNetworks] = await Promise.all([isServiceEnabled("composio"), isServiceEnabled("uploadpost"), disabledNetworks()]);
   const channels: ChannelInfo[] = allProviders().map((p) => {
     const off = offNetworks.includes(p.network);
@@ -70,7 +72,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
       viaFacebook: p.network === "instagram" && !composio && !off ? isInstagramViaFacebookConfigured() : undefined,
       viaComposio: composio || undefined,
       viaUploadPost: uploadPost || undefined,
-      detail: detailFor(p.network, composio),
+      detail: detailFor(p.network, composio, uploadPost),
     };
   });
   // Instagram and Facebook accounts carry the "Answer comments and messages" switch (lib/social/inbox/accounts.ts).

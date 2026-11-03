@@ -273,7 +273,7 @@ Sources: https://learn.microsoft.com/en-us/linkedin/marketing/community-manageme
 - Changing app functionality after review can trigger a re-review.
 - Because this needs a legal entity, **BuPulse must have its legal entity details ready** (name, registered address, website, privacy policy).
 
-### 3c. LinkedIn through Upload-Post (company Pages without BuPulse's own app)
+### 3c. LinkedIn and TikTok through Upload-Post (company Pages, public TikTok posts, without BuPulse's own apps)
 
 BuPulse-Socials (Composio) never returned the client's Pages, and BuPulse's own app needs a registered company for the
 Community Management API. Upload-Post's LinkedIn app is already approved for company Pages, so once
@@ -301,6 +301,42 @@ Community Management API. Upload-Post's LinkedIn app is already approved for com
   message. Both are logged in Admin -> Errors (source `social.uploadpost`). Using the same key on the test site counts
   against the same 2 profiles.
 - Not yet: post numbers (Upload-Post has an analytics API; these posts show no results), and comments.
+
+**TikTok** (lib/social/uploadpost/tiktok.ts; Upload-Post's docs read 3 November 2026, no live TikTok answer seen yet):
+
+- Plan: TikTok is on Upload-Post's **paid plans only** (Basic and up; the free plan answers 403 "paid plans only"). So
+  TikTok goes through Upload-Post only when `UPLOAD_POST_TIKTOK=true` is saved on the Upload-Post card as well as the
+  key. Without it TikTok keeps its other ways (BuPulse-Socials or BuPulse's own TikTok app, "Coming soon" while neither
+  is set up). A 403 on a post is logged in Admin -> Errors and the post waits 6 hours, like LinkedIn's limits.
+- Connect: the same business profile as LinkedIn (one profile holds both), a TikTok-only connect page
+  (`platforms: ["tiktok"]`), back to `/api/social/tiktok/uploadpost`. The profile's `social_accounts.tiktok` gives the
+  account: `username` (TikTok's open_id for Upload-Post's app) as the account id, `@handle` (or `display_name`) as its
+  name, `social_images` as its picture. It is saved at once (one account, no picker). Disconnect unlinks TikTok from the
+  profile (`DELETE /api/uploadposts/users/social`, `social_platform: "tiktok"`) once no connection uses it.
+- Posting: a video goes to `POST /api/upload` (`video` = the signed link, `title` = the caption, up to 2,200
+  characters; `description` is not used for TikTok), photos to `/api/upload_photos` (`photos[]`, up to 35, `title` =
+  the first line cut to 90 characters, `tiktok_description` = the text up to 4,000, `auto_add_music=true`,
+  `photo_cover_index=0`). Both `async_upload=true`, BuPulse's `request_id`, `disable_inbox_fallback=true` (TikTok's
+  daily cap then answers `reached_active_user_cap` and the post retries, instead of a draft in the TikTok inbox that
+  BuPulse would count as posted). The link is not added (TikTok captions have no clickable links).
+- Public by default: before each post BuPulse reads `GET /api/uploadposts/tiktok/settings?profile=<profile>` and sends
+  `privacy_level=PUBLIC_TO_EVERYONE` when `privacy_level_options` has it. A private account (no public option) gets its
+  own default on a video (no `privacy_level`, which the docs say works on every account) and its widest level on photos
+  (photo posts need one). If the settings cannot be read, public is sent; a private account then fails with
+  `tiktok_privacy_unavailable` (nothing posted) and the client is told to make the account public.
+- Results: TikTok publishes on its own; the post's link can take about 3 minutes, so most posts are saved as published
+  under `uploadpost:<request id>`. A lasting id is kept only with a real `post_url` (until then `platform_post_id` is
+  TikTok's temporary publish id).
+- Errors: `tiktok_reconnect_required`, expired or revoked sign-ins and a removed account ask for a reconnect;
+  `reached_active_user_cap`, `spam_risk` and other limits retry later; `tiktok_publish_failed` retries;
+  `tiktok_media_rejected` and other refusals fail the post with TikTok's words.
+- Rules: with TikTok through Upload-Post its rules allow photo posts (`formats` has POST, so daily posts can plan TikTok
+  photo posts) and real video posts (`videoPosts`). Limits: 15 TikTok posts a day per account, 6 a minute.
+- Unconfirmed: whether Upload-Post converts PNG pictures (its TikTok list is JPG, JPEG and WebP); whether a live
+  profile's TikTok entry has `handle`; what Connect does on the free plan. Not sent: `is_aigc` (AI label; BuPulse's
+  posts do not yet say which media is AI made) and `brand_organic_toggle` (TikTok's "promotional content" label: the
+  owner's call). The composer still turns a TikTok post with photos into a reminder (lib/publishing/validate.ts
+  `formatFor`), daily posts do not.
 
 ---
 

@@ -11,7 +11,7 @@ export type ChannelInfo = {
   viaFacebook?: boolean;
   /** New connections go through BuPulse-Socials (BuPulse's Composio account) instead of BuPulse's own app. */
   viaComposio?: boolean;
-  /** New connections go through Upload-Post (LinkedIn, with company Pages): lib/social/uploadpost. */
+  /** New connections go through Upload-Post (LinkedIn with company Pages, TikTok): lib/social/uploadpost. */
   viaUploadPost?: boolean;
   /** One more line for the Connect window: what BuPulse does there (TikTok's inbox, X's photos and video). */
   detail?: string;

@@ -1,6 +1,7 @@
 import "server-only";
 import { SocialError, type AccountChoice, type ConnectionCredentials, type PublishRequest, type PublishResult } from "../types";
-import { getProfile, linkedinPages, startUpload, uploadStatus, type UploadPostPage } from "./client";
+import { getProfile, linkedinPages, type UploadPostPage } from "./client";
+import { asObject, https, runUpload, statusEntry, str, syncEntry, type Entry, type Json } from "./upload";
 import { pageTarget } from "./ways";
 
 // LinkedIn through Upload-Post: the accounts a sign-in may post to (the member's profile and the company Pages they
@@ -10,11 +11,6 @@ import { pageTarget } from "./ways";
 // /api/upload-status
 
 const E = "linkedin" as const;
-type Json = Record<string, unknown>;
-
-const asObject = (v: unknown): Json => (v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {});
-const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
-const https = (v: unknown) => (typeof v === "string" && /^https:\/\//.test(v) ? v : undefined);
 const ORG_URN = /^urn:li:organization:(\d+)$/;
 
 /**
@@ -50,8 +46,7 @@ export async function linkedinAccounts(username: string): Promise<AccountChoice[
 
 // ---- Publishing ----
 
-/** How long a publish waits for Upload-Post to finish before taking "accepted" for an answer (tests set 0). */
-export const timing = { pollMs: 4_000, polls: 3 };
+export { timing } from "./upload";
 
 /** LinkedIn caps a video's title at 400 UTF-16 units (line breaks count twice): a short first line, the text goes in the description. */
 export function shortTitle(text: string, max = 200): string {
@@ -66,7 +61,7 @@ export function shortTitle(text: string, max = 200): string {
 
 type Outcome = { state: "done"; externalId?: string; permalink?: string } | { state: "failed"; message: string } | { state: "pending" };
 
-const AUTH = [/expired/i, /reconnect/i, /re-?auth/i, /revoked/i, /no \w+ account configured/i, /unauthori[sz]ed/i, /invalid.?token/i, /not connected/i];
+const AUTH = [/expired/i, /reconnect/i, /re-?auth/i, /revoked/i, /no \w+ account configured/i, /platform_not_configured/i, /unauthori[sz]ed/i, /invalid.?token/i, /not connected/i];
 const LIMIT = [/limit/i, /too many/i, /\b429\b/, /quota/i];
 
 /** A LinkedIn failure Upload-Post reported: nothing was posted, so it is never "final". */
@@ -83,34 +78,18 @@ function done(entry: Json): Outcome {
   return { state: "done", externalId, permalink };
 }
 
+const outcomeOf = (e: Entry): Outcome => (e.state === "done" ? done(e.entry) : e.state === "failed" ? { state: "failed", message: e.message } : e);
+
 /** The LinkedIn result of an upload that finished at once ({ results: { linkedin: {...} } }). */
-export function syncOutcome(answer: unknown): Outcome {
-  const entry = asObject(asObject(asObject(answer).results).linkedin);
-  if (entry.success === true) return done(entry);
-  if (entry.success === false) return { state: "failed", message: str(entry.error) ?? str(entry.message) ?? "" };
-  return { state: "pending" };
-}
+export const syncOutcome = (answer: unknown): Outcome => outcomeOf(syncEntry(answer, E));
 
 /** The LinkedIn result of an asynchronous upload from its status: done, failed, or still on its way. */
-export function statusOutcome(answer: unknown): Outcome {
-  const a = asObject(answer);
-  const results = Array.isArray(a.results) ? a.results.map(asObject) : [];
-  const entry = results.find((r) => r.platform === "linkedin");
-  const top = str(a.status);
-  const status = str(entry?.status);
-  const waiting = status === "queued" || status === "processing" || status === "retryable";
-  if (entry && (status === "failed" || (entry.success === false && !waiting))) return { state: "failed", message: str(entry.error) ?? str(entry.message) ?? "" };
-  if (top === "failed") return { state: "failed", message: str(a.message) ?? "" };
-  if (entry && (status === "completed" || (top === "completed" && !waiting))) return done(entry);
-  return { state: "pending" };
-}
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+export const statusOutcome = (answer: unknown): Outcome => outcomeOf(statusEntry(answer, E));
 
 /**
  * Posts on LinkedIn through Upload-Post: text (with a link preview), photos, or one video, on the member's profile or
- * the picked Page. Asynchronous (Upload-Post fetches the media from its signed link in the background), then a few
- * status checks: a post still on its way after them counts as sent, as Upload-Post keeps going (and retries) on its own.
+ * the picked Page. Asynchronous, then a few status checks (./upload.ts runUpload): a post still on its way after them
+ * counts as sent, as Upload-Post keeps going (and retries) on its own.
  */
 export async function publishLinkedIn(c: ConnectionCredentials, post: PublishRequest): Promise<PublishResult> {
   const user = c.uploadPostProfile;
@@ -152,15 +131,8 @@ export async function publishLinkedIn(c: ConnectionCredentials, post: PublishReq
     if (text.trim()) form.append("description", text);
   }
 
-  const answer = await startUpload<{ request_id?: string; results?: unknown }>(E, path, form);
-  let outcome = syncOutcome(answer);
-  const requestId = str(answer.request_id) ?? ownRequestId;
-  for (let i = 0; outcome.state === "pending" && i < timing.polls; i += 1) {
-    await sleep(timing.pollMs);
-    // A status check that fails says nothing about the post: keep the last answer.
-    const status = await uploadStatus(E, requestId).catch(() => null);
-    if (status) outcome = statusOutcome(status);
-  }
+  const { outcome: entry, requestId } = await runUpload(E, path, form, ownRequestId);
+  const outcome = outcomeOf(entry);
   if (outcome.state === "failed") throw failure(outcome.message);
   if (outcome.state === "done" && outcome.externalId) return { externalId: outcome.externalId, ...(outcome.permalink ? { permalink: outcome.permalink } : {}) };
   // Accepted, not finished yet (or finished without an id): Upload-Post's request id stands for the post.

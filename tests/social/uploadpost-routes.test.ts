@@ -116,8 +116,62 @@ describe("coming back from Upload-Post", () => {
     expect(mocks.forgetUnusedUploadPost).toHaveBeenCalledWith("linkedin", "bupulse_biz1");
   });
 
-  it("is only for LinkedIn", async () => {
+  it("is only for the networks Upload-Post connects", async () => {
     const response = await uploadPostCallback(new Request(`${SITE}/api/social/facebook/uploadpost?state=s`), params("facebook"));
     expect(response.status).toBe(404);
+  });
+});
+
+describe("TikTok through Upload-Post", () => {
+  beforeEach(() => {
+    process.env.UPLOAD_POST_TIKTOK = "true";
+  });
+  afterEach(() => {
+    delete process.env.UPLOAD_POST_TIKTOK;
+  });
+
+  async function back(query: string) {
+    const sealed = await sealState({ state: "s", verifier: "", userId: USER, network: "tiktok", next: "/dashboard/connections", uploadPostProfile: "bupulse_biz1" });
+    return uploadPostCallback(new Request(`${SITE}/api/social/tiktok/uploadpost${query}`, { headers: { cookie: `${STATE_COOKIE}=${encodeURIComponent(sealed)}` } }), params("tiktok"));
+  }
+
+  it("uses the business's same profile and a TikTok-only connect page", async () => {
+    const fetch = mockFetch(jsonResponse({ success: false, message: "exists" }, { status: 409 }), jsonResponse({ success: true, access_url: "https://app.upload-post.com/connect?token=jwt" }));
+    const response = await connect(new Request(`${SITE}/api/social/tiktok/connect?next=/dashboard/connections`), params("tiktok"));
+    expect(location(response).href).toBe("https://app.upload-post.com/connect?token=jwt");
+    expect(JSON.parse(callAt(fetch, 0).body!).username).toBe("bupulse_biz1");
+    const jwt = JSON.parse(callAt(fetch, 1).body!);
+    expect(jwt.platforms).toEqual(["tiktok"]);
+    expect(new URL(jwt.redirect_url).pathname).toBe("/api/social/tiktok/uploadpost");
+    const opened = await openState(cookieValue(response, STATE_COOKIE), USER, "tiktok");
+    expect(opened.ok && opened.data.uploadPostProfile).toBe("bupulse_biz1");
+  });
+
+  it("does not go through Upload-Post without UPLOAD_POST_TIKTOK (BuPulse's plan has no TikTok)", async () => {
+    delete process.env.UPLOAD_POST_TIKTOK;
+    const fetch = vi.fn<(url: string) => Promise<Response>>(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetch);
+    const response = await connect(new Request(`${SITE}/api/social/tiktok/connect`), params("tiktok"));
+    expect(fetch.mock.calls.some(([url]) => String(url).includes("upload-post.com"))).toBe(false);
+    expect(location(response).hostname).not.toBe("app.upload-post.com");
+  });
+
+  it("saves the one TikTok account straight away, marked as Upload-Post's", async () => {
+    mockFetch(jsonResponse({ success: true, profile: { username: "bupulse_biz1", social_accounts: { tiktok: { username: "open_1", handle: "inzozi.bakery", social_images: "https://p16.tiktokcdn.com/a.jpg" } } } }));
+    const response = await back("?state=s");
+    expect(location(response).searchParams.get("connected")).toBe("tiktok");
+    expect(mocks.saveConnections).toHaveBeenCalledWith(
+      "biz1",
+      "tiktok",
+      expect.objectContaining({ accessToken: "bupulse_biz1", scopes: ["uploadpost", "uploadpost_profile:bupulse_biz1"], accounts: [expect.objectContaining({ externalAccountId: "open_1", displayName: "@inzozi.bakery" })] }),
+      ["open_1"],
+      "AUTO",
+    );
+  });
+
+  it("treats coming back without connecting TikTok as cancelled", async () => {
+    mockFetch(jsonResponse({ success: true, profile: { username: "bupulse_biz1", social_accounts: { linkedin: { username: "abc" } } } }));
+    expect(location(await back("?state=s")).searchParams.get("error")).toBe("denied");
+    expect(mocks.saveConnections).not.toHaveBeenCalled();
   });
 });

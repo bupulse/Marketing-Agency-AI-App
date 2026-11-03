@@ -1,5 +1,6 @@
 import { errorFrom, socialFetch, classify, describeError, type ErrorHints } from "./http";
 import { tiktokVideoPosts } from "../composio/ways";
+import { tiktokViaUploadPost } from "../uploadpost/ways";
 import {
   SocialError,
   type AccountChoice,
@@ -18,18 +19,20 @@ import {
 // Photo carousels (Content Posting API, PHOTO media type) are implemented, but TikTok pulls the images from
 // our URLs and only accepts a domain or URL prefix we verified in the TikTok portal. Signed Supabase storage
 // URLs cannot be verified, so "POST" is advertised only when TIKTOK_PHOTO_POSTING=true, set after the images
-// are served from a verified bupulse.com path.
+// are served from a verified bupulse.com path, or when TikTok goes through Upload-Post (lib/social/uploadpost/tiktok.ts:
+// Upload-Post fetches the pictures and posts them with its own app).
 const BASE_RULES = { network: "tiktok", label: "TikTok", maxText: 2200, requiresMedia: true, maxImages: 35, videoOnly: true } as const;
 
 export const tiktokRules: NetworkRules = {
   ...BASE_RULES,
   get formats() {
-    return process.env.TIKTOK_PHOTO_POSTING === "true" ? (["POST", "SCRIPT"] as const) : (["SCRIPT"] as const);
+    return process.env.TIKTOK_PHOTO_POSTING === "true" || tiktokViaUploadPost() ? (["POST", "SCRIPT"] as const) : (["SCRIPT"] as const);
   },
-  // Videos go out through BuPulse-Socials once BuPulse's TikTok app is set up there (lib/social/composio/networks.ts);
-  // until then a TikTok video post is the reminder with the video attached. `formats` stays about photo posts.
+  // Videos go out through Upload-Post (lib/social/uploadpost/tiktok.ts) or BuPulse-Socials once BuPulse's TikTok app
+  // is set up there (lib/social/composio/networks.ts); until then a TikTok video post is the reminder with the video
+  // attached. `formats` stays about photo posts.
   get videoPosts() {
-    return tiktokVideoPosts();
+    return tiktokViaUploadPost() || tiktokVideoPosts();
   },
 };
 

@@ -311,11 +311,12 @@ export const SERVICES: ServiceInfo[] = [
   {
     id: "uploadpost",
     name: "Upload-Post",
-    purpose: "Connects clients' LinkedIn through Upload-Post's approved LinkedIn app, so they can post as their company Page (BuPulse-Socials never got Pages back). Each business becomes one Upload-Post profile (no Upload-Post account for the client): they sign in to LinkedIn on Upload-Post's page, come back to BuPulse and choose their Page or their profile. The API key is made in the Upload-Post dashboard (app.upload-post.com, API keys). The free plan holds 2 profiles (2 businesses) and 10 uploads a month: past that, Connect and posts say so and wait.",
+    purpose: "Connects clients' LinkedIn and TikTok through Upload-Post's approved apps: LinkedIn with company Pages (BuPulse-Socials never got Pages back), and TikTok with public posts (videos and photo posts) without BuPulse's own TikTok app. Each business becomes one Upload-Post profile holding both (no Upload-Post account for the client): they sign in on Upload-Post's page and come back to BuPulse (LinkedIn then asks for their Page or their profile). The API key is made in the Upload-Post dashboard (app.upload-post.com, API keys). The free plan holds 2 profiles (2 businesses) and 10 uploads a month, and no TikTok: TikTok needs a paid plan (Basic and up), so it stays off until UPLOAD_POST_TIKTOK=true is saved here. Past the plan's limits, Connect and posts say so and wait.",
     env: ["UPLOAD_POST_API_KEY"],
-    features: ["Connecting LinkedIn (profile and company Pages) through Upload-Post", "Posting text, photos and videos to LinkedIn for accounts connected that way"],
+    optionalEnv: ["UPLOAD_POST_TIKTOK"],
+    features: ["Connecting LinkedIn (profile and company Pages) and TikTok through Upload-Post", "Posting text, photos and videos to LinkedIn, and videos and photo posts to TikTok, for accounts connected that way"],
     killable: true,
-    whenOff: "LinkedIn Connect goes back to BuPulse-Socials (Composio), or \"Coming soon\" when that is off too. LinkedIn accounts already connected through Upload-Post keep posting through it.",
+    whenOff: "LinkedIn Connect goes back to BuPulse-Socials (Composio), and TikTok to its own ways, or \"Coming soon\" when those are off too. Accounts already connected through Upload-Post keep posting through it.",
   },
   {
     id: "premium3d",

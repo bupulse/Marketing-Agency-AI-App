@@ -54,9 +54,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
     throw error;
   }
 
-  // Upload-Post: LinkedIn (profile and company Pages) through Upload-Post's approved app once its key is set
-  // (lib/social/uploadpost). The business gets its Upload-Post profile, the person connects LinkedIn on Upload-Post's
-  // page and comes back to /api/social/<network>/uploadpost, which checks this sealed cookie like the other callbacks.
+  // Upload-Post: LinkedIn (profile and company Pages) and TikTok through Upload-Post's approved apps once its key is set
+  // (lib/social/uploadpost; TikTok also needs UPLOAD_POST_TIKTOK). The business gets its one Upload-Post profile, the
+  // person connects the network on Upload-Post's page and comes back to /api/social/<network>/uploadpost, which checks
+  // this sealed cookie like the other callbacks.
   // Upload-Post switched off in Admin -> Services: the BuPulse-Socials path below, as before.
   if (viaUploadPost(network) && (await isServiceEnabled("uploadpost"))) {
     try {
