@@ -1,7 +1,7 @@
 // Claude for the image engine's Prompter through the owner's Claude SUBSCRIPTION (the Claude Code CLI, `claude -p`)
 // while BuPulse has no Anthropic API key. Owner decision, 23 October 2026: TEST SITE ONLY. A subscription is for the
 // owner's own use, so this runs only when IMAGE_ENGINE_CLAUDE_SUBSCRIPTION=1 is set on the Mac that serves
-// test.bupulse.com, and never on Netlify or Cloudflare (bupulse.com). With ANTHROPIC_API_KEY set, planner.ts uses the
+// test.bupulse.com, and never on Netlify, Cloudflare or Cloud Run (bupulse.com). With ANTHROPIC_API_KEY set, planner.ts uses the
 // API instead. The CLI runs with no tools at all, in a fresh temporary folder, and answers one JSON object.
 import "server-only";
 import { currentPlatform } from "@/lib/platform/detect";
@@ -11,7 +11,7 @@ export const SUBSCRIPTION_MODEL = "claude-sonnet-5-5";
 
 /** True only on the owner's own server with the switch on. */
 export function subscriptionAllowed(env: Record<string, string | undefined> = process.env, platform: string = currentPlatform()): boolean {
-  return env.IMAGE_ENGINE_CLAUDE_SUBSCRIPTION === "1" && platform !== "netlify" && platform !== "cloudflare";
+  return env.IMAGE_ENGINE_CLAUDE_SUBSCRIPTION === "1" && platform !== "netlify" && platform !== "cloudflare" && platform !== "cloudrun";
 }
 
 /** The CLI's environment: no API key (so it uses the subscription login) and no nested-session markers. */

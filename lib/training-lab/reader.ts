@@ -99,10 +99,10 @@ function actorDescription(e: ActorRow): string {
  */
 /**
  * Owner decision, 24 October 2026: Lab actors become presenters on the TEST SITE ONLY. Before any launch this stays off
- * (never on Netlify or Cloudflare, bupulse.com) until the actors' consent covers appearing for any business.
+ * (never on Netlify, Cloudflare or Cloud Run, bupulse.com) until the actors' consent covers appearing for any business.
  */
 export function labPresentersAllowed(platform: string = currentPlatform()): boolean {
-  return platform !== "netlify" && platform !== "cloudflare";
+  return platform !== "netlify" && platform !== "cloudflare" && platform !== "cloudrun";
 }
 
 export async function labPresenters(want: { sector?: string | null; audience?: string | null } = {}): Promise<LabPresenter[]> {

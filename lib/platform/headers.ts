@@ -1,3 +1,4 @@
+import { CLOUDFLARE_RANGES, GOOGLE_FRONT_END_RANGES, inRanges } from "./cidr";
 import { currentPlatform, type Platform } from "./detect";
 
 // The visitor's country and IP address from the headers the host sets. Each host only trusts its own headers:
@@ -5,6 +6,10 @@ import { currentPlatform, type Platform } from "./detect";
 // are ignored and on Cloudflare the x-nf-* ones are. Neither host ever falls back to headers a visitor can choose
 // (x-forwarded-for, x-country). "node" (next dev, next start, tests) reads the Cloudflare headers and, for local
 // runs, the first x-forwarded-for hop, as it always did.
+// Cloud Run sets no geo or client-address header of its own. Google's front end appends the address that connected to
+// it at the END of x-forwarded-for (whatever the caller put before it stays in front), so only the last hop is
+// Google's. When that address is one of Cloudflare's, the request came through Cloudflare's proxy, which overwrites
+// cf-connecting-ip and cf-ipcountry: those are trusted then, and only then (docs/DEPLOY_CLOUDRUN.md, "Domain").
 
 const COUNTRY = /^[A-Z]{2}$/;
 
@@ -44,23 +49,48 @@ export function countryFromNetlifyGeo(value: string | null | undefined): string 
  */
 export function visitorCountry(h: Headers, platform: Platform = currentPlatform()): string | null {
   if (platform === "netlify") return countryFromNetlifyGeo(h.get("x-nf-geo"));
+  if (platform === "cloudrun" && !viaCloudflare(h, platform)) return null;
   return cleanCountry(h.get("cf-ipcountry"));
 }
 
 const firstForwarded = (h: Headers) => h.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
 
 /**
+ * Cloud Run: the address that connected to Google's front end, the last x-forwarded-for hop (Google appends it after
+ * anything the caller sent). Hops in Google's own front-end ranges are skipped, should a Google load balancer sit in
+ * between. Null when there is none.
+ */
+export function cloudRunPeer(h: Headers): string | null {
+  const hops = (h.get("x-forwarded-for") ?? "").split(",").map((hop) => hop.trim()).filter(Boolean).slice(-4);
+  while (hops.length && inRanges(hops[hops.length - 1], GOOGLE_FRONT_END_RANGES)) hops.pop();
+  return hops.pop() || null;
+}
+
+/**
+ * True when the request reached the app through Cloudflare's proxy, so Cloudflare's cf-* headers can be trusted:
+ * always on Cloudflare Workers, never on Netlify, and on Cloud Run when the address that connected to Google is
+ * one of Cloudflare's published ranges. Plain Node keeps reading cf-* as it always did.
+ */
+export function viaCloudflare(h: Headers, platform: Platform = currentPlatform()): boolean {
+  if (platform === "netlify") return false;
+  if (platform === "cloudrun") return inRanges(cloudRunPeer(h), CLOUDFLARE_RANGES);
+  return true;
+}
+
+/**
  * The address the host itself saw the visitor connect from, and nothing a visitor can choose: Cloudflare's
- * cf-connecting-ip, Netlify's x-nf-client-connection-ip. Null when absent. Use this for allow-lists.
+ * cf-connecting-ip, Netlify's x-nf-client-connection-ip; on Cloud Run cf-connecting-ip behind Cloudflare's proxy,
+ * else the address Google's front end saw (cloudRunPeer). Null when absent. Use this for allow-lists.
  */
 export function trustedClientIp(h: Headers, platform: Platform = currentPlatform()): string | null {
+  if (platform === "cloudrun" && !viaCloudflare(h, platform)) return cloudRunPeer(h);
   const header = platform === "netlify" ? "x-nf-client-connection-ip" : "cf-connecting-ip";
   return h.get(header)?.trim() || null;
 }
 
 /**
  * The caller's address for rate limits and logs: the host's own header (trustedClientIp). Only plain Node (local dev,
- * tests) falls back to the first x-forwarded-for hop; on Cloudflare and Netlify a missing header gives null, and the
+ * tests) falls back to the first x-forwarded-for hop; on Cloudflare, Netlify and Cloud Run a missing header gives null, and the
  * callers then use one shared "unknown" rate-limit bucket rather than a key the caller picked.
  */
 export function clientIp(h: Headers, platform: Platform = currentPlatform()): string | null {

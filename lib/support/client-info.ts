@@ -1,5 +1,5 @@
 import { userAgent } from "next/server";
-import { cleanCountry, clientIp } from "@/lib/platform/headers";
+import { cleanCountry, clientIp, viaCloudflare } from "@/lib/platform/headers";
 import { currentPlatform, type Platform } from "@/lib/platform/detect";
 
 // What POST /visit learns about the visitor from the request, once per visit (heartbeats go straight to Supabase and
@@ -31,9 +31,13 @@ export function geoFromNetlify(value: string | null | undefined): Geo | null {
   }
 }
 
-/** Each host trusts only its own headers (lib/platform/headers.ts): Netlify x-nf-geo, otherwise Cloudflare's cf-*. */
+/**
+ * Each host trusts only its own headers (lib/platform/headers.ts): Netlify x-nf-geo, otherwise Cloudflare's cf-*
+ * (on Cloud Run only when the request came through Cloudflare's proxy).
+ */
 export function geoFrom(h: Headers, platform: Platform = currentPlatform()): Geo {
   if (platform === "netlify") return geoFromNetlify(h.get("x-nf-geo")) ?? { country: null, city: null, region: null, timezone: null };
+  if (!viaCloudflare(h, platform)) return { country: null, city: null, region: null, timezone: null };
   return { country: cleanCountry(h.get("cf-ipcountry")), city: clean(h.get("cf-ipcity")), region: clean(h.get("cf-region")), timezone: clean(h.get("cf-timezone"), 60) };
 }
 

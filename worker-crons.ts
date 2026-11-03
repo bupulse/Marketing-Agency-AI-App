@@ -1,7 +1,7 @@
 // The Cloudflare cron schedules and the route each one calls (worker.ts runs them; wrangler.jsonc triggers them).
 // Kept out of worker.ts on purpose: every named export of a Worker's main module must be an entrypoint, and a string
 // there stops workerd from starting. Each schedule must appear in "triggers.crons" in wrangler.jsonc
-// (tests/worker-crons.test.ts checks both ways).
+// (tests/worker-crons.test.ts checks both ways). Cloud Run's every-minute tick runs the same list (lib/cron/schedule.ts).
 /** Every minute: publish due posts. */
 export const PUBLISH_CRON = "* * * * *";
 /** Hourly: collect post metrics; each post is measured at most once every 20 hours. */

@@ -5,7 +5,9 @@ import { currentPlatform, type Platform } from "./detect";
 // request context Netlify's Next.js runtime installs, the same one next/server's after() uses), or, in plain Node
 // (next dev, next start, tests), a promise that simply keeps running.
 // Time limits differ: Cloudflare gives a waitUntil task about 30 s after the response; on Netlify the work counts
-// towards the function's 60 s limit, measured from the start of the request.
+// towards the function's 60 s limit, measured from the start of the request. Cloud Run (request-based billing) has
+// no waitUntil and throttles the CPU once the response is sent, so keepAlive waits for the work there, like Netlify
+// without a context; a bare waitUntil's promise keeps running but may be slowed until the next request.
 
 type WaitUntil = (promise: Promise<unknown>) => void;
 
@@ -33,7 +35,8 @@ function cloudflareWaitUntil(): WaitUntil | undefined {
  */
 export function waitUntil(promise: Promise<unknown>, platform: Platform = currentPlatform()): boolean {
   // "node" tries both: `next dev` with initOpenNextCloudflareForDev, the tests that mock it, an undetected host.
-  const wait = platform === "netlify" ? netlifyWaitUntil() : platform === "cloudflare" ? cloudflareWaitUntil() : (cloudflareWaitUntil() ?? netlifyWaitUntil());
+  // Cloud Run has none: nothing outside the request gets CPU there.
+  const wait = platform === "cloudrun" ? undefined : platform === "netlify" ? netlifyWaitUntil() : platform === "cloudflare" ? cloudflareWaitUntil() : (cloudflareWaitUntil() ?? netlifyWaitUntil());
   if (wait) {
     try {
       wait(promise);
@@ -42,19 +45,22 @@ export function waitUntil(promise: Promise<unknown>, platform: Platform = curren
       // Treated as not taken below.
     }
   }
-  if (mustNotLose(platform)) console.warn("[platform] Netlify gave no waitUntil for background work; the request waits for it instead (up to 10 s).");
+  if (platform === "netlify" && mustNotLose(platform)) console.warn("[platform] Netlify gave no waitUntil for background work; the request waits for it instead (up to 10 s).");
   return false;
 }
 
-/** On Netlify in production the function freezes after the response, so work nobody waits for may never finish. */
-const mustNotLose = (platform: Platform) => platform === "netlify" && process.env.NODE_ENV === "production";
+/**
+ * In production on Netlify the function freezes after the response, and on Cloud Run the CPU is throttled, so work
+ * nobody waits for may never finish (or only much later).
+ */
+const mustNotLose = (platform: Platform) => (platform === "netlify" || platform === "cloudrun") && process.env.NODE_ENV === "production";
 
 /** How long a request waits for background work the host did not take (keepAlive). */
 export const KEEP_ALIVE_MS = 10_000;
 
 /**
- * waitUntil, and when Netlify (in production) did not take the work, waits for it, at most `maxMs`, so it is not lost
- * when the function freezes after the response. Resolves at once when the host took it, and everywhere else (Cloudflare
+ * waitUntil, and when Netlify (in production) did not take the work, or on Cloud Run, waits for it, at most `maxMs`, so
+ * it is not lost when the function freezes (or the CPU is throttled) after the response. Resolves at once when the host took it, and everywhere else (Cloudflare
  * without a context, plain Node: the promise keeps running there). Never rejects. Await it before responding.
  */
 export async function keepAlive(promise: Promise<unknown>, platform: Platform = currentPlatform(), maxMs = KEEP_ALIVE_MS): Promise<void> {

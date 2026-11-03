@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 import { version } from "./package.json";
 
 const nextConfig: NextConfig = {
+  // Google Cloud Run only (BUILD_TARGET=cloudrun, set by the Dockerfile): a self-contained server in .next/standalone
+  // (server.js plus the traced node_modules), so the image carries no full node_modules. Netlify's and Cloudflare's
+  // adapters do their own packaging and keep the default output. docs/DEPLOY_CLOUDRUN.md.
+  ...(process.env.BUILD_TARGET === "cloudrun" && { output: "standalone" as const }),
   // Development only: the dev server blocks its scripts and live-reload for any host but localhost. The test tunnel
   // (test.bupulse.com → localhost:3001) needs to be allowed, or pages load but no button works there.
   allowedDevOrigins: ["test.bupulse.com"],
@@ -29,8 +33,8 @@ const nextConfig: NextConfig = {
     },
   }),
   // Inlined at build time for the admin Updates page (lib/version.ts). BUILD_SHA comes from the deploy workflow.
-  // BUPULSE_BUILD_PLATFORM: "netlify" when Netlify builds the app (it sets NETLIFY=true), else PLATFORM or empty, read by
-  // lib/platform/detect.ts when PLATFORM is not set at runtime.
+  // BUPULSE_BUILD_PLATFORM: "netlify" when Netlify builds the app (it sets NETLIFY=true), else PLATFORM or empty (the
+  // Dockerfile sets PLATFORM=cloudrun), read by lib/platform/detect.ts when PLATFORM is not set at runtime.
   env: {
     APP_VERSION: version,
     BUILD_SHA: process.env.BUILD_SHA ?? process.env.COMMIT_REF ?? "local",

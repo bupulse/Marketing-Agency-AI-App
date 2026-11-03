@@ -1,0 +1,48 @@
+# What `gcloud builds submit` uploads to Cloud Build (docs/DEPLOY_CLOUDRUN.md). Same syntax as .gitignore; when this
+# file exists gcloud ignores .gitignore, so everything ignored there is listed again here. Secrets first: no .env file
+# of any kind, no keys, no Cloud Run env file made by scripts/cloudrun-env.mjs.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*cloudrun-env*.yaml
+*.env.yaml
+
+.gcloudignore
+.git
+.gitignore
+
+# Built or installed by Cloud Build instead.
+node_modules/
+.next/
+.open-next/
+.netlify/
+.wrangler/
+.dev.vars
+lib/generated/prisma/
+*.tsbuildinfo
+coverage/
+out/
+build/
+.vercel/
+
+# Not part of the app: tests, the docs (except the support guide pages the app reads), demos and scratch (tools/ stays: app code imports tools/blender/scene.ts).
+.github/
+.claude/
+.agents/
+.windsurf/
+tests/
+e2e/
+playwright-report/
+test-results/
+Demo/
+video-lab/
+docs/*
+!docs/guide/
+docs/guide/*
+!docs/guide/features/
+docs/guide/features/*
+!docs/guide/features/*.md
+*.log
+.DS_Store

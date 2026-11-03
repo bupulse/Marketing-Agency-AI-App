@@ -1,10 +1,11 @@
 // Which host BuPulse runs on. Everything that differs between hosts (background work, the shared cache, the database
-// connection, the visitor's country and IP, time limits) asks this first; see lib/platform/index.ts and
-// docs/DEPLOY_NETLIFY.md. No server imports: the helpers here are pure and run in tests, Node and both hosts.
+// connection, the visitor's country and IP, time limits) asks this first; see lib/platform/index.ts,
+// docs/DEPLOY_NETLIFY.md and docs/DEPLOY_CLOUDRUN.md. No server imports: the helpers here are pure and run in tests,
+// Node and every host.
 
-export type Platform = "cloudflare" | "netlify" | "node";
+export type Platform = "cloudflare" | "netlify" | "cloudrun" | "node";
 
-const KNOWN = new Set<Platform>(["cloudflare", "netlify", "node"]);
+const KNOWN = new Set<Platform>(["cloudflare", "netlify", "cloudrun", "node"]);
 
 /** PLATFORM from the environment, then the build-time value next.config.ts inlines, else null. */
 function configured(): Platform | null {
@@ -16,10 +17,11 @@ function configured(): Platform | null {
 }
 
 /**
- * The host: PLATFORM=netlify|cloudflare|node when set (at runtime, or at build time through next.config.ts), else
- * auto-detected: Netlify Functions define the `Netlify` global, Cloudflare Workers identify themselves in
- * navigator.userAgent and OpenNext keeps the request context under a well-known symbol. "node" is everything else
- * (next dev, next start, tests), which keeps the behaviour BuPulse always had there.
+ * The host: PLATFORM=netlify|cloudflare|cloudrun|node when set (at runtime, or at build time through next.config.ts),
+ * else auto-detected: Netlify Functions define the `Netlify` global, Cloudflare Workers identify themselves in
+ * navigator.userAgent and OpenNext keeps the request context under a well-known symbol, Google Cloud Run sets
+ * K_SERVICE (the service name) in every container. "node" is everything else (next dev, next start, tests), which
+ * keeps the behaviour BuPulse always had there.
  */
 export function currentPlatform(): Platform {
   const forced = configured();
@@ -27,6 +29,7 @@ export function currentPlatform(): Platform {
   const g = globalThis as { Netlify?: unknown; navigator?: { userAgent?: string } } & Record<symbol, unknown>;
   if (g.Netlify) return "netlify";
   if (g.navigator?.userAgent === "Cloudflare-Workers" || g[Symbol.for("__cloudflare-context__")]) return "cloudflare";
+  if (process.env.K_SERVICE) return "cloudrun";
   if (process.env.NODE_ENV === "production") {
     // A production run that looks like plain Node but has Netlify's (or AWS Lambda's) environment is Netlify: trusting
     // its headers and keeping background work alive matter more than the label.
@@ -41,5 +44,5 @@ let reported = false;
 function reportPlainNode() {
   if (reported) return;
   reported = true;
-  console.error("[platform] production resolved to plain Node: set PLATFORM=netlify or PLATFORM=cloudflare (or PLATFORM=node for next start on purpose).");
+  console.error("[platform] production resolved to plain Node: set PLATFORM=netlify, cloudflare or cloudrun (or PLATFORM=node for next start on purpose).");
 }

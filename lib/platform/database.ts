@@ -2,14 +2,15 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { currentPlatform, type Platform } from "./detect";
 
 // Where the database connection comes from. Cloudflare: the Hyperdrive binding, and a client per request (Workers
-// cannot reuse sockets across requests). Netlify and plain Node: DATABASE_URL and one pooled client per instance;
-// on Netlify use Supabase's transaction pooler (port 6543), because every function instance holds its own pool.
+// cannot reuse sockets across requests). Netlify, Cloud Run and plain Node: DATABASE_URL and one pooled client per
+// instance; on Netlify and Cloud Run use Supabase's transaction pooler (port 6543), because every instance holds its
+// own pool.
 
 export type RequestDatabase = { connectionString: string; /** The request the client belongs to. */ scope: object };
 
 /** Cloudflare's per-request Hyperdrive connection, or undefined (another host, or no binding: local dev and builds). */
 export function requestDatabase(platform: Platform = currentPlatform()): RequestDatabase | undefined {
-  if (platform === "netlify") return undefined;
+  if (platform === "netlify" || platform === "cloudrun") return undefined;
   try {
     const { env, ctx } = getCloudflareContext();
     return env.HYPERDRIVE ? { connectionString: env.HYPERDRIVE.connectionString, scope: ctx } : undefined;
