@@ -52,6 +52,8 @@ export type SocialState = {
   composioAccount?: string;
   /** Upload-Post only: the business's Upload-Post profile this sign-in connects LinkedIn to (verifier is then empty). */
   uploadPostProfile?: string;
+  /** Zernio only: the business's Zernio profile id this sign-in connects TikTok to (verifier is then empty). */
+  zernioProfile?: string;
   expiresAt: number;
 };
 

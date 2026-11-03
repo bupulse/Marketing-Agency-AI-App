@@ -13,6 +13,11 @@ const UPLOAD_POST_NOTE: Partial<Record<ChannelInfo["network"], string>> = {
   tiktok: "A secure page from Upload-Post, the partner BuPulse uses to connect TikTok, opens. Press TikTok and sign in, then press Back to BuPulse. We never see your password.",
 };
 
+// Zernio: TikTok's sign-in, then Zernio's own page says it is taking the person back to BuPulse ("Continue").
+const ZERNIO_NOTE: Partial<Record<ChannelInfo["network"], string>> = {
+  tiktok: "You sign in to TikTok through Zernio, the partner BuPulse uses to connect TikTok. After TikTok, Zernio shows a page that sends you back: press Continue to return to BuPulse. We never see your password.",
+};
+
 // BuPulse-Socials reads likes and comments only; a direct connection also reads reach and saves (lib/publishing/results.ts).
 const professional = (viaComposio: boolean) => ["Posts automatically at the time you choose", "Photos and carousels of up to 10 images", viaComposio ? "Likes and comments in your reports" : "Reach, likes and saves in your reports", "For Business and Creator accounts"];
 
@@ -75,7 +80,9 @@ export function ConnectDialog({ channel, onClose }: { channel: ChannelInfo; onCl
         <div className="flex flex-col items-center gap-5 py-2 text-center">
           <NetworkIcon network={channel.network} className="size-14" />
           <p className="max-w-sm text-[15px] text-muted">
-            {channel.viaUploadPost && UPLOAD_POST_NOTE[channel.network]
+            {channel.viaZernio && ZERNIO_NOTE[channel.network]
+              ? ZERNIO_NOTE[channel.network]
+              : channel.viaUploadPost && UPLOAD_POST_NOTE[channel.network]
               ? UPLOAD_POST_NOTE[channel.network]
               : channel.viaComposio
                 ? `You will sign in to ${channel.label} and choose what BuPulse may post to. ${COMPOSIO_NOTE}`

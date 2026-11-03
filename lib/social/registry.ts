@@ -8,6 +8,7 @@ import { COMPOSIO_NETWORKS } from "./composio/client";
 import { composioNetwork } from "./composio/networks";
 import { publishLinkedIn } from "./uploadpost/linkedin";
 import { publishTikTok } from "./uploadpost/tiktok";
+import { publishTikTokViaZernio, zernioResolve } from "./zernio/tiktok";
 import { NETWORKS, SocialError, type ConnectionCredentials, type Network, type SocialProvider } from "./types";
 
 const DIRECT: Record<Network, SocialProvider> = {
@@ -22,10 +23,15 @@ const DIRECT: Record<Network, SocialProvider> = {
 
 const isComposio = (c: ConnectionCredentials) => c.method === "COMPOSIO";
 const isUploadPost = (c: ConnectionCredentials) => !!c.uploadPostProfile;
+const isZernio = (c: ConnectionCredentials) => !!c.zernioProfile;
 /** Upload-Post's posting for each network it connects (lib/social/uploadpost). */
 const UPLOAD_POST_PUBLISH: Partial<Record<Network, SocialProvider["publish"]>> = { linkedin: publishLinkedIn, tiktok: publishTikTok };
 const uploadPostPublish = (network: Network): SocialProvider["publish"] =>
   UPLOAD_POST_PUBLISH[network] ?? (async () => { throw new SocialError(`${network} cannot post through Upload-Post`, "invalid", network); });
+/** Zernio's posting for each network it connects (lib/social/zernio). */
+const ZERNIO_PUBLISH: Partial<Record<Network, SocialProvider["publish"]>> = { tiktok: publishTikTokViaZernio };
+const zernioPublish = (network: Network): SocialProvider["publish"] =>
+  ZERNIO_PUBLISH[network] ?? (async () => { throw new SocialError(`${network} cannot post through Zernio`, "invalid", network); });
 const hasComposioMetrics = (network: Network) => viaComposioPossible(network) && !!composioNetwork(network).metrics;
 
 /**
@@ -38,19 +44,22 @@ const viaComposioPossible = (network: Network) => COMPOSIO_NETWORKS.includes(net
 function withComposio(direct: SocialProvider): SocialProvider {
   return {
     ...direct,
-    // Upload-Post accounts (LinkedIn and TikTok through Upload-Post: lib/social/uploadpost) post through Upload-Post.
-    publish: (c, post) => (isUploadPost(c) ? uploadPostPublish(direct.network)(c, post) : isComposio(c) ? composioNetwork(direct.network).publish(c, post) : direct.publish(c, post)),
+    // Zernio accounts (TikTok through Zernio: lib/social/zernio) post through Zernio, Upload-Post accounts (LinkedIn and
+    // TikTok through Upload-Post: lib/social/uploadpost) through Upload-Post.
+    publish: (c, post) =>
+      isZernio(c) ? zernioPublish(direct.network)(c, post) : isUploadPost(c) ? uploadPostPublish(direct.network)(c, post) : isComposio(c) ? composioNetwork(direct.network).publish(c, post) : direct.publish(c, post),
     // Only where one of the ways can read numbers; an account whose way cannot gives an empty snapshot (not saved).
-    // Upload-Post accounts have no numbers yet.
+    // Upload-Post accounts have no numbers yet; Zernio accounts only get their TikTok link once TikTok has it.
     metrics: direct.metrics || hasComposioMetrics(direct.network)
       ? async (c, externalId) => {
+          if (isZernio(c)) return zernioResolve(externalId);
           if (isUploadPost(c)) return {};
           if (isComposio(c)) return hasComposioMetrics(direct.network) ? composioNetwork(direct.network).metrics!(c, externalId) : {};
           return direct.metrics ? direct.metrics(c, externalId) : {};
         }
       : undefined,
-    // Composio and Upload-Post accounts are removed there by lib/social/connections.ts (several Pages can share one sign-in).
-    revoke: direct.revoke ? async (c) => (isComposio(c) || isUploadPost(c) ? undefined : direct.revoke!(c)) : undefined,
+    // Composio, Upload-Post and Zernio accounts are removed there by lib/social/connections.ts (several Pages can share one sign-in).
+    revoke: direct.revoke ? async (c) => (isComposio(c) || isUploadPost(c) || isZernio(c) ? undefined : direct.revoke!(c)) : undefined,
   };
 }
 

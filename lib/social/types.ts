@@ -99,6 +99,11 @@ export interface ConnectionCredentials {
    * accessToken then holds the same name, not a token.
    */
   uploadPostProfile?: string;
+  /**
+   * Connected through Zernio (lib/social/zernio): the business's Zernio profile id. externalAccountId is then Zernio's
+   * account id (what every post names) and accessToken holds the profile id, not a token.
+   */
+  zernioProfile?: string;
 }
 
 export interface SocialProvider {

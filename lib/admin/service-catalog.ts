@@ -26,6 +26,7 @@ export const SERVICE_IDS = [
   "premium3d",
   "composio",
   "uploadpost",
+  "zernio",
   "studio",
   "telegram",
 ] as const;
@@ -317,6 +318,15 @@ export const SERVICES: ServiceInfo[] = [
     features: ["Connecting LinkedIn (profile and company Pages) and TikTok through Upload-Post", "Posting text, photos and videos to LinkedIn, and videos and photo posts to TikTok, for accounts connected that way"],
     killable: true,
     whenOff: "LinkedIn Connect goes back to BuPulse-Socials (Composio), and TikTok to its own ways, or \"Coming soon\" when those are off too. Accounts already connected through Upload-Post keep posting through it.",
+  },
+  {
+    id: "zernio",
+    name: "Zernio",
+    purpose: "TikTok for clients: connects clients' TikTok through Zernio (zernio.com, formerly Late) and its approved TikTok for Business app, while BuPulse's own TikTok app is blocked. Videos and photo posts go straight to the client's TikTok (not the TikTok inbox), public by default. Comes first for TikTok, ahead of Upload-Post and BuPulse-Socials. Each business becomes one Zernio profile (no Zernio account for the client): they sign in to TikTok from Zernio's link, press Continue on Zernio's page and are back in BuPulse. The API key is made in the Zernio dashboard (zernio.com, Settings, API keys). Price: the first 2 connected accounts are free, then $6 per account per month (checked on zernio.com/pricing 3 Nov 2026); without a card on file a 3rd account is refused, and Connect then says \"paused on our side\". Zernio allows 15 TikTok videos and 15 photo posts per account per day.",
+    env: ["ZERNIO_API_KEY"],
+    features: ["Connecting TikTok through Zernio", "Posting videos and photo posts to TikTok for accounts connected that way"],
+    killable: true,
+    whenOff: "TikTok Connect goes back to Upload-Post (when UPLOAD_POST_TIKTOK is set), BuPulse-Socials or BuPulse's own TikTok app, or \"Coming soon\" when those are off too. Accounts already connected through Zernio keep posting through it.",
   },
   {
     id: "premium3d",

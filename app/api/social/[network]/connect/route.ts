@@ -14,6 +14,7 @@ import { isServiceEnabled } from "@/lib/admin/switch";
 import { hasFeature, upgradeHref } from "@/lib/entitlements";
 import { createConnectLink, viaComposio } from "@/lib/social/composio/client";
 import { connectLink, ensureProfile, profileUsername, UploadPostError, viaUploadPost } from "@/lib/social/uploadpost/client";
+import { ensureZernioProfile, viaZernio, zernioConnectUrl, ZernioError } from "@/lib/social/zernio/client";
 import { inboxScopesFor } from "@/lib/social/inbox/scopes";
 import { getInboxSettings } from "@/lib/social/inbox/settings";
 
@@ -52,6 +53,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   } catch (error) {
     if (error instanceof RateLimitError) return back(next, "rate_limit");
     throw error;
+  }
+
+  // Zernio: TikTok through Zernio's approved TikTok for Business app once its key is set (lib/social/zernio), ahead of
+  // Upload-Post, BuPulse-Socials and BuPulse's own app. The business gets its one Zernio profile, the person signs in to
+  // TikTok from Zernio's link and comes back to /api/social/<network>/zernio, which checks this sealed cookie like the
+  // other callbacks. Zernio keeps BuPulse's own query on the way back, so the state rides in the return address, which
+  // is the visitor's own site (the cookie was set there; Zernio takes http and https addresses alike).
+  // Zernio switched off in Admin -> Services: the Upload-Post path below, as before.
+  if (viaZernio(network) && (await isServiceEnabled("zernio"))) {
+    try {
+      const state = newState();
+      const profileId = await ensureZernioProfile(network, business.id, business.name ?? "");
+      const url = await zernioConnectUrl(network, profileId, `${await requestSiteUrl()}/api/social/${network}/zernio?state=${state}`);
+      const response = NextResponse.redirect(url);
+      response.cookies.set(STATE_COOKIE, await sealState({ state, verifier: "", userId: user.id, network, variant, next, zernioProfile: profileId }), await cookieOptions("/api/social"));
+      return response;
+    } catch (error) {
+      await logError(error, { source: "social.connect.zernio", userId: user.id, network });
+      // BuPulse's Zernio account is past its free accounts without a card, or capped: "paused on our side".
+      return back(next, error instanceof ZernioError && error.kind === "rate_limit" ? "full" : "failed");
+    }
   }
 
   // Upload-Post: LinkedIn (profile and company Pages) and TikTok through Upload-Post's approved apps once its key is set

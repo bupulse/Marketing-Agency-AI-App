@@ -152,6 +152,7 @@ const ERROR_SOURCES: Partial<Record<ServiceId, string[]>> = {
   whatsapp: ["whatsapp"],
   telegram: ["telegram"],
   uploadpost: ["uploadpost"],
+  zernio: ["zernio"],
 };
 
 function lastErrorOf(info: ServiceInfo, d: Loaded): ServiceView["lastError"] {

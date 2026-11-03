@@ -6,6 +6,7 @@ import { logError } from "@/lib/errors";
 import { getProvider } from "./registry";
 import { deleteConnectedAccount, isComposioResult, scopeAccount } from "./composio/client";
 import { disconnectNetwork, isUploadPostResult, profileScope, scopeProfile } from "./uploadpost/client";
+import { deleteZernioAccount, isZernioResult, scopeZernioProfile, ZERNIO_SCOPE } from "./zernio/client";
 import { NETWORKS, SocialError, type ConnectionCredentials, type Network, type OAuthResult } from "./types";
 
 // Everything that touches stored connections: saving after OAuth, handing the publisher decrypted
@@ -83,7 +84,7 @@ export async function saveConnections(
   postingMode: PostingMode = "AUTO",
 ): Promise<string[]> {
   const chosen = oauth.accounts.filter((a) => selectedAccountIds.includes(a.externalAccountId));
-  // Upload-Post connections are DIRECT rows marked by their scopes (the "uploadpost" entry and the profile's name).
+  // Upload-Post and Zernio connections are DIRECT rows marked by their scopes (the "uploadpost" or "zernio" entry and the profile).
   const method = isComposioResult(oauth.scopes) ? ("COMPOSIO" as const) : ("DIRECT" as const);
   // Reconnecting through BuPulse-Socials makes a new Composio sign-in; the one it replaces is removed afterwards (also
   // when a LinkedIn account that was connected through Composio is connected again through Upload-Post).
@@ -163,6 +164,7 @@ type Row = NonNullable<Awaited<ReturnType<typeof prisma.connection.findUnique>>>
 
 function credentialsOf(row: Row, accessToken: string): ConnectionCredentials {
   const uploadPostProfile = isUploadPostResult(row.scopes) ? scopeProfile(row.scopes) : null;
+  const zernioProfile = isZernioResult(row.scopes) ? scopeZernioProfile(row.scopes) : null;
   return {
     connectionId: row.id,
     externalAccountId: row.externalAccountId,
@@ -171,6 +173,7 @@ function credentialsOf(row: Row, accessToken: string): ConnectionCredentials {
     method: row.method,
     ...(row.method === "COMPOSIO" ? { composioUserId: row.businessId } : {}),
     ...(uploadPostProfile ? { uploadPostProfile } : {}),
+    ...(zernioProfile ? { zernioProfile } : {}),
   };
 }
 
@@ -320,7 +323,18 @@ export async function disconnect(connectionId: string, scope: { businessId?: str
   // The same for Upload-Post: the profile's LinkedIn is unlinked once no connection of it is left.
   const uploadPostProfile = isUploadPostResult(row.scopes) ? scopeProfile(row.scopes) : null;
   if (uploadPostProfile) await forgetUnusedUploadPost(row.provider as Network, uploadPostProfile).catch(() => {});
+  // Zernio: each connection is one Zernio account, disconnected there too (Zernio bills connected accounts).
+  if (isZernioResult(row.scopes)) await forgetUnusedZernio(row.provider as Network, row.externalAccountId).catch(() => {});
   return true;
+}
+
+/**
+ * Disconnects a Zernio account (best effort) when no connection uses it any more, so Zernio forgets its tokens and stops
+ * counting it. Also used when a sign-in ends without a saved account.
+ */
+export async function forgetUnusedZernio(network: Network, accountId: string): Promise<void> {
+  const still = await prisma.connection.count({ where: { provider: network, externalAccountId: accountId, scopes: { has: ZERNIO_SCOPE } } });
+  if (!still) await deleteZernioAccount(network, accountId);
 }
 
 /**

@@ -338,6 +338,71 @@ Community Management API. Upload-Post's LinkedIn app is already approved for com
   owner's call). The composer still turns a TikTok post with photos into a reminder (lib/publishing/validate.ts
   `formatFor`), daily posts do not.
 
+### 3d. TikTok through Zernio (public TikTok posts on the free tier, without BuPulse's own app)
+
+Owner decision (3 November 2026): BuPulse's own TikTok app is blocked (TikTok's sandbox answers `server_error`; support
+ticket pending) and Upload-Post has no TikTok on its free plan, so TikTok goes through **Zernio** (zernio.com, formerly
+getlate.dev / "Late"). Upload-Post keeps LinkedIn; Composio keeps the other networks. Code: lib/social/zernio,
+app/api/social/[network]/zernio. Zernio's docs read 3 November 2026 (docs.zernio.com, platforms/tiktok, guides/profiles,
+guides/connecting-accounts, connect/get-connect-url, posts/create-post, guides/post-lifecycle, guides/error-handling,
+guides/rate-limits, pricing); **nothing has been checked against a live Zernio answer yet.**
+
+- Price (zernio.com/pricing, 3 Nov 2026): you pay per connected account, every feature included. The **first 2
+  connected accounts are free with no card**, then $6 per account per month (3 to 10), $3 (11 to 100), $1 after that.
+  Profiles are free. A 3rd account without a card on file is refused at Connect (`402 PAYMENT_REQUIRED`,
+  `free_tier_exceeded`): the client sees "paused on our side" and Admin -> Errors gets a line (source `social.zernio`).
+  Using the same key on the test site counts against the same 2 free accounts.
+- Owner setup: sign up at zernio.com, make an API key (Settings, API keys), paste it on the **Zernio** card in Admin ->
+  Services and press "Test now" (it calls `GET /v1/auth/verify`, which reads no data). Do not connect TikTok in the
+  Zernio dashboard: each client connects their own from BuPulse. With the key set, TikTok Connect goes through Zernio
+  ahead of Upload-Post (`UPLOAD_POST_TIKTOK`), BuPulse-Socials and BuPulse's own app; switching Zernio off in Admin ->
+  Services sends TikTok Connect back to those.
+- Connect: BuPulse finds the business's Zernio profile by `GET /v1/profiles?externalId=<business id>`, or creates it
+  (`POST /v1/profiles`, name `bupulse_<business id>`, `externalId` the business id, description the business name; a 409
+  gives `details.existingProfileId`). Then `GET /v1/connect/tiktok?profileId=...&redirect_url=<site>/api/social/tiktok/zernio?state=...`
+  gives the `authUrl` the client is sent to, with the sealed state cookie. The return address is the visitor's own site
+  (`requestSiteUrl()`, where the cookie was set; Zernio takes http and https alike, unlike TikTok's own app, which needs
+  `publicSiteUrl()`). After TikTok, Zernio's "continue" page (shown for any return address outside zernio.com) asks
+  for one click, then the client is back with `connected`, `profileId`, `accountId` and `username` (or `error`) added.
+- Callback: the state and the profile must match the cookie; the account is read back with
+  `GET /v1/accounts?profileId=...&platform=tiktok` (an `accountId` not in the business's profile is never saved), and
+  saved at once: Zernio's account id as the account id (kept when the same TikTok account reconnects), `@username` as
+  its name, `profilePicture` as its picture, `tiktokAccountType` business or creator. The row is method DIRECT with
+  scopes `zernio` and `zernio_profile:<profile id>`. `oauth_denied` and `missing_tiktok_permissions` are "cancelled";
+  billing gates are "paused on our side"; anything else "could not finish". A sign-in that ends without a saved
+  connection (TikTok switched off meanwhile, a failed save) disconnects the account from Zernio again.
+- Disconnect: `DELETE /v1/accounts/<account id>` (best effort), so Zernio forgets the tokens and stops counting it.
+- Posting: before each post `GET /v1/accounts/<id>/tiktok/creator-info?mediaType=video|photo` gives the privacy levels and
+  the comment, duet and stitch switches. Then `POST /v1/posts` with `publishNow: true`, `platforms: [{ platform:
+  "tiktok", accountId }]`, `mediaItems` (the signed links, `type` video or image) and `tiktokSettings`:
+  `privacy_level` (PUBLIC_TO_EVERYONE where allowed), `allow_comment`, `allow_duet` and `allow_stitch` (videos), each on
+  unless the creator switched it off in TikTok, and TikTok's required `content_preview_confirmed: true` and
+  `express_consent_given: true` (the client sees and approves each post in BuPulse). A video's caption is `content`
+  (up to 2,200 characters); photos (up to 35, JPEG, PNG or WebP) are a carousel with `media_type: "photo"`, `content`
+  = the first line cut to 90 characters (the photo title), `description` = the text up to 4,000,
+  `auto_add_music: true`, `photo_cover_index: 0`. **Direct post, not the inbox**: `draft` is never sent.
+- Public by default: Zernio's TikTok connections all go through TikTok's Business app, where a directly posted video
+  is public only; photo posts keep every level the account allows. A private account gets its widest level; a video
+  then fails with "Selected privacy level ... is not available" and the client is told to make the account public.
+- Results: TikTok gives the video's id some minutes after publishing, so `platformPostUrl` is often empty in the
+  answer: the post is saved under `zernio:<Zernio post id>` and the metrics job later reads `GET /v1/posts/<id>` and
+  swaps in TikTok's id and link once they exist. No numbers yet (Zernio has an analytics API; not used).
+- Errors: a 207 with the TikTok entry `failed` is read from `errorCategory` and `errorMessage`: `auth_expired`,
+  missing permissions and `403 ACCOUNT_DISCONNECTED` ask for a reconnect; `user_abuse`, `platform_rate_limit`,
+  `quota_exhausted`, "too many posts in the last 24 hours" and "direct posting is at capacity" retry hours later; a
+  `429` waits its `Retry-After`; `platform_error`, `system_error` and a failed media download retry; `user_content`,
+  `platform_rejected` (moderation, duplicates) and unknown refusals fail the post with TikTok's words. A timeout, a 5xx
+  or Zernio's "timeout waiting for platform response" on the post itself is never resent (it may still go out). A 207
+  set back to `scheduled` (Zernio retries by itself) counts as sent.
+- Limits: Zernio allows 15 TikTok videos and 15 photo posts per account per rolling 24 hours (a post past it is held
+  and published later, not failed), 25 posts an hour per account, and 60 API requests a minute on the free tier.
+- Unconfirmed until a live answer: the exact shape of `profileId` on listed accounts (an id or an object, both read);
+  whether a fresh post's TikTok entry carries a temporary `platformPostId` (not used without a link); how long
+  `publishNow` takes for a large video (BuPulse waits up to 2 minutes). Not sent: `video_made_with_ai` (BuPulse's
+  posts do not yet say which media is AI made; Business app photo posts refuse it) and `commercialContentType`
+  (TikTok's promotional label: the owner's call). A post Zernio accepted as `scheduled` and later failed is not
+  reported back (no webhook yet).
+
 ---
 
 ## 4. Google and YouTube Data API v3

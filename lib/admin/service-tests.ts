@@ -120,6 +120,17 @@ const PROBES: Partial<Record<ServiceId, Probe>> = {
     if (res.status === 401 || res.status === 403) return { ok: false, message: `Upload-Post rejected the key (${res.status}).` };
     return { ok: false, message: `Upload-Post returned ${res.status}.` };
   },
+  zernio: async () => {
+    // GET /v1/auth/verify only checks the key and reads no data (docs.zernio.com/api-keys/verify-credential). Its answer
+    // names the key's owner: not shown.
+    const res = await get("https://zernio.com/api/v1/auth/verify", { authorization: `Bearer ${env("ZERNIO_API_KEY")}` });
+    if (res.ok) {
+      const valid = ((await res.json().catch(() => ({}))) as { valid?: unknown }).valid;
+      return valid === false ? { ok: false, message: "Zernio says the key is not valid." } : { ok: true, message: "Zernio accepted the key." };
+    }
+    if (res.status === 401 || res.status === 403) return { ok: false, message: `Zernio rejected the key (${res.status}).` };
+    return { ok: false, message: `Zernio returned ${res.status}.` };
+  },
   cloudflare: async () => {
     const res = await get("https://api.cloudflare.com/client/v4/ips");
     return res.ok ? { ok: true, message: "Cloudflare's API is reachable (each client uses their own token)." } : { ok: false, message: `Cloudflare's API returned ${res.status}.` };

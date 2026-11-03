@@ -20,6 +20,7 @@ import { allProviders, isNetwork } from "@/lib/social/registry";
 import { viaComposio } from "@/lib/social/composio/client";
 import { tiktokDirectPost } from "@/lib/social/composio/ways";
 import { isUploadPostResult, viaUploadPost } from "@/lib/social/uploadpost/ways";
+import { viaZernio } from "@/lib/social/zernio/ways";
 import type { Network } from "@/lib/social/types";
 import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
 import { inboxStates } from "@/lib/social/inbox/accounts";
@@ -35,8 +36,9 @@ const NOTES: Record<string, string> = {
   twitter: "Posts, photos and videos",
 };
 
-/** The extra line in the Connect window for networks that work a little differently through BuPulse-Socials or Upload-Post. */
-function detailFor(network: Network, composio: boolean, uploadPost: boolean): string | undefined {
+/** The extra line in the Connect window for networks that work a little differently through BuPulse-Socials, Upload-Post or Zernio. */
+function detailFor(network: Network, composio: boolean, uploadPost: boolean, zernio = false): string | undefined {
+  if (zernio && network === "tiktok") return "BuPulse posts your videos and photo posts to your TikTok at the time you choose, for everyone to see. Your TikTok account must be public for videos.";
   if (uploadPost && network === "tiktok") return "BuPulse posts your videos and photo posts at the time you choose, for everyone to see (a private TikTok account keeps its own setting).";
   if (!composio) return undefined;
   if (network === "tiktok") return tiktokDirectPost() ? "BuPulse posts your videos at the time you choose. Photo posts come to you as reminders." : "At the time you choose, BuPulse sends your video to your TikTok inbox. Open TikTok, tap the notification, add the caption and post. Photo posts come to you as reminders.";
@@ -58,21 +60,24 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
   // BuPulse's own TikTok and X apps are added in Composio. A network switched off in Admin -> Services (X is off until
   // the owner switches it on: it costs per post) shows "Coming soon" too.
   // LinkedIn and TikTok go through Upload-Post instead once its key is set (lib/social/uploadpost; TikTok also needs
-  // UPLOAD_POST_TIKTOK), unless it is switched off.
-  const [composioOn, uploadPostOn, offNetworks] = await Promise.all([isServiceEnabled("composio"), isServiceEnabled("uploadpost"), disabledNetworks()]);
+  // UPLOAD_POST_TIKTOK), unless it is switched off. TikTok goes through Zernio ahead of all of them once its key is set
+  // (lib/social/zernio), unless it is switched off.
+  const [composioOn, uploadPostOn, zernioOn, offNetworks] = await Promise.all([isServiceEnabled("composio"), isServiceEnabled("uploadpost"), isServiceEnabled("zernio"), disabledNetworks()]);
   const channels: ChannelInfo[] = allProviders().map((p) => {
     const off = offNetworks.includes(p.network);
-    const uploadPost = !off && uploadPostOn && viaUploadPost(p.network);
-    const composio = !off && !uploadPost && composioOn && viaComposio(p.network);
+    const zernio = !off && zernioOn && viaZernio(p.network);
+    const uploadPost = !off && !zernio && uploadPostOn && viaUploadPost(p.network);
+    const composio = !off && !zernio && !uploadPost && composioOn && viaComposio(p.network);
     return {
       network: p.network,
       label: p.rules.label,
       note: NOTES[p.network] ?? "",
-      configured: !off && (uploadPost || composio || p.isConfigured()),
+      configured: !off && (zernio || uploadPost || composio || p.isConfigured()),
       viaFacebook: p.network === "instagram" && !composio && !off ? isInstagramViaFacebookConfigured() : undefined,
       viaComposio: composio || undefined,
       viaUploadPost: uploadPost || undefined,
-      detail: detailFor(p.network, composio, uploadPost),
+      viaZernio: zernio || undefined,
+      detail: detailFor(p.network, composio, uploadPost, zernio),
     };
   });
   // Instagram and Facebook accounts carry the "Answer comments and messages" switch (lib/social/inbox/accounts.ts).

@@ -13,6 +13,8 @@ export type ChannelInfo = {
   viaComposio?: boolean;
   /** New connections go through Upload-Post (LinkedIn with company Pages, TikTok): lib/social/uploadpost. */
   viaUploadPost?: boolean;
+  /** New connections go through Zernio (TikTok through its TikTok for Business app): lib/social/zernio. */
+  viaZernio?: boolean;
   /** One more line for the Connect window: what BuPulse does there (TikTok's inbox, X's photos and video). */
   detail?: string;
 };

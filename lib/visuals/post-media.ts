@@ -2,6 +2,7 @@
 // code, Autopilot and the tests agree. Carousels and Instagram's JPEG conversion are handled by publishing as before.
 import { tiktokVideoPosts } from "@/lib/social/composio/ways";
 import { tiktokViaUploadPost } from "@/lib/social/uploadpost/ways";
+import { tiktokViaZernio } from "@/lib/social/zernio/ways";
 import type { Network } from "@/lib/social/types";
 
 type Format = "POST" | "CAROUSEL" | "ARTICLE" | "SCRIPT";
@@ -31,11 +32,11 @@ export function isVideoPath(path: string): boolean {
 
 /**
  * Whether a network takes this video file through the API (Instagram and X want MP4; Facebook also takes WebM). TikTok
- * does (MP4 or WebM) through Upload-Post, or once BuPulse's TikTok app is set up in BuPulse-Socials (its rules'
+ * does (MP4 or WebM) through Zernio or Upload-Post, or once BuPulse's TikTok app is set up in BuPulse-Socials (its rules'
  * videoPosts); before that its video goes with the reminder.
  */
 export function acceptsVideo(network: Network, path: string): boolean {
-  if (network === "tiktok") return tiktokViaUploadPost() || tiktokVideoPosts();
+  if (network === "tiktok") return tiktokViaZernio() || tiktokViaUploadPost() || tiktokVideoPosts();
   if (!VIDEO_PUBLISH_NETWORKS.includes(network)) return false;
   return network === "facebook" || /\.mp4$/i.test(path);
 }
