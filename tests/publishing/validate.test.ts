@@ -26,6 +26,9 @@ describe("validatePost", () => {
 
   it("accepts a script reminder for video-only networks without media, explained kindly", () => {
     expect(formatFor(tiktok, 0)).toBe("SCRIPT");
+    // Photo posts where TikTok's rules allow them (through Upload-Post), never without a picture.
+    expect(formatFor({ ...tiktok, formats: ["POST", "SCRIPT"] }, 2)).toBe("POST");
+    expect(formatFor({ ...tiktok, formats: ["POST", "SCRIPT"] }, 0)).toBe("SCRIPT");
     expect(validatePost(tiktok, { format: "SCRIPT", text: "0-5s: show the cake", hashtags: [], mediaCount: 0 }).errors).toEqual([]);
     expect(validatePost(tiktok, { format: "SCRIPT", text: "", hashtags: [], mediaCount: 0 }).errors[0]).toMatch(/video script/);
     expect(scriptExplanation("TikTok")).toMatch(/email you/);

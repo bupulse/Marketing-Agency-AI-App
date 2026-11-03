@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 const logError = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/errors", () => ({ logError }));
 
-import { downscale, flattenOnWhite, ImageTooLargeError, imageSize, MAX_SIDE, paddedCanvas, padOnWhite, prepareForInstagram, sniffImage, toJpeg } from "@/lib/publishing/jpeg";
+import { downscale, flattenOnWhite, ImageTooLargeError, imageSize, MAX_SIDE, paddedCanvas, padOnWhite, prepareForInstagram, prepareForTikTok, sniffImage, toJpeg } from "@/lib/publishing/jpeg";
 import { jpegCopyPath, requiresJpeg, signPathsForNetwork } from "@/lib/publishing/media";
 import { SocialError } from "@/lib/social/types";
 
@@ -26,6 +26,21 @@ async function makeWebp(): Promise<Uint8Array> {
   const data = new Uint8ClampedArray(4 * 4 * 4).map((_, i) => (i % 4 === 3 ? 255 : 200));
   return new Uint8Array(await webp.default({ data, width: 4, height: 4, colorSpace: "srgb" } as ImageData, { quality: 80 }));
 }
+
+describe("prepareForTikTok", () => {
+  it("turns a PNG into a JPEG of the same shape", async () => {
+    const png = await makePng();
+    const before = imageSize(png);
+    const jpeg = await prepareForTikTok(png);
+    expect(jpeg && sniffImage(jpeg)).toBe("jpeg");
+    expect(jpeg && imageSize(jpeg)).toEqual(before);
+  });
+
+  it("keeps JPEGs and WebPs as they are", async () => {
+    expect(await prepareForTikTok(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0]))).toBeNull();
+    expect(await prepareForTikTok(await makeWebp())).toBeNull();
+  });
+});
 
 describe("toJpeg", () => {
   it("turns a PNG with transparency into a JPEG", async () => {

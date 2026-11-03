@@ -2,7 +2,7 @@ import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { logError } from "@/lib/errors";
 import { SocialError } from "@/lib/social/types";
-import { ImageTooLargeError, prepareForInstagram } from "./jpeg";
+import { ImageTooLargeError, prepareForInstagram, prepareForTikTok } from "./jpeg";
 import { isVideoPath } from "@/lib/visuals/post-media";
 import { bucketForPath } from "./schemas";
 
@@ -36,9 +36,9 @@ export async function signPaths(client: SupabaseClient, paths: string[], expires
   return out;
 }
 
-/** Networks that only accept JPEG. */
+/** Networks that only accept JPEG (TikTok photo posts also take WebP, kept as is). */
 export function requiresJpeg(network: string): boolean {
-  return network === "instagram";
+  return network === "instagram" || network === "tiktok";
 }
 
 /** The cached JPEG copy of a stored image sits next to it. Removed with the original (design and photo deletion, account purge). */
@@ -46,7 +46,7 @@ export const jpegCopyPath = (path: string) => `${path}.jpg`;
 
 /**
  * Like signPaths, for a network. For Instagram every image goes through prepareForInstagram (JPEG, 4:5 to 1.91:1,
- * under 8 MB). A changed image is stored once as a copy next to the original and the copy is signed; the copy is
+ * under 8 MB); for TikTok through prepareForTikTok (a PNG becomes a JPEG, the shape kept). A changed image is stored once as a copy next to the original and the copy is signed; the copy is
  * reused afterwards. Images are handled one at a time, to keep memory low. `jpeg` lists the original paths whose
  * signed URL now points at a prepared JPEG. An image over the size limit fails the post with a friendly message.
  */
@@ -72,13 +72,14 @@ export async function signPathsForNetwork(
       }
       const { data: file, error } = await bucket.download(path);
       if (error || !file) throw error ?? new Error("Could not download the image");
-      const prepared = await prepareForInstagram(new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const prepared = network === "tiktok" ? await prepareForTikTok(bytes) : await prepareForInstagram(bytes);
       if (!prepared) continue;
       const { error: uploadError } = await bucket.upload(copy, prepared, { contentType: "image/jpeg", upsert: true });
       if (uploadError) throw uploadError;
       converted.add(path);
     } catch (error) {
-      if (error instanceof ImageTooLargeError) throw new SocialError(error.message, "invalid", "instagram");
+      if (error instanceof ImageTooLargeError) throw new SocialError(error.message, "invalid", network === "tiktok" ? "tiktok" : "instagram");
       await logError(error, { source: "publishing.jpeg", level: "warn", path });
     }
   }

@@ -231,6 +231,23 @@ export async function prepareForInstagram(bytes: Uint8Array, cap = MAX_JPEG_BYTE
   return encodeUnderCap(image, cap);
 }
 
+/**
+ * Makes an image acceptable to TikTok photo posts (through Upload-Post, which takes JPG, JPEG and WebP only): a JPEG
+ * of a PNG, flattened on white, its shape kept (no padding), under 8 MB. Null for a JPEG or WebP already fine as is.
+ * Throws ImageTooLargeError above 4096 pixels on a side, before decoding anything.
+ */
+export async function prepareForTikTok(bytes: Uint8Array, cap = MAX_JPEG_BYTES): Promise<Uint8Array | null> {
+  const kind = sniffImage(bytes);
+  if (kind === "unknown") return null;
+  const size = imageSize(bytes);
+  if (size && (size.width > MAX_SIDE || size.height > MAX_SIDE)) throw new ImageTooLargeError(TOO_LARGE);
+  if ((kind === "jpeg" || kind === "webp") && bytes.length <= cap) return null;
+  const image = await decodeImage(bytes, kind);
+  if (image.width > MAX_SIDE || image.height > MAX_SIDE) throw new ImageTooLargeError(TOO_LARGE);
+  flattenOnWhite(image);
+  return encodeUnderCap(image, cap);
+}
+
 /** A JPEG of this PNG or WebP (kept for callers that only convert). Null when it is already a JPEG or not an image we convert. */
 export async function toJpeg(bytes: Uint8Array): Promise<Uint8Array | null> {
   const kind = sniffImage(bytes);
