@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TIKTOK_PRIVACY_LEVEL, tiktokProvider } from "@/lib/social/providers/tiktok";
+import { createHash } from "node:crypto";
+import { TIKTOK_PRIVACY_LEVEL, tiktokChallenge, tiktokProvider } from "@/lib/social/providers/tiktok";
+import { codeChallenge } from "@/lib/canva/pkce";
 import { callAt, jsonResponse, mockFetch } from "./helpers";
 
 const creds = { connectionId: "c1", externalAccountId: "open1", accountType: "creator", accessToken: "tok" };
@@ -37,6 +39,14 @@ describe("tiktok config and rules", () => {
     expect(url.searchParams.get("scope")).toBe("user.info.basic,video.publish,video.upload");
     expect(url.searchParams.get("state")).toBe("s");
   });
+
+  it("adds TikTok's PKCE challenge: the hex SHA-256 of the verifier", async () => {
+    const verifier = "a".repeat(43);
+    const url = new URL(tiktokProvider.authorizeUrl({ state: "s", codeChallenge: await codeChallenge(verifier), redirectUri: "https://bupulse.com/api/social/tiktok/callback" }));
+    expect(url.searchParams.get("code_challenge")).toBe(createHash("sha256").update(verifier).digest("hex"));
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(tiktokChallenge(await codeChallenge(verifier))).toMatch(/^[0-9a-f]{64}$/);
+  });
 });
 
 describe("tiktok finishOAuth and refresh", () => {
@@ -51,10 +61,20 @@ describe("tiktok finishOAuth and refresh", () => {
     const form = new URLSearchParams(token.body);
     expect(form.get("client_key")).toBe("key");
     expect(form.get("grant_type")).toBe("authorization_code");
+    expect(form.get("code_verifier")).toBeNull();
     expect(callAt(fetchMock, 1).url).toBe("https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name");
     expect(result.refreshToken).toBe("R");
     expect(result.scopes).toEqual(["user.info.basic", "video.publish"]);
     expect(result.accounts).toEqual([{ externalAccountId: "open1", displayName: "Shop", avatarUrl: "https://av", accountType: "creator" }]);
+  });
+
+  it("sends the PKCE verifier with the code", async () => {
+    const fetchMock = mockFetch(
+      jsonResponse({ access_token: "A", refresh_token: "R", expires_in: 86400, refresh_expires_in: 31536000, open_id: "open1", scope: "user.info.basic", token_type: "Bearer" }),
+      jsonResponse({ data: { user: { open_id: "open1", display_name: "Shop" } }, error: { code: "ok" } }),
+    );
+    await tiktokProvider.finishOAuth({ code: "c", codeVerifier: "v".repeat(43), redirectUri: "https://x/cb" });
+    expect(new URLSearchParams(callAt(fetchMock, 0).body).get("code_verifier")).toBe("v".repeat(43));
   });
 
   it("treats an error body on a 200 as a failure", async () => {

@@ -1,5 +1,5 @@
 import { decrypt, encrypt } from "@/lib/crypto";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl, siteUrl } from "@/lib/auth/site-url";
 import { base64Url, codeChallenge, newCodeVerifier, randomToken, sameString } from "@/lib/canva/pkce";
 import type { Network, OAuthResult } from "./types";
 import { secureCookies } from "@/lib/auth/request-site";
@@ -32,9 +32,13 @@ export function isValidVariant(network: Network, variant: string | null | undefi
   return !!allowed && allowed.includes(variant);
 }
 
-/** Registered with each network's app (Meta, LinkedIn, TikTok, YouTube): stays on siteUrl() on purpose (docs/RELEASE_2.0.md). */
+/**
+ * Registered with each network's app (Meta, LinkedIn, TikTok, YouTube): stays on siteUrl() on purpose (docs/RELEASE_2.0.md).
+ * TikTok only takes HTTPS addresses, so it uses publicSiteUrl(): the same https://bupulse.com in production, and the
+ * https://test.bupulse.com tunnel on the test machine (whose siteUrl() is http://localhost).
+ */
 export function redirectUri(network: Network): string {
-  return `${siteUrl()}/api/social/${network}/callback`;
+  return `${network === "tiktok" ? publicSiteUrl() : siteUrl()}/api/social/${network}/callback`;
 }
 
 export type SocialState = {

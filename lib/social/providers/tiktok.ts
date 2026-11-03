@@ -102,20 +102,31 @@ async function profile(accessToken: string): Promise<AccountChoice> {
 const runes = (text: string) => Array.from(text).length;
 const clip = (text: string, max: number) => Array.from(text).slice(0, max).join("");
 
+/** TikTok's PKCE challenge: the standard S256 challenge (base64url of the SHA-256) re-written as hex. */
+export function tiktokChallenge(base64UrlChallenge: string): string {
+  return Buffer.from(base64UrlChallenge, "base64url").toString("hex");
+}
+
 export const tiktokProvider: SocialProvider = {
   network: "tiktok",
   rules: tiktokRules,
   isConfigured: () => !!process.env.TIKTOK_CLIENT_KEY && !!process.env.TIKTOK_CLIENT_SECRET,
 
-  // https://developers.tiktok.com/doc/login-kit-web (the web flow has no PKCE parameter)
-  authorizeUrl({ state, redirectUri }) {
+  // https://developers.tiktok.com/doc/login-kit-web. TikTok now refuses a web sign-in without PKCE ("code_challenge",
+  // seen 3 November 2026), and wants the challenge as the hex SHA-256 of the verifier, not base64url
+  // (https://developers.tiktok.com/doc/login-kit-desktop): the standard challenge's bytes, written in hex.
+  authorizeUrl({ state, codeChallenge, redirectUri }) {
     const { clientKey } = config();
     const params = new URLSearchParams({ client_key: clientKey, response_type: "code", scope: SCOPES.join(","), redirect_uri: redirectUri, state });
+    if (codeChallenge) {
+      params.set("code_challenge", tiktokChallenge(codeChallenge));
+      params.set("code_challenge_method", "S256");
+    }
     return `${AUTHORIZE_URL}?${params.toString()}`;
   },
 
-  async finishOAuth({ code, redirectUri }): Promise<OAuthResult> {
-    const tokens = await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: redirectUri }, HINTS);
+  async finishOAuth({ code, codeVerifier, redirectUri }): Promise<OAuthResult> {
+    const tokens = await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: redirectUri, ...(codeVerifier ? { code_verifier: codeVerifier } : {}) }, HINTS);
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: tokens.expiresAt, scopes: tokens.scopes.length ? tokens.scopes : SCOPES, accounts: [await profile(tokens.accessToken)] };
   },
 

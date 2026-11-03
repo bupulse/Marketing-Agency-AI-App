@@ -38,6 +38,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   if (!sameString(pending.state, query.get("state") ?? "")) return done(next, { error: "state" });
   if (query.get("error")) {
     const denied = query.get("error") === "access_denied" || query.get("error_reason") === "user_denied";
+    // The network's own reason (TikTok: error_type, e.g. "code_challenge"), so a refused sign-in can be told apart in Admin -> Errors.
+    if (!denied) {
+      const reason = ["error", "error_type", "error_reason", "error_description"].map((k) => query.get(k) && `${k}=${query.get(k)}`).filter(Boolean).join(" ");
+      await logError(new Error(`${network} sign-in refused: ${reason}`.slice(0, 500)), { source: "social.callback", level: "warn", userId: user.id, network });
+    }
     return done(next, { error: denied ? "denied" : "failed" });
   }
   const code = query.get("code");
