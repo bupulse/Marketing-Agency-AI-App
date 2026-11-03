@@ -131,9 +131,10 @@ describe("coming back from Zernio", () => {
     expect(mocks.forgetUnusedZernio).not.toHaveBeenCalled();
   });
 
-  it("treats a cancelled sign-in as cancelled, and a billing gate as 'paused on our side'", async () => {
+  it("treats TikTok's refusal as refused, a missing permission as cancelled, and a billing gate as 'paused on our side'", async () => {
     const fetch = mockFetch();
-    expect(location(await back("?state=s&error=oauth_denied&platform=tiktok")).searchParams.get("error")).toBe("denied");
+    expect(location(await back("?state=s&error=oauth_denied&platform=tiktok")).searchParams.get("error")).toBe("refused");
+    expect(location(await back("?state=s&error=missing_tiktok_permissions&platform=tiktok")).searchParams.get("error")).toBe("denied");
     expect(location(await back("?state=s&error=payment_required&platform=tiktok")).searchParams.get("error")).toBe("full");
     expect(location(await back("?state=s&error=something_new&platform=tiktok")).searchParams.get("error")).toBe("failed");
     expect(location(await back("?state=s")).searchParams.get("error")).toBe("denied");

@@ -53,13 +53,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   // new ones appear without notice). Only the code is logged: error_message can name the TikTok account.
   const zernioError = query.get("error");
   if (zernioError) {
-    if (zernioError === "oauth_denied" || zernioError === "missing_tiktok_permissions") return done(next, { error: "denied" });
+    if (zernioError === "oauth_denied" || zernioError === "missing_tiktok_permissions") {
+      await logError(new Error(`Zernio sign-in ended with ${zernioError}`), { source: "social.callback.zernio", userId: user.id, network, level: "warn" });
+      // oauth_denied also comes back when TikTok itself refuses (seen 3 November 2026), so it is not called a cancellation.
+      return done(next, { error: zernioError === "oauth_denied" ? "refused" : "denied" });
+    }
     await logError(new Error(`Zernio sign-in ended with ${zernioError.slice(0, 60)}`), { source: FULL.has(zernioError) ? "social.zernio" : "social.callback.zernio", userId: user.id, network, level: "warn" });
     return done(next, { error: FULL.has(zernioError) ? "full" : "failed" });
   }
   const accountId = query.get("accountId");
-  // Back without connecting an account.
-  if (!accountId) return done(next, { error: "denied" });
+  // Back without connecting an account. The parameter names (never their values) are logged to tell the cases apart.
+  if (!accountId) {
+    const keys = [...query.keys()].filter((k) => k !== "state").join(",") || "none";
+    await logError(new Error(`Zernio sign-in came back without an account (parameters: ${keys.slice(0, 200)})`), { source: "social.callback.zernio", userId: user.id, network, level: "warn" });
+    return done(next, { error: "denied" });
+  }
 
   try {
     const account = await zernioAccount(network, profileId, accountId);
