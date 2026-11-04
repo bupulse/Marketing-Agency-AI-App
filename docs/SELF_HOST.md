@@ -40,23 +40,29 @@ never run twice.
 
 ## The home Windows 11 Pro PC (next)
 
-Yes, it can host bupulse.com, and it is a good free option if it stays on. Setup (about an hour, with remote control):
+Yes, it can host bupulse.com, and it is a good free option if it stays on. Scripts: `scripts/self-host/windows/`
+(not yet run on a real Windows PC when written, 4 November 2026):
 
-1. **Never sleep:** Settings → System → Power: screen off is fine, *sleep: never*; BIOS "restore on AC power loss: on"
-   if available. Windows Update → Advanced → active hours, so restarts happen at night.
-2. **Install:** Node.js 24 LTS (nodejs.org), Git, and `cloudflared` (`winget install --id Cloudflare.cloudflared`).
-3. **Code:** `git clone https://github.com/bupulse/Marketing-Agency-AI-App.git`, `npm ci`, `npx prisma generate`.
-4. **Settings:** `npx netlify-cli login` once (office@bupulse.com), then a PowerShell version of `start-server.mjs`
-   works as is (it is plain Node; only the Keychain line changes: use an environment variable set once with
-   `setx BUPULSE_CRON_SECRET <random>` or Windows Credential Manager).
-5. **Build and start:** `node scripts/self-host/start-server.mjs` (after `next build` with the production settings).
-6. **Tunnel:** `cloudflared tunnel login`, then either move the `bupulse-prod` tunnel (copy its credentials JSON from the
-   Mac's `~/.cloudflared/`) or create a new one, and install it as a Windows service: `cloudflared service install`.
-7. **Start on boot:** Task Scheduler → "At startup" tasks for the server and the job loop (a PowerShell loop calling
-   `Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3002/api/cron/tick -Headers @{Authorization="Bearer $env:BUPULSE_CRON_SECRET"}` every 60 s).
-8. **Switch:** stop the Mac's tunnel by its PID; the DNS records already point at the tunnel, so whichever computer runs
-   it serves bupulse.com.
+| File | What it does |
+|---|---|
+| `install.ps1` | keeps the PC awake on mains power, creates `%USERPROFILE%\bupulse-prod` (logs and this PC's own `cron-secret.txt`, readable by that user only), `npm ci`, `netlify link` to the site, builds, writes `%USERPROFILE%\.cloudflared\bupulse-prod.yml`, and registers the start-at-boot tasks "BuPulse server", "BuPulse tunnel" and "BuPulse jobs" (S4U: they run without anyone signed in). "BuPulse jobs" is registered disabled. |
+| `server.mjs` | `build` (prisma generate + next build) or `start` (`next start -H 127.0.0.1 -p 3002`), with Netlify's production settings in memory only |
+| `cron-loop.ps1` | every 60 s `POST /api/cron/tick` with this PC's secret |
 
-Remote control: Windows 11 Pro has Remote Desktop built in (Settings → System → Remote Desktop), but it needs the PC to be
-reachable; from outside the home network use Chrome Remote Desktop or Cloudflare's own access (Zero Trust, free for up
-to 50 users) rather than opening a port.
+Order (the owner, with remote control):
+
+1. Install Node.js 24 LTS, Git and cloudflared: `winget install OpenJS.NodeJS.LTS`, `winget install Git.Git`, `winget install Cloudflare.cloudflared` (then open a new PowerShell).
+2. `git clone https://github.com/bupulse/Marketing-Agency-AI-App.git $env:USERPROFILE\BuPulse` (PowerShell).
+3. `npx -y netlify-cli@27.12.0 login` (office@bupulse.com), `cloudflared tunnel login` (bupulse.com zone), then
+   `cloudflared tunnel token --cred-file $env:USERPROFILE\.cloudflared\cf9eb6ae-8290-4e87-8c8e-fc6e0c3375d0.json bupulse-prod`.
+4. Administrator PowerShell in the repo: `powershell -ExecutionPolicy Bypass -File scripts\self-host\windows\install.ps1`.
+5. Check http://localhost:3002/api/status, then `Start-ScheduledTask "BuPulse tunnel"`: the tunnel now has two
+   connectors (Mac and PC) and Cloudflare uses both; the database is shared, so that is safe.
+6. On the Mac, stop the job loop, tunnel and server by their PIDs (`~/bupulse-prod/pids.txt`), then on the PC
+   `Enable-ScheduledTask "BuPulse jobs"; Start-ScheduledTask "BuPulse jobs"`. Never run the jobs on both.
+
+Updating the PC later: `git pull`, then `Stop-ScheduledTask "BuPulse server"`,
+`node scripts\self-host\windows\server.mjs build`, `Start-ScheduledTask "BuPulse server"`.
+
+Remote control: Chrome Remote Desktop (free, works from outside the home network without opening a port).
+Windows 11 Pro's own Remote Desktop needs the PC reachable, so it suits the home network only.
