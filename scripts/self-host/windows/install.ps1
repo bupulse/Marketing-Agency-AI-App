@@ -44,7 +44,7 @@ if ($LASTEXITCODE -ne 0) { throw "netlify link failed: run npx -y netlify-cli@27
 
 Write-Host "5/6 Building the production site (several minutes)"
 node scripts\self-host\windows\server.mjs build
-if ($LASTEXITCODE -ne 0) { throw "build failed: see $logs\build.log" }
+if ($LASTEXITCODE -ne 0) { throw "build failed: see the messages above" }
 Pop-Location
 
 Write-Host "6/6 Tunnel config and start-at-boot tasks"

@@ -32,9 +32,10 @@ if (!/gknlsmvrzsyxinwmodtk/.test(env.DATABASE_URL || "")) {
   process.exit(1);
 }
 
+// The build prints to the window it runs in; the server (run by Task Scheduler, no window) writes server.log.
 const run = (command) => {
-  const out = openSync(join(logs, mode === "build" ? "build.log" : "server.log"), "a");
-  const result = spawnSync(command, { cwd: dir, env, shell: true, stdio: mode === "build" ? "inherit" : ["ignore", out, out] });
+  const stdio = mode === "build" ? "inherit" : ["ignore", ...Array(2).fill(openSync(join(logs, "server.log"), "a"))];
+  const result = spawnSync(command, { cwd: dir, env, shell: true, stdio });
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
