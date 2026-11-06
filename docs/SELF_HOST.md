@@ -61,8 +61,10 @@ Order (the owner, with remote control):
 6. On the Mac, stop the job loop, tunnel and server by their PIDs (`~/bupulse-prod/pids.txt`), then on the PC
    `Enable-ScheduledTask "BuPulse jobs"; Start-ScheduledTask "BuPulse jobs"`. Never run the jobs on both.
 
-Updating the PC later: `git pull`, then `Stop-ScheduledTask "BuPulse server"`,
-`node scripts\self-host\windows\server.mjs build`, `Start-ScheduledTask "BuPulse server"`.
+Updating the PC later (the repo is D:\BuPulse on the PC), in an administrator PowerShell:
+`powershell -ExecutionPolicy Bypass -File D:\BuPulse\scripts\self-host\windows\update.ps1`. It pulls, stops the
+server task AND the `next start` still listening on port 3002 (Stop-ScheduledTask alone leaves it running, so the old
+version stays live), builds, starts the task and waits for /api/status.
 
 Remote control: Chrome Remote Desktop (free, works from outside the home network without opening a port).
 Windows 11 Pro's own Remote Desktop needs the PC reachable, so it suits the home network only.
