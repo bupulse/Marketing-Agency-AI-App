@@ -1,5 +1,6 @@
 import { CLOUDFLARE_RANGES, GOOGLE_FRONT_END_RANGES, inRanges } from "./cidr";
 import { currentPlatform, type Platform } from "./detect";
+import { RWANDA_RANGES } from "./rwanda-ranges";
 
 // The visitor's country and IP address from the headers the host sets. Each host only trusts its own headers:
 // anyone can send `cf-ipcountry` or `x-nf-geo` to a host that does not overwrite them, so on Netlify the cf-* headers
@@ -48,6 +49,13 @@ export function countryFromNetlifyGeo(value: string | null | undefined): string 
  * the catch-all region. x-country is not read: a visitor can send it, and only x-nf-geo is what Netlify itself set.
  */
 export function visitorCountry(h: Headers, platform: Platform = currentPlatform()): string | null {
+  // A Rwandan provider's own address is Rwanda even when the host's location list says otherwise (some Liquid Telecom
+  // Rwanda lines show as Uganda; lib/platform/rwanda-ranges.ts). Only the address the host itself saw is used.
+  if (inRanges(trustedClientIp(h, platform), RWANDA_RANGES)) return "RW";
+  return hostCountry(h, platform);
+}
+
+function hostCountry(h: Headers, platform: Platform): string | null {
   if (platform === "netlify") return countryFromNetlifyGeo(h.get("x-nf-geo"));
   if (platform === "cloudrun" && !viaCloudflare(h, platform)) return null;
   return cleanCountry(h.get("cf-ipcountry"));
