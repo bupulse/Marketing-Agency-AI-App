@@ -26,17 +26,25 @@ powercfg /change hibernate-timeout-ac 0
 Write-Host "2/6 Logs folder and this PC's own job password"
 New-Item -ItemType Directory -Force $logs | Out-Null
 $secretFile = Join-Path $logs "cron-secret.txt"
-if (-not (Test-Path $secretFile)) {
+if (-not (Test-Path -LiteralPath $secretFile -PathType Leaf)) {
   $bytes = New-Object byte[] 36
   [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-  Set-Content -NoNewline $secretFile ([Convert]::ToBase64String($bytes) -replace '[+/=]', '')
+  # .NET writes the file directly (a desktop on 6 November 2026 ended this step without the file via Set-Content).
+  [System.IO.File]::WriteAllText($secretFile, ([Convert]::ToBase64String($bytes) -replace '[+/=]', ''))
 }
+if (-not (Test-Path -LiteralPath $secretFile -PathType Leaf)) { throw "Could not create $secretFile (antivirus or folder protection?)" }
 icacls $secretFile /inheritance:r /grant:r "$($env:USERNAME):(R,W)" | Out-Null
 
 Write-Host "3/6 Installing packages (several minutes)"
 Push-Location $repo
-npm ci
-if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+# Run again after a failed step: packages installed from the same package-lock.json are kept (npm ci takes ~15 minutes).
+$installed = Join-Path $repo "node_modules\.package-lock.json"
+if ((Test-Path $installed) -and ((Get-Item $installed).LastWriteTime -ge (Get-Item (Join-Path $repo "package-lock.json")).LastWriteTime)) {
+  Write-Host "    already installed, skipped"
+} else {
+  npm ci
+  if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+}
 
 Write-Host "4/6 Linking this folder to the Netlify site (production settings)"
 npx -y netlify-cli@27.12.0 link --id 9b52a3b8-0101-45b8-9a29-44bc042f53fd
