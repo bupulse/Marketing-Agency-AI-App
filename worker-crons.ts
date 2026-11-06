@@ -36,6 +36,11 @@ export const DAILY_POSTS_CRON = "13 * * * *";
 /** Every 6 hours at :31: creators' post views, link checks, period closes and payouts (docs/CREATOR_CAMPAIGNS.md), cursor calls. */
 export const CREATOR_VIEWS_CRON = "31 */6 * * *";
 
+/** Daily at 03:17: erases accounts past their 30-day deletion grace (was GitHub Actions only, purge-accounts.yml). */
+export const PURGE_ACCOUNTS_CRON = "17 3 * * *";
+/** Daily at 04:43: renews social channel tokens before they expire (was GitHub Actions only, social-refresh.yml). */
+export const SOCIAL_REFRESH_CRON = "43 4 * * *";
+
 export const CRON_ROUTES: Record<string, string> = {
   [PUBLISH_CRON]: "/api/cron/publish",
   [METRICS_CRON]: "/api/cron/metrics",
@@ -52,6 +57,10 @@ export const CRON_ROUTES: Record<string, string> = {
   [VIDEO_JOBS_CRON]: "/api/cron/video-jobs",
   [DAILY_POSTS_CRON]: "/api/cron/daily-posts",
   [CREATOR_VIEWS_CRON]: "/api/cron/creator-views",
+  // Self-hosted bupulse.com (scripts/self-host): the PC's job loop has its own CRON_SECRET, so GitHub Actions' calls
+  // are refused there; the tick runs these two as well (both only act on what is due, so a second caller is harmless).
+  [PURGE_ACCOUNTS_CRON]: "/api/cron/purge-accounts",
+  [SOCIAL_REFRESH_CRON]: "/api/cron/social-refresh",
 };
 
 /** The route for a schedule, or null for one this worker doesn't know (never fall back to publishing). */

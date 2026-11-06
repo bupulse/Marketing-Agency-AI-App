@@ -14,8 +14,14 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 const mode = process.argv[2];
-if (mode !== "build" && mode !== "start") {
-  console.error("usage: node scripts/self-host/windows/server.mjs build|start");
+if (mode !== "build" && mode !== "start" && mode !== "tool") {
+  console.error("usage: node scripts/self-host/windows/server.mjs build|start|tool <name> [args]");
+  process.exit(1);
+}
+// `tool <name>`: one of scripts/self-host/tools/<name>.mjs, run with the same production settings (in memory).
+const tool = mode === "tool" ? process.argv[3] : null;
+if (mode === "tool" && !/^[a-z0-9-]+$/.test(tool ?? "")) {
+  console.error("usage: node scripts/self-host/windows/server.mjs tool <name> [args] (a file in scripts/self-host/tools)");
   process.exit(1);
 }
 const dir = resolve(import.meta.dirname, "../../..");
@@ -32,14 +38,17 @@ if (!/gknlsmvrzsyxinwmodtk/.test(env.DATABASE_URL || "")) {
   process.exit(1);
 }
 
-// The build prints to the window it runs in; the server (run by Task Scheduler, no window) writes server.log.
+// The build and tools print to the window they run in; the server (run by Task Scheduler, no window) writes server.log.
 const run = (command) => {
-  const stdio = mode === "build" ? "inherit" : ["ignore", ...Array(2).fill(openSync(join(logs, "server.log"), "a"))];
+  const stdio = mode !== "start" ? "inherit" : ["ignore", ...Array(2).fill(openSync(join(logs, "server.log"), "a"))];
   const result = spawnSync(command, { cwd: dir, env, shell: true, stdio });
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
-if (mode === "build") {
+if (mode === "tool") {
+  const quoted = process.argv.slice(4).map((a) => (/^[A-Za-z0-9_.=-]+$/.test(a) ? a : JSON.stringify(a))).join(" ");
+  run(`node scripts/self-host/tools/${tool}.mjs ${quoted}`.trim());
+} else if (mode === "build") {
   run("npx prisma generate --config prisma7.config.ts");
   run("npm run build");
   console.log("build done");

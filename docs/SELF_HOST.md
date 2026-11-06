@@ -66,5 +66,13 @@ Updating the PC later (the repo is D:\BuPulse on the PC), in an administrator Po
 server task AND the `next start` still listening on port 3002 (Stop-ScheduledTask alone leaves it running, so the old
 version stays live), builds, starts the task and waits for /api/status.
 
+Tools with the production settings (in memory), on the PC: `node scripts/self-host/windows/server.mjs tool <name> [args]`
+runs `scripts/self-host/tools/<name>.mjs`. `wipe-test-clients` (6 November 2026) lists every account except ADMIN_EMAILS
+and staff, and with `--yes <count>` writes a full backup to %USERPROFILE%\bupulse-prod\backups, marks them due and
+asks the running server's purge (lib/account-deletion.ts) to erase them.
+
+The tick also runs /api/cron/purge-accounts (03:17) and /api/cron/social-refresh (04:43): GitHub Actions' calls carry the
+old CRON_SECRET, which the PC refuses.
+
 Remote control: Chrome Remote Desktop (free, works from outside the home network without opening a port).
 Windows 11 Pro's own Remote Desktop needs the PC reachable, so it suits the home network only.
