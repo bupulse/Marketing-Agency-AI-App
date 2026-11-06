@@ -198,6 +198,13 @@ Sandbox and live are separate Paddle accounts with different keys, tokens and pr
 
 ## Going live
 
+From Admin (no deploy): Admin → Settings → Card payments, choose **Live**, paste the live API key and client-side token,
+**Save**, then **Set up prices**. Saving on the other account (sandbox ↔ live) clears every plan's Paddle product and
+price ids and the regional card price ids (they belong to the old account; the `paddlePrices` history is kept so old
+subscriptions still map to their plan), and the `PADDLE_PRICE_*` variables stop counting while Settings runs on a
+different account than `PADDLE_ENVIRONMENT` (`lib/billing/env-prices.ts`). Set up prices then creates the live
+products, prices and webhook (its secret saved). The command-line way:
+
 1. Paddle approves live accounts only after review of a live website that shows pricing, terms of
    service, privacy policy and a refund policy.
 2. In the live account create a new API key and client token, set `PADDLE_ENVIRONMENT=production`,

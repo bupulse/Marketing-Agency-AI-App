@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { envPricesUsable } from "@/lib/billing/env-prices";
 import { isFeatureKey, sortFeatureKeys, withPrerequisites, type FeatureKey } from "@/lib/features";
 import {
   CAPABILITIES,
@@ -267,10 +268,13 @@ export function envPriceName(provider: BillingProvider, planKey: string, interva
 /** The current provider price id of a plan: the database first, the environment for plans that were never synced. */
 export function currentPriceId(provider: BillingProvider, plan: PlanView, interval: BillingInterval): string | null {
   const own = provider === "PADDLE" ? (interval === "YEAR" ? plan.paddleYearlyPriceId : plan.paddleMonthlyPriceId) : null;
-  return own || process.env[envPriceName(provider, plan.key, interval)] || null;
+  // PADDLE_PRICE_* belong to the hosting environment's Paddle account: not used once Settings runs on the other one.
+  return own || (provider === "PADDLE" && !envPricesUsable() ? null : process.env[envPriceName(provider, plan.key, interval)]) || null;
 }
 
 export async function priceIdFor(provider: BillingProvider, planKey: string, interval: BillingInterval): Promise<string | null> {
+  // Reading the Paddle settings first brings envPricesUsable() up to date (lib/billing/env-prices.ts).
+  if (provider === "PADDLE") await (await import("@/lib/billing/paddle-config")).getPaddleConfig();
   const plan = await getPlan(planKey);
   return plan ? currentPriceId(provider, plan, interval) : null;
 }

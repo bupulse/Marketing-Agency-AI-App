@@ -154,6 +154,36 @@ describe("saving", () => {
     expect(c).toMatchObject({ environment: "production", apiKey: LIVE_KEY, webhookSecret: null });
   });
 
+  it("moving to the other Paddle account clears the old account's plan and regional price ids, so Set up prices makes new ones", async () => {
+    // bupulse.com, 6 November 2026: sandbox through the PADDLE_* variables (prices included), then live saved in Settings.
+    process.env.PADDLE_API_KEY = KEY;
+    process.env.PADDLE_CLIENT_TOKEN = TOKEN;
+    process.env.PADDLE_ENVIRONMENT = "sandbox";
+    process.env.PADDLE_PRICE_STANDARD_MONTH = "pri_sandbox_env_m";
+    const plan = h.db.planDefinition.rows.find((p) => p.key === "STANDARD")!;
+    Object.assign(plan, { paddleProductId: "pro_sbx", paddleMonthlyPriceId: "pri_sbx_m", paddleYearlyPriceId: "pri_sbx_y", syncState: "synced", paddlePrices: [{ id: "pri_sbx_m", interval: "MONTH", amountCents: 1200, createdAt: "2026-10-01" }] });
+    h.db.planRegionPrice.rows.push({ id: "prp", planKey: "STANDARD", regionKey: "RW", currency: "RWF", monthlyMinor: 15000, yearlyMinor: 150000, cardMonthlyUsdCents: 1200, cardYearlyUsdCents: 11600, paddleMonthlyPriceId: "pri_sbx_rw_m", paddleYearlyPriceId: "pri_sbx_rw_y" });
+    const { priceIdFor } = await import("@/lib/plan-catalog");
+
+    await savePaddleSettings(CONSOLE, { environment: "production", apiKey: LIVE_KEY, clientToken: "live_0123456789abcdef" });
+
+    expect(plan).toMatchObject({ paddleProductId: null, paddleMonthlyPriceId: null, paddleYearlyPriceId: null, syncState: "not_synced" });
+    expect(plan.paddlePrices).toHaveLength(1); // old subscriptions still map to their plan
+    expect(h.db.planRegionPrice.rows[0]).toMatchObject({ paddleMonthlyPriceId: null, paddleYearlyPriceId: null });
+    // The sandbox PADDLE_PRICE_* variable is not a live price either.
+    expect(await priceIdFor("PADDLE", "STANDARD", "MONTH")).toBeNull();
+    const audit = h.db.auditLog.rows.find((a) => a.action === "set_paddle_settings");
+    expect(JSON.stringify(audit)).toContain("clearedPaddleIds");
+  });
+
+  it("saving again on the same account keeps the price ids", async () => {
+    await savePaddleSettings(CONSOLE, { environment: "sandbox", apiKey: KEY, clientToken: TOKEN });
+    const plan = h.db.planDefinition.rows.find((p) => p.key === "STANDARD")!;
+    Object.assign(plan, { paddleProductId: "pro_sbx", paddleMonthlyPriceId: "pri_sbx_m", paddleYearlyPriceId: "pri_sbx_y" });
+    await savePaddleSettings(CONSOLE, { environment: "sandbox", webhookSecret: SECRET });
+    expect(plan).toMatchObject({ paddleProductId: "pro_sbx", paddleMonthlyPriceId: "pri_sbx_m" });
+  });
+
   it("removing the saved values brings the environment variables back", async () => {
     process.env.PADDLE_API_KEY = "pdl_env_key_1234";
     await savePaddleSettings(CONSOLE, { apiKey: KEY, clientToken: TOKEN });

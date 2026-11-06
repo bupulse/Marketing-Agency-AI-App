@@ -5,6 +5,9 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { logError } from "@/lib/errors";
+import { setEnvPricesUsable } from "@/lib/billing/env-prices";
+import { clearPlanCache } from "@/lib/plan-catalog";
+import { clearRegionPriceCache } from "@/lib/region-prices";
 
 // Paddle's credentials (docs/BILLING.md, "Connecting Paddle"): set in Admin -> Settings -> Card payments (Paddle) and
 // kept in AdminSetting "billing.paddle", each secret encrypted with ENCRYPTION_KEY (lib/crypto.ts) like the Google
@@ -112,6 +115,7 @@ export async function getPaddleConfig(opts: { force?: boolean } = {}): Promise<P
     value.environment = saved.environment;
     value.source.environment = "settings";
   }
+  setEnvPricesUsable(value.environment === envEnvironment());
   return value;
 }
 
@@ -182,17 +186,37 @@ export async function savePaddleSettings(ctx: AdminContext, input: PaddleSetting
       const problem = effective ? paddleValueProblem(name, effective, environment) : null;
       if (problem) throw new AdminError("invalid", `${typed[name] ? "" : savedPlain ? "The saved one: " : `${ENV_NAME[name]}: `}${problem}`);
     }
+    // The Paddle account in use until now: the saved one, else the hosting environment's (PADDLE_ENVIRONMENT).
+    const accountBefore: PaddleEnvironment = before.apiKey?.enc && before.environment ? before.environment : envEnvironment();
     const next: Stored = { ...before, ...encrypted, environment, updatedAt: new Date().toISOString() };
     // A webhook secret belongs to one account: switching environment without a new one drops the old one.
     if (envChanged && !typed.webhookSecret) next.webhookSecret = null;
     const changed = PADDLE_SECRETS.filter((n) => (before[n]?.enc ?? null) !== (next[n]?.enc ?? null));
     if (changed.length === 0 && before.environment === environment) return { environment, changed };
     await tx.adminSetting.upsert({ where: { key: PADDLE_SETTING_KEY }, create: { key: PADDLE_SETTING_KEY, value: next as Prisma.InputJsonObject }, update: { value: next as Prisma.InputJsonObject } });
+    // Moving to the other Paddle account (sandbox <-> live): the plans' product and price ids belong to the old account,
+    // so they are cleared and "Set up prices" creates them in the new one. The price history (paddlePrices) is kept,
+    // so subscriptions made on the old account still map to their plan.
+    let cleared = { plans: 0, regionPrices: 0 };
+    if (accountBefore !== environment) {
+      const plans = await tx.planDefinition.updateMany({
+        where: { OR: [{ paddleProductId: { not: null } }, { paddleMonthlyPriceId: { not: null } }, { paddleYearlyPriceId: { not: null } }] },
+        data: { paddleProductId: null, paddleMonthlyPriceId: null, paddleYearlyPriceId: null, syncState: "not_synced", syncError: null },
+      });
+      const regionPrices = await tx.planRegionPrice.updateMany({
+        where: { OR: [{ paddleMonthlyPriceId: { not: null } }, { paddleYearlyPriceId: { not: null } }] },
+        data: { paddleMonthlyPriceId: null, paddleYearlyPriceId: null },
+      });
+      cleared = { plans: plans.count, regionPrices: regionPrices.count };
+    }
     // Only the last 4 characters are audited ("endings"), never the values.
-    await writeAudit(tx, ctx, "set_paddle_settings", `setting:${PADDLE_SETTING_KEY}`, { environment: before.environment ?? null, endings: endings(before) }, { environment, endings: endings(next), changed: changed.map((n) => AUDIT_NAME[n]) });
+    await writeAudit(tx, ctx, "set_paddle_settings", `setting:${PADDLE_SETTING_KEY}`, { environment: before.environment ?? accountBefore, endings: endings(before) }, { environment, endings: endings(next), changed: changed.map((n) => AUDIT_NAME[n]), ...(accountBefore !== environment ? { clearedPaddleIds: cleared } : {}) });
     return { environment, changed };
   });
   clearPaddleConfigCache();
+  clearPlanCache();
+  clearRegionPriceCache();
+  setEnvPricesUsable(result.environment === envEnvironment());
   return result;
 }
 
