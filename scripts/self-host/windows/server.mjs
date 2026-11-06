@@ -10,7 +10,7 @@
 // and the Mac's loop are refused here.
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, mkdirSync, openSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 
 const mode = process.argv[2];
@@ -44,6 +44,13 @@ const run = (command) => {
   const result = spawnSync(command, { cwd: dir, env, shell: true, stdio });
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
+
+if (mode === "build") {
+  // Room for the bundler (Node's default heap ran out on the desktop), and no type check here (checked before pushing).
+  const heapMb = Math.max(3072, Math.min(8192, Math.floor((totalmem() / 1048576) * 0.6)));
+  env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --max-old-space-size=${heapMb}`.trim();
+  env.BUPULSE_SKIP_TYPECHECK = "1";
+}
 
 if (mode === "tool") {
   const quoted = process.argv.slice(4).map((a) => (/^[A-Za-z0-9_.=-]+$/.test(a) ? a : JSON.stringify(a))).join(" ");

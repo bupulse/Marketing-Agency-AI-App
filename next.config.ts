@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["test.bupulse.com"],
   // Hide the Next.js dev-tools button (the "N" bubble): the test site is shown to people as the real thing.
   devIndicators: false,
+  // The self-hosted PC build (scripts/self-host/windows/server.mjs) skips the type check: the code is type-checked before
+  // it is pushed, and the check alone ran out of memory on the home desktop (6 November 2026).
+  typescript: { ignoreBuildErrors: process.env.BUPULSE_SKIP_TYPECHECK === "1" },
   // Heavy libraries used by both pages (server actions) and route handlers: kept as packages so the Cloudflare Worker
   // carries each one once (OpenNext bundles external packages once) instead of a copy per Turbopack chunk group.
   // Behaviour is the same; only where the code sits in the Worker changes (docs/DEPLOY.md, "Worker size").
