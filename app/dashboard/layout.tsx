@@ -172,6 +172,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
  */
 async function QuizNudge({ business, role, usable }: { business: Parameters<typeof quizEntry>[0]; role: Parameters<typeof quizEntry>[1]; usable: Parameters<typeof quizEntry>[2] }) {
   const entry = await quizEntry(business, role, usable).catch(() => null);
-  if (!entry || !entry.playable || entry.overall >= 100) return null;
+  if (!entry || !entry.playable || entry.done) return null;
   return <QuizBanner overall={entry.overall} href={entry.href} label={entry.label} nextRound={entry.nextRound} />;
 }

@@ -47,7 +47,23 @@ describe("where the Business info quiz starts (Business info page and dashboard 
   it("says play again when everything is complete", async () => {
     progress = { profile: p(100) };
     const e = await quizEntry(business, "OWNER", all);
-    expect(e).toMatchObject({ overall: 100, label: "Play again", href: "/dashboard/knowledge/quiz", nextRound: null });
+    expect(e).toMatchObject({ overall: 100, label: "Play again", href: "/dashboard/knowledge/quiz", nextRound: null, done: true });
+  });
+
+  it("reads as done, with no next round, when only more customer reviews are missing and one is in", async () => {
+    progress = { profile: p(100), products: p(100), campaigns: p(100), locations: p(100), brand: p(100), channels: p(100), audience: p(100), competitors: p(100), faqs: p(100), reviews: p(33), interview: p(100) };
+    const e = await quizEntry(business, "OWNER", all);
+    expect(e.overall).toBeLessThan(100);
+    expect(e).toMatchObject({ done: true, label: "Play again", href: "/dashboard/knowledge/quiz", nextRound: null });
+  });
+
+  it("keeps nudging when there is no review yet, or another section is incomplete", async () => {
+    progress = { profile: p(100), products: p(100), reviews: p(0) };
+    expect((await quizEntry(business, "OWNER", all)).done).toBe(false);
+    progress = { profile: p(100), products: p(60), reviews: p(33) };
+    const e = await quizEntry(business, "OWNER", all);
+    expect(e.done).toBe(false);
+    expect(e.href).toBe("/dashboard/knowledge/quiz?round=sell");
   });
 
   it("is not playable for a member on a plan without content who may not edit the company settings", async () => {

@@ -19,7 +19,7 @@ export function QuizCard({ entry, title, text, note }: { entry: QuizEntry; title
           <span className="shrink-0 text-[14px] font-semibold tabular-nums">{entry.overall}%</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {entry.nextRound && entry.overall < 100 && (
+          {entry.nextRound && !entry.done && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-soft px-2.5 py-1 text-[12px] font-semibold">
               Next: <span aria-hidden>{entry.nextRound.emoji}</span> {entry.nextRound.title}
             </span>

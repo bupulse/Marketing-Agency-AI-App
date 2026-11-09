@@ -49,7 +49,7 @@ export default async function DashboardPage() {
     : [0, 0, 0, 0, 0, [], [], null, 0];
 
   const quiz = await quizP;
-  const showQuiz = !!quiz && quiz.playable && quiz.overall < 100;
+  const showQuiz = !!quiz && quiz.playable && !quiz.done;
 
   const { used, limits } = usage;
   // A paid plan that ended (lib/entitlements.ts "inactive", refused by lib/usage.ts too): its old limits are not usable.

@@ -7,7 +7,7 @@ import type { FeatureKey } from "@/lib/features";
 import { can, type Role } from "@/lib/team/roles";
 import { knowledgeProgress } from "./overview";
 import { QUIZ_ROUNDS, roundForSection } from "./quiz-map";
-import { overallPercent, sectionByKey, type SectionKey, type SectionProgress } from "./sections";
+import { KNOWLEDGE_SECTIONS, overallPercent, sectionByKey, type SectionKey, type SectionProgress } from "./sections";
 
 export type QuizEntry = {
   progress: Partial<Record<SectionKey, SectionProgress>>;
@@ -19,6 +19,12 @@ export type QuizEntry = {
   label: "Start the quiz" | "Continue" | "Play again";
   /** The round Start or Continue opens (the first round the person can play when nothing is filled in yet). */
   nextRound: { emoji: string; title: string } | null;
+  /**
+   * True when Business info is complete, or when all that is missing is more customer reviews and at least one is in:
+   * reviews come from customers, not from the quiz, so the nudges stop and the quiz reads as done (10 November 2026,
+   * BuPulse's own account sat at 93% with every round played and "Next: Love notes" on every page).
+   */
+  done: boolean;
 };
 
 /**
@@ -37,16 +43,28 @@ export const quizEntry = cache(async function quizEntry(business: Parameters<typ
   // "Continue" opens the round that fixes the first incomplete section, in the quiz's order (for Products: Photos once
   // there are products; a profile that lacks only its service area: Find us).
   const ids = rounds.map((r) => r.id);
-  const first = overall > 0 && overall < 100 ? rounds.find((r) => (progress[r.section]?.percent ?? 0) < 100) : undefined;
+  const done = overall >= 100 || onlyReviewsMissing(progress);
+  const first = overall > 0 && !done ? rounds.find((r) => (progress[r.section]?.percent ?? 0) < 100) : undefined;
   const nextId = first ? roundForSection(first.section, progress[first.section], ids) : null;
   const next = nextId ? { id: nextId } : undefined;
-  const opens = next ? rounds.find((r) => r.id === next.id) : overall < 100 ? rounds[0] : undefined;
+  const opens = next ? rounds.find((r) => r.id === next.id) : !done ? rounds[0] : undefined;
   return {
     progress,
     overall,
     playable: rounds.length > 0,
     href: `/dashboard/knowledge/quiz${next ? `?round=${next.id}` : ""}`,
-    label: overall === 0 ? "Start the quiz" : overall >= 100 ? "Play again" : "Continue",
+    label: overall === 0 ? "Start the quiz" : done ? "Play again" : "Continue",
     nextRound: opens ? { emoji: opens.emoji, title: opens.title } : null,
+    done,
   };
 });
+
+/** Pure: every section with a score is complete except Reviews, which has at least one review (a score above 0). */
+export function onlyReviewsMissing(progress: Partial<Record<SectionKey, SectionProgress>>): boolean {
+  const reviews = progress.reviews?.percent;
+  if (typeof reviews !== "number" || reviews <= 0 || reviews >= 100) return false;
+  return KNOWLEDGE_SECTIONS.every((s) => {
+    const percent = progress[s.key]?.percent;
+    return s.status !== "ready" || s.key === "reviews" || typeof percent !== "number" || percent >= 100;
+  });
+}

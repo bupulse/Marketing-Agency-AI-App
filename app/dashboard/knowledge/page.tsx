@@ -28,8 +28,12 @@ export default async function KnowledgePage() {
       />
       <QuizCard
         entry={entry}
-        title="Fill it in with a 5-minute quiz"
-        text="One question at a time, mostly taps. BuPulse guesses first, you confirm. Everything lands in the sections below."
+        title={entry.done && entry.overall < 100 ? "Quiz done" : "Fill it in with a 5-minute quiz"}
+        text={
+          entry.done && entry.overall < 100
+            ? "Every round is filled in. Only customer reviews are missing: add them in Reviews & testimonials as customers agree to share them."
+            : "One question at a time, mostly taps. BuPulse guesses first, you confirm. Everything lands in the sections below."
+        }
         note={`Your business info is ${entry.overall}% complete. Required fields are marked with *`}
       />
 
