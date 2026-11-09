@@ -1548,8 +1548,8 @@ function LoveQuestion({ part, i, shared, slots, head, a, setNote, onTap }: { par
         {i === 0 && shared === 0
           ? head("Got a nice message from a customer?", "Paste it here, word for word. No message yet? Skip this.")
           : shared + i < MAX_QUIZ_REVIEWS
-            ? head(`${i === 0 ? "Another nice message?" : "Another one?"} (${shared + i + 1} of ${MAX_QUIZ_REVIEWS})`, `Three reviews customers agreed to share make this part complete${shared ? `: you have ${shared} already` : ""}. No more? Skip.`)
-            : head(i === 0 ? "Got another nice message?" : `Another one? (${i + 1} of ${slots})`, "You have three shared reviews already: more is a bonus. No more? Skip.")}
+            ? head(`${i === 0 ? "Another nice message?" : "Another one?"} (${shared + i + 1} of ${MAX_QUIZ_REVIEWS})`, shared ? "Your shared review already completes this part: more give your posts more to quote. No more? Skip." : "One review a customer agreed to share completes this part. No more? Skip.")
+            : head(i === 0 ? "Got another nice message?" : `Another one? (${i + 1} of ${slots})`, "You have three shared reviews already: more give your posts more to quote. No more? Skip.")}
         <Textarea aria-label="What the customer said" rows={4} maxLength={1000} placeholder="“Best service in town, thank you!”" value={note.quote} onChange={(e) => setNote(i, { quote: e.target.value })} />
         {note.quote.trim() && <Input aria-label="Customer's name or initials" maxLength={80} placeholder="Their name or initials, e.g. Aline K." value={note.customerName} onChange={(e) => setNote(i, { customerName: e.target.value })} />}
       </>

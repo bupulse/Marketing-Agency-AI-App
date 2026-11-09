@@ -106,8 +106,11 @@ describe("progress scores", () => {
   it("reviews: three that may be quoted make 100", () => {
     expect(reviewsCompleteness(0, 0).percent).toBe(0);
     expect(reviewsCompleteness(3, 0).percent).toBe(15);
+    expect(reviewsCompleteness(1, 0).percent).toBe(5);
+    // One review a customer agreed to share completes the section (owner's decision, 10 November 2026).
+    expect(reviewsCompleteness(1, 1).percent).toBe(100);
     expect(reviewsCompleteness(3, 3).percent).toBe(100);
-    expect(reviewsCompleteness(4, 2).percent).toBeLessThan(100);
+    expect(reviewsCompleteness(4, 2).percent).toBe(100);
   });
 });
 

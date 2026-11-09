@@ -89,7 +89,7 @@ export async function knowledgeProgress(business: BusinessRow, today: string): P
     })(),
     competitors: competitorsCompleteness(competitors, readPositioning(business.positioning)),
     faqs: faqsCompleteness(faqs, readPolicies(business.policies)),
-    reviews: { ...reviewsCompleteness(reviews, permitted), next: !reviews ? "Add what customers say about you" : permitted < 3 ? `Add ${plural(3 - permitted, "review")} customers agreed to share` : undefined },
+    reviews: { ...reviewsCompleteness(reviews, permitted), next: !reviews ? "Add what customers say about you" : permitted < 1 ? "Ask a customer if BuPulse may quote their review" : undefined },
     interview: { ...interviewCompleteness(readMarketingProfile(business.marketingProfile), interview), next: "Set your brand voice" },
   };
 }

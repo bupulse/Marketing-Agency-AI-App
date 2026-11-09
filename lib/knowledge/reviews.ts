@@ -62,12 +62,15 @@ export function reviewFormValues(r: ReviewRow): ReviewFormValues {
   return { quote: r.quote, customerName: r.customerName, source: r.source, rating: r.rating ?? "", receivedOn: r.receivedOn?.toISOString().slice(0, 10) ?? "", productId: r.productId ?? "", canPublish: r.canPublish };
 }
 
-/** Completeness: three reviews the AI may quote make 100; reviews without permission count a little (they still guide the owner). */
+/**
+ * Completeness: one review the AI may quote makes 100 (the owner's decision of 10 November 2026: a new business rarely
+ * has three, and more reviews still give posts more to quote). Reviews without permission count a little (they still
+ * guide the owner) but never complete the section.
+ */
 export function reviewsCompleteness(total: number, permitted: number): { percent: number; summary: string } {
-  const percent = Math.min(100, Math.round(Math.min(permitted, 3) * (100 / 3) + Math.min(total - permitted, 3) * 5));
   if (!total) return { percent: 0, summary: "Add what customers say about you" };
   return {
-    percent: Math.min(percent, permitted >= 3 ? 100 : 95),
+    percent: permitted >= 1 ? 100 : Math.min(15, total * 5),
     summary: `${total} review${total === 1 ? "" : "s"} · ${permitted} may be quoted`,
   };
 }
