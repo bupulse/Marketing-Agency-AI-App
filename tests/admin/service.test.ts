@@ -537,3 +537,42 @@ describe("monthly costs", () => {
     expect(audit()).toHaveLength(2);
   });
 });
+
+describe("company account", () => {
+  it("makes a trial account a free Pro company account: ACTIVE, no provider, no end, audited", async () => {
+    seedUser();
+    seedSub({ plan: "TRIAL", status: "TRIALING", provider: null, providerSubscriptionId: null, trialEndsAt: new Date("2026-11-12T07:25:00Z") });
+    expect(await code(svc.setCompanyAccount(API, { userId: USER, on: true }))).toBe("confirm_required");
+    const out = await svc.setCompanyAccount(CONSOLE, { userId: USER, on: true });
+    expect(out.companyAccount).toBe(true);
+    expect(h.db.subscription.rows[0]).toMatchObject({ plan: "PRO", chosenPlan: "PRO", status: "ACTIVE", provider: null, providerSubscriptionId: null, currentPeriodEnd: null, trialEndsAt: null, cancelAtPeriodEnd: false });
+    expect(lastAudit()).toMatchObject({ action: "company_account_on", target: `user:${USER}` });
+    expect(lastAudit().before).toMatchObject({ plan: "TRIAL", status: "TRIALING" });
+    expect(h.db.adminApproval.rows).toHaveLength(0);
+  });
+
+  it("is idempotent and never touches a client who pays", async () => {
+    seedUser();
+    seedSub({ plan: "PRO", status: "ACTIVE", provider: null, providerSubscriptionId: null, currentPeriodEnd: null });
+    expect((await svc.setCompanyAccount(CONSOLE, { userId: USER, on: true })).message).toMatch(/already/);
+    expect(audit()).toHaveLength(0);
+    h.db.subscription.rows.length = 0;
+    seedSub(); // Paddle
+    expect(await code(svc.setCompanyAccount(CONSOLE, { userId: USER, on: true }))).toBe("conflict");
+    h.db.subscription.rows.length = 0;
+    seedSub({ plan: "BUSINESS", provider: "MANUAL_MOMO", providerSubscriptionId: null, currentPeriodEnd: new Date("2026-12-01T00:00:00Z") });
+    expect(await code(svc.setCompanyAccount(CONSOLE, { userId: USER, on: true }))).toBe("conflict");
+    expect(h.db.subscription.rows[0]).toMatchObject({ provider: "MANUAL_MOMO", plan: "BUSINESS" });
+  });
+
+  it("ending it puts the account back on a fresh trial; ending a normal account is refused", async () => {
+    seedUser();
+    seedSub({ plan: "PRO", status: "ACTIVE", provider: null, providerSubscriptionId: null, currentPeriodEnd: null });
+    const out = await svc.setCompanyAccount(CONSOLE, { userId: USER, on: false });
+    expect(out.companyAccount).toBe(false);
+    expect(h.db.subscription.rows[0]).toMatchObject({ plan: "TRIAL", status: "TRIALING" });
+    expect(h.db.subscription.rows[0].trialEndsAt).toBeInstanceOf(Date);
+    expect(lastAudit()).toMatchObject({ action: "company_account_off" });
+    expect(await code(svc.setCompanyAccount(CONSOLE, { userId: USER, on: false }))).toBe("conflict");
+  });
+});

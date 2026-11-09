@@ -1,4 +1,5 @@
 import "server-only";
+import { isCompanyAccount } from "@/lib/billing/company-account";
 import { companyMonthlyBudgetUsd, companySpendThisMonth } from "@/lib/ai/budget";
 import { prisma } from "@/lib/db";
 import { getPriceTable } from "@/lib/plan-catalog";
@@ -44,11 +45,12 @@ export async function overviewSection(c: Client) {
     ? await prisma.pageView.findFirst({ where: { sessionId: signup.sessionId }, orderBy: { createdAt: "asc" }, select: { source: true, path: true, utmCampaign: true, country: true } })
     : null;
   const sub = c.subscription;
-  const mrrCents = sub && PAYING.has(sub.status) ? computeMrrCents([{ plan: sub.plan, interval: sub.interval, count: 1 }], await getPriceTable()) : 0;
+  // A company account (BuPulse's own, free) is not revenue.
+  const mrrCents = sub && PAYING.has(sub.status) && !isCompanyAccount(sub) ? computeMrrCents([{ plan: sub.plan, interval: sub.interval, count: 1 }], await getPriceTable()) : 0;
   const times = [lastEvent?.createdAt, lastAi?.createdAt].filter((d): d is Date => !!d);
   return {
     user: { id: c.id, email: c.email, name: c.name, createdAt: iso(c.createdAt), suspendedAt: iso(c.suspendedAt), suspendedReason: c.suspendedReason, deletionScheduledFor: iso(c.deletionScheduledFor) },
-    subscription: sub ? { ...sub, trialEndsAt: iso(sub.trialEndsAt), currentPeriodEnd: iso(sub.currentPeriodEnd) } : null,
+    subscription: sub ? { ...sub, trialEndsAt: iso(sub.trialEndsAt), currentPeriodEnd: iso(sub.currentPeriodEnd), companyAccount: isCompanyAccount(sub) } : null,
     business: c.business ? { id: c.business.id, name: c.business.name, industry: c.business.industry, industryDescription: c.business.industryDescription, country: c.business.country, phone: c.business.phone, ceoName: c.business.ceoName, website: c.business.website, onboarded: !!c.business.onboardedAt } : null,
     mrrCents,
     signupSource: visit ? { source: visit.source, landingPage: visit.path, campaign: visit.utmCampaign, country: visit.country } : null,

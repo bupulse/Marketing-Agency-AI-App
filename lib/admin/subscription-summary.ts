@@ -1,6 +1,8 @@
 // One line about where a company's subscription stands, for the admin's Demos list and the company page's demo panel:
 // "On trial until 15 Oct", "Active – Business, MoMo, paid until 12 Nov". Pure, so the pages and the tests share it.
 
+import { isCompanyAccount } from "@/lib/billing/company-account";
+
 export type SubscriptionFacts = {
   status: string;
   plan: string;
@@ -38,6 +40,7 @@ export function subscriptionSummary(s: SubscriptionFacts, planName: (key: string
       return { text: t ? (t > now ? `On trial until ${shortDay(t)}` : `Trial ended ${shortDay(t)}`) : "On trial", links: ["extend_trial", "change_plan"] };
     }
     case "ACTIVE": {
+      if (isCompanyAccount(s)) return { text: `Company account – ${plan}, free, no end date`, links: [] };
       const until = end ? (s.cancelAtPeriodEnd ? `, cancels ${shortDay(end)}` : s.provider === "PADDLE" ? `, renews ${shortDay(end)}` : `, paid until ${shortDay(end)}`) : "";
       return { text: `Active – ${plan}${method ? `, ${method}` : ""}${until}`, links: ["change_plan"] };
     }

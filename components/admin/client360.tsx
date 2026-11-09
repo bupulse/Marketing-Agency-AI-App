@@ -1,4 +1,5 @@
 import { moneyFmt } from "@/components/admin/money";
+import { isCompanyAccount } from "@/lib/billing/company-account";
 import { adminMoney } from "@/lib/money/display-server";
 import { notFound } from "next/navigation";
 import { randomUUID } from "node:crypto";
@@ -19,7 +20,7 @@ import {
 import { describeRefundTarget } from "@/lib/billing/paddle-admin";
 import { getPlans } from "@/lib/plan-catalog";
 import { prisma } from "@/lib/db";
-import { addNoteAction, changePlanAction, deleteNoteAction, extendTrialAction, flagOverrideAction, refundAction, restoreAction, suspendAction } from "@/app/admin/(console)/actions";
+import { addNoteAction, changePlanAction, companyAccountAction, deleteNoteAction, extendTrialAction, flagOverrideAction, refundAction, restoreAction, suspendAction } from "@/app/admin/(console)/actions";
 
 
 export const CLIENT_TAB_LABELS: Record<ClientTab, string> = { overview: "Overview", billing: "Billing", usage: "Usage", channels: "Channels", content: "Content", leads: "Leads and chat", errors: "Errors", audit: "Audit history", notes: "Notes" };
@@ -119,6 +120,11 @@ async function Actions({ id, c }: { id: string; c: C }) {
           <Field label="Plan"><Select name="plan" defaultValue={plan ?? "STANDARD"}>{allPlans.filter((p) => p.status !== "retired" || p.key === plan).map((p) => <option key={p.key} value={p.key}>{p.name}{p.status === "hidden" ? " (hidden)" : ""}</option>)}</Select></Field>
           <Field label="Billing"><Select name="interval" defaultValue={interval ?? "MONTH"}><option value="MONTH">Monthly</option><option value="YEAR">Yearly</option></Select></Field>
         </ConfirmButton>
+        {isCompanyAccount(c.subscription) ? (
+          <ConfirmButton action={companyAccountAction} fields={{ userId: id, on: "0" }} label="End company account" title="End this company account?" description="The account goes back to a fresh free trial. Nothing is charged or refunded." />
+        ) : !c.subscription?.provider ? (
+          <ConfirmButton action={companyAccountAction} fields={{ userId: id, on: "1" }} label="Make company account" title="Make this a company account?" description="For BuPulse's own accounts only: every feature on the Pro plan, free, with no end date. Nothing is charged, and it is not counted as revenue." />
+        ) : null}
         <ConfirmButton action={refundAction} fields={{ userId: id, idem: idemRefund, currency, ...(target ? { transactionId: target.transactionId } : {}) }} label="Refund" title="Request a refund" description="Creates an approval request. Nothing is refunded until you approve it." confirmLabel="Create request">
           {target ? (
             <p className="text-[14px] text-muted">Last payment: {money(target.totalMinor, currency)}{target.billedAt ? `, ${new Date(target.billedAt).toISOString().slice(0, 10)}` : ""} ({target.transactionId}).</p>

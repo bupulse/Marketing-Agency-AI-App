@@ -12,6 +12,7 @@ import {
   deleteMonthlyCost,
   setMonthlyCost,
   extendTrial,
+  setCompanyAccount,
   rejectAction,
   endAnnouncement,
   requestChangePlan,
@@ -109,6 +110,11 @@ const userBack = (f: FormData) => {
 export async function extendTrialAction(f: FormData) {
   const ctx = await adminAction("clients.manage");
   await finish(userBack(f), "Trial extended.", () => extendTrial(ctx, { userId: uid(f), days: Number(text(f, "days")) }));
+}
+
+export async function companyAccountAction(f: FormData) {
+  const ctx = await adminAction("clients.manage");
+  await finish(userBack(f), (r) => r.message, () => setCompanyAccount(ctx, { userId: uid(f), on: text(f, "on") === "1" }));
 }
 
 export async function suspendAction(f: FormData) {

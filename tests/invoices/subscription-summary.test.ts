@@ -25,4 +25,8 @@ describe("subscriptionSummary", () => {
     expect(subscriptionSummary({ ...base, status: "ACTIVE", plan: "PRO", provider: "PADDLE", cancelAtPeriodEnd: true, currentPeriodEnd: new Date("2026-11-12T08:00:00Z") }, name, NOW)?.text).toBe("Active – Pro, card, cancels 12 Nov");
     expect(subscriptionSummary({ ...base, status: "PAST_DUE", plan: "BUSINESS", provider: "MANUAL_MOMO", currentPeriodEnd: new Date("2026-10-09T08:00:00Z") }, name, NOW)).toEqual({ text: "Past due – Business, MoMo (ended 9 Oct)", links: ["change_plan"] });
   });
+
+  it("a company account: free, no end date, no plan links", () => {
+    expect(subscriptionSummary({ ...base, status: "ACTIVE", plan: "PRO", provider: null, currentPeriodEnd: null }, name, NOW)).toEqual({ text: "Company account – Pro, free, no end date", links: [] });
+  });
 });

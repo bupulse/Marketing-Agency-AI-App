@@ -8,6 +8,7 @@ import { getPlan, getPlans, priceIdFor } from "@/lib/plan-catalog";
 import { listAdminPlans, previewPriceChange, setPlanLimits, updatePlan, type PlanInput } from "./plans-service";
 import { isInterval, type PaidPlan } from "@/lib/billing/catalog";
 import { applyProviderSubscription } from "@/lib/billing/apply";
+import { COMPANY_ACCOUNT_PLAN, isCompanyAccount } from "@/lib/billing/company-account";
 import { paddle } from "@/lib/billing/paddle";
 import { createRefund, describeRefundTarget } from "@/lib/billing/paddle-admin";
 import { retryPost, PublishingError } from "@/lib/publishing/service";
@@ -319,6 +320,43 @@ export async function extendTrial(ctx: AdminContext, input: { userId: string; da
     await writeAudit(tx, ctx, "extend_trial", `user:${input.userId}`, before, { ...after, days });
   });
   return { userId: input.userId, ...after };
+}
+
+/**
+ * Turns a company account on or off (lib/billing/company-account.ts). On: the top plan, ACTIVE, no provider and no end,
+ * so every feature works and nothing is charged or renewed. Off: back to a fresh free trial. Refused for a live paid
+ * subscription, so BuPulse never stops a client's card from here. Not a money action (nothing is charged or refunded),
+ * so it applies now; from the API it needs confirm.
+ */
+export async function setCompanyAccount(ctx: AdminContext, input: { userId: string; on: boolean; confirm?: boolean }) {
+  requireConfirm(ctx, input.confirm, input.on ? "Making a company account" : "Ending a company account");
+  const sub = await subscriptionOf(input.userId);
+  const before = { plan: sub.plan, status: sub.status, provider: sub.provider, currentPeriodEnd: sub.currentPeriodEnd, trialEndsAt: sub.trialEndsAt };
+  if (input.on) {
+    if (isCompanyAccount(sub)) return { userId: input.userId, companyAccount: true, message: "This is already a company account." };
+    if (sub.provider || sub.providerSubscriptionId) {
+      throw new AdminError("conflict", "This company pays through Paddle or Mobile Money. End that plan first; a company account is only for BuPulse's own accounts.");
+    }
+    const plan = await getPlan(COMPANY_ACCOUNT_PLAN);
+    if (!plan) throw new AdminError("unavailable", `The ${COMPANY_ACCOUNT_PLAN} plan is missing from the catalog (/admin/plans).`);
+    const now = new Date();
+    const after = { plan: plan.key, chosenPlan: plan.key, status: "ACTIVE" as const, provider: null, providerSubscriptionId: null, providerPriceId: null, cancelAtPeriodEnd: false, trialEndsAt: null, currentPeriodStart: now, currentPeriodEnd: null };
+    await prisma.$transaction(async (tx) => {
+      // Guarded on what we read, so a payment landing at the same moment is not overwritten.
+      const { count } = await tx.subscription.updateMany({ where: { userId: input.userId, plan: sub.plan, status: sub.status, provider: null, providerSubscriptionId: null }, data: after });
+      if (count !== 1) throw new AdminError("conflict", "The subscription changed while saving. Try again.");
+      await writeAudit(tx, ctx, "company_account_on", `user:${input.userId}`, before, after);
+    });
+    return { userId: input.userId, companyAccount: true, message: `Company account on: the ${plan.name} plan with every feature, free and with no end date.` };
+  }
+  if (!isCompanyAccount(sub)) throw new AdminError("conflict", "This is not a company account.");
+  const trialDays = await getSetting("trialDays");
+  const after = { plan: "TRIAL", status: "TRIALING" as const, trialEndsAt: new Date(Date.now() + trialDays * DAY_MS), trialReminder1SentAt: null, trialReminder2SentAt: null };
+  await prisma.$transaction(async (tx) => {
+    await tx.subscription.update({ where: { userId: input.userId }, data: after });
+    await writeAudit(tx, ctx, "company_account_off", `user:${input.userId}`, before, after);
+  });
+  return { userId: input.userId, companyAccount: false, message: `Company account off: back on a ${trialDays}-day free trial.` };
 }
 
 function adminEmails(): string[] {

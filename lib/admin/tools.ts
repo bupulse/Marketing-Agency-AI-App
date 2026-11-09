@@ -262,6 +262,14 @@ tool({
   run: (a, ctx) => admin.extendTrial(ctx, a),
 });
 tool({
+  name: "set_company_account",
+  title: "Company account",
+  kind: "action",
+  description: "Turn a company account on or off. On: BuPulse's own accounts only (BuPulse, staff, LEAF) get the Pro plan with every feature, free, ACTIVE with no billing provider and no end date; never for a client who pays. Refused when the user pays through Paddle or Mobile Money. Off: back to a fresh free trial. Nothing is charged or refunded. Requires confirm: true. Written to the audit log.",
+  schema: z.object({ userId: id("User id (uuid)."), on: z.boolean().describe("true to make a company account, false to end it."), confirm: z.boolean().optional() }),
+  run: (a, ctx) => admin.setCompanyAccount(ctx, a),
+});
+tool({
   name: "suspend_user",
   title: "Suspend user",
   kind: "action",
@@ -661,7 +669,7 @@ export const TOOL_PERMISSION: Record<string, readonly Permission[]> = {
   get_funnel: ["content", "overview"], get_top_content: ["content"], get_whats_working: ["content", "overview"],
   list_users: ["clients.view"], get_user: ["clients.view"], list_businesses: ["clients.view"], get_business: ["clients.view"], list_posts: ["clients.view"],
   list_companies: ["clients.view"], get_company: ["clients.view"], get_client_360: ["clients.view"], list_connections: ["clients.view"],
-  extend_trial: ["clients.manage"], suspend_user: ["clients.manage"], restore_user: ["clients.manage"], rerun_failed_post: ["clients.manage"], change_plan: ["clients.manage"],
+  extend_trial: ["clients.manage"], set_company_account: ["clients.manage"], suspend_user: ["clients.manage"], restore_user: ["clients.manage"], rerun_failed_post: ["clients.manage"], change_plan: ["clients.manage"],
   create_company_user: ["clients.manage"], change_user_email: ["clients.manage"], request_make_company_owner: ["clients.manage"], send_password_reset: ["clients.manage"],
   remove_company_user: ["clients.manage"], change_company_user_role: ["clients.manage"], force_disconnect_channel: ["clients.manage"], disconnect_connector: ["clients.manage"],
   revoke_client_api_key: ["clients.manage"], switch_off_widget: ["clients.manage"], switch_on_widget: ["clients.manage"],
