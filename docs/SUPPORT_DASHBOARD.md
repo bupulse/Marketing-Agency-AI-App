@@ -44,10 +44,10 @@ not a new app: the same `SupportAgent` rows as Admin → Live chat, so staff are
 | Part | Where |
 | --- | --- |
 | Server page in the support app (TECH and SUPERVISOR only, `canSeeMonitoring`; anyone else gets "not found"): status banner, uptime today / 7 days / 30 days with recent outages, the server PC, site checks, and a "Backup servers: Not set up yet" card. Refreshes every minute. | `app/support/(app)/server/page.tsx`, `components/support-app/server/`, `lib/monitor/dashboard.ts` |
-| PC heartbeat: every minute the job loop posts CPU, memory, disk space (Windows drive and the repo's drive), last restart, the three tasks, node and cloudflared versions. Its own thread and its own try/catch, so it never delays or breaks the tick. Kept 30 days. | `scripts/self-host/windows/cron-loop.ps1` → `POST /api/monitor/heartbeat` (Bearer: the PC's CRON_SECRET), table `MonitorHeartbeat` |
+| PC heartbeat: every minute the job loop posts CPU, memory, disk space (Windows drive and the repo's drive), last restart, the three tasks, node and cloudflared versions. Its own thread and its own try/catch, so it never delays or breaks the tick. Kept 7 days. | `scripts/self-host/windows/cron-loop.ps1` → `POST /api/monitor/heartbeat` (Bearer: the PC's CRON_SECRET), table `MonitorHeartbeat` |
 | Outside check: GitHub Actions every 5 minutes (free, public repo) checks `/api/status` and times `/`, `/pricing`, `/login`; a failure is retried once after 60 s before it counts. | `.github/workflows/uptime.yml`, `scripts/monitor/uptime-check.mjs` → `POST /api/monitor/uptime` (Bearer: UPTIME_SECRET), table `UptimeCheck` (kept 35 days) |
 | Outages: down from the last good check to the next good check when there was no good check for more than 12 minutes and something shows it was real (a failed check, the PC silent too, or 30+ minutes). A 12-30 minute gap with the PC reporting every minute is GitHub running late and is not counted. | `lib/monitor/uptime-rules.ts`, table `UptimeIncident` |
-| Alerts. Down: sent by the workflow (Telegram + email through Resend to admin@bupulse.com), only when its previous run succeeded, so a long outage sends one alert. Back up ("was down about X minutes"): sent by the server on the first good check after an outage, through the app's own Resend email and the Telegram chat connected in Admin → Settings → Lead alerts; once per outage (the outage's start is unique). Red banner on the Server page while the site looks down or the PC stopped reporting (> 3 minutes). | `scripts/monitor/uptime-check.mjs`, `lib/monitor/uptime.ts`, `lib/monitor/alerts.ts` |
+| Alerts. Down: sent by the workflow (Telegram + email through Resend to admin@bupulse.com), only when its previous run did not find the site down too (a "site-down" artifact), so a long outage sends one alert. Back up ("was down about X minutes"): sent by the server on the first good check after an outage, through the app's own Resend email and the Telegram chat connected in Admin → Settings → Lead alerts; once per outage (the outage's start is unique). Red banner on the Server page while the site looks down or the PC stopped reporting (> 3 minutes). | `scripts/monitor/uptime-check.mjs`, `lib/monitor/uptime.ts`, `lib/monitor/alerts.ts` |
 | Site checks: page times (last check and 24-hour average), database answer time (now, and at the last outside check), database size, errors in the last hour / 24 hours by source, scheduled jobs. Jobs, errors and the database size come from Admin → Health's own reader (`getSystemHealth`). | `lib/monitor/dashboard.ts` |
 
 ### What the owner must set
@@ -67,6 +67,7 @@ not a new app: the same `SupportAgent` rows as Admin → Live chat, so staff are
 3. Nothing to set for the PC heartbeat: it uses the PC's own cron secret. It starts after the next
    `update.ps1` on the PC, which now restarts the "BuPulse jobs" task at the end.
 
-GitHub emails the account that last edited a scheduled workflow when a run fails, and an uptime run fails while the
-site is down (that is how the next run knows the alert was sent). To get only BuPulse's one alert per outage, turn
-off GitHub's Actions emails: github.com → Settings → Notifications → System → Actions.
+Uptime runs stay green even while the site is down, so GitHub sends no failure emails. A run that finds the site down
+uploads a tiny "site-down" artifact (kept 1 day); the next run reads the previous run's artifacts through the GitHub
+API (the workflow's own token, `actions: read`) to tell the first down run (alert) from "still down" (no alert), and
+tells the server when the site is back after a down run so it sends the "back up" alert.

@@ -8,7 +8,7 @@ vi.mock("@/lib/admin/service-keys", () => ({ getCustomKey }));
 
 import { recordUptimeCheck } from "@/lib/monitor/uptime";
 import type { UptimeCheckInput } from "@/lib/monitor/uptime-rules";
-import { checkWithRetry, main, previousConclusion, sendDownAlerts, shouldAlertDown } from "@/scripts/monitor/uptime-check.mjs";
+import { checkWithRetry, main, markDown, previousState, sendDownAlerts, shouldAlertDown } from "@/scripts/monitor/uptime-check.mjs";
 
 // ---- an in-memory stand-in for the three tables -------------------------------------------------------------
 
@@ -177,21 +177,39 @@ function fakeFetch(handler: Handler) {
   return { fn, calls };
 }
 
-const runsList = (runs: { id: number; conclusion: string }[]) => ({ status: 200, body: { workflow_runs: runs } });
 
-describe("workflow: one down alert per outage", () => {
-  it("alerts only when the previous run succeeded, or when that is unknown", () => {
-    expect(shouldAlertDown("success")).toBe(true);
+/** GitHub's API: the runs list, then the previous run's artifacts ("site-down" when that run found the site down). */
+function github(url: string, previous: { id: number; conclusion: string; down: boolean }[]) {
+  if (url.includes("/actions/workflows/")) return { status: 200, body: { workflow_runs: previous.map(({ id, conclusion }) => ({ id, conclusion })) } };
+  const m = /\/actions\/runs\/(\d+)\/artifacts\?name=site-down$/.exec(url);
+  if (m) {
+    const run = previous.find((r) => String(r.id) === m[1]);
+    return { status: 200, body: { artifacts: run?.down ? [{ name: "site-down", expired: false }] : [] } };
+  }
+  return { status: 404 };
+}
+
+describe("workflow: one down alert per outage, runs stay green", () => {
+  it("alerts unless the previous run found the site down; unknown counts as up", () => {
+    expect(shouldAlertDown("up")).toBe(true);
     expect(shouldAlertDown(null)).toBe(true);
-    expect(shouldAlertDown("failure")).toBe(false);
+    expect(shouldAlertDown("down")).toBe(false);
   });
 
-  it("previousConclusion skips this run and cancelled runs", async () => {
-    const { fn } = fakeFetch(() => runsList([{ id: 7, conclusion: "success" }, { id: 6, conclusion: "cancelled" }, { id: 5, conclusion: "failure" }]));
-    expect(await previousConclusion({ repo: "bupulse/app", runId: "7", token: "t" }, fn)).toBe("failure");
-    expect(await previousConclusion({ repo: "bupulse/app", runId: "7", token: "" }, fn)).toBeNull();
+  it("previousState reads the previous run's site-down artifact, skipping this run and cancelled runs", async () => {
+    const runs = [{ id: 7, conclusion: "success", down: false }, { id: 6, conclusion: "cancelled", down: false }, { id: 5, conclusion: "success", down: true }];
+    const { fn, calls } = fakeFetch((url) => github(url, runs));
+    expect(await previousState({ repo: "bupulse/app", runId: "7", token: "t" }, fn)).toBe("down");
+    expect(calls.at(-1)?.url).toBe("https://api.github.com/repos/bupulse/app/actions/runs/5/artifacts?name=site-down");
+    expect(await previousState({ repo: "bupulse/app", runId: "8", token: "t" }, fn)).toBe("up");
+    expect(await previousState({ repo: "bupulse/app", runId: "7", token: "" }, fn)).toBeNull();
+    // An expired artifact (a run more than a day old) does not count.
+    const old = fakeFetch((url) => (url.includes("/artifacts") ? { status: 200, body: { artifacts: [{ name: "site-down", expired: true }] } } : github(url, [{ id: 1, conclusion: "success", down: true }])));
+    expect(await previousState({ repo: "bupulse/app", runId: "2", token: "t" }, old.fn)).toBe("up");
     const broken = fakeFetch(() => ({ status: 500 }));
-    expect(await previousConclusion({ repo: "bupulse/app", runId: "7", token: "t" }, broken.fn)).toBeNull();
+    expect(await previousState({ repo: "bupulse/app", runId: "7", token: "t" }, broken.fn)).toBeNull();
+    const none = fakeFetch((url) => github(url, []));
+    expect(await previousState({ repo: "bupulse/app", runId: "7", token: "t" }, none.fn)).toBeNull();
   });
 
   it("down twice, a minute apart, counts as down; one failure then a good answer does not", async () => {
@@ -211,53 +229,73 @@ describe("workflow: one down alert per outage", () => {
     expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({ from: "BuPulse <register@bupulse.com>", to: ["admin@bupulse.com"] });
   });
 
-  function scenario(previous: string) {
+  it("markDown writes nothing outside GitHub Actions", async () => {
+    await expect(markDown({})).resolves.toBeUndefined();
+  });
+
+  function siteDown(previousDown: boolean) {
     return fakeFetch((url) => {
-      if (url.startsWith("https://api.github.com/")) return runsList([{ id: 2, conclusion: previous }]);
+      if (url.startsWith("https://api.github.com/")) return github(url, [{ id: 2, conclusion: "success", down: previousDown }]);
       if (url.startsWith("https://api.telegram.org/") || url.startsWith("https://api.resend.com/")) return { status: 200 };
       return null; // bupulse.com does not answer
     });
   }
   const env = { SITE_URL: "https://bupulse.com", GITHUB_REPOSITORY: "bupulse/app", GITHUB_RUN_ID: "3", GITHUB_TOKEN: "t", TELEGRAM_BOT_TOKEN: "1:x", TELEGRAM_CHAT_ID: "42", RESEND_API_KEY: "re_x", UPTIME_SECRET: "u" } as unknown as NodeJS.ProcessEnv;
 
-  it("site down after a good run: alerts on both channels and fails the run", async () => {
+  async function runMain(fn: typeof fetch) {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { fn, calls } = scenario("success");
-    const done = main(env, fn);
+    const mark = vi.fn(async () => {});
+    const done = main(env, fn, { mark });
     await vi.runAllTimersAsync();
-    expect(await done).toBe(1);
+    const code = await done;
+    const printed = log.mock.calls.flat().join(" ");
+    log.mockRestore();
+    vi.useRealTimers();
+    return { code, mark, printed };
+  }
+
+  it("first down run: alerts on both channels, leaves the site-down marker, and the run stays green", async () => {
+    const { fn, calls } = siteDown(false);
+    const { code, mark, printed } = await runMain(fn);
+    expect(code).toBe(0);
+    expect(mark).toHaveBeenCalledTimes(1);
     expect(calls.filter((c) => c.url.startsWith("https://api.telegram.org/"))).toHaveLength(1);
     expect(calls.filter((c) => c.url.startsWith("https://api.resend.com/"))).toHaveLength(1);
     // The public log never shows a secret.
-    expect(log.mock.calls.flat().join(" ")).not.toMatch(/re_x|1:x|Bearer/);
-    log.mockRestore();
-    vi.useRealTimers();
+    expect(printed).not.toMatch(/re_x|1:x|Bearer/);
   });
 
-  it("site still down after a failed run: no second alert", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { fn, calls } = scenario("failure");
-    const done = main(env, fn);
-    await vi.runAllTimersAsync();
-    expect(await done).toBe(1);
+  it("still down (the previous run left site-down): no second alert, marker left again, still green", async () => {
+    const { fn, calls } = siteDown(true);
+    const { code, mark } = await runMain(fn);
+    expect(code).toBe(0);
+    expect(mark).toHaveBeenCalledTimes(1);
     expect(calls.some((c) => c.url.startsWith("https://api.telegram.org/") || c.url.startsWith("https://api.resend.com/"))).toBe(false);
-    log.mockRestore();
-    vi.useRealTimers();
   });
 
-  it("site up after a failed run: records the check with afterFailure so the server sends the back-up alert", async () => {
-    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  it("back up after a down run: no marker, and the check tells the server afterFailure so it sends the back-up alert", async () => {
     const { fn, calls } = fakeFetch((url) => {
-      if (url.startsWith("https://api.github.com/")) return runsList([{ id: 2, conclusion: "failure" }]);
+      if (url.startsWith("https://api.github.com/")) return github(url, [{ id: 2, conclusion: "success", down: true }]);
       if (url.endsWith("/api/status")) return { status: 200, body: { status: "ok", databaseMs: 30, version: "1.2.3" } };
       return { status: 200, body: "ok" };
     });
-    expect(await main(env, fn)).toBe(0);
+    const { code, mark } = await runMain(fn);
+    expect(code).toBe(0);
+    expect(mark).not.toHaveBeenCalled();
     const post = calls.find((c) => c.url === "https://bupulse.com/api/monitor/uptime");
     expect(post?.init?.headers).toMatchObject({ authorization: "Bearer u" });
     expect(JSON.parse(String(post?.init?.body))).toMatchObject({ ok: true, afterFailure: true, databaseMs: 30, retried: false });
-    log.mockRestore();
+  });
+
+  it("up after an up run: afterFailure is false", async () => {
+    const { fn, calls } = fakeFetch((url) => {
+      if (url.startsWith("https://api.github.com/")) return github(url, [{ id: 2, conclusion: "success", down: false }]);
+      if (url.endsWith("/api/status")) return { status: 200, body: { status: "ok" } };
+      return { status: 200, body: "ok" };
+    });
+    await runMain(fn);
+    const post = calls.find((c) => c.url === "https://bupulse.com/api/monitor/uptime");
+    expect(JSON.parse(String(post?.init?.body))).toMatchObject({ ok: true, afterFailure: false });
   });
 });

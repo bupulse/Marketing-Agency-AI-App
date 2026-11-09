@@ -1953,7 +1953,7 @@ model CronRun {
 }
 
 // Server monitoring (docs/SUPPORT_DASHBOARD.md, "Server monitoring"; lib/monitor). One row a minute from the server
-// PC's job loop (scripts/self-host/windows/cron-loop.ps1 -> /api/monitor/heartbeat), kept 30 days.
+// PC's job loop (scripts/self-host/windows/cron-loop.ps1 -> /api/monitor/heartbeat), kept 7 days.
 model MonitorHeartbeat {
   id                 String    @id @default(cuid())
   receivedAt         DateTime  @default(now())

@@ -1,7 +1,7 @@
 -- Server monitoring for the support dashboard (docs/SUPPORT_DASHBOARD.md, "Server monitoring"; lib/monitor). New
 -- tables only. Locked like every other table (row level security on, no Data API grants).
 
--- The server PC's report every minute (scripts/self-host/windows/cron-loop.ps1), kept 30 days.
+-- The server PC's report every minute (scripts/self-host/windows/cron-loop.ps1), kept 7 days.
 -- CreateTable
 CREATE TABLE "MonitorHeartbeat" (
     "id" TEXT NOT NULL,

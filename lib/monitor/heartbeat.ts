@@ -3,9 +3,9 @@ import { prisma } from "@/lib/db";
 import type { HeartbeatInput } from "./heartbeat-input";
 
 // Stores the server PC's report (POST /api/monitor/heartbeat, once a minute) and, about once an hour, drops reports
-// older than 30 days.
+// older than 7 days.
 
-export const HEARTBEATS_KEEP_DAYS = 30;
+export const HEARTBEATS_KEEP_DAYS = 7;
 
 type Db = Pick<typeof prisma, "monitorHeartbeat">;
 

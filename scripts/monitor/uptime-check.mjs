@@ -5,8 +5,9 @@
 // 2. Up: POST the result to /api/monitor/uptime (Bearer UPTIME_SECRET); the server records it, finds outages from the
 //    gaps between good checks, and sends the "back up" alert itself.
 // 3. Down: send the "down" alert from here (Telegram, and email through Resend), but only when this workflow's previous
-//    completed run succeeded, so a long outage sends one alert, not one every 5 minutes. Then fail the run: the failed
-//    run is what the next run reads. A channel whose secret is missing is skipped; that never fails the run.
+//    completed run did not find it down too, so a long outage sends one alert, not one every 5 minutes. A down run
+//    leaves a tiny "site-down" artifact (kept 1 day) that the next run reads through the GitHub API; the run itself
+//    stays green, so GitHub sends no failure emails. A channel whose secret is missing is skipped, never a failure.
 //
 // The repository is public, so this log is public: it prints the result and which channels were used, never a secret.
 
@@ -60,32 +61,49 @@ export async function checkWithRetry(site, { fetchImpl = fetch, wait = (ms) => n
   return { ...(await checkOnce(site, fetchImpl)), retried: true };
 }
 
+export const DOWN_ARTIFACT = "site-down";
+
+const gh = (token) => ({ authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" });
+
 /**
- * The conclusion of this workflow's last completed run before this one ("success" or "failure"), or null when there is
- * none or GitHub could not be asked. Cancelled and skipped runs (a queue of late runs) checked nothing and are passed over.
+ * What this workflow's last completed run before this one found: "down" when it left the "site-down" artifact, "up"
+ * when it did not, or null when there is no earlier run or GitHub could not be asked. Cancelled and skipped runs (a
+ * queue of late runs) checked nothing and are passed over.
  */
-export async function previousConclusion({ repo, runId, token, workflow = "uptime.yml" }, fetchImpl = fetch) {
+export async function previousState({ repo, runId, token, workflow = "uptime.yml" }, fetchImpl = fetch) {
   if (!repo || !token) return null;
   try {
-    const res = await fetchImpl(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/runs?status=completed&per_page=10&exclude_pull_requests=true`, {
-      headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    const runs = await fetchImpl(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/runs?status=completed&per_page=10&exclude_pull_requests=true`, { headers: gh(token), signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!runs.ok) return null;
+    const run = ((await runs.json())?.workflow_runs ?? []).find((r) => String(r.id) !== String(runId) && r.conclusion !== "cancelled" && r.conclusion !== "skipped");
+    if (!run) return null;
+    const res = await fetchImpl(`https://api.github.com/repos/${repo}/actions/runs/${run.id}/artifacts?name=${DOWN_ARTIFACT}`, { headers: gh(token), signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) return null;
-    const data = await res.json();
-    const run = (data?.workflow_runs ?? []).find((r) => String(r.id) !== String(runId) && r.conclusion !== "cancelled" && r.conclusion !== "skipped");
-    return typeof run?.conclusion === "string" ? run.conclusion : null;
+    const artifacts = (await res.json())?.artifacts ?? [];
+    return artifacts.some((a) => a?.name === DOWN_ARTIFACT && !a.expired) ? "down" : "up";
   } catch {
     return null;
   }
 }
 
 /**
- * Send the "down" alert? Only when the previous run succeeded (the site was up 5 minutes ago), or when that cannot be
- * told (no earlier run, GitHub did not answer): a second alert is better than none.
+ * Send the "down" alert? Unless the previous run already found the site down (it sent the alert). When that cannot be
+ * told (no earlier run, GitHub did not answer) it is sent: a second alert is better than none.
  */
 export function shouldAlertDown(previous) {
-  return previous === null || previous === "success";
+  return previous !== "down";
+}
+
+/**
+ * In GitHub Actions: tells the workflow to upload the "site-down" artifact (a step output, and the small file the
+ * artifact holds), which is how the next run knows. Elsewhere it does nothing.
+ */
+export async function markDown(env, now = new Date()) {
+  if (!env.GITHUB_OUTPUT) return;
+  const { appendFile, mkdir, writeFile } = await import("node:fs/promises");
+  await mkdir(DOWN_ARTIFACT, { recursive: true });
+  await writeFile(`${DOWN_ARTIFACT}/down.json`, JSON.stringify({ downAt: now.toISOString() }));
+  await appendFile(env.GITHUB_OUTPUT, "down=true\n");
 }
 
 function kigaliTime(d) {
@@ -152,22 +170,25 @@ export async function report(site, secret, payload, fetchImpl = fetch) {
   }
 }
 
-export async function main(env = process.env, fetchImpl = fetch) {
+export async function main(env = process.env, fetchImpl = fetch, { mark = markDown } = {}) {
   const site = (env.SITE_URL || "https://bupulse.com").replace(/\/$/, "");
   const result = await checkWithRetry(site, { fetchImpl });
-  const previous = await previousConclusion({ repo: env.GITHUB_REPOSITORY, runId: env.GITHUB_RUN_ID, token: env.GITHUB_TOKEN }, fetchImpl);
+  const previous = await previousState({ repo: env.GITHUB_REPOSITORY, runId: env.GITHUB_RUN_ID, token: env.GITHUB_TOKEN }, fetchImpl);
   const times = result.pages.map((p) => `${p.path} ${p.status ?? "no answer"} ${p.ms ?? "-"} ms`).join(", ");
   console.log(`${result.ok ? "UP" : "DOWN"}: /api/status ${result.statusCode ?? "no answer"} ${result.statusMs ?? "-"} ms (database ${result.databaseMs ?? "-"} ms); ${times}${result.retried ? "; checked twice" : ""}. Previous run: ${previous ?? "unknown"}.`);
-  // Best effort even when down: if only the database is down, the server can still store the failed check.
-  console.log(`Check ${await report(site, env.UPTIME_SECRET, { ...result, afterFailure: previous === "failure" }, fetchImpl)}.`);
+  // afterFailure: the previous run found the site down and sent the alert, so the server closes an outage and sends the
+  // "back up" alert. Best effort even when down: if only the database is down, the server can still store the check.
+  console.log(`Check ${await report(site, env.UPTIME_SECRET, { ...result, afterFailure: previous === "down" }, fetchImpl)}.`);
   if (result.ok) return 0;
+  await mark(env);
   if (shouldAlertDown(previous)) {
     const sent = await sendDownAlerts(env, downMessage(site, result), fetchImpl);
     console.log(`Down alert: Telegram ${sent.telegram}, email ${sent.email}.`);
   } else {
     console.log("Down alert already sent for this outage (the previous run found the site down too).");
   }
-  return 1;
+  // The run stays green while the site is down (no GitHub failure email every 5 minutes): the artifact carries "down".
+  return 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
