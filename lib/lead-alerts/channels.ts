@@ -9,11 +9,15 @@ import { alertFields, alertIntro, alertSubject, telegramButtons, telegramText, t
 import { sendTelegramMessage } from "./telegram";
 import { readTelegramChat } from "./telegram-settings";
 
-// Instant alerts to the owner about a new lead (a quote request, a help chat on the marketing site), on every channel
-// that is set up: email to the admin addresses (free, always on) and Telegram (free, once connected in Admin ->
-// Settings). A channel is one entry in ALERT_CHANNELS, so a later one (a phone call through Bland AI or Twilio, which
-// cost money per call) is added there and no caller changes. Alerts run after the response (runInBackground: the host's
-// waitUntil; on Netlify within the function's 60 s), never slow the form, and a failing channel is logged, never thrown.
+// Instant alerts to the owner about a new lead (a quote request, a contact form, a help chat on the marketing site, a
+// chat waiting for a person), on every channel that is set up: email to the admin addresses (free, always on) and
+// Telegram (free, once connected in Admin -> Settings). A channel is one entry in ALERT_CHANNELS, so a later one (a
+// phone call through Bland AI or Twilio, which cost money per call) is added there and no caller changes. Alerts run
+// after the response (runInBackground: the host's waitUntil; under `next start` on the self-hosted PC a promise that
+// keeps running in the server process), never slow the form, and a failing channel is logged, never thrown.
+// Nothing is skipped quietly: a channel that is on but not set up (no bot token, no connected chat, no admin address)
+// writes a warning to Admin -> Errors, an alert that reached nobody writes an error, and Admin -> Health lists what is
+// missing (setup.ts).
 
 export type ChannelOutcome = "sent" | "skipped";
 
@@ -23,26 +27,41 @@ export type AlertChannel = {
   send: (alert: LeadAlert) => Promise<ChannelOutcome>;
 };
 
+/** A channel that is switched on but cannot send: written to Admin -> Errors as a warning, never thrown. */
+async function notSetUp(channel: string, alert: LeadAlert, why: string): Promise<"skipped"> {
+  await logError(new Error(`${alert.kind} alert not sent by ${channel}: ${why}`), { source: `lead-alerts.${channel}`, level: "warn", kind: alert.kind });
+  return "skipped";
+}
+
+/** Chats open in the support app; everything else is a call-first lead. */
+const chatAlert = (alert: LeadAlert) => alert.kind === "support_chat" || alert.kind === "support_waiting";
+
 export const emailChannel: AlertChannel = {
   id: "email",
   async send(alert) {
+    // Switched off in Admin -> Services on purpose: quiet. The switch check also loads the keys saved there.
+    if (!(await isServiceEnabled("resend"))) return "skipped";
     const to = adminEmails();
-    if (!to.length || !(await isServiceEnabled("resend")) || !process.env.RESEND_API_KEY) return "skipped";
+    if (!to.length) return notSetUp("email", alert, "ADMIN_EMAILS is empty.");
+    if (!process.env.RESEND_API_KEY) return notSetUp("email", alert, "RESEND_API_KEY is not set.");
     const fields = alertFields(alert);
     const phone = fields.find((f) => f.label === "Phone");
     const whatsapp = fields.find((f) => f.label === "WhatsApp");
+    const open = alert.openUrl ? { label: chatAlert(alert) ? "Open the chat" : "Open", url: alert.openUrl } : undefined;
+    const call = phone?.href ? { label: `Call ${alert.name.split(/\s+/)[0] || "now"}`, url: phone.href } : undefined;
     const email = renderEmail({
       heading: alertSubject(alert),
       intro: alertIntro(alert),
       // The two links are buttons; every other detail is a block (the email layout escapes them).
       blocks: fields.filter((f) => f.label !== "WhatsApp").map((f) => ({ label: f.label, value: f.value })),
-      button: phone?.href ? { label: `Call ${alert.name.split(/\s+/)[0] || "now"}`, url: phone.href } : alert.openUrl ? { label: "Open", url: alert.openUrl } : undefined,
+      // A chat is answered in the chat; a quote or form is answered with a call.
+      button: chatAlert(alert) ? (open ?? call) : (call ?? open),
       secondButton: whatsapp?.href ? { label: "WhatsApp", url: whatsapp.href, color: "#1f9d55" } : undefined,
       footer: alert.openUrl ? `Open it in BuPulse: ${alert.openUrl}` : undefined,
     });
     let sent = 0;
     for (const address of to) if (await sendEmail({ to: address, subject: alertSubject(alert), html: email.html, text: email.text })) sent++;
-    if (sent === 0) throw new Error(`no lead alert email was sent (${to.length} admin ${to.length === 1 ? "address" : "addresses"})`);
+    if (sent === 0) throw new Error(`no lead alert email was sent (${to.length} admin ${to.length === 1 ? "address" : "addresses"}; see the Resend card in Admin -> Services)`);
     return "sent";
   },
 };
@@ -50,12 +69,13 @@ export const emailChannel: AlertChannel = {
 export const telegramChannel: AlertChannel = {
   id: "telegram",
   async send(alert) {
-    // The switch check also loads the token saved in Admin -> Services into process.env.
+    // Switched off in Admin -> Services on purpose: quiet. The switch check also loads the token saved there.
     if (!(await isServiceEnabled("telegram"))) return "skipped";
     const chat = await readTelegramChat();
     const r = await sendTelegramMessage({ chatId: chat?.chatId, text: telegramText(alert), buttons: telegramButtons(alert, publicSiteUrl()) });
     if (r.ok) return "sent";
-    if (r.skipped) return "skipped";
+    // No token, or no chat connected: say so (Admin -> Services, Telegram card; Admin -> Settings, Lead alerts).
+    if (r.skipped) return notSetUp("telegram", alert, r.error);
     throw new Error(r.error);
   },
 };
@@ -63,8 +83,16 @@ export const telegramChannel: AlertChannel = {
 /** Every channel, in the order they go out. Add a phone-call channel here later. */
 export const ALERT_CHANNELS: readonly AlertChannel[] = [emailChannel, telegramChannel];
 
-/** Sends `alert` on every channel at once. Never throws; a failed channel is written to Admin -> Errors. */
-export async function sendLeadAlert(alert: LeadAlert, channels: readonly AlertChannel[] = ALERT_CHANNELS): Promise<Record<string, ChannelOutcome | "failed">> {
+/**
+ * Sends `alert` on every channel at once. Never throws; a failed channel is written to Admin -> Errors. When no channel
+ * sent it (all failed or none is set up) that is an error in Admin -> Errors too, unless `quietIfNone` (an alert that
+ * other alerts back up, such as the Telegram ping on a hand-over: agents get a push and an email as well).
+ */
+export async function sendLeadAlert(
+  alert: LeadAlert,
+  channels: readonly AlertChannel[] = ALERT_CHANNELS,
+  opts: { quietIfNone?: boolean } = {},
+): Promise<Record<string, ChannelOutcome | "failed">> {
   const results = await Promise.allSettled(channels.map((c) => c.send(alert)));
   const out: Record<string, ChannelOutcome | "failed"> = {};
   await Promise.all(
@@ -77,6 +105,10 @@ export async function sendLeadAlert(alert: LeadAlert, channels: readonly AlertCh
       }
     }),
   );
+  if (!opts.quietIfNone && channels.length && !Object.values(out).includes("sent")) {
+    const summary = Object.entries(out).map(([id, o]) => `${id} ${o}`).join(", ");
+    await logError(new Error(`A ${alert.kind} alert reached nobody (${summary}). Set up email or Telegram: Admin -> Health lists what is missing.`), { source: "lead-alerts", kind: alert.kind });
+  }
   return out;
 }
 
@@ -85,6 +117,11 @@ export async function sendLeadAlert(alert: LeadAlert, channels: readonly AlertCh
  * runInBackground), so callers await it just before they answer. `alert` may be a function that finishes it in the
  * background (a database read the visitor should not wait for). Never throws.
  */
-export function alertInBackground(alert: LeadAlert | (() => Promise<LeadAlert>), label = "lead alert"): Promise<void> {
-  return runInBackground(async () => sendLeadAlert(typeof alert === "function" ? await alert() : alert), label).catch(() => {});
+export function alertInBackground(
+  alert: LeadAlert | (() => Promise<LeadAlert>),
+  label = "lead alert",
+  channels: readonly AlertChannel[] = ALERT_CHANNELS,
+  opts: { quietIfNone?: boolean } = {},
+): Promise<void> {
+  return runInBackground(async () => sendLeadAlert(typeof alert === "function" ? await alert() : alert, channels, opts), label).catch(() => {});
 }

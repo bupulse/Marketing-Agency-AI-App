@@ -1,6 +1,7 @@
 import "server-only";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { recordServiceUse } from "@/lib/admin/usage-counter";
+import { logError } from "@/lib/errors";
 
 /** `attachments` are base64 file bodies (Resend's shape), used for the demo calendar invites. */
 export type Email = { to: string; subject: string; html: string; text: string; attachments?: { filename: string; content: string }[] };
@@ -44,14 +45,38 @@ async function deliver(email: Email): Promise<boolean> {
       }),
     });
     if (!response.ok) {
-      console.error("[publishing.email] Resend refused the email:", response.status, (await response.text()).slice(0, 300));
+      const body = (await response.text()).slice(0, 300);
+      console.error("[publishing.email] Resend refused the email:", response.status, body);
+      await logError(new Error(refusalMessage(response.status, body)), { source: "email.resend", level: "warn", subject: email.subject.slice(0, 120) });
       return false;
     }
     return true;
   } catch (error) {
     console.error("[publishing.email] Resend request failed:", error instanceof Error ? error.message : error);
+    await logError(new Error(`Resend could not be reached: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300)), { source: "email.resend", level: "warn", subject: email.subject.slice(0, 120) });
     return false;
   }
+}
+
+/** Email addresses in Resend's answer keep their domain only ("a***@example.com"), so Admin -> Errors carries no inbox. */
+const maskAddresses = (text: string) => text.replace(/([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g, "$1***@$2");
+
+/**
+ * Why Resend refused an email, for Admin -> Errors (the Resend card in Services shows the latest one): Resend's error
+ * name and message ("429 daily_quota_exceeded", "403 validation_error: The bupulse.com domain is not verified"...).
+ * The "Emails refused" count on that card is these refusals plus the times Resend could not be reached. Pure.
+ */
+export function refusalMessage(status: number, body: string): string {
+  let name = "";
+  let message = body;
+  try {
+    const json = JSON.parse(body) as { name?: unknown; message?: unknown };
+    if (typeof json.name === "string") name = json.name;
+    if (typeof json.message === "string") message = json.message;
+  } catch {
+    // not JSON: the raw text
+  }
+  return `Resend refused an email (${status}${name ? ` ${name}` : ""}): ${maskAddresses(message).replace(/\s+/g, " ").trim().slice(0, 240) || "no details"}`;
 }
 
 export function escapeHtml(value: string): string {

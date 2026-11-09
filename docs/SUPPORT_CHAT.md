@@ -42,8 +42,11 @@ Owner decisions (2026-10-23, grill session):
   - The privacy policy explains this (Rwanda data protection law, 2021). Agents can start a chat with a visitor who is browsing.
 - **Alerts** for a new chat or a hand-over:
   - sound and a browser alert in the app;
-  - push to the phone;
-  - email after 2 minutes with no reply;
+  - push to the phone (agents on duty: every new chat and every hand-over in team hours);
+  - email after 2 minutes with no reply (agents on duty; the admin addresses when nobody is on duty);
+  - the owner's lead alerts (`lib/support/lead-alert.ts`, 9 November 2026): email and Telegram for a new chat on the
+    marketing site; Telegram at once for every hand-over in team hours; email and Telegram for a hand-over outside team
+    hours (a ticket), when no agent is on duty to see a push;
   - **WhatsApp** (built but off, since it needs the paid WhatsApp Business API).
 
 ## 4. Better than tawk.to (AI extras)
@@ -136,8 +139,8 @@ How the back end works. Code: `lib/support/**`, routes `app/api/support/v1/**`, 
 
 On public pages and the bio link, sales and pricing questions stay with the AI and get the tag `sales`; asking for a person or being upset still hands over there. A hand-over (`lib/support/handover.ts`) does this:
 - The AI goes quiet, the chat goes to the AI's department, and `waitingSince` and a system event are set.
-- In team hours: status `WAITING`, a push to the agents on duty at once, and the 2-minute email job.
-- Outside team hours: status `PENDING` (a ticket), the tag "outside hours" and the ticket email to the visitor.
+- In team hours: status `WAITING`, a push to the agents on duty at once, the owner's Telegram ping, and the 2-minute email job.
+- Outside team hours: status `PENDING` (a ticket), the tag "outside hours", the ticket email to the visitor, and the owner's email and Telegram alert.
 
 **Agents** (`requireSupportAgent`):
 - Each call needs `Authorization: Bearer <Supabase access token>`, checked with Supabase Auth (a revoked session fails). Then the support app's own rules decide (`agentAccess` in `lib/support/app-access.ts`, shared with its pages): a `SupportAgent` that is not locked, signed in with a password or an emailed link, at `aal2` with a verified authenticator app.

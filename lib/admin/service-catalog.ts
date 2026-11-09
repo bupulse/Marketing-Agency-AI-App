@@ -356,7 +356,7 @@ export const SERVICES: ServiceInfo[] = [
     name: "Telegram (lead alerts)",
     purpose: "Free instant alerts to the owner's phone the moment someone asks for a quote or starts a chat on bupulse.com (lib/lead-alerts). Make a bot with @BotFather, paste its token here, send /start to the bot, then press Connect in Admin -> Settings, Lead alerts.",
     env: ["TELEGRAM_BOT_TOKEN"],
-    features: ["Telegram alerts for quote requests", "Telegram alerts for new website chats"],
+    features: ["Telegram alerts for quote requests", "Telegram alerts for the Contact and Done-for-you forms", "Telegram alerts for new website chats", "Telegram alerts for chats waiting for a person"],
     killable: true,
     whenOff: "No Telegram alerts are sent; the alert emails to the admin addresses carry on and every request stays in Admin -> Quote requests.",
   },

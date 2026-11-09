@@ -116,3 +116,57 @@ describe("the Telegram channel", () => {
     await expect(telegramChannel.send(alert)).rejects.toThrow(/blocked/);
   });
 });
+
+describe("nothing is skipped quietly", () => {
+  it("an alert that reached nobody is an error in Admin -> Errors", async () => {
+    const off: AlertChannel = { id: "email", send: vi.fn(async () => "skipped" as const) };
+    const broken: AlertChannel = { id: "telegram", send: vi.fn(async () => { throw new Error("down"); }) };
+    await sendLeadAlert(alert, [off, broken]);
+    expect(m.logError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("quote alert reached nobody (email skipped, telegram failed)") }), expect.objectContaining({ source: "lead-alerts" }));
+  });
+
+  it("but not when one channel sent it, nor when the caller said other alerts back it up", async () => {
+    const ok: AlertChannel = { id: "email", send: vi.fn(async () => "sent" as const) };
+    const off: AlertChannel = { id: "telegram", send: vi.fn(async () => "skipped" as const) };
+    await sendLeadAlert(alert, [ok, off]);
+    await sendLeadAlert(alert, [off], { quietIfNone: true });
+    expect(m.logError).not.toHaveBeenCalled();
+  });
+
+  it("Telegram on but without a token or a chat writes a warning that says what is missing", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    expect(await telegramChannel.send(alert)).toBe("skipped");
+    expect(m.logError).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining("TELEGRAM_BOT_TOKEN is not set") }), expect.objectContaining({ source: "lead-alerts.telegram", level: "warn" }));
+    process.env.TELEGRAM_BOT_TOKEN = TOKEN;
+    m.readTelegramChat.mockResolvedValueOnce(null);
+    expect(await telegramChannel.send(alert)).toBe("skipped");
+    expect(m.logError).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining("No Telegram chat is connected") }), expect.anything());
+  });
+
+  it("a channel switched off on purpose stays quiet", async () => {
+    m.isServiceEnabled.mockResolvedValue(false);
+    expect(await telegramChannel.send(alert)).toBe("skipped");
+    expect(await emailChannel.send(alert)).toBe("skipped");
+    expect(m.logError).not.toHaveBeenCalled();
+    m.isServiceEnabled.mockResolvedValue(true);
+  });
+
+  it("email without admin addresses or a Resend key writes a warning", async () => {
+    m.adminEmails.mockReturnValueOnce([]);
+    await emailChannel.send(alert);
+    expect(m.logError).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining("ADMIN_EMAILS is empty") }), expect.objectContaining({ source: "lead-alerts.email" }));
+    delete process.env.RESEND_API_KEY;
+    await emailChannel.send(alert);
+    expect(m.logError).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining("RESEND_API_KEY is not set") }), expect.anything());
+  });
+});
+
+describe("chat alerts by email", () => {
+  it("lead with Open the chat and say which chat waits", async () => {
+    await emailChannel.send({ ...alert, kind: "support_waiting", openUrl: "https://test.bupulse.com/support/?c=c9", chat: { number: 7, reason: "asked for a person", away: false } });
+    const email = m.sendEmail.mock.calls[0][0];
+    expect(email.subject).toBe("Chat #7 is waiting for a person: Sample Shop Ltd — reply to Test Person now");
+    expect(email.html.indexOf("Open the chat")).toBeGreaterThan(-1);
+    expect(email.html.indexOf("Open the chat")).toBeLessThan(email.html.indexOf("WhatsApp"));
+  });
+});
