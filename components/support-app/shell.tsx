@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BarChart3, ChevronDown, LineChart, LogOut, MessagesSquare, Server, Users } from "lucide-react";
+import { BarChart3, ChevronDown, LineChart, LogOut, MessagesSquare, Server, UserPlus, Users } from "lucide-react";
 import { canSeeMonitoring } from "@/lib/support/roles";
 import { ThemeToggle } from "@/components/theme";
 import { cn } from "@/lib/cn";
@@ -128,6 +128,7 @@ export function SupportShell({ children }: { children: ReactNode }) {
     { href: href("/analytics"), label: "Analytics", icon: LineChart, badge: null },
     ...(supervisor ? [{ href: href("/stats"), label: "Stats", icon: BarChart3, badge: null }] : []),
     ...(canSeeMonitoring(me.role) ? [{ href: href("/server"), label: "Server", icon: Server, badge: null }] : []),
+    ...(me.owner ? [{ href: href("/team"), label: "Team", icon: UserPlus, badge: null }] : []),
   ];
   const isActive = (h: string) => {
     const path = pathname.replace(/\/$/, "") || "/";

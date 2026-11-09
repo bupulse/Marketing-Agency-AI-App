@@ -77,7 +77,7 @@ const departments: DepartmentView[] = [
   { key: "creators", name: "Creators", sort: 3, agents: 1 },
 ];
 const agent = (over: Partial<AgentAdminView>): AgentAdminView => ({ id: "a1", email: "agent@example.com", name: "Agent One", role: "AGENT", status: "active", availability: "offline", maxChats: 5, departments: ["sales"], authenticator: true, lastSeenAt: "2026-10-22T08:00:00Z", createdAt: "2026-10-01T08:00:00Z", ...over });
-const actions = { invite: vi.fn(), update: vi.fn(), setLocked: vi.fn(), resend: vi.fn(), resetAuthenticator: vi.fn() };
+const actions = { invite: vi.fn(), update: vi.fn(), setLocked: vi.fn(), resend: vi.fn(), resetAuthenticator: vi.fn(), answerRequest: vi.fn() };
 const row = (out: string, name: string) => out.slice(out.indexOf(name), out.indexOf("</tr>", out.indexOf(name)));
 
 describe("agents table", () => {

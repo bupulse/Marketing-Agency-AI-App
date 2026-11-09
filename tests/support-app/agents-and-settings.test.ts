@@ -106,7 +106,7 @@ describe("support agents (Admin -> Live chat)", () => {
   it("checks the form: email, name, role, a department for agents, chats at once", async () => {
     expect(() => normalizeAgentEmail("not-an-email")).toThrow(/valid work email/);
     await expect(inviteAgent(ctx, owner, { ...input, name: "J" })).rejects.toThrow(/name/);
-    await expect(inviteAgent(ctx, owner, { ...input, role: "ADMIN" })).rejects.toThrow(/Agent or Supervisor/);
+    await expect(inviteAgent(ctx, owner, { ...input, role: "ADMIN" })).rejects.toThrow(/Agent, Technical or Supervisor/);
     await expect(inviteAgent(ctx, owner, { ...input, departments: [] })).rejects.toThrow(/at least one department/);
     await expect(inviteAgent(ctx, owner, { ...input, role: "SUPERVISOR", departments: [], maxChats: "50" })).rejects.toThrow(/1 to 20/);
     await expect(inviteAgent(ctx, owner, { ...input, role: "SUPERVISOR", departments: [] })).resolves.toMatchObject({ emailed: true });

@@ -11,9 +11,10 @@ type Actions = {
   setLocked: (f: FormData) => Promise<void>;
   resend: (f: FormData) => Promise<void>;
   resetAuthenticator: (f: FormData) => Promise<void>;
+  answerRequest: (f: FormData) => Promise<void>;
 };
 
-const STATUS_TONE = { active: "success", invited: "violet", locked: "danger" } as const;
+const STATUS_TONE = { active: "success", invited: "violet", locked: "danger", pending: "blue" } as const;
 const ROLE_LABEL: Record<string, string> = { AGENT: "Agent", SUPERVISOR: "Supervisor", TECH: "Technical" };
 const ROLE_OPTIONS = [
   ["AGENT", "Agent: replies to chats"],
@@ -81,6 +82,14 @@ function AgentRow({ agent, departments, actions }: { agent: AgentAdminView; depa
       <Td className="whitespace-nowrap">{agent.lastSeenAt ? dateTime(agent.lastSeenAt) : <span className="text-muted">Never</span>}</Td>
       <Td right>
         <span className="flex flex-wrap items-start justify-end gap-2">
+          {agent.status === "pending" ? (
+            // Asked to join on the support app (docs/SUPPORT_DASHBOARD.md): approving sends the usual invite.
+            <>
+              <form action={actions.answerRequest}><input type="hidden" name="id" value={agent.id} /><input type="hidden" name="answer" value="approve" /><Button type="submit" size="sm">Approve</Button></form>
+              <ConfirmButton action={actions.answerRequest} fields={{ id: agent.id, answer: "decline" }} label="Decline" title={`Decline ${agent.name}'s request?`} description="The request is removed. They can ask again later." confirmLabel="Decline" />
+            </>
+          ) : (
+          <>
           <EditAgent agent={agent} departments={departments} action={actions.update} />
           {agent.status === "invited" && (
             <form action={actions.resend}><input type="hidden" name="id" value={agent.id} /><Button type="submit" size="sm" variant="outline">Resend invite</Button></form>
@@ -92,6 +101,8 @@ function AgentRow({ agent, departments, actions }: { agent: AgentAdminView; depa
           )}
           {hasSignedIn(agent) && (
             <ConfirmButton action={actions.resetAuthenticator} fields={{ id: agent.id }} label="Reset authenticator" title={`Reset ${agent.name}'s authenticator?`} description="Their authenticator app is removed and they are signed out. At their next sign-in they add one again." confirmLabel="Reset" />
+          )}
+          </>
           )}
         </span>
       </Td>

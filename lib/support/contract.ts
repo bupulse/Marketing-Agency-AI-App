@@ -139,7 +139,7 @@ export const ratingBody = z.object({ score: z.union([z.literal(1), z.literal(-1)
 //   POST /conversations/:id/end               → 204
 
 // ---------- Agent (support app) endpoints. Header: Authorization: Bearer <Supabase access token, aal2> ----------
-export type AgentMe = { id: string; name: string; email: string; role: "AGENT" | "SUPERVISOR" | "TECH"; availability: "online" | "away" | "offline"; departments: DepartmentKey[] };
+export type AgentMe = { id: string; name: string; email: string; role: "AGENT" | "SUPERVISOR" | "TECH"; availability: "online" | "away" | "offline"; departments: DepartmentKey[]; /** admin@bupulse.com: approves staff (lib/support/owner.ts). */ owner?: boolean };
 
 export type ConversationListItem = {
   id: string;

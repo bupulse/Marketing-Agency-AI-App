@@ -3,12 +3,16 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { emailSchema, passwordSchema } from "@/lib/auth/schemas";
-import { padTo, publicLimited } from "@/lib/request-limits";
+import { padTo, publicLimited, requestIp } from "@/lib/request-limits";
 import { rateLimit, RateLimitError } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
-import { sendAgentPasswordReset } from "@/lib/support/agents";
+import { requestToJoin, sendAgentPasswordReset } from "@/lib/support/agents";
+import { turnstileEnabled, verifyTurnstile } from "@/lib/widget/turnstile";
+import { AdminError } from "@/lib/admin/types";
 import { agentIdentity, hasRecentMailboxProof } from "@/lib/support/app-access";
 import { agentFor, requireAgentIdentity, supportUrl } from "@/lib/support/app-auth";
+import { prisma } from "@/lib/db";
+import { ensureOwnerAgent, isSupportOwnerEmail } from "@/lib/support/owner";
 
 // The support app's sign-in (docs/SUPPORT_CHAT.md "Support app and Admin"): email + password, then the 6-digit code
 // from an authenticator app. The invite link and "Forgot password" both lead to choosing a password. Every answer to a
@@ -19,6 +23,8 @@ export type CodeState = { error?: string };
 export type EnrollState = { error?: string; needEmail?: boolean; factorId?: string; qr?: string; secret?: string };
 export type PasswordFlowState = { step?: "start" | "code" | "password"; error?: string };
 export type ForgotState = { error?: string; sent?: boolean };
+export type CodeSignInState = { step?: "email" | "code"; email?: string; error?: string };
+export type JoinState = { error?: string; sent?: boolean };
 
 const ANSWER_MS = 1200;
 const CODE_RULE = { limit: 8, windowSeconds: 10 * 60 };
@@ -48,6 +54,55 @@ async function signInNow(formData: FormData): Promise<SignInState> {
   if (!who.ok) {
     await supabase.auth.signOut();
     return { error: who.note === "locked" ? "Your account is locked. Ask your supervisor to unlock it." : wrongPassword };
+  }
+  const { data: factors } = await supabase.auth.mfa.listFactors();
+  redirect(await supportUrl(factors?.totp?.some((f) => f.status === "verified") ? "/verify" : "/setup"));
+}
+
+/**
+ * Step 1 of 2 without a password: an emailed code, the way admin@bupulse.com signs in to the admin console (the
+ * owner, 9 November 2026: the same login, no second password). Agents may use it too. Only the owner's address and
+ * active or invited agents are sent a code; every address gets the same answer.
+ */
+export async function signInWithCode(_prev: CodeSignInState, formData: FormData): Promise<CodeSignInState> {
+  const started = Date.now();
+  const result = await codeSignInNow(formData);
+  await padTo(started, ANSWER_MS);
+  return result;
+}
+
+async function codeSignInNow(formData: FormData): Promise<CodeSignInState> {
+  const parsed = emailSchema.safeParse(String(formData.get("email") ?? ""));
+  if (!parsed.success) return { step: "email", error: "Enter your work email." };
+  const email = parsed.data.trim().toLowerCase();
+  const token = String(formData.get("code") ?? "").trim();
+  if (!token) {
+    const limited = await publicLimited("login", email);
+    if (limited) return { step: "email", error: limited };
+    const agent = await prisma.supportAgent.findUnique({ where: { email }, select: { status: true } }).catch(() => null);
+    if (isSupportOwnerEmail(email) || agent?.status === "active" || agent?.status === "invited") {
+      const supabase = await createClient();
+      await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } }).catch(() => undefined);
+    }
+    return { step: "code", email };
+  }
+  if (!/^\d{6,10}$/.test(token)) return { step: "code", email, error: "Enter the code from the email." };
+  try {
+    await rateLimit(`support-code-sign-in:${email}`, CODE_RULE);
+  } catch (e) {
+    if (e instanceof RateLimitError) return { step: "code", email, error: tooMany };
+    throw e;
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+  if (error || !data.user) return { step: "code", email, error: "That code did not work. Check the latest email, or start again." };
+  const user = { id: data.user.id, email: data.user.email ?? null, emailConfirmed: !!data.user.email_confirmed_at };
+  await ensureOwnerAgent(user).catch(() => undefined);
+  const agent = await agentFor(user);
+  const who = agentIdentity({ user, agent, methods: [{ method: "otp" }] });
+  if (!who.ok) {
+    await supabase.auth.signOut();
+    return { step: "email", error: who.note === "locked" ? "Your account is locked. Ask your supervisor to unlock it." : "That account cannot open the support app." };
   }
   const { data: factors } = await supabase.auth.mfa.listFactors();
   redirect(await supportUrl(factors?.totp?.some((f) => f.status === "verified") ? "/verify" : "/setup"));
@@ -212,4 +267,33 @@ export async function signOutAgent(): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect(await supportUrl("/sign-in?error=signed_out"));
+}
+
+/**
+ * Asking to join the support team (docs/SUPPORT_DASHBOARD.md): the request waits for admin@bupulse.com's approval and
+ * opens nothing until then. Every address gets the same answer, so the page never tells who already works in support.
+ */
+export async function askToJoin(_prev: JoinState, formData: FormData): Promise<JoinState> {
+  const started = Date.now();
+  const result = await askToJoinNow(formData);
+  await padTo(started, ANSWER_MS);
+  return result;
+}
+
+async function askToJoinNow(formData: FormData): Promise<JoinState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const name = String(formData.get("name") ?? "");
+  const ip = await requestIp();
+  const limited = await publicLimited("signUp", email, ip);
+  if (limited) return { error: limited };
+  if (turnstileEnabled() && !(await verifyTurnstile(String(formData.get("turnstileToken") ?? ""), ip))) {
+    return { error: "The bot check did not pass. Please try again." };
+  }
+  try {
+    await requestToJoin({ name, email, role: String(formData.get("role") ?? "AGENT") });
+  } catch (e) {
+    if (e instanceof AdminError) return { error: e.message };
+    throw e;
+  }
+  return { sent: true };
 }

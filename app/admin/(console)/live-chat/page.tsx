@@ -16,7 +16,7 @@ import {
   inviteAgentAction,
   renameDepartmentAction,
   resendAgentInviteAction,
-  resetAgentAuthenticatorAction,
+  resetAgentAuthenticatorAction, answerJoinRequestAction,
   saveAiAction,
   saveGreetingsAction,
   saveHoursAction,
@@ -49,7 +49,7 @@ export default async function LiveChatPage({ searchParams }: PageProps<"/admin/l
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
       <LiveChatTabs current={tab} />
       {agents && departments && (
-        <AgentsView agents={agents} departments={departments} actions={{ invite: inviteAgentAction, update: updateAgentAction, setLocked: setAgentLockedAction, resend: resendAgentInviteAction, resetAuthenticator: resetAgentAuthenticatorAction }} />
+        <AgentsView agents={agents} departments={departments} actions={{ invite: inviteAgentAction, update: updateAgentAction, setLocked: setAgentLockedAction, resend: resendAgentInviteAction, resetAuthenticator: resetAgentAuthenticatorAction, answerRequest: answerJoinRequestAction }} />
       )}
       {tab === "departments" && departments && <DepartmentsView departments={departments} rename={renameDepartmentAction} />}
       {tab === "hours" && settings && <HoursForm hours={settings.hours} save={saveHoursAction} />}

@@ -74,5 +74,10 @@ asks the running server's purge (lib/account-deletion.ts) to erase them.
 The tick also runs /api/cron/purge-accounts (03:17) and /api/cron/social-refresh (04:43): GitHub Actions' calls carry the
 old CRON_SECRET, which the PC refuses.
 
+Since 9 November 2026 the PC build runs `prisma migrate deploy` first (server.mjs build), as the Netlify deploy workflow
+did, so a new version's tables and columns reach the production database on the next update. The tunnel's hostnames
+(bupulse.com, www, support.bupulse.com) are in scripts/self-host/windows/tunnel-config.ps1; update.ps1 rewrites the
+config and restarts the tunnel task when they change.
+
 Remote control: Chrome Remote Desktop (free, works from outside the home network without opening a port).
 Windows 11 Pro's own Remote Desktop needs the PC reachable, so it suits the home network only.

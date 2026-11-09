@@ -12,11 +12,13 @@ import {
   sendAgentEnrollCode,
   setAgentPassword,
   signInAgent,
+  signInWithCode,
   startAgentEnrollment,
   type EnrollState,
   type ForgotState,
   type PasswordFlowState,
   type SignInState,
+  type CodeSignInState,
 } from "@/app/support/(auth)/actions";
 import { alertClass } from "./auth-shell";
 import { useSupportHref } from "./base";
@@ -39,6 +41,44 @@ export function SignInForm() {
       </Button>
       <Link href={href("/forgot")} className="self-center text-[13px] text-ok underline-offset-2 hover:underline">
         Forgot password?
+      </Link>
+      <Link href={href("/sign-in?with=code")} className="self-center text-[13px] text-ok underline-offset-2 hover:underline">
+        Sign in with an emailed code instead (admin@bupulse.com signs in this way)
+      </Link>
+      <Link href={href("/join")} className="self-center text-[13px] text-muted underline-offset-2 hover:underline">
+        New to the support team? Ask to join
+      </Link>
+    </form>
+  );
+}
+
+/** Step 1 of 2 without a password: the work email, then the code we email (the admin console's way of signing in). */
+export function CodeSignInForm() {
+  const [state, action, pending] = useActionState<CodeSignInState, FormData>(signInWithCode, {});
+  const href = useSupportHref();
+  const codeStep = state.step === "code" && state.email;
+  return (
+    <form action={action} className="flex flex-col gap-3.5">
+      {codeStep ? (
+        <>
+          <input type="hidden" name="email" value={state.email} />
+          <p className="text-[15px]">
+            If <strong>{state.email}</strong> can use the support app, a sign-in code is on its way. Enter it here.
+          </p>
+          <Field label="Code from the email" error={state.error}>
+            <Input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={10} required autoFocus />
+          </Field>
+        </>
+      ) : (
+        <Field label="Work email" error={state.error}>
+          <Input name="email" type="email" autoComplete="username" required autoFocus />
+        </Field>
+      )}
+      <Button type="submit" disabled={pending} className="w-full">
+        {pending ? "Checking…" : codeStep ? "Continue" : "Email me a code"}
+      </Button>
+      <Link href={href("/sign-in")} className="self-center text-[13px] text-ok underline-offset-2 hover:underline">
+        Sign in with a password instead
       </Link>
     </form>
   );

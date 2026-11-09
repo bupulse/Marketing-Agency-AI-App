@@ -5,6 +5,7 @@ import type { AgentMe, DepartmentKey } from "./contract";
 import { agentAccess } from "./app-access";
 import { SupportError, limit } from "./http";
 import { SUPPORT_LIMITS } from "./limits";
+import { isSupportOwnerEmail } from "./owner";
 
 // The support API's sign-in check (docs/SUPPORT_CHAT.md section 3) for every /agent route: a Supabase access token as
 // Authorization: Bearer, verified with Supabase Auth (a revoked session fails), then the support app's own rules
@@ -122,7 +123,7 @@ export async function requireSupportAgent(request: Request, verify: (token: stri
 }
 
 export function agentMe(a: AgentSession): AgentMe {
-  return { id: a.id, name: a.name, email: a.email, role: a.role, availability: a.availability, departments: a.departments.map((d) => d.key) };
+  return { id: a.id, name: a.name, email: a.email, role: a.role, availability: a.availability, departments: a.departments.map((d) => d.key), owner: isSupportOwnerEmail(a.email) };
 }
 
 export function requireSupervisor(a: AgentSession) {

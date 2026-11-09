@@ -12,7 +12,7 @@ import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/admin/audit";
-import { can, isAdminEmail, type AdminIdentity } from "@/lib/admin/auth";
+import { adminEmails, can, isAdminEmail, type AdminIdentity } from "@/lib/admin/auth";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { DEPARTMENT_KEYS, type DepartmentKey } from "./contract";
 import { forceLogout } from "./realtime";
@@ -61,9 +61,9 @@ function cleanAgent(input: AgentInput): { name: string; role: SupportRoleKey; de
   const name = input.name.trim().replace(/\s+/g, " ");
   if (name.length < 2 || name.length > 80) throw new AdminError("invalid", "Enter the agent's name (2 to 80 characters).");
   const role = SUPPORT_ROLES.find((r) => r === input.role);
-  if (!role) throw new AdminError("invalid", "Pick a role: Agent or Supervisor.");
+  if (!role) throw new AdminError("invalid", "Pick a role: Agent, Technical or Supervisor.");
   const departments = [...new Set(input.departments)].filter((d): d is DepartmentKey => (DEPARTMENT_KEYS as readonly string[]).includes(d));
-  if (role === "AGENT" && departments.length === 0) throw new AdminError("invalid", "Tick at least one department: it decides which chats reach the agent.");
+  if ((role === "AGENT" || role === "TECH") && departments.length === 0) throw new AdminError("invalid", "Tick at least one department: it decides which chats reach the agent.");
   const maxChats = input.maxChats === undefined || input.maxChats === "" ? 5 : Number(input.maxChats);
   if (!Number.isInteger(maxChats) || maxChats < 1 || maxChats > 20) throw new AdminError("invalid", "Chats at once: a number from 1 to 20.");
   return { name, role, departments, maxChats };
@@ -173,7 +173,11 @@ export async function inviteAgent(ctx: AdminContext, actor: AdminIdentity, input
   if (isAdminEmail(email) || (await prisma.staffMember.findUnique({ where: { email }, select: { id: true } }))) {
     throw new AdminError("conflict", "That address signs in to the admin console. Give the agent a separate work address.");
   }
-  if (await prisma.supportAgent.findUnique({ where: { email }, select: { id: true } })) throw new AdminError("conflict", "That address is already a support agent.");
+  const already = await prisma.supportAgent.findUnique({ where: { email }, select: { id: true, status: true } });
+  // Someone who asked to join (pending) is invited by approving their request, keeping one row per address; the role,
+  // departments and limit typed in the form win over the request's.
+  if (already?.status === "pending") return approveJoinRequest(ctx, already.id, clean);
+  if (already) throw new AdminError("conflict", "That address is already a support agent.");
   // A client's or creator's sign-in is not turned into an agent (the password would change for their BuPulse account too).
   const [existing] = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM auth.users WHERE lower(email) = ${email} LIMIT 1`;
   if (existing) throw new AdminError("conflict", "That address already signs in to BuPulse (a client or creator account). Use a separate work address for support.");
@@ -305,4 +309,102 @@ export async function sendAgentPasswordReset(rawEmail: string): Promise<void> {
     return;
   }
   await sendResetEmail(email, agent.name, link.url);
+}
+
+// ---- Asking to join (owner, 9 November 2026; docs/SUPPORT_DASHBOARD.md) ------------------------------------------------
+// A would-be agent asks on the support app's /join page. The row waits as "pending" (no sign-in exists, so it opens
+// nothing) until admin@bupulse.com approves it in the support app, or an admin with the Live chat permission in Admin ->
+// Live chat; approving sends the same invite as inviteAgent, so there is one row per address, never two.
+
+export const JOINABLE_ROLES = ["AGENT", "TECH"] as const;
+export type JoinRole = (typeof JOINABLE_ROLES)[number];
+
+/**
+ * Records a request to join. Answers the same whatever happens (a taken or refused address is not revealed): it only
+ * writes when the address is free, then tells the admin addresses.
+ */
+export async function requestToJoin(input: { name: string; email: string; role: string }): Promise<void> {
+  const name = (input.name ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 80);
+  if (name.length < 2) throw new AdminError("invalid", "Enter your full name.");
+  const email = normalizeAgentEmail(input.email ?? "");
+  const role: JoinRole = input.role === "TECH" ? "TECH" : "AGENT";
+  if (isAdminEmail(email)) return;
+  if (await prisma.staffMember.findUnique({ where: { email }, select: { id: true } })) return;
+  if (await prisma.supportAgent.findUnique({ where: { email }, select: { id: true } })) return;
+  const [existing] = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM auth.users WHERE lower(email) = ${email} LIMIT 1`;
+  if (existing) return;
+  const row = await prisma.supportAgent
+    .create({ data: { email, name, role, status: "pending", invitedBy: "self:join" } })
+    .catch(() => null); // the same address twice at once: the first one is kept
+  if (!row) return;
+  await writeAudit(prisma, { actor: "support:join", viaApi: false }, "support_agent_join_request", `support_agent:${row.id}`, null, { email, name, role }).catch(() => undefined);
+  try {
+    const roleLabel = role === "TECH" ? "Technical support" : "Chat agent";
+    const { html, text } = renderEmail({
+      heading: "Someone asked to join BuPulse Support",
+      intro: `${name} (${email}) asked to join the support team as: ${roleLabel}. Approve or decline it in the support app (Team) or in Admin -> Live chat. Nothing is opened until you approve.`,
+      button: { label: "Open the team page", url: `${supportAppUrl()}/team` },
+      footer: "You get this because your address is an admin of BuPulse.",
+    });
+    await Promise.all(adminEmails().map((to) => sendEmail({ to, subject: `Support team request: ${name}`, html, text })));
+  } catch (error) {
+    await logError(error, { source: "support.agents.join_email", level: "warn" });
+  }
+}
+
+/** Pending requests, oldest first. */
+export async function listJoinRequests(): Promise<{ id: string; name: string; email: string; role: string; createdAt: string }[]> {
+  const rows = await prisma.supportAgent.findMany({ where: { status: "pending" }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, email: true, role: true, createdAt: true } });
+  return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+}
+
+async function pendingRow(id: string) {
+  const row = await prisma.supportAgent.findUnique({ where: { id }, select: { id: true, email: true, name: true, role: true, status: true } });
+  if (!row || row.status !== "pending") throw new AdminError("not_found", "That request was already answered.");
+  return row;
+}
+
+/** Approves a request: the invite email goes out (choose a password, then an authenticator) and the row becomes "invited". */
+export async function approveJoinRequest(
+  ctx: AdminContext,
+  id: string,
+  set?: { name: string; role: SupportRoleKey; departments: DepartmentKey[]; maxChats: number },
+): Promise<{ id: string; emailed: boolean }> {
+  const row = await pendingRow(id);
+  // Departments decide which chats reach an agent: the form's, else every department (narrow them in Admin -> Live chat).
+  const ids = await departmentIds(set?.departments.length ? set.departments : [...DEPARTMENT_KEYS]);
+  const link = await emailLink(row.email, "invite", "accept", { full_name: row.name, support_agent: true });
+  if ("error" in link) {
+    await logError(new Error("generateLink(invite) failed"), { source: "support.agents.approve", code: link.error.code });
+    throw new AdminError("unavailable", "The sign-in could not be created. Nothing was changed; try again in a minute.");
+  }
+  try {
+    await prisma.$transaction(async (tx) => {
+      const done = await tx.supportAgent.updateMany({ where: { id, status: "pending" }, data: { status: "invited", invitedBy: ctx.actor, ...(set ? { name: set.name, role: set.role, maxChats: set.maxChats } : {}) } });
+      if (done.count === 0) throw new AdminError("not_found", "That request was already answered.");
+      await tx.supportAgentDepartment.deleteMany({ where: { agentId: id } });
+      await tx.supportAgentDepartment.createMany({ data: ids.map((departmentId) => ({ agentId: id, departmentId })) });
+      await writeAudit(tx, ctx, "support_agent_join_approve", `support_agent:${id}`, { status: "pending" }, { status: "invited", email: row.email, role: row.role });
+    });
+  } catch (error) {
+    await createAdminClient().auth.admin.deleteUser(link.userId).catch(() => undefined);
+    throw error;
+  }
+  return { id, emailed: await sendInviteEmail(row.email, row.name, link.url) };
+}
+
+/** Declines a request: the row goes (the person may ask again later). */
+export async function declineJoinRequest(ctx: AdminContext, id: string): Promise<{ id: string }> {
+  const row = await pendingRow(id);
+  await prisma.$transaction(async (tx) => {
+    await tx.supportAgent.deleteMany({ where: { id, status: "pending" } });
+    await writeAudit(tx, ctx, "support_agent_join_decline", `support_agent:${id}`, { status: "pending", email: row.email }, null);
+  });
+  return { id };
+}
+
+/** Admin -> Live chat: the same as the support app's Team page, for an admin with the Live chat permission. */
+export async function answerJoinRequest(ctx: AdminContext, actor: AdminIdentity, id: string, approve: boolean): Promise<{ id: string; emailed?: boolean }> {
+  assertLiveChat(actor);
+  return approve ? approveJoinRequest(ctx, id) : declineJoinRequest(ctx, id);
 }

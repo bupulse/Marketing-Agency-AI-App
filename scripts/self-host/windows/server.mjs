@@ -56,6 +56,9 @@ if (mode === "tool") {
   const quoted = process.argv.slice(4).map((a) => (/^[A-Za-z0-9_.=-]+$/.test(a) ? a : JSON.stringify(a))).join(" ");
   run(`node scripts/self-host/tools/${tool}.mjs ${quoted}`.trim());
 } else if (mode === "build") {
+  // The database first: new tables and columns of this version (prisma/migrations; additive by the repo's rule), the job
+  // the Netlify deploy workflow did before (.github/workflows/deploy.yml). Uses DIRECT_URL from the production settings.
+  run("npx prisma migrate deploy --config prisma7.config.ts");
   run("npx prisma generate --config prisma7.config.ts");
   run("npm run build");
   console.log("build done");

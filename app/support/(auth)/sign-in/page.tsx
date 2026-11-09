@@ -1,5 +1,5 @@
 import { SupportAuthShell, noteClass } from "@/components/support-app/auth-shell";
-import { SignInForm } from "@/components/support-app/sign-in-forms";
+import { CodeSignInForm, SignInForm } from "@/components/support-app/sign-in-forms";
 
 export const metadata = { title: "Sign in" };
 
@@ -10,12 +10,12 @@ const NOTES: Record<string, string> = {
 };
 
 export default async function SupportSignInPage({ searchParams }: PageProps<"/support/sign-in">) {
-  const { error } = await searchParams;
+  const { error, with: method } = await searchParams;
   const note = typeof error === "string" ? NOTES[error] : undefined;
   return (
     <SupportAuthShell step="STEP 1 OF 2" title="Sign in">
       {note && <p role="status" className={noteClass}>{note}</p>}
-      <SignInForm />
+      {method === "code" ? <CodeSignInForm /> : <SignInForm />}
     </SupportAuthShell>
   );
 }

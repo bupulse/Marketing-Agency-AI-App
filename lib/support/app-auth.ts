@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DEPARTMENT_KEYS, type AgentMe, type DepartmentKey } from "./contract";
 import { agentAccess, agentIdentity, type AgentAccessInput, type AgentNote } from "./app-access";
 import { supportBaseFor, supportHref } from "./app-host";
+import { ensureOwnerAgent, isSupportOwnerEmail } from "./owner";
 
 // The support app's page guard (docs/SUPPORT_CHAT.md "Support app and Admin"). The rules live in app-access.ts and are
 // the same for the API guard (requireSupportAgent): an agent who is not locked, at AAL2 with an authenticator app.
@@ -40,13 +41,15 @@ type AgentRow = NonNullable<Awaited<ReturnType<typeof agentFor>>>;
 export function agentMe(agent: AgentRow): AgentMe {
   const keys = agent.departments.map((d) => d.department.key).filter((k): k is DepartmentKey => (DEPARTMENT_KEYS as readonly string[]).includes(k));
   const availability = agent.availability === "online" || agent.availability === "away" ? agent.availability : "offline";
-  return { id: agent.id, name: agent.name, email: agent.email, role: agent.role, availability, departments: keys };
+  return { id: agent.id, name: agent.name, email: agent.email, role: agent.role, availability, departments: keys, owner: isSupportOwnerEmail(agent.email) };
 }
 
 async function accessInput(supabase: Supabase): Promise<{ input: AgentAccessInput; agent: AgentRow | null }> {
   const { data, error } = await supabase.auth.getUser();
   const user = !error && data?.user ? data.user : null;
   if (!user) return { input: { user: null, agent: null, methods: null, aal: null, hasVerifiedTotp: false }, agent: null };
+  // admin@bupulse.com gets its supervisor row on its first visit (lib/support/owner.ts).
+  if (isSupportOwnerEmail(user.email)) await ensureOwnerAgent({ id: user.id, email: user.email ?? null, emailConfirmed: !!user.email_confirmed_at }).catch(() => undefined);
   const [agent, aal, factors] = await Promise.all([agentFor({ id: user.id, email: user.email ?? null }), supabase.auth.mfa.getAuthenticatorAssuranceLevel(), supabase.auth.mfa.listFactors()]);
   return {
     agent,

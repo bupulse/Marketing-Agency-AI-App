@@ -38,3 +38,23 @@ not a new app: the same `SupportAgent` rows as Admin → Live chat, so staff are
 - Backup servers: shown as "Not set up yet" until there is one.
 - Alerts when the site goes down and when it is back: email to admin@bupulse.com, Telegram (once the bot is
   connected), and a red banner in the dashboard.
+
+## Signing in and joining (built 9 November 2026)
+
+- Sign-in page: email + password, or "Sign in with an emailed code instead" (`signInWithCode`), then the 6-digit code
+  from the authenticator app. admin@bupulse.com uses the emailed code, like the admin console: its supervisor row is
+  made on its first visit (`lib/support/owner.ts ensureOwnerAgent`), only while it is in ADMIN_EMAILS.
+- "Ask to join" (`/join`, Turnstile + sign-up limits): a `SupportAgent` row with status `pending` (no sign-in exists,
+  so it opens nothing); every admin address gets an email. Taken addresses (admin, staff, an agent, any BuPulse
+  sign-in) get the same answer and nothing is written.
+- Approve on the support app's Team page (admin@bupulse.com only) or in Admin → Live chat (Live chat permission):
+  the usual invite email; every department until narrowed in Admin. Decline removes the row. Inviting a pending
+  address from Admin approves it with the form's role and departments (one row per address).
+
+## support.bupulse.com (one-time setup)
+
+1. The tunnel serves support.bupulse.com from the PC: `scripts/self-host/windows/tunnel-config.ps1` (used by
+   install.ps1 and update.ps1, which restarts the tunnel when the list changes).
+2. DNS, once, on the PC (it holds Cloudflare's cert.pem):
+   `cloudflared tunnel route dns bupulse-prod support.bupulse.com`.
+3. Admin → Services → Custom keys: `SUPPORT_APP_URL` = `https://support.bupulse.com`, so invite and alert links use it.

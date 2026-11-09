@@ -5,6 +5,6 @@
 // admin@bupulse.com signs in with the admin console's session and counts as a supervisor who also approves staff.
 export type SupportRoleName = "AGENT" | "SUPERVISOR" | "TECH";
 
-export const canSeeVisitorAnalytics = (_role: SupportRoleName): boolean => true;
+export const canSeeVisitorAnalytics = (role: SupportRoleName): boolean => role === "AGENT" || role === "TECH" || role === "SUPERVISOR";
 export const canSeeMonitoring = (role: SupportRoleName): boolean => role === "SUPERVISOR" || role === "TECH";
 export const canSeeChatStats = (role: SupportRoleName): boolean => role === "SUPERVISOR";

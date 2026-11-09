@@ -3,7 +3,7 @@
 import { requirePermission, type AdminIdentity } from "@/lib/admin/auth";
 import type { AdminContext } from "@/lib/admin/types";
 import { adminAction, finish } from "@/lib/admin/console";
-import { inviteAgent, renameDepartment, resendAgentInvite, resetAgentAuthenticator, setAgentLocked, updateAgent } from "@/lib/support/agents";
+import { answerJoinRequest, inviteAgent, renameDepartment, resendAgentInvite, resetAgentAuthenticator, setAgentLocked, updateAgent } from "@/lib/support/agents";
 import { clearSupportSettingsCache, getSupportSettings, saveSupportSettings, type SupportSettings } from "@/lib/support/settings";
 import { aiFromForm, greetingsFromForm, hoursFromForm } from "@/lib/support/settings-form";
 
@@ -42,6 +42,15 @@ export async function setAgentLockedAction(f: FormData) {
 export async function resendAgentInviteAction(f: FormData) {
   const { ctx, actor } = await liveChatManager();
   await finish(back("agents"), (r: { emailed: boolean }) => (r.emailed ? "New invite sent. The old link no longer works." : "The invite email could not be sent. Please try again in a minute."), () => resendAgentInvite(ctx, actor, text(f, "id")));
+}
+
+/** A request to join from the support app: approve sends the usual invite, decline removes it. */
+export async function answerJoinRequestAction(f: FormData) {
+  const { ctx, actor } = await liveChatManager();
+  const approve = text(f, "answer") === "approve";
+  await finish(back("agents"), (r: { id: string; emailed?: boolean }) => (!approve ? "Request declined." : r.emailed ? "Approved: the invite email is on its way." : "Approved, but the invite email could not be sent. Use Resend invite in a minute."), () =>
+    answerJoinRequest(ctx, actor, text(f, "id"), approve),
+  );
 }
 
 export async function resetAgentAuthenticatorAction(f: FormData) {

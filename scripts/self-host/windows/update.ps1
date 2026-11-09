@@ -12,6 +12,15 @@ Write-Host "1/4 Downloading the new code"
 git pull --ff-only
 if ($LASTEXITCODE -ne 0) { throw "git pull failed: nothing was changed, the site still runs the old version" }
 
+# The tunnel's hostnames live in the repo (tunnel-config.ps1): a new one (support.bupulse.com, 9 November 2026) is
+# picked up by restarting the tunnel task, a few seconds offline.
+if ((& (Join-Path $PSScriptRoot "tunnel-config.ps1")) -eq "changed") {
+  Write-Host "    tunnel hostnames changed: restarting the tunnel"
+  Stop-ScheduledTask -TaskName "BuPulse tunnel"
+  Start-Sleep -Seconds 2
+  Start-ScheduledTask -TaskName "BuPulse tunnel"
+}
+
 Write-Host "2/4 Stopping the website (down for a few minutes)"
 Stop-ScheduledTask -TaskName "BuPulse server"
 $listener = Get-NetTCPConnection -LocalPort 3002 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique

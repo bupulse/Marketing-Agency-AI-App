@@ -56,16 +56,7 @@ if ($LASTEXITCODE -ne 0) { throw "build failed: see the messages above" }
 Pop-Location
 
 Write-Host "6/6 Tunnel config and start-at-boot tasks"
-@"
-tunnel: $tunnelId
-credentials-file: $credFile
-ingress:
-  - hostname: bupulse.com
-    service: http://localhost:3002
-  - hostname: www.bupulse.com
-    service: http://localhost:3002
-  - service: http_status:404
-"@ | Set-Content $config
+& (Join-Path $PSScriptRoot "tunnel-config.ps1") | Out-Null
 
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
