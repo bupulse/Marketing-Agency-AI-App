@@ -30,7 +30,10 @@ describe("Netlify scheduled functions match the Cloudflare cron triggers", () =>
 
   it("every Worker schedule has a Netlify function with the same schedule and route (publisher and video sweep excepted)", () => {
     const netlify = Object.fromEntries(scheduled.map((s) => [s.path, s.schedule]));
-    const expected = Object.fromEntries(Object.entries(workerRoutes).map(([schedule, path]) => [path, NETLIFY_ONLY[path] ?? schedule]));
+    // Account purge and social token refresh run from GitHub Actions on Netlify (purge-accounts.yml, social-refresh.yml);
+    // the tick runs them too since the PC refuses GitHub's old CRON_SECRET (worker-crons.ts, 6 November 2026).
+    const GITHUB_ACTIONS = ["/api/cron/purge-accounts", "/api/cron/social-refresh"];
+    const expected = Object.fromEntries(Object.entries(workerRoutes).filter(([, path]) => !GITHUB_ACTIONS.includes(path)).map(([schedule, path]) => [path, NETLIFY_ONLY[path] ?? schedule]));
     expect(netlify).toEqual(expected);
   });
 
