@@ -40,13 +40,17 @@ export async function rollupDay(day: string, now = new Date()): Promise<number> 
   const add = (key: string, value: number, dimension = "") => rows.push({ key, dimension, value });
 
   // --- Traffic ---
-  const [traffic] = await prisma.$queryRaw<{ visits: bigint; uv: bigint; sessions: bigint }[]>`
+  // visits_v2: the views counted with the device-signature method (PageView.countMethod); fewer than visits marks a day
+  // (partly) counted the old way, one visitor per browser (lib/analytics/visitors-shared.ts dayMethod).
+  const [traffic] = await prisma.$queryRaw<{ visits: bigint; uv: bigint; sessions: bigint; v2: bigint }[]>`
     SELECT COUNT(*)::bigint AS visits, COUNT(DISTINCT "visitorHash")::bigint AS uv,
-           COUNT(DISTINCT COALESCE("sessionId", "visitorHash"))::bigint AS sessions
+           COUNT(DISTINCT COALESCE("sessionId", "visitorHash"))::bigint AS sessions,
+           COUNT(*) FILTER (WHERE "countMethod" = 'v2')::bigint AS v2
     FROM "PageView" WHERE "createdAt" >= ${start} AND "createdAt" < ${end}`;
   add("visits", n(traffic?.visits));
   add("unique_visitors", n(traffic?.uv));
   add("sessions", n(traffic?.sessions));
+  add("visits_v2", n(traffic?.v2));
   const top = async (by: "path" | "source" | "utmCampaign" | "country" | "device", key: string) => {
     const groups = await prisma.pageView.groupBy({
       by: [by],

@@ -1,8 +1,9 @@
 // Pure helpers for the first-party tracker (/api/collect). No I/O, so they are unit-tested directly.
-// Privacy: the raw IP and UA are only ever hashed together with a daily salt (visitorHash); neither is stored.
+// Privacy: the raw IP is only ever hashed together with a daily salt and the device signature (visitorHash); it is
+// never stored, and neither is the user agent.
 
 import { currentPlatform } from "@/lib/platform/detect";
-import { cleanCountry, clientIp as platformClientIp, visitorCountry } from "@/lib/platform/headers";
+import { cleanCountry, clientIp as platformClientIp, visitorCity, visitorCountry } from "@/lib/platform/headers";
 
 const BOT_UA =
   /bot|crawl|spider|slurp|headless|phantom|puppeteer|playwright|selenium|lighthouse|pagespeed|gtmetrix|pingdom|uptime|monitor|curl|wget|python-requests|python-urllib|aiohttp|httpx|go-http|java\/|okhttp|libwww|scrapy|node-fetch|axios|undici|postman|facebookexternalhit|embedly|preview|whatsapp|telegram|discord|skype|vkshare|bingpreview|yahoo|duckduck|baidu|yandex|semrush|ahrefs|mj12|dotbot|petalbot|bytespider|gptbot|claudebot|anthropic|perplexity|ccbot|amazonbot|applebot/i;
@@ -112,14 +113,61 @@ export function utcDay(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** How visitors are counted on new rows (PageView.countMethod). Null on older rows: the old method hashed the full user agent. */
+export const COUNT_METHOD = "v2";
+
+export type DeviceSignatureInput = { device: Device; width?: number | null; height?: number | null; language?: string | null };
+
+/** A screen side rounded to 16 px, so one screen gives the same number in every browser. 0 when unknown. */
+const bucket = (px: number | null | undefined) => (px && px > 0 ? Math.round(px / 16) * 16 : 0);
+
+/** The language's first subtag ("en-US" -> "en", "rw" -> "rw"), lower-case; "" when it does not look like one. */
+export function primaryLanguage(value: string | null | undefined): string {
+  const first = (value ?? "").split(",")[0].split(";")[0].trim().split(/[-_]/)[0].toLowerCase();
+  return /^[a-z]{2,3}$/.test(first) ? first : "";
+}
+
 /**
- * SHA-256 over the day's random salt (lib/analytics/salt.ts, deleted after the day) + the UTC day + IP + UA, hex.
- * Yesterday's hashes can't be matched to today's, and once the salt is gone they can't be recomputed from an IP.
+ * What one device looks like whatever browser is open on it: phone/tablet/computer, the screen's short and long side
+ * (so turning a phone sideways is not a new visitor) and the primary language. Browser name and version are left out
+ * on purpose: Chrome and Safari on one phone are one visitor (docs/SUPPORT_DASHBOARD.md).
  */
-export async function visitorHash(ip: string, userAgent: string, now: Date, secret: string): Promise<string> {
-  const data = new TextEncoder().encode(`${secret}|${utcDay(now)}|${ip}|${userAgent}`);
+export function deviceSignature({ device, width, height, language }: DeviceSignatureInput): string {
+  const a = bucket(width);
+  const b = bucket(height);
+  const short = a && b ? Math.min(a, b) : a || b;
+  return `${device}|${short}x${Math.max(a, b)}|${primaryLanguage(language)}`;
+}
+
+/**
+ * SHA-256 over the day's random salt (lib/analytics/salt.ts, deleted after the day) + the UTC day + IP + the device
+ * signature (deviceSignature), hex. Yesterday's hashes can't be matched to today's, and once the salt is gone they
+ * can't be recomputed from an IP.
+ */
+export async function visitorHash(ip: string, signature: string, now: Date, secret: string): Promise<string> {
+  const data = new TextEncoder().encode(`${secret}|${utcDay(now)}|${ip}|${signature}`);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The random id public/t.js gives each page view (32 hex characters), or null. */
+export function cleanViewId(value: unknown): string | null {
+  return typeof value === "string" && /^[a-f0-9]{32}$/.test(value) ? value : null;
+}
+
+/** Time on page is capped here: a tab left open on a page is not hours of reading. */
+export const MAX_DURATION_MS = 30 * 60 * 1000;
+/** A time-on-page beacon for a view older than this is ignored. */
+export const DURATION_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * A time-on-page beacon from public/t.js: the view's id and the milliseconds the page was visible. Null when either is
+ * missing or not a sane number; the time is rounded and capped at MAX_DURATION_MS. Zero is not worth a write.
+ */
+export function durationBeacon(viewId: unknown, ms: unknown): { viewId: string; ms: number } | null {
+  const id = cleanViewId(viewId);
+  if (!id || typeof ms !== "number" || !Number.isFinite(ms) || ms < 1) return null;
+  return { viewId: id, ms: Math.min(Math.round(ms), MAX_DURATION_MS) };
 }
 
 /** The host's client address (lib/platform/headers.ts); x-real-ip only in plain Node; "0.0.0.0" (one shared bucket) when missing. */
@@ -133,4 +181,9 @@ export function countryFrom(headers: Headers, cfCountry: string | undefined, dev
   const country = visitorCountry(headers) ?? cleanCountry(cfCountry);
   if (country) return country;
   return dev ? (process.env.ANALYTICS_DEV_COUNTRY || "ZZ").toUpperCase().slice(0, 2) : null;
+}
+
+/** The visitor's city from the host's own headers (lib/platform/headers.ts visitorCity), or null. */
+export function cityFrom(headers: Headers): string | null {
+  return visitorCity(headers);
 }

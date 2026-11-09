@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanCountry, clientIp, countryFromNetlifyGeo, trustedClientIp, visitorCountry } from "@/lib/platform/headers";
+import { cleanCity, cleanCountry, clientIp, countryFromNetlifyGeo, trustedClientIp, visitorCity, visitorCountry } from "@/lib/platform/headers";
 import { currentPlatform } from "@/lib/platform/detect";
-import { countryFrom, clientIp as collectClientIp } from "@/lib/analytics/collect";
+import { cityFrom, countryFrom, clientIp as collectClientIp } from "@/lib/analytics/collect";
 import { clientIpFrom } from "@/lib/request-limits";
 
 const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64");
@@ -73,6 +73,47 @@ describe("visitor country per host", () => {
     expect(countryFrom(new Headers({ "cf-ipcountry": "UG" }), undefined, false)).toBeNull();
     vi.stubEnv("PLATFORM", "cloudflare");
     expect(countryFrom(new Headers({}), "ug", false)).toBe("UG");
+  });
+});
+
+describe("visitor city per host (the same trust rules as the country)", () => {
+  const all = new Headers({ "cf-ipcity": "Musanze", "x-nf-geo": NF_GEO, "cf-connecting-ip": "203.0.113.5" });
+
+  it("Cloudflare and plain Node read cf-ipcity; Netlify reads x-nf-geo only", () => {
+    expect(visitorCity(all, "cloudflare")).toBe("Musanze");
+    expect(visitorCity(all, "node")).toBe("Musanze");
+    expect(visitorCity(all, "netlify")).toBe("Kigali");
+    expect(visitorCity(new Headers({ "cf-ipcity": "Musanze" }), "netlify")).toBeNull();
+    expect(visitorCity(new Headers({ "x-nf-geo": NF_GEO }), "cloudflare")).toBeNull();
+  });
+
+  it("Cloud Run trusts cf-ipcity only when the request came through Cloudflare's proxy", () => {
+    expect(visitorCity(new Headers({ "cf-ipcity": "Musanze", "x-forwarded-for": "198.51.100.20" }), "cloudrun")).toBeNull();
+    expect(visitorCity(new Headers({ "cf-ipcity": "Musanze", "cf-connecting-ip": "203.0.113.5", "x-forwarded-for": "203.0.113.5, 104.16.0.1" }), "cloudrun")).toBe("Musanze");
+  });
+
+  it("drops the host's city when a Rwandan provider's address was placed in another country", () => {
+    const ug = new Headers({ "cf-connecting-ip": "41.186.10.20", "cf-ipcountry": "UG", "cf-ipcity": "Kampala" });
+    expect(visitorCountry(ug, "cloudflare")).toBe("RW");
+    expect(visitorCity(ug, "cloudflare")).toBeNull();
+    expect(visitorCity(new Headers({ "cf-connecting-ip": "41.186.10.20", "cf-ipcountry": "RW", "cf-ipcity": "Kigali" }), "cloudflare")).toBe("Kigali");
+  });
+
+  it("cleans names: trims, removes control characters, caps the length, decodes UTF-8 bytes", () => {
+    expect(cleanCity("  Kigali ")).toBe("Kigali");
+    expect(cleanCity("Ki\u0000gali\n")).toBe("Kigali");
+    expect(cleanCity("")).toBeNull();
+    expect(cleanCity(null)).toBeNull();
+    expect(cleanCity("x".repeat(200))).toHaveLength(80);
+    expect(cleanCity(Buffer.from("Butaré", "utf8").toString("latin1"))).toBe("Butaré");
+    expect(cleanCity("Butaré")).toBe("Butaré");
+  });
+
+  it("the tracker reads the city the same way", () => {
+    vi.stubEnv("PLATFORM", "netlify");
+    expect(cityFrom(new Headers({ "x-nf-geo": NF_GEO, "cf-ipcity": "Musanze" }))).toBe("Kigali");
+    vi.stubEnv("PLATFORM", "cloudflare");
+    expect(cityFrom(new Headers({ "cf-ipcity": "Musanze" }))).toBe("Musanze");
   });
 });
 

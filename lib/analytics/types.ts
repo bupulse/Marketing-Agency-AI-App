@@ -8,6 +8,7 @@ export type Cents = number;
 
 export const METRIC_KEYS = [
   "visits", "unique_visitors", "sessions", // dimension "" = total
+  "visits_v2", // views counted the current way (IP + device); below "visits" = the day was (partly) counted the old way
   "top_page", "source", "utm_campaign", "country", "device", // dimension = the value, e.g. "/pricing", "google"
   "signups", "trial_starts", "paid_starts", "cancellations",
   "onboarding_step", // dimension = step name; value = users reaching it that day
