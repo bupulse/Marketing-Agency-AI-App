@@ -129,7 +129,7 @@ const LABELS: Record<string, string> = { facebook: "Facebook", instagram: "Insta
  * The auth config a network signs in with. TikTok and X: the one made with BuPulse's own app (ownAuthConfig), never a
  * managed one. The others: the Composio-managed config ("BuPulse-Socials <Network>"), stored once, found or made on first use.
  */
-export async function authConfigFor(network: Network): Promise<string> {
+export async function authConfigFor(network: Network, options: { fresh?: boolean } = {}): Promise<string> {
   if (OWN_APP_CONFIG[network]) {
     const own = ownAuthConfig(network);
     if (!own) throw new SocialError(`${LABELS[network] ?? network} is not set up in BuPulse-Socials yet`, "invalid", network);
@@ -137,7 +137,7 @@ export async function authConfigFor(network: Network): Promise<string> {
   }
   const row = await prisma.adminSetting.findUnique({ where: { key: AUTH_CONFIGS_SETTING } }).catch(() => null);
   const saved = (row?.value ?? {}) as Record<string, string>;
-  if (saved[network]) return saved[network];
+  if (saved[network] && !options.fresh) return saved[network];
 
   const name = `BuPulse-Socials ${LABELS[network] ?? network}`;
   type Listed = { items?: { id: string; name?: string; is_composio_managed?: boolean; status?: string }[] };
@@ -158,8 +158,18 @@ export async function authConfigFor(network: Network): Promise<string> {
 
 /** A one-time Composio sign-in link for this business. Composio sends the person back to `callbackUrl`. */
 export async function createConnectLink(network: Network, businessId: string, callbackUrl: string): Promise<{ url: string; connectedAccountId: string }> {
-  const authConfigId = await authConfigFor(network);
-  const r = await composioApi<{ redirect_url?: string; connected_account_id?: string }>(network, "POST", "/connected_accounts/link", { auth_config_id: authConfigId, user_id: businessId, callback_url: callbackUrl });
+  const link = (authConfigId: string) =>
+    composioApi<{ redirect_url?: string; connected_account_id?: string }>(network, "POST", "/connected_accounts/link", { auth_config_id: authConfigId, user_id: businessId, callback_url: callbackUrl });
+  let r: { redirect_url?: string; connected_account_id?: string };
+  try {
+    r = await link(await authConfigFor(network));
+  } catch (error) {
+    // A saved auth config from another Composio project (the API key was replaced, 9 November 2026) is refused with a
+    // 4xx: forget it, find or make this project's "BuPulse-Socials <Network>" config, and try once more. BuPulse's own
+    // TikTok and X configs are set by hand, so they are not retried.
+    if (!(error instanceof SocialError) || error.kind !== "invalid" || OWN_APP_CONFIG[network]) throw error;
+    r = await link(await authConfigFor(network, { fresh: true }));
+  }
   if (!r.redirect_url || !r.connected_account_id) throw new SocialError("BuPulse-Socials did not return a sign-in link", "temporary", network);
   return { url: r.redirect_url, connectedAccountId: r.connected_account_id };
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { demoLimited } from "@/lib/demo/limits";
@@ -30,5 +31,8 @@ export async function startTrialAction(_prev: StartTrialState, formData: FormDat
     }
     if (error.code !== "not_pending" && error.code !== "changed") return { error: error.message };
   }
+  // The browser's router still remembers that /dashboard sent this company to /start-trial (onboarding redirected it
+  // there a moment ago): without dropping that, it bounced between the two and showed a blank page (9 November 2026).
+  revalidatePath("/", "layout");
   redirect("/dashboard");
 }
