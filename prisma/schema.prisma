@@ -1638,7 +1638,9 @@ model StoreConnectionPending {
 
 // ---- Phase 8: BuPulse's own analytics (lib/analytics/*). Owner-only; read through /admin and Jarvis. ----
 
-// One marketing-page view from public/t.js. No raw IP is stored: visitorHash is SHA-256(IP + UA + daily salt).
+// One marketing-page view from public/t.js. No raw IP is stored: visitorHash is SHA-256(daily salt + IP + device
+// signature: phone/tablet/computer, screen size, language; lib/analytics/collect.ts). Rows from before 9 November 2026
+// (countMethod null) hashed the full user agent instead, so each browser counted as a visitor.
 model PageView {
   id           String   @id @default(cuid())
   createdAt    DateTime @default(now())
@@ -1652,10 +1654,17 @@ model PageView {
   utmCampaign  String?
   device       String // "mobile" | "tablet" | "desktop"
   country      String? // ISO 3166 alpha-2
+  city         String? // the host's own geo header (Cloudflare cf-ipcity, Netlify x-nf-geo)
   screenWidth  Int?
+  screenHeight Int?
+  language     String? // navigator.language's first subtag ("en", "rw", "fr")
+  viewId       String? // random per page view from t.js; the time-on-page beacon names it
+  durationMs   Int? // visible time on the page, capped at 30 minutes; null until the beacon arrives
+  countMethod  String? // "v2" = IP + device signature; null = the old IP + user agent hash
 
   @@index([createdAt])
   @@index([sessionId])
+  @@index([viewId])
 }
 
 // A product event (signup, onboarding_step, generation ...). Written by lib/analytics/events.ts trackEvent.

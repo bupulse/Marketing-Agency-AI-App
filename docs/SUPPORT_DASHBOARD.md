@@ -27,6 +27,17 @@ not a new app: the same `SupportAgent` rows as Admin → Live chat, so staff are
   visited pages with time spent on each; the funnel visit → quote request → chat → sign-up → paid.
 - Admin → Analytics counts the same way. Days before the switch are marked "old method" (a browser counted as a
   visitor).
+- How it works: `public/t.js` sends the screen width and height, the language's first subtag and a random id per page
+  view; `/api/collect` hashes daily salt + UTC day + IP + device signature (`lib/analytics/collect.ts`
+  `deviceSignature`: phone/tablet/computer, screen sides rounded to 16 px, language) and marks the row
+  `countMethod = "v2"`. When the page is hidden or left, a beacon to the same route sends the view id and the visible
+  milliseconds; it only updates `PageView.durationMs` (capped at 30 minutes, views up to 2 hours old). The roll-up
+  writes `visits_v2` per day; a day with fewer than `visits` is "old method". Queries: `lib/analytics/visitors.ts`;
+  page: `app/support/(app)/analytics`.
+- City: Cloudflare's `cf-ipcity`, read under the same rules as the country (`lib/platform/headers.ts` `visitorCity`).
+  It only arrives when the bupulse.com zone has the free Managed Transform "Add visitor location headers" switched on
+  (Cloudflare dashboard → Rules → Settings → Managed Transforms). A Rwandan address the host placed in another
+  country is counted as Rwanda with no city.
 
 ## Server monitoring
 

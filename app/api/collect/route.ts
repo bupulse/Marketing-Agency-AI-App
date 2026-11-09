@@ -5,18 +5,28 @@ import { getDailySalt } from "@/lib/analytics/salt";
 import { logError } from "@/lib/errors";
 import { RateLimitError, rateLimit } from "@/lib/rate-limit";
 import {
-  classifySource, cleanSessionId, clientIp, countryFrom, deviceFromUserAgent, isBot, normalizePath, parseUtm, referrerHost, visitorHash,
+  COUNT_METHOD, DURATION_MAX_AGE_MS, MAX_DURATION_MS, cityFrom, classifySource, cleanSessionId, cleanViewId, clientIp, countryFrom, deviceFromUserAgent, deviceSignature,
+  durationBeacon, isBot, normalizePath, parseUtm, primaryLanguage, referrerHost, visitorHash,
 } from "@/lib/analytics/collect";
 
 // Public first-party page-view collector, called by public/t.js with navigator.sendBeacon (text/plain JSON, so no CORS preflight).
+// Two kinds of body: a page view, and a time-on-page beacon ({ v, e }) sent when the page is hidden or left.
 // Always answers 204 whether the view was stored or ignored, so it reveals nothing to bots.
-const body = z.object({
+const hitBody = z.object({
   p: z.string().max(400), // path
   r: z.string().max(500).optional(), // document.referrer
   q: z.string().max(600).optional(), // location.search (only utm_* are read)
   w: z.number().int().min(0).max(20000).optional(), // screen width
+  h: z.number().int().min(0).max(20000).optional(), // screen height
+  l: z.string().max(40).optional(), // navigator.language
+  v: z.string().max(40).optional(), // this page view's random id
   s: z.string().max(60).optional(), // session id
   d: z.boolean().optional(), // navigator.webdriver
+});
+const timeBody = z.object({
+  v: z.string().max(40), // the page view's id, as sent with the view
+  e: z.number().min(0).max(1e10), // visible (engaged) milliseconds so far
+  d: z.boolean().optional(),
 });
 
 const done = () => new NextResponse(null, { status: 204 });
@@ -46,34 +56,55 @@ export async function POST(request: NextRequest) {
       return done();
     }
 
-    let parsed;
+    let json: unknown;
     try {
-      parsed = body.safeParse(JSON.parse(await request.text()));
+      json = JSON.parse(await request.text());
     } catch {
       return done();
     }
-    if (!parsed.success) return done();
-    const input = parsed.data;
+    const time = json && typeof json === "object" && "e" in json ? timeBody.safeParse(json) : null;
+    const hit = time ? null : hitBody.safeParse(json);
+    if (time ? !time.success : !hit?.success) return done();
+    const webdriver = time?.success ? time.data.d : hit?.success ? hit.data.d : undefined;
 
-    if (isBot(userAgent, { webdriver: input.d, acceptLanguage: request.headers.get("accept-language") ?? "" })) return done();
-    const path = normalizePath(input.p);
-    if (!path) return done();
+    if (isBot(userAgent, { webdriver, acceptLanguage: request.headers.get("accept-language") ?? "" })) return done();
+    const path = hit?.success ? normalizePath(hit.data.p) : null;
+    if (hit && !path) return done();
 
     // No salt (database trouble) means no hash, and so no row: never fall back to a guessable key.
     const secret = await getDailySalt();
     if (!secret) return done();
     const now = new Date();
     const ip = clientIp(request.headers);
-    const hash = await visitorHash(ip, userAgent, now, secret);
-    // Limits are keyed on the IP alone (hashed), so rotating the user agent doesn't get a fresh allowance.
+    // Limits are keyed on the IP alone (hashed), so changing browser or device details doesn't get a fresh allowance.
+    // Time beacons have their own buckets of the same size, so they never cost a page view its place.
     const ipKey = await visitorHash(ip, "", now, secret);
+    const prefix = time ? "collect-time" : "collect";
     try {
-      await rateLimit(`collect:${ipKey}`, RULE);
-      await rateLimit(`collect-day:${ipKey}`, DAILY_RULE);
+      await rateLimit(`${prefix}:${ipKey}`, RULE);
+      await rateLimit(`${prefix}-day:${ipKey}`, DAILY_RULE);
     } catch (error) {
       if (error instanceof RateLimitError) return done();
       throw error;
     }
+
+    if (time?.success) {
+      const beacon = durationBeacon(time.data.v, time.data.e);
+      if (!beacon) return done();
+      // Update only, never insert: an unknown id or a view older than DURATION_MAX_AGE_MS changes nothing. The beacon
+      // sends the total so far, so a later, smaller number (a repeated beacon) never lowers it.
+      await prisma.$executeRaw`
+        UPDATE "PageView" SET "durationMs" = LEAST(${MAX_DURATION_MS}::int, GREATEST(COALESCE("durationMs", 0), ${beacon.ms}::int))
+        WHERE "viewId" = ${beacon.viewId} AND "createdAt" >= ${new Date(now.getTime() - DURATION_MAX_AGE_MS)}`;
+      return done();
+    }
+
+    if (!hit?.success || !path) return done();
+    const input = hit.data;
+    const device = deviceFromUserAgent(userAgent, input.w);
+    // Older cached copies of t.js send no language: the browser's Accept-Language says the same thing.
+    const language = primaryLanguage(input.l ?? request.headers.get("accept-language"));
+    const hash = await visitorHash(ip, deviceSignature({ device, width: input.w, height: input.h, language }), now, secret);
 
     const utm = parseUtm(input.q);
     const host = referrerHost(input.r, siteHost ?? request.nextUrl.hostname.replace(/^www\./, ""));
@@ -88,9 +119,14 @@ export async function POST(request: NextRequest) {
         utmSource: utm.source,
         utmMedium: utm.medium,
         utmCampaign: utm.campaign,
-        device: deviceFromUserAgent(userAgent, input.w),
+        device,
         country: countryFrom(request.headers, cf?.country, process.env.NODE_ENV !== "production"),
+        city: cityFrom(request.headers),
         screenWidth: input.w ?? null,
+        screenHeight: input.h ?? null,
+        language: language || null,
+        viewId: cleanViewId(input.v),
+        countMethod: COUNT_METHOD,
       },
     });
   } catch (error) {
