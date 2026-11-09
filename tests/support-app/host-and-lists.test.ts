@@ -5,7 +5,7 @@ vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth: { getUser: 
 
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
-import { isSupportHost, supportBaseFor, supportHref, supportRoute } from "@/lib/support/app-host";
+import { isSupportHost, supportBaseFor, supportHref, supportRewriteUrl, supportRoute } from "@/lib/support/app-host";
 import { ago, conversationTags, filterVisitors, inView, matchesSearch, sortConversations, sortVisitors, surfaceOfPath, viewCounts, visitorAction, visitorCounts, waitingTimer } from "@/lib/support/app-client/lists";
 import { mockData, MOCK_AGENT } from "@/lib/support/app-client/mock";
 import type { ConversationListItem } from "@/lib/support/contract";
@@ -125,5 +125,15 @@ describe("live visitors", () => {
     expect(visitorAction({ group: "chatting", conversationId: "c1" })).toBe("join");
     expect(visitorAction({ group: "browsing", conversationId: null })).toBe("start");
     expect(visitorAction({ group: "idle", conversationId: null })).toBeNull();
+  });
+});
+
+describe("supportRewriteUrl", () => {
+  it("keeps the address on hosted platforms", () => {
+    expect(supportRewriteUrl("/support/chats", "?a=1", "https://support.bupulse.com/chats?a=1").toString()).toBe("https://support.bupulse.com/support/chats?a=1");
+  });
+  it("rewrites to plain http when the PC's own server answers behind the https tunnel", () => {
+    expect(supportRewriteUrl("/support", "", "https://localhost:3002/").toString()).toBe("http://localhost:3002/support");
+    expect(supportRewriteUrl("/support/visitors", "", "https://127.0.0.1:3002/visitors").toString()).toBe("http://127.0.0.1:3002/support/visitors");
   });
 });

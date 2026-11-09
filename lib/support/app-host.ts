@@ -33,6 +33,20 @@ export function supportRoute(path: string, host: string | null | undefined): { a
   return { action: "rewrite", path: path === "/" ? SUPPORT_PREFIX : `${SUPPORT_PREFIX}${path}` };
 }
 
+/**
+ * The absolute URL the proxy rewrites a support-host request to. Next.js serves a rewrite itself only when its origin
+ * is the server's own; otherwise it proxies it as an outside address. On the self-hosted PC (`next start` on port 3002
+ * behind the Cloudflare tunnel) the proxy sees https://localhost:3002/... (the tunnel says https) while the server
+ * itself is plain http://localhost:3002, so an https rewrite was proxied to https://localhost:3002 and failed with a
+ * TLS error (support.bupulse.com answered 500, 9 November 2026). A request served locally (localhost, 127.0.0.1)
+ * therefore rewrites to http; hosted platforms (Netlify, Cloudflare) see the real address and keep it.
+ */
+export function supportRewriteUrl(path: string, search: string, requestUrl: string): URL {
+  const target = new URL(`${path}${search}`, requestUrl);
+  if (target.hostname === "localhost" || target.hostname === "127.0.0.1" || target.hostname === "[::1]") target.protocol = "http:";
+  return target;
+}
+
 /** "" on the support host (clean paths), "/support" anywhere else. Links and redirects inside the app start with it. */
 export const supportBaseFor = (host: string | null | undefined): "" | typeof SUPPORT_PREFIX => (isSupportHost(host) ? "" : SUPPORT_PREFIX);
 

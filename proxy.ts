@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { REF_COOKIE, refCookieFor } from "@/lib/sales/ref-cookie";
-import { isSupportPath, supportRoute } from "@/lib/support/app-host";
+import { isSupportPath, supportRewriteUrl, supportRoute } from "@/lib/support/app-host";
 
 const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/start-trial", "/book-demo", "/custom-plan", "/account"];
 
@@ -15,7 +15,7 @@ export async function proxy(request: NextRequest) {
   // support.bupulse.com serves only the support app: its paths are rewritten under /support (lib/support/app-host.ts).
   const support = supportRoute(request.nextUrl.pathname, request.headers.get("host"));
   const pass = () =>
-    support?.action === "rewrite" ? NextResponse.rewrite(new URL(`${support.path}${request.nextUrl.search}`, request.url), { request }) : NextResponse.next({ request });
+    support?.action === "rewrite" ? NextResponse.rewrite(supportRewriteUrl(support.path, request.nextUrl.search, request.url), { request }) : NextResponse.next({ request });
   let response = pass();
 
   const supabase = createServerClient(
