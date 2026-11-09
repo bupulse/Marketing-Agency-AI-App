@@ -3290,6 +3290,8 @@ model CreatorReport {
 enum SupportRole {
   AGENT
   SUPERVISOR
+  // Technical support (2026-11-09, docs/SUPPORT_DASHBOARD.md): chats and visitors like an agent, plus server monitoring.
+  TECH
 }
 
 enum SupportConversationStatus {

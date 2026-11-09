@@ -19,7 +19,7 @@ import { forceLogout } from "./realtime";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export const SUPPORT_ROLES = ["AGENT", "SUPERVISOR"] as const;
+export const SUPPORT_ROLES = ["AGENT", "SUPERVISOR", "TECH"] as const;
 export type SupportRoleKey = (typeof SUPPORT_ROLES)[number];
 
 export const DEFAULT_DEPARTMENTS: Record<DepartmentKey, string> = { sales: "Sales", technical: "Technical help", billing: "Billing", creators: "Creators" };

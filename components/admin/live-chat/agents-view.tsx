@@ -14,10 +14,11 @@ type Actions = {
 };
 
 const STATUS_TONE = { active: "success", invited: "violet", locked: "danger" } as const;
-const ROLE_LABEL: Record<string, string> = { AGENT: "Agent", SUPERVISOR: "Supervisor" };
+const ROLE_LABEL: Record<string, string> = { AGENT: "Agent", SUPERVISOR: "Supervisor", TECH: "Technical" };
 const ROLE_OPTIONS = [
   ["AGENT", "Agent: replies to chats"],
   ["SUPERVISOR", "Supervisor: sees all chats and stats"],
+  ["TECH", "Technical: replies to chats and watches the servers"],
 ] as const;
 
 /** Signed in at least once (so there is an authenticator to reset): active, a verified app, or seen in the app. */

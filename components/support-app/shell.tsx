@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BarChart3, ChevronDown, LogOut, MessagesSquare, Users } from "lucide-react";
+import { BarChart3, ChevronDown, LineChart, LogOut, MessagesSquare, Server, Users } from "lucide-react";
+import { canSeeMonitoring } from "@/lib/support/roles";
 import { ThemeToggle } from "@/components/theme";
 import { cn } from "@/lib/cn";
 import { agentTopic, STAFF_TOPICS, type AgentMe } from "@/lib/support/contract";
@@ -124,7 +125,9 @@ export function SupportShell({ children }: { children: ReactNode }) {
   const items = [
     { href: href("/"), label: "Chats", icon: MessagesSquare, badge: waiting ? <span className="rounded-full bg-[#c81e3a] px-2 py-px text-xs font-semibold text-white" aria-label={`${waiting} waiting`}>{waiting}</span> : null },
     { href: href("/visitors"), label: "Live visitors", icon: Users, badge: visitors != null ? <span className="text-xs opacity-90">{visitors}</span> : null },
+    { href: href("/analytics"), label: "Analytics", icon: LineChart, badge: null },
     ...(supervisor ? [{ href: href("/stats"), label: "Stats", icon: BarChart3, badge: null }] : []),
+    ...(canSeeMonitoring(me.role) ? [{ href: href("/server"), label: "Server", icon: Server, badge: null }] : []),
   ];
   const isActive = (h: string) => {
     const path = pathname.replace(/\/$/, "") || "/";

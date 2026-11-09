@@ -16,7 +16,7 @@ export type AgentSession = {
   userId: string;
   name: string;
   email: string;
-  role: "AGENT" | "SUPERVISOR";
+  role: "AGENT" | "SUPERVISOR" | "TECH";
   availability: "online" | "away" | "offline";
   maxChats: number;
   departments: { id: string; key: DepartmentKey }[];
