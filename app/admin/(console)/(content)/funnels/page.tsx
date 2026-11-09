@@ -5,6 +5,8 @@ import { Empty, Panel, RangeTabs, TableWrap, Td, Th } from "@/components/admin/u
 import { num, parseRange, pct } from "@/lib/admin/format";
 import { getFunnel, getWhatsWorking } from "@/lib/analytics/queries";
 import type { Ranked } from "@/lib/analytics/types";
+import { lastOldMethodDayIn } from "@/lib/analytics/visitors";
+import { oldMethodNote } from "@/lib/analytics/visitors-shared";
 
 export const metadata = { title: "Funnels" };
 
@@ -42,7 +44,8 @@ function RankedTable({ rows, caption, first }: { rows: Ranked[]; caption: string
 export default async function FunnelsPage({ searchParams }: PageProps<"/admin/funnels">) {
   await requirePermission("content"); // pages render alongside the layout, so check here too
   const { key, range } = parseRange((await searchParams).range);
-  const [funnel, working] = await Promise.all([getFunnel(range), getWhatsWorking(range)]);
+  const [funnel, working, lastOld] = await Promise.all([getFunnel(range), getWhatsWorking(range), lastOldMethodDayIn(range)]);
+  const oldNote = oldMethodNote(lastOld);
   const none = funnel.steps.every((s) => s.count === 0);
   return (
     <>
@@ -52,7 +55,8 @@ export default async function FunnelsPage({ searchParams }: PageProps<"/admin/fu
           <Empty>No visits or sign-ups in this range yet.</Empty>
         ) : (
           <>
-            <Bars rows={funnel.steps.map((s) => ({ label: s.label, value: s.count, text: `${num(s.count)}${s.fromPreviousPct != null ? ` · ${pct(s.fromPreviousPct)} of previous step` : ""}` }))} />
+            <Bars rows={funnel.steps.map((s) => ({ label: s.label, value: s.count, text: `${num(s.count)}${s.key === "visitors" && oldNote ? " (partly old method)" : ""}${s.fromPreviousPct != null ? ` · ${pct(s.fromPreviousPct)} of previous step` : ""}` }))} />
+            {oldNote && <p className="pt-3 text-sm text-muted">{oldNote}</p>}
           </>
         )}
       </Panel>
