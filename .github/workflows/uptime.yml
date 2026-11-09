@@ -1,0 +1,53 @@
+name: Uptime check
+
+# Checks bupulse.com from outside every 5 minutes, so downtime is recorded even when the server PC is off
+# (docs/SUPPORT_DASHBOARD.md, "Server monitoring"; the logic is scripts/monitor/uptime-check.mjs). Free: the repository
+# is public. The repository is public, so this log is public too: it prints the result only, never a secret.
+#
+# Secrets (Settings -> Secrets and variables -> Actions); each one that is missing only switches its part off:
+#   UPTIME_SECRET       records each check on the server (the same value as UPTIME_SECRET on the server)
+#   TELEGRAM_BOT_TOKEN  and TELEGRAM_CHAT_ID: the "down" alert on Telegram
+#   RESEND_API_KEY      the "down" alert by email to admin@bupulse.com
+# Runs stay green even when the site is down (no GitHub failure emails). A down run uploads a tiny "site-down" artifact
+# (kept 1 day); the next run reads the previous run's artifacts, so a long outage sends one alert, not one every 5 min.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/monitor
+      - name: Check bupulse.com
+        id: check
+        env:
+          SITE_URL: https://bupulse.com
+          UPTIME_SECRET: ${{ secrets.UPTIME_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/monitor/uptime-check.mjs
+      - name: Remember that the site is down (for the next run)
+        if: steps.check.outputs.down == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: site-down
+          path: site-down/down.json
+          retention-days: 1
+          if-no-files-found: error
