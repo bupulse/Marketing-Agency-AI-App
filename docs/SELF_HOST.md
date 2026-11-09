@@ -47,7 +47,7 @@ Yes, it can host bupulse.com, and it is a good free option if it stays on. Scrip
 |---|---|
 | `install.ps1` | keeps the PC awake on mains power, creates `%USERPROFILE%\bupulse-prod` (logs and this PC's own `cron-secret.txt`, readable by that user only), `npm ci`, `netlify link` to the site, builds, writes `%USERPROFILE%\.cloudflared\bupulse-prod.yml`, and registers the start-at-boot tasks "BuPulse server", "BuPulse tunnel" and "BuPulse jobs" (S4U: they run without anyone signed in). "BuPulse jobs" is registered disabled. |
 | `server.mjs` | `build` (prisma generate + next build) or `start` (`next start -H 127.0.0.1 -p 3002`), with Netlify's production settings in memory only |
-| `cron-loop.ps1` | every 60 s `POST /api/cron/tick` with this PC's secret |
+| `cron-loop.ps1` | every 60 s `POST /api/cron/tick` with this PC's secret, and on its own thread the PC's heartbeat (below) |
 
 Order (the owner, with remote control):
 
@@ -70,6 +70,21 @@ Tools with the production settings (in memory), on the PC: `node scripts/self-ho
 runs `scripts/self-host/tools/<name>.mjs`. `wipe-test-clients` (6 November 2026) lists every account except ADMIN_EMAILS
 and staff, and with `--yes <count>` writes a full backup to %USERPROFILE%\bupulse-prod\backups, marks them due and
 asks the running server's purge (lib/account-deletion.ts) to erase them.
+
+**Heartbeat (9 November 2026).** Every minute `cron-loop.ps1` also posts this PC's state to
+`POST http://127.0.0.1:3002/api/monitor/heartbeat` with the same secret (`cron-secret.txt`): computer name, Windows
+version, last restart, CPU %, memory used/total, free/total space on the Windows drive and on the drive holding the repo,
+the state of the "BuPulse server", "BuPulse tunnel" and "BuPulse jobs" tasks, whether port 3002 is listening, and the
+node and cloudflared versions (read every 6 hours). The support app's Server page shows it, and says "not reporting"
+after 3 minutes without one (docs/SUPPORT_DASHBOARD.md, "Server monitoring"). It runs on its own PowerShell thread with
+its own try/catch, so a slow tick never delays it and a failed heartbeat never stops the tick. Its failures go to
+`%USERPROFILE%\bupulse-prod\heartbeat.log`, one line when it starts failing and one when it works again. The loop
+reads the script only when it starts, so `update.ps1` now restarts the "BuPulse jobs" task at the end (when it is not
+switched off); after updating by hand: `Stop-ScheduledTask "BuPulse jobs"; Start-ScheduledTask "BuPulse jobs"`.
+The Mac's `cron-loop.sh` sends no heartbeat (the Mac copy is off).
+
+The site is also checked from outside every 5 minutes by GitHub Actions (`.github/workflows/uptime.yml`), with its own
+secret UPTIME_SECRET, because GitHub cannot hold this PC's cron secret (docs/SUPPORT_DASHBOARD.md, "What the owner must set").
 
 The tick also runs /api/cron/purge-accounts (03:17) and /api/cron/social-refresh (04:43): GitHub Actions' calls carry the
 old CRON_SECRET, which the PC refuses.

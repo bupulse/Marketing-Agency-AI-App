@@ -1952,6 +1952,64 @@ model CronRun {
   @@index([startedAt])
 }
 
+// Server monitoring (docs/SUPPORT_DASHBOARD.md, "Server monitoring"; lib/monitor). One row a minute from the server
+// PC's job loop (scripts/self-host/windows/cron-loop.ps1 -> /api/monitor/heartbeat), kept 30 days.
+model MonitorHeartbeat {
+  id                 String    @id @default(cuid())
+  receivedAt         DateTime  @default(now())
+  machine            String
+  os                 String?
+  bootAt             DateTime?
+  cpuPercent         Int?
+  memUsedMb          Int?
+  memTotalMb         Int?
+  /// [{ name: "C:", roles: ["system", "repo"], freeGb, totalGb }]
+  disks              Json      @default("[]")
+  /// [{ name: "BuPulse server", state: "Running" }]
+  tasks              Json      @default("[]")
+  serverListening    Boolean?
+  nodeVersion        String?
+  cloudflaredVersion String?
+
+  @@index([receivedAt])
+}
+
+// One outside check of bupulse.com from GitHub Actions (.github/workflows/uptime.yml -> /api/monitor/uptime), kept 35 days.
+model UptimeCheck {
+  id           String   @id @default(cuid())
+  checkedAt    DateTime @default(now())
+  ok           Boolean
+  statusCode   Int?
+  statusMs     Int?
+  databaseMs   Int?
+  version      String?
+  /// [{ path: "/pricing", status: 200, ms: 412 }]
+  pages        Json     @default("[]")
+  retried      Boolean  @default(false)
+  /// The workflow's previous run found the site down (and sent the "down" alert).
+  afterFailure Boolean  @default(false)
+
+  @@index([checkedAt])
+  @@index([ok, checkedAt])
+}
+
+// An outage found from the checks: from the last good check before it to the first good check after it. The unique
+// start is what makes the "back up" alert go out once per outage.
+model UptimeIncident {
+  id        String    @id @default(cuid())
+  startedAt DateTime  @unique
+  endedAt   DateTime
+  minutes   Int
+  /// Why it counts: "failed-check" | "pc-silent" | "long-gap"
+  reason    String
+  alertedAt DateTime?
+  /// { email: "sent" | "skipped" | "failed", telegram: ... }
+  alerts    Json?
+  createdAt DateTime  @default(now())
+
+  @@index([endedAt])
+}
+
 // A private note about a client, written in the admin console. userId has no foreign key on purpose (see the migration).
 model AdminNote {
   id        String   @id @default(cuid())

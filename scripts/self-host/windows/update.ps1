@@ -28,7 +28,20 @@ if (-not $built) { throw "the build failed (see the messages above): send them t
 foreach ($i in 1..30) {
   Start-Sleep -Seconds 4
   try {
-    if ((Invoke-RestMethod -Uri "http://127.0.0.1:3002/api/status" -TimeoutSec 5).status -eq "ok") { Write-Host "Done: bupulse.com runs $(git log --oneline -1)"; exit 0 }
+    if ((Invoke-RestMethod -Uri "http://127.0.0.1:3002/api/status" -TimeoutSec 5).status -eq "ok") {
+      # The job loop reads cron-loop.ps1 only when it starts: restart it (when it is switched on) so a new version of
+      # the loop, such as the heartbeat for the Server page, takes effect. The server was down, so no job was mid-way.
+      try {
+        $jobs = Get-ScheduledTask -TaskName "BuPulse jobs" -ErrorAction SilentlyContinue
+        if ($jobs -and $jobs.State -ne "Disabled") {
+          Stop-ScheduledTask -TaskName "BuPulse jobs"
+          Start-ScheduledTask -TaskName "BuPulse jobs"
+        }
+      } catch {
+        Write-Warning "The site is updated, but the BuPulse jobs task could not be restarted: $($_.Exception.Message)"
+      }
+      Write-Host "Done: bupulse.com runs $(git log --oneline -1)"; exit 0
+    }
   } catch { }
 }
 throw "the website did not answer within 2 minutes: check $env:USERPROFILE\bupulse-prod\server.log"
