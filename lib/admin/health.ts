@@ -5,6 +5,7 @@ import { APPROVAL_TTL_MS } from "./service";
 import { scrubSecrets } from "./scrub";
 import { disabledNetworks } from "./switch";
 import { NEEDS_RECONNECT_PREFIX } from "@/lib/social/connections";
+import { alertSetupIssues, loadAlertSetup, type AlertSetup } from "@/lib/lead-alerts/setup";
 
 export type HealthStatus = "ok" | "warning" | "problem";
 export type HealthIssue = { level: "warning" | "problem"; key: string; text: string; href: string };
@@ -44,10 +45,17 @@ export type SystemHealth = {
   storage: StorageHealth | null;
 };
 
-type EvalInput = { crons: Pick<CronStatus, "job" | "label" | "state" | "failures24h" | "runs24h" | "overdueByMinutes">[]; queues: Queues; errors: Pick<ErrorsHealth, "lastHour">; db: Pick<DbHealth, "sizeBytes" | "limitBytes"> | null };
+type EvalInput = {
+  crons: Pick<CronStatus, "job" | "label" | "state" | "failures24h" | "runs24h" | "overdueByMinutes">[];
+  queues: Queues;
+  errors: Pick<ErrorsHealth, "lastHour">;
+  db: Pick<DbHealth, "sizeBytes" | "limitBytes"> | null;
+  /** The owner's alert channels (lib/lead-alerts/setup.ts); null or left out: not checked. */
+  alerts?: AlertSetup | null;
+};
 
 /** The one overall status and the reasons for it. Pure: the rules are the contract (tests/admin-health.test.ts). */
-export function evaluateHealth({ crons, queues, errors, db }: EvalInput): { status: HealthStatus; issues: HealthIssue[] } {
+export function evaluateHealth({ crons, queues, errors, db, alerts }: EvalInput): { status: HealthStatus; issues: HealthIssue[] } {
   const issues: HealthIssue[] = [];
   const add = (level: HealthIssue["level"], key: string, text: string, href = "/admin/health") => issues.push({ level, key, text, href });
 
@@ -68,6 +76,8 @@ export function evaluateHealth({ crons, queues, errors, db }: EvalInput): { stat
     const used = db.sizeBytes / db.limitBytes;
     if (used >= 0.7) add(used >= 0.9 ? "problem" : "warning", "db-size", `The database is ${Math.round(used * 100)}% of its ${Math.round(db.limitBytes / 1_000_000)} MB limit.`);
   }
+  // A lead alert channel that is on but cannot send (no bot token, no connected chat, no Resend key).
+  if (alerts) issues.push(...alertSetupIssues(alerts));
   const status: HealthStatus = issues.some((i) => i.level === "problem") ? "problem" : issues.length ? "warning" : "ok";
   return { status, issues };
 }
@@ -181,14 +191,15 @@ async function loadErrors(now: Date): Promise<ErrorsHealth> {
 }
 
 export async function getSystemHealth(now = new Date()): Promise<SystemHealth> {
-  const [crons, queues, errors, db, storage] = await Promise.all([
+  const [crons, queues, errors, db, storage, alerts] = await Promise.all([
     loadCrons(now),
     loadQueues(now),
     loadErrors(now),
     cached("db", 5 * 60_000, loadDb),
     cached("storage", 10 * 60_000, loadStorage),
+    loadAlertSetup(),
   ]);
-  const { status, issues } = evaluateHealth({ crons, queues, errors, db });
+  const { status, issues } = evaluateHealth({ crons, queues, errors, db, alerts });
   return { generatedAt: now.toISOString(), status, issues, crons, queues, errors, db, storage };
 }
 

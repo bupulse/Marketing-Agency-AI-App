@@ -1,6 +1,10 @@
 import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { publicSiteUrl } from "@/lib/auth/site-url";
+import { alertInBackground } from "@/lib/lead-alerts/channels";
+import type { LeadAlert } from "@/lib/lead-alerts/format";
+import { normaliseQuotePhone } from "@/lib/quote/phone";
 import { publicLimited } from "@/lib/request-limits";
 
 export const contactKinds = ["contact", "done_for_you"] as const;
@@ -40,6 +44,22 @@ export interface ContactFormState {
 
 const DUPLICATE_WINDOW_MS = 60_000;
 
+/** The owner's alert for a stored contact or done-for-you request (lib/lead-alerts). Pure. */
+export function contactAlert(d: z.infer<typeof contactSchema>, at: Date): LeadAlert {
+  return {
+    kind: "contact",
+    name: d.name,
+    phone: normaliseQuotePhone(d.phone),
+    email: d.email,
+    company: d.businessName ?? null,
+    note: [d.industry ? `Industry: ${d.industry}` : null, d.message].filter(Boolean).join("\n"),
+    source: d.kind,
+    page: `${publicSiteUrl()}/${d.kind === "done_for_you" ? "done-for-you" : "contact"}`,
+    at,
+    openUrl: null,
+  };
+}
+
 /** Validates and stores a contact or done-for-you request. Returns the state the form renders. */
 export async function submitContactRequest(formData: FormData): Promise<ContactFormState> {
   const raw = Object.fromEntries(
@@ -70,7 +90,11 @@ export async function submitContactRequest(formData: FormData): Promise<ContactF
       where: { email: data.email, kind: data.kind, createdAt: { gt: new Date(Date.now() - DUPLICATE_WINDOW_MS) } },
       select: { id: true },
     });
-    if (!recent) await prisma.contactRequest.create({ data });
+    if (!recent) {
+      const row = await prisma.contactRequest.create({ data, select: { createdAt: true } });
+      // The owner hears about it at once (email, Telegram), after the response; these requests had no alert before.
+      await alertInBackground(contactAlert(data, row.createdAt), "contact lead alert");
+    }
   } catch (error) {
     console.error("contact request failed", error);
     return {

@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { adminEmails } from "@/lib/admin/auth";
 import { logError } from "@/lib/errors";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { allowedEndpoint, vapidKeys } from "@/lib/push/service";
@@ -62,20 +63,29 @@ export async function pushToAgents(conversationId: string, title: string): Promi
   }
 }
 
-/** The "a chat has waited 2 minutes" email to each agent on duty. Returns how many were sent. */
+/**
+ * The "a chat has waited 2 minutes" email to each agent on duty. When nobody is on duty (or none of their emails went
+ * out) it goes to the admin addresses (ADMIN_EMAILS) instead, so a waiting visitor always reaches someone. One email
+ * at a time (Resend's free plan limits requests per second). Returns how many were sent.
+ */
 export async function emailWaitingChat(c: { id: string; number: number; departmentId: string | null; visitorName: string; preview: string }): Promise<number> {
   const agents = await agentsOnDuty(c.departmentId);
-  const sent = await Promise.all(
-    agents.map((a) => {
-      const { html, text } = renderEmail({
-        heading: `Chat #${c.number} is waiting`,
-        intro: `${c.visitorName} has been waiting for a person for 2 minutes and nobody has replied yet.`,
-        blocks: c.preview ? [{ label: "Last message", value: c.preview }] : [],
-        button: { label: "Open the chat", url: chatLink(c.id) },
-        footer: "You get this because you are on duty in the BuPulse support app. Set yourself to offline to stop these emails.",
-      });
-      return sendEmail({ to: a.email, subject: `Chat #${c.number} is waiting for a reply`, html, text });
-    }),
-  );
-  return sent.filter(Boolean).length;
+  const send = async (to: string, onDuty: boolean) => {
+    const { html, text } = renderEmail({
+      heading: `Chat #${c.number} is waiting`,
+      intro: `${c.visitorName} has been waiting for a person for 2 minutes and nobody has replied yet.`,
+      blocks: c.preview ? [{ label: "Last message", value: c.preview }] : [],
+      button: { label: "Open the chat", url: chatLink(c.id) },
+      footer: onDuty
+        ? "You get this because you are on duty in the BuPulse support app. Set yourself to offline to stop these emails."
+        : "You get this because nobody is on duty in the BuPulse support app (an admin address). Set yourself online in the support app to get these as an agent.",
+    });
+    return sendEmail({ to, subject: `Chat #${c.number} is waiting for a reply`, html, text });
+  };
+  let sent = 0;
+  for (const a of agents) if (await send(a.email, true)) sent++;
+  if (sent > 0) return sent;
+  const tried = new Set(agents.map((a) => a.email.toLowerCase()));
+  for (const to of adminEmails()) if (!tried.has(to) && (await send(to, false))) sent++;
+  return sent;
 }

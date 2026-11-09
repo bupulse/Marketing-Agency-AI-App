@@ -346,7 +346,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <div id="lead-alerts">
         <Panel
           title="Lead alerts → Telegram"
-          description="The moment someone asks for a free quote or starts a chat on bupulse.com, BuPulse emails the admin addresses (always on) and, once connected here, sends the same alert to your Telegram, free: name, a tap-to-call number, a WhatsApp link, the company and what they wrote."
+          description="The moment someone asks for a free quote, sends the Contact or Done-for-you form, or starts a chat on bupulse.com, BuPulse emails the admin addresses (always on) and, once connected here, sends the same alert to your Telegram, free: name, a tap-to-call number, a WhatsApp link, the company and what they wrote. Telegram also pings you when a chat is waiting for a person."
           action={!telegram.enabled ? <Badge tone="neutral">Switched off</Badge> : telegram.chat && telegram.hasToken ? <Badge tone="success">Connected</Badge> : <Badge tone="neutral">Not connected</Badge>}
         >
           <div className="flex flex-col gap-4">

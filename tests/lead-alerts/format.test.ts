@@ -90,3 +90,22 @@ describe("the Telegram buttons", () => {
     expect(telegramButtons(quote({ phone: null }), "https://test.bupulse.com").flat().map((b) => b.text)).toEqual(["Open in Admin"]);
   });
 });
+
+describe("contact form and waiting chat alerts", () => {
+  it("names the form the message came from", () => {
+    const contact = quote({ kind: "contact", source: "done_for_you", note: "Please run our pages." });
+    expect(alertSubject(contact)).toBe("New done for you request: Sample Shop Ltd — call Test Person now");
+    expect(alertSubject(quote({ kind: "contact", source: "contact" }))).toMatch(/^New contact request:/);
+    expect(alertIntro(contact)).toContain("Done for you form");
+    expect(alertHeadline(contact)).toBe("Test Person from Sample Shop Ltd sent the Done for you form");
+    expect(alertFields(contact).find((f) => f.label === "Message")?.value).toBe("Please run our pages.");
+    expect(telegramText(contact).split("\n")[1]).toBe("“Please run our pages.”");
+  });
+
+  it("a ticket outside team hours says the team is away", () => {
+    const waiting = quote({ kind: "support_waiting", chat: { number: 12, reason: "outside team hours", away: true }, openUrl: "https://test.bupulse.com/support/?c=c1" });
+    expect(alertHeadline(waiting)).toBe("Test Person from Sample Shop Ltd left a message for the team (chat #12, outside hours)");
+    expect(alertIntro(waiting)).toContain("outside team hours");
+    expect(telegramButtons(waiting, "https://test.bupulse.com").flat().map((b) => b.text)).toContain("Open the chat");
+  });
+});

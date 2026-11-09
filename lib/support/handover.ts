@@ -4,6 +4,7 @@ import { scheduleJob } from "@/lib/jobs/due";
 import { waitUntil } from "@/lib/platform/background";
 import type { DepartmentKey, HandoverReason, Hours } from "./contract";
 import { pushToAgents } from "./alerts";
+import { alertWaitingChat } from "./lead-alert";
 import { ALERT_AFTER_MS } from "./limits";
 import { broadcast } from "./realtime";
 import { getSupportSettings, teamHours } from "./settings";
@@ -11,12 +12,14 @@ import { getSupportSettings, teamHours } from "./settings";
 // Handing a chat from the AI to people (docs/SUPPORT_CHAT.md section 2): the AI goes quiet, the chat waits for the
 // department it belongs to, and the agents are alerted at once (push) and by email after 2 minutes without a reply.
 // Outside team hours the chat becomes a ticket (PENDING): the visitor is told when the team is back and gets an email,
-// and the team replies when it opens. Safe to call twice: only a chat the AI is answering is handed over.
+// and the team replies when it opens. Either way the owner gets a Telegram ping (and, for a ticket, an email too:
+// lib/support/lead-alert.ts), so a hand-over is never missed when no agent is on duty. Safe to call twice: only a
+// chat the AI is answering is handed over.
 
 export const JOB_ALERT = "support.alert";
 export const JOB_TICKET = "support.ticket";
 
-const REASON_TEXT: Record<HandoverReason, string> = {
+export const REASON_TEXT: Record<HandoverReason, string> = {
   asked: "asked for a person",
   not_confident: "the AI was not sure",
   upset: "the visitor sounds upset",
@@ -68,5 +71,7 @@ export async function handOver(conversationId: string, reason: HandoverReason, o
   await broadcast({ type: "handover", conversationId, reason }, { inbox: true, conversation: conversationId });
   await broadcast({ type: "conversation.updated", conversationId, fields: ["status"] }, { visitor: conversationId });
   if (hours.open) waitUntil(pushToAgents(conversationId, `Chat waiting: ${REASON_TEXT[reason]}`));
+  // An agent taking the chat over is not a chat waiting for anyone.
+  if (reason !== "agent") await alertWaitingChat(conversationId, REASON_TEXT[reason], !hours.open);
   return true;
 }
