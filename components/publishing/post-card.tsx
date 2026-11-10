@@ -59,10 +59,11 @@ export function PostCard({ post, zone, compact, onOpen, onMoveByDays, onDragStar
       onKeyDown={onKeyDown}
       data-status={post.status}
       className={cn(
-        "flex w-full min-w-0 cursor-pointer select-none flex-col gap-1 rounded-xl border text-left text-[13px] transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pulse-blue",
+        "flex w-full min-w-0 cursor-pointer select-none flex-col gap-1 rounded-xl border text-left text-[13px] transition-[background-color,border-color,box-shadow] duration-150 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pulse-blue",
         movable && "active:cursor-grabbing",
         compact ? "px-2 py-1" : "p-2.5",
         style.card,
+        style.hover,
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5">
