@@ -118,3 +118,15 @@ describe("hub figures", () => {
     expect(f["/admin/requests"]).toBeUndefined();
   });
 });
+
+describe("sub-page breadcrumb names", async () => {
+  const { subPageLabel, breadcrumbsFor } = await import("@/components/admin/nav");
+  it("names the split-out pages, tidies other words, and keeps Details for record ids", () => {
+    expect(subPageLabel("lead-alerts")).toBe("Lead alerts");
+    expect(subPageLabel("momo")).toBe("Mobile Money");
+    expect(subPageLabel("bills")).toBe("Bills");
+    expect(subPageLabel("cmwb1ztf7009b74ve1owcw0bk")).toBe("Details");
+    expect(subPageLabel("3f2a9c1e-77aa-4b1c-9d2e-0c4a1b2c3d4e")).toBe("Details");
+    expect(breadcrumbsFor("/admin/settings/lead-alerts").at(-1)?.label).toBe("Lead alerts");
+  });
+});

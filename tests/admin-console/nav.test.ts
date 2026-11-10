@@ -47,7 +47,7 @@ describe("admin map", () => {
   it("matches the most specific page and builds breadcrumbs", () => {
     expect(findNavItem("/admin/settings/regions")?.label).toBe("Regions");
     expect(findNavItem("/admin/settings")?.label).toBe("Settings");
-    expect(breadcrumbsFor("/admin/invoices/abc")).toEqual([{ label: "Admin", href: "/admin" }, { label: "Money", href: "/admin/money" }, { label: "Invoices", href: "/admin/invoices" }, { label: "Details" }]);
+    expect(breadcrumbsFor("/admin/invoices/cm1abc23def")).toEqual([{ label: "Admin", href: "/admin" }, { label: "Money", href: "/admin/money" }, { label: "Invoices", href: "/admin/invoices" }, { label: "Details" }]);
     expect(breadcrumbsFor("/admin/offers/new").at(-1)).toEqual({ label: "New" });
     expect(breadcrumbsFor("/admin")).toEqual([{ label: "Overview" }]);
   });

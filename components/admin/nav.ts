@@ -225,7 +225,43 @@ export function hubPermissions(group: AdminNavGroup): Permission[] {
   return [...new Set(group.items.flatMap((i) => (typeof i.perm === "string" ? [i.perm] : [...i.perm])))];
 }
 
-/** Admin > Money > Invoices > Details: the group (linking to its hub), the page, and "Details" for anything below. */
+/** Names of the sub-pages the redesign split out (Settings areas, Money and Services pages, Training Lab parts). */
+const SUB_PAGE_LABELS: Record<string, string> = {
+  new: "New",
+  settings: "Settings",
+  momo: "Mobile Money",
+  paddle: "Card payments (Paddle)",
+  currency: "Currency and card prices",
+  goal: "Revenue goal",
+  content: "Posts and videos",
+  voices: "Language voices",
+  "lead-alerts": "Lead alerts",
+  "google-calendar": "Google Calendar",
+  calls: "Demo calls",
+  availability: "Availability",
+  trial: "Free trial",
+  loading: "Loading animation",
+  "card-events": "Card events",
+  "one-off": "One-off costs",
+  "custom-keys": "Custom keys",
+  "video-robot": "Video robot",
+  inbox: "Instagram and Facebook replies",
+  reels: "Finished reels",
+  add: "Add",
+};
+
+/**
+ * A sub-page's breadcrumb label from its address: a known name, else the slug in words ("bills" -> "Bills"), and
+ * "Details" for a record id (a cuid, uuid or number) or anything that does not look like words.
+ */
+export function subPageLabel(slug: string): string {
+  if (SUB_PAGE_LABELS[slug]) return SUB_PAGE_LABELS[slug];
+  if (!/^[a-z]+(-[a-z]+)*$/.test(slug) || slug.length > 24) return "Details";
+  const words = slug.replace(/-/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Admin > Money > Invoices > Details: the group (linking to its hub), the page, and the sub-page's name below. */
 export function breadcrumbsFor(pathname: string): Crumb[] {
   const hub = hubFor(pathname);
   if (hub) return [{ label: "Admin", href: "/admin" }, { label: hub.title ?? "" }];
@@ -239,7 +275,7 @@ export function breadcrumbsFor(pathname: string): Crumb[] {
   crumbs.push({ label: item.label, href: deeper ? item.href : undefined });
   if (deeper) {
     const rest = pathname.slice(item.href.length + 1).split("/")[0];
-    crumbs.push({ label: rest === "new" ? "New" : rest === "settings" ? "Settings" : "Details" });
+    crumbs.push({ label: subPageLabel(rest) });
   }
   return crumbs;
 }
