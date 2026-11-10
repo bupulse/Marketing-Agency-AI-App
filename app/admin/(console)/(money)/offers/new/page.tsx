@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/app";
+import { MessageSquarePlus, Sparkles } from "lucide-react";
 import { OfferEditor } from "@/components/admin/offer-editor";
+import { PageHeader } from "@/components/admin/kit";
 import { Panel, notice } from "@/components/admin/ui";
 import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
@@ -29,13 +29,15 @@ export default async function NewOfferPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
+        icon={Sparkles}
+        tone="green"
         title={`Customise plan: ${ctx.business.name}`}
         description={`Region ${ctx.region.name} (${ctx.region.currency}). Now on ${ctx.current.planName} (${ctx.current.status.toLowerCase().replace("_", " ")}).`}
-        action={<Link href={`/admin/companies/${ctx.business.id}`} className="glass inline-flex min-h-11 items-center rounded-full px-4 text-sm font-medium no-underline">Back to the company</Link>}
+        back={{ href: `/admin/companies/${ctx.business.id}`, label: "Back to the company" }}
       />
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
       {ctx.request && (
-        <Panel title="What they asked for" description={budgetLabel(ctx.request.budget) ? `Budget: ${budgetLabel(ctx.request.budget)}` : undefined}>
+        <Panel icon={MessageSquarePlus} tone="blue" title="What they asked for" description={budgetLabel(ctx.request.budget) ? `Budget: ${budgetLabel(ctx.request.budget)}` : undefined}>
           <dl className="grid gap-3 text-[15px] sm:grid-cols-2">
             <div><dt className="text-[13px] text-muted">The business</dt><dd className="whitespace-pre-line">{ctx.request.description}</dd></div>
             {ctx.request.goals && <div><dt className="text-[13px] text-muted">Goals</dt><dd className="whitespace-pre-line">{ctx.request.goals}</dd></div>}

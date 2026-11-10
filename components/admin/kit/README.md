@@ -38,7 +38,7 @@ phone), optional small eyebrow and back link. Use it instead of `PageHeader` fro
   title="Payments"
   description="Mobile Money payments to confirm, and the payment details clients see."
   back={{ href: "/admin/money", label: "Money" }}
-  actions={<Link href="/admin/payments/settings" className={buttonClasses({ variant: "secondary" })}>Payment details</Link>}
+  actions={<Link href="/admin/payments/settings" className={buttonClasses({ variant: "outline" })}>Payment details</Link>}
 />
 ```
 
@@ -182,6 +182,26 @@ file (`@/components/admin/kit/form-chips`).
 ### `IconBadge`
 
 A white icon on a tone gradient (`size="sm|md|lg"`). Decorative: always next to text that says the same.
+
+### `HashRedirect` (round 2)
+
+Keeps old `#anchor` links working after a section moved to its own page. The server never sees a hash, so this small
+browser piece reads it: when the page opens with one of the hashes in `to`, it goes to that page, keeping the query
+(`?notice=`, `?error=`, filters). It never loops and renders nothing. Put it on the old page.
+
+```tsx
+<HashRedirect to={{ bills: "/admin/costs/bills", recurring: "/admin/costs/recurring" }} />
+```
+
+## Round 2 helpers outside the kit
+
+`components/admin/business/` holds the Clients, Sales and Money views (plain data in, so pages and the dev preview
+render the same) and `shared.tsx` with small shared pieces: `Notices` (the `?notice=` / `?error=` lines), `SearchBox`
+(a round GET search field that keeps the chosen chips), `MoreLink` ("Next page"), `Fact` (label + value),
+`ContactCircles` (WhatsApp and email circles), `SUB_STATUS` / `subStatus` (a subscription status in words and a pill
+tone) and `daysAgo`. Previews: `/admin/preview/<screen>` for companies, company, client-health, usage, connections,
+demos, requests, quotes, my-clients, team, leaderboard, partners (`app/admin/preview/business-screens.tsx`) and the
+Money screens (`app/admin/preview/money-screens.tsx`).
 
 ## The older pieces (`components/admin/ui.tsx`)
 

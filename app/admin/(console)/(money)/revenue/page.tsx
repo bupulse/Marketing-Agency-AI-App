@@ -1,7 +1,9 @@
 import { moneyFmt } from "@/components/admin/money";
 import { adminMoney } from "@/lib/money/display-server";
 import Link from "next/link";
-import { PageHeader } from "@/components/app";
+import { Coins, Receipt } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
+import { buttonClasses } from "@/components/ui";
 import { GoalSection } from "@/components/admin/money/goal-section";
 import { RevenueView } from "@/components/admin/money/revenue-view";
 import { requirePermission } from "@/lib/admin/auth";
@@ -22,9 +24,15 @@ export default async function RevenuePage() {
   return (
     <>
       <PageHeader
+        icon={Coins}
+        tone="green"
         title="Revenue and profit"
-        description="Revenue from every client ever (card, Mobile Money, invoices), MRR, churn and profit after every cost."
-        action={<Link href="/admin/costs" className="text-sm font-medium underline">Costs</Link>}
+        description="What clients paid (card, Mobile Money, invoices), what BuPulse spent, and what is left."
+        actions={
+          <Link href="/admin/costs" className={buttonClasses({ variant: "outline" })}>
+            <Receipt aria-hidden className="size-4" /> Costs
+          </Link>
+        }
       />
       {settings.revenueGoalRwf > 0 && <GoalSection g={goal} newThisMonth={newThisMonth} startMonth={settings.goalStartMonth} />}
       <RevenueView r={report} fx={fx} />

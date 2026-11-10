@@ -14,7 +14,7 @@ import { getRegion } from "@/lib/region";
 export async function saveAddonPricesAction(f: FormData) {
   const ctx = await adminAction("plans.manage");
   const regionKey = String(f.get("regionKey") ?? "");
-  await finish(`/admin/addon-prices#region-${regionKey}`, (n) => (n === 0 ? "Nothing changed." : `${n} ${n === 1 ? "price" : "prices"} saved.`), async () => {
+  await finish(`/admin/addon-prices?region=${encodeURIComponent(regionKey)}#region-${regionKey}`, (n) => (n === 0 ? "Nothing changed." : `${n} ${n === 1 ? "price" : "prices"} saved.`), async () => {
     const region = await getRegion(regionKey);
     if (!region) throw new AdminError("not_found", "No region with that key.");
     let changed = 0;

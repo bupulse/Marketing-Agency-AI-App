@@ -14,3 +14,4 @@ export { Breadcrumbs, BackLink, type KitCrumb } from "./breadcrumbs";
 export { DataList, type DataColumn } from "./data-list";
 export { TodoList, type TodoItem } from "./todo-list";
 export { HubView, type HubFigure } from "./hub-view";
+export { HashRedirect } from "./hash-redirect";

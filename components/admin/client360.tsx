@@ -1,14 +1,19 @@
-import { moneyFmt } from "@/components/admin/money";
+import { moneyFmt, type MoneyFmt } from "@/components/admin/money";
 import { isCompanyAccount } from "@/lib/billing/company-account";
 import { adminMoney } from "@/lib/money/display-server";
 import { notFound } from "next/navigation";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
+import type { ReactNode } from "react";
+import {
+  AlertTriangle, BarChart3, Building2, CalendarClock, Coins, CreditCard, Flag, History, LayoutGrid, MessageSquare, NotebookPen, Plug, Send, ShieldCheck, Sparkles, UserRound, Users, Zap, type LucideIcon,
+} from "lucide-react";
 import { ConfirmButton } from "@/components/admin/confirm-button";
-import { Empty, Panel, Stat, TableWrap, Td, Th } from "@/components/admin/ui";
+import { DataList, EmptyState, ExpandCard, FilterChips, SectionCard, SectionGrid, StatGrid, StatTile, StatusPill } from "@/components/admin/kit";
+import { Fact } from "@/components/admin/business/shared";
+import { Panel } from "@/components/admin/ui";
 import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { Meter } from "@/components/ui";
-import { cn } from "@/lib/cn";
 import { currencyDigits, dateTime, money, num } from "@/lib/admin/format";
 import { formatPhone } from "@/lib/phone";
 import { diffJson, show } from "@/lib/admin/diff";
@@ -25,16 +30,31 @@ import { addNoteAction, changePlanAction, companyAccountAction, deleteNoteAction
 
 export const CLIENT_TAB_LABELS: Record<ClientTab, string> = { overview: "Overview", billing: "Billing", usage: "Usage", channels: "Channels", content: "Content", leads: "Leads and chat", errors: "Errors", audit: "Audit history", notes: "Notes" };
 
+/** What each part of the client page holds, in a shop owner's words (the cards on Overview). */
+const TAB_INFO: Record<string, { icon: LucideIcon; hint: string }> = {
+  overview: { icon: LayoutGrid, hint: "The key facts and the actions." },
+  billing: { icon: CreditCard, hint: "Every payment and refund, newest first." },
+  usage: { icon: BarChart3, hint: "Credits used this period and what their AI cost." },
+  channels: { icon: Plug, hint: "Social accounts, stores, webhooks and the website chat." },
+  content: { icon: Send, hint: "Their latest posts, with reach and likes." },
+  leads: { icon: MessageSquare, hint: "Leads they collected and website chats." },
+  errors: { icon: AlertTriangle, hint: "Things that went wrong for this client." },
+  audit: { icon: History, hint: "What you and Jarvis changed, with before and after." },
+  notes: { icon: NotebookPen, hint: "Private notes about this client." },
+  users: { icon: Users, hint: "The people in the company, their roles and sign-ins." },
+};
+
 export { CLIENT_TABS };
 
 export type ExtraTab = { key: string; label: string };
 
 /**
- * Client 360 for one user (the account owner): tab nav, the actions and the active tab. Mounted by /admin/users/[id]
- * and by the company page. `extraTabs` are the host page's own tabs; the host renders them when `tab` matches one.
- * The caller has already passed requireAdmin.
+ * Client 360 for one user (the account owner): the parts as chips, the actions and the active part. Mounted by
+ * /admin/users/[id] and by the company page. `extraTabs` are the host page's own parts; the host renders them when `tab`
+ * matches one. `lead` is the host's own blocks for Overview and Billing (the company page's demo and custom-plan
+ * cards), shown after the actions. The caller has already passed requireAdmin.
  */
-export async function Client360({ userId, tab: asked, basePath, extraTabs = [] }: { userId: string; tab?: string; basePath: string; extraTabs?: ExtraTab[] }) {
+export async function Client360({ userId, tab: asked, basePath, extraTabs = [], lead }: { userId: string; tab?: string; basePath: string; extraTabs?: ExtraTab[]; lead?: ReactNode }) {
   const id = userId;
   const tab: ClientTab = (CLIENT_TABS as readonly string[]).includes(asked ?? "") ? (asked as ClientTab) : "overview";
   const extra = extraTabs.some((t) => t.key === asked);
@@ -47,29 +67,18 @@ export async function Client360({ userId, tab: asked, basePath, extraTabs = [] }
   }
   const here = basePath;
   const showActions = !extra && (tab === "overview" || tab === "billing");
+  const tabs = clientTabs(extraTabs);
   return (
     <>
-      <nav aria-label="Client sections" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-        {[...CLIENT_TABS.map((t) => ({ key: t as string, label: CLIENT_TAB_LABELS[t] })), ...extraTabs].map((t) => {
-          const active = extra ? t.key === asked : t.key === tab;
-          return (
-            <Link
-              key={t.key}
-              href={t.key === "overview" ? here : `${here}?tab=${t.key}`}
-              aria-current={active ? "page" : undefined}
-              className={cn("inline-flex min-h-11 shrink-0 items-center rounded-full px-4 text-sm font-medium no-underline", active ? "bg-surface text-text shadow-glass" : "bg-soft text-muted hover:text-text")}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-      </nav>
+      <ClientSections here={here} current={extra ? (asked as string) : tab} tabs={tabs} />
+      {!extra && tab === "overview" && <OverviewStats c={c} />}
       {showActions && (
         <div id="actions" className="scroll-mt-24">
           <Actions id={id} c={c} />
         </div>
       )}
-      {!extra && tab === "overview" && <OverviewTab id={id} c={c} here={here} />}
+      {!extra && (tab === "overview" || tab === "billing") && lead}
+      {!extra && tab === "overview" && <OverviewTab id={id} c={c} here={here} tabs={tabs.filter((t) => t.key !== "overview")} />}
       {!extra && tab === "billing" && <BillingTab c={c} />}
       {!extra && tab === "usage" && <UsageTab c={c} />}
       {!extra && tab === "channels" && <ChannelsTab c={c} />}
@@ -82,10 +91,27 @@ export async function Client360({ userId, tab: asked, basePath, extraTabs = [] }
   );
 }
 
+/** The client page's parts as chips (Overview, Billing, Usage...): each opens that part's own view. */
+export function ClientSections({ here, current, tabs }: { here: string; current: string; tabs: ExtraTab[] }) {
+  return <FilterChips label="Client sections" param="tab" base={here} allValue="overview" current={current} options={tabs.map((t) => ({ value: t.key, label: t.label, icon: TAB_INFO[t.key]?.icon }))} />;
+}
+
+/** Every part of the client page, Client 360's own then the host's extra ones. */
+export const clientTabs = (extraTabs: ExtraTab[] = []): ExtraTab[] => [...CLIENT_TABS.map((t) => ({ key: t as string, label: CLIENT_TAB_LABELS[t] })), ...extraTabs];
+
 export async function clientHeader(userId: string) {
   const c = await loadClient(userId);
   const status = c.suspendedAt ? "suspended" : c.deletionScheduledFor ? "deleting" : "active";
   return { email: c.email, name: c.name, business: c.business?.name ?? null, status, tone: (status === "active" ? "success" : status === "suspended" ? "danger" : "neutral") as "success" | "danger" | "neutral" };
+}
+
+/** The header's status pill, in words. */
+export function ClientStatusPill({ status }: { status: string }) {
+  return (
+    <StatusPill tone={status === "active" ? "good" : status === "suspended" ? "bad" : "muted"} dot className="text-[13px]">
+      {status === "active" ? "Active account" : status === "suspended" ? "Suspended" : "Being deleted"}
+    </StatusPill>
+  );
 }
 
 type C = Awaited<ReturnType<typeof loadClient>>;
@@ -101,15 +127,22 @@ async function Actions({ id, c }: { id: string; c: C }) {
   const sub = c.subscription?.provider === "PADDLE" ? await prisma.subscription.findUnique({ where: { userId: id }, select: { providerCustomerId: true } }) : null;
   const target = sub?.providerCustomerId ? await describeRefundTarget({ customerId: sub.providerCustomerId }).catch(() => null) : null;
   const currency = target?.currency ?? "USD";
+  return <ActionsView id={id} plan={plan} interval={interval} plans={allPlans} suspended={Boolean(c.suspendedAt)} companyAccount={isCompanyAccount(c.subscription)} hasProvider={Boolean(c.subscription?.provider)} target={target} currency={currency} idemPlan={idemPlan} idemRefund={idemRefund} />;
+}
+
+type RefundTarget = Awaited<ReturnType<typeof describeRefundTarget>>;
+
+/** The Actions card from plain data (the dev preview renders it too). */
+export function ActionsView({ id, plan, interval, plans: allPlans, suspended, companyAccount, hasProvider, target, currency, idemPlan, idemRefund }: { id: string; plan: string | null; interval: string | null; plans: { key: string; name: string; status: string }[]; suspended: boolean; companyAccount: boolean; hasProvider: boolean; target: RefundTarget | null; currency: string; idemPlan: string; idemRefund: string }) {
   return (
-    <Panel title="Actions" description="Everything here is written to the audit log. Refunds and paid plan changes wait for your Approve.">
+    <Panel icon={Zap} tone="blue" title="Actions" description="Everything here is written to the audit log. Refunds and paid plan changes wait for your Approve.">
       <div className="flex flex-wrap gap-2">
         {plan === "TRIAL" && (
           <ConfirmButton action={extendTrialAction} fields={{ userId: id }} label="Extend trial" title="Extend trial" description="Adds days to the end of the trial.">
             <Field label="Days (1 to 90)"><Input name="days" type="number" min={1} max={90} defaultValue={7} required /></Field>
           </ConfirmButton>
         )}
-        {c.suspendedAt ? (
+        {suspended ? (
           <ConfirmButton action={restoreAction} fields={{ userId: id }} label="Restore" title="Restore this user?" description="They can sign in and use BuPulse again." />
         ) : (
           <ConfirmButton action={suspendAction} fields={{ userId: id }} label="Suspend" title="Suspend this user?" description="They are signed out and blocked from every page and API call. Their data is kept.">
@@ -120,9 +153,9 @@ async function Actions({ id, c }: { id: string; c: C }) {
           <Field label="Plan"><Select name="plan" defaultValue={plan ?? "STANDARD"}>{allPlans.filter((p) => p.status !== "retired" || p.key === plan).map((p) => <option key={p.key} value={p.key}>{p.name}{p.status === "hidden" ? " (hidden)" : ""}</option>)}</Select></Field>
           <Field label="Billing"><Select name="interval" defaultValue={interval ?? "MONTH"}><option value="MONTH">Monthly</option><option value="YEAR">Yearly</option></Select></Field>
         </ConfirmButton>
-        {isCompanyAccount(c.subscription) ? (
+        {companyAccount ? (
           <ConfirmButton action={companyAccountAction} fields={{ userId: id, on: "0" }} label="End company account" title="End this company account?" description="The account goes back to a fresh free trial. Nothing is charged or refunded." />
-        ) : !c.subscription?.provider ? (
+        ) : !hasProvider ? (
           <ConfirmButton action={companyAccountAction} fields={{ userId: id, on: "1" }} label="Make company account" title="Make this a company account?" description="For BuPulse's own accounts only: every feature on the Pro plan, free, with no end date. Nothing is charged, and it is not counted as revenue." />
         ) : null}
         <ConfirmButton action={refundAction} fields={{ userId: id, idem: idemRefund, currency, ...(target ? { transactionId: target.transactionId } : {}) }} label="Refund" title="Request a refund" description="Creates an approval request. Nothing is refunded until you approve it." confirmLabel="Create request">
@@ -146,75 +179,115 @@ async function Actions({ id, c }: { id: string; c: C }) {
   );
 }
 
-async function OverviewTab({ id, c, here }: { id: string; c: C; here: string }) {
+async function OverviewStats({ c }: { c: C }) {
   const fx = moneyFmt(await adminMoney());
-  const [o, user, flags] = await Promise.all([overviewSection(c), getUser(id), listFeatureFlags()]);
+  const o = await overviewSection(c);
+  return <OverviewStatsView o={o} fx={fx} />;
+}
+
+export type OverviewFacts = Pick<Awaited<ReturnType<typeof overviewSection>>, "subscription" | "mrrCents" | "signupSource" | "lastActiveAt">;
+
+/** The four key numbers at the top of Overview, from plain data. */
+export function OverviewStatsView({ o, fx }: { o: OverviewFacts; fx: MoneyFmt }) {
+  return (
+    <StatGrid cols={4}>
+      <StatTile icon={Sparkles} tone="blue" label="Plan" value={o.subscription ? <span className="capitalize">{o.subscription.plan.toLowerCase()}</span> : "None"} hint={o.subscription ? `Status: ${o.subscription.status.toLowerCase().replace(/_/g, " ")}.` : "No subscription yet."} />
+      <StatTile icon={Coins} tone="green" label="Pays a month" value={fx.text(o.mrrCents)} title={fx.title(o.mrrCents)} hint="Their plan price, when they pay." href="/admin/revenue" />
+      <StatTile icon={UserRound} tone="violet" label="Came from" value={<span className="break-all text-[20px] sm:text-[22px]">{o.signupSource?.source ?? "Unknown"}</span>} hint={o.signupSource ? `First page: ${o.signupSource.landingPage}` : "No tracked visit linked to the sign-up."} href="/admin/funnels" />
+      <StatTile icon={CalendarClock} tone="slate" label="Last active" value={<span className="text-[20px] sm:text-[22px]">{o.lastActiveAt ? dateTime(o.lastActiveAt).replace(/ UTC$/, "") : "Never"}</span>} hint="Their latest action or AI call." />
+    </StatGrid>
+  );
+}
+
+async function OverviewTab({ id, c, here, tabs }: { id: string; c: C; here: string; tabs: ExtraTab[] }) {
+  const [user, flags] = await Promise.all([getUser(id), listFeatureFlags()]);
   const business = c.business ? await getBusiness(c.business.id) : null;
+  return <OverviewDetailsView id={id} user={user} business={business} flags={flags} here={here} tabs={tabs} />;
+}
+
+/** Overview's detail cards (account, business, flags, approvals) and the cards to the other parts, from plain data. */
+export function OverviewDetailsView({ id, user, business, flags, here, tabs }: { id: string; user: Awaited<ReturnType<typeof getUser>>; business: Awaited<ReturnType<typeof getBusiness>> | null; flags: Awaited<ReturnType<typeof listFeatureFlags>>; here: string; tabs: ExtraTab[] }) {
+  const overrides = flags.filter((fl) => (fl.userOverrides as Record<string, boolean> | null)?.[id] !== undefined).length;
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Plan" value={o.subscription ? `${o.subscription.plan.toLowerCase()}` : "none"} source={o.subscription?.status.toLowerCase() ?? "no subscription"} />
-        <Stat label="MRR from this client" value={fx.text(o.mrrCents)} title={fx.title(o.mrrCents)} source="Plan price, if paying" href="/admin/revenue" />
-        <Stat label="Signed up from" value={o.signupSource?.source ?? "unknown"} source={o.signupSource ? `first page ${o.signupSource.landingPage}` : "No tracked visit linked to the sign-up"} href="/admin/funnels" />
-        <Stat label="Last active" value={o.lastActiveAt ? dateTime(o.lastActiveAt).replace(/ UTC$/, "") : "never"} source="Latest product event or AI call" />
-      </div>
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Account">
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
-            <dt className="text-muted">Plan</dt><dd>{user.plan ?? "none"} ({user.subscriptionStatus?.toLowerCase() ?? "no subscription"})</dd>
-            <dt className="text-muted">Billing</dt><dd>{user.provider ? `${user.provider.toLowerCase()}, ${user.interval?.toLowerCase() ?? "n/a"}` : "None"}</dd>
-            <dt className="text-muted">Trial ends</dt><dd>{user.trialEndsAt ? dateTime(user.trialEndsAt) : "n/a"}</dd>
-            <dt className="text-muted">Period ends</dt><dd>{user.currentPeriodEnd ? dateTime(user.currentPeriodEnd) : "n/a"}{user.cancelAtPeriodEnd ? " (cancels then)" : ""}</dd>
-            <dt className="text-muted">Joined</dt><dd>{dateTime(user.createdAt)}</dd>
-            <dt className="text-muted">Last sign-in</dt><dd>{user.lastSignInAt ? dateTime(user.lastSignInAt) : "unknown"}</dd>
-            {user.suspendedAt && (<><dt className="text-muted">Suspended</dt><dd>{dateTime(user.suspendedAt)}{user.suspendedReason ? `: ${user.suspendedReason}` : ""}</dd></>)}
-            {user.deletionScheduledFor && (<><dt className="text-muted">Deletion</dt><dd>{dateTime(user.deletionScheduledFor)}</dd></>)}
+      <div className="grid items-start gap-3 lg:grid-cols-2">
+        <ExpandCard
+          icon={UserRound}
+          tone="blue"
+          title="Account"
+          summary={[`${user.plan ?? "No plan"}${user.subscriptionStatus ? `, ${user.subscriptionStatus.toLowerCase().replace(/_/g, " ")}` : ""}`, `joined ${dateTime(user.createdAt).replace(/, \d\d:\d\d.*/, "")}`].join(" · ")}
+          aside={user.suspendedAt ? <StatusPill tone="bad">Suspended</StatusPill> : undefined}
+          defaultOpen={Boolean(user.suspendedAt || user.deletionScheduledFor)}
+        >
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Fact label="Plan">{user.plan ?? "None"} ({user.subscriptionStatus?.toLowerCase() ?? "no subscription"})</Fact>
+            <Fact label="Billing">{user.provider ? `${user.provider.toLowerCase()}, ${user.interval?.toLowerCase() ?? "n/a"}` : "None"}</Fact>
+            <Fact label="Trial ends">{user.trialEndsAt ? dateTime(user.trialEndsAt) : "n/a"}</Fact>
+            <Fact label="Period ends">{user.currentPeriodEnd ? dateTime(user.currentPeriodEnd) : "n/a"}{user.cancelAtPeriodEnd ? " (cancels then)" : ""}</Fact>
+            <Fact label="Joined">{dateTime(user.createdAt)}</Fact>
+            <Fact label="Last sign-in">{user.lastSignInAt ? dateTime(user.lastSignInAt) : "unknown"}</Fact>
+            {user.suspendedAt && <Fact label="Suspended" wide>{dateTime(user.suspendedAt)}{user.suspendedReason ? `: ${user.suspendedReason}` : ""}</Fact>}
+            {user.deletionScheduledFor && <Fact label="Deletion">{dateTime(user.deletionScheduledFor)}</Fact>}
           </dl>
-        </Panel>
-        <Panel title="Business" description={business ? undefined : "This user has not set up a business yet."}>
-          {business && (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
-              <dt className="text-muted">Name</dt><dd>{business.name}</dd>
-              <dt className="text-muted">Industry</dt><dd>{business.industry ?? "n/a"}</dd>
-              {business.industryDescription && (<><dt className="text-muted">Describes itself</dt><dd className="text-[13px]">{business.industryDescription}</dd></>)}
-              <dt className="text-muted">CEO</dt><dd>{business.ceoName ?? "n/a"}</dd>
-              <dt className="text-muted">Phone</dt><dd>{business.phone ? <a href={`tel:${business.phone}`} className="underline">{formatPhone(business.phone)}</a> : "n/a"}</dd>
-              <dt className="text-muted">Country</dt><dd>{business.country ?? "n/a"}</dd>
-              <dt className="text-muted">Onboarded</dt><dd>{business.onboarded ? "Yes" : "No"}</dd>
-              <dt className="text-muted">Products, posts, leads</dt><dd>{business.counts.projects}, {business.counts.posts}, {business.counts.leads}</dd>
-              <dt className="text-muted">Posts by status</dt><dd>{Object.entries(business.posts).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(", ") || "none"}</dd>
+        </ExpandCard>
+        <ExpandCard icon={Building2} tone="blue" title="Business" summary={business ? [business.industry ?? "No industry", business.country, business.onboarded ? "set up" : "not set up yet"].filter(Boolean).join(" · ") : "No business set up yet."}>
+          {business ? (
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Fact label="Name">{business.name}</Fact>
+              <Fact label="Industry">{business.industry ?? "n/a"}</Fact>
+              {business.industryDescription && <Fact label="Describes itself" wide>{business.industryDescription}</Fact>}
+              <Fact label="CEO">{business.ceoName ?? "n/a"}</Fact>
+              <Fact label="Phone">{business.phone ? <a href={`tel:${business.phone}`} className="underline">{formatPhone(business.phone)}</a> : "n/a"}</Fact>
+              <Fact label="Country">{business.country ?? "n/a"}</Fact>
+              <Fact label="Onboarded">{business.onboarded ? "Yes" : "No"}</Fact>
+              <Fact label="Products, posts, leads">{business.counts.projects}, {business.counts.posts}, {business.counts.leads}</Fact>
+              <Fact label="Posts by status">{Object.entries(business.posts).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(", ") || "none"}</Fact>
             </dl>
+          ) : (
+            <p className="text-[14px] text-muted">This user has not set up a business yet.</p>
           )}
-        </Panel>
+        </ExpandCard>
+        <ExpandCard icon={Flag} tone="slate" title="Feature flags for this user" summary={flags.length === 0 ? "No flags exist yet." : `${flags.length} ${flags.length === 1 ? "flag" : "flags"}, ${overrides} set just for this user.`}>
+          <p className="pb-3 text-[13px] text-muted">An override beats the flag’s rollout. “Default” removes the override.</p>
+          {flags.length === 0 ? (
+            <p className="text-[14px] text-muted">No flags exist yet. <Link href="/admin/flags" className="underline">Create one</Link>.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-line">
+              {flags.map((fl) => {
+                const o2 = (fl.userOverrides as Record<string, boolean> | null)?.[id];
+                return (
+                  <li key={fl.key} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <span><code className="font-mono text-[13px]">{fl.key}</code> <span className="text-xs text-muted">flag {fl.enabled ? `on at ${fl.rolloutPercent}%` : "off"}</span></span>
+                    <form action={flagOverrideAction} className="flex items-center gap-2">
+                      <input type="hidden" name="key" value={fl.key} /><input type="hidden" name="userId" value={id} /><input type="hidden" name="back" value={here} />
+                      <Select name="value" defaultValue={o2 === undefined ? "remove" : o2 ? "on" : "off"} aria-label={`Override for ${fl.key}`} className="min-h-11"><option value="remove">Default</option><option value="on">Forced on</option><option value="off">Forced off</option></Select>
+                      <Button type="submit" size="sm" variant="outline">Save</Button>
+                    </form>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </ExpandCard>
+        {user.recentApprovals.length > 0 && (
+          <ExpandCard icon={ShieldCheck} tone="violet" title="Approval requests" summary={`${user.recentApprovals.length} recent · latest ${user.recentApprovals[0].status}`} defaultOpen={user.recentApprovals.some((a) => a.status === "PENDING")}>
+            <ul className="flex flex-col gap-1 text-[14px]">{user.recentApprovals.map((a) => (<li key={a.id}>{a.kind.replace("_", " ")}: {a.status} ({dateTime(a.createdAt)})</li>))}</ul>
+            <Link href="/admin/approvals" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-pulse-blue underline-offset-2 hover:underline dark:text-[#8db0ff]">Open approvals</Link>
+          </ExpandCard>
+        )}
       </div>
 
-      <Panel title="Feature flags for this user" description="An override beats the flag’s rollout. “Default” removes the override.">
-        {flags.length === 0 ? (
-          <Empty>No flags exist yet. <Link href="/admin/flags" className="underline">Create one</Link>.</Empty>
-        ) : (
-          <ul className="flex flex-col divide-y divide-line">
-            {flags.map((fl) => {
-              const o2 = (fl.userOverrides as Record<string, boolean> | null)?.[id];
-              return (
-                <li key={fl.key} className="flex flex-wrap items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                  <span><code className="font-mono text-[13px]">{fl.key}</code> <span className="text-xs text-muted">flag {fl.enabled ? `on at ${fl.rolloutPercent}%` : "off"}</span></span>
-                  <form action={flagOverrideAction} className="flex items-center gap-2">
-                    <input type="hidden" name="key" value={fl.key} /><input type="hidden" name="userId" value={id} /><input type="hidden" name="back" value={here} />
-                    <Select name="value" defaultValue={o2 === undefined ? "remove" : o2 ? "on" : "off"} aria-label={`Override for ${fl.key}`} className="min-h-11"><option value="remove">Default</option><option value="on">Forced on</option><option value="off">Forced off</option></Select>
-                    <Button type="submit" size="sm" variant="outline">Save</Button>
-                  </form>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Panel>
-
-      {user.recentApprovals.length > 0 && (
-        <Panel title="Approval requests" action={<Link href="/admin/approvals" className="text-sm underline">Open approvals</Link>}>
-          <ul className="flex flex-col gap-1 text-[14px]">{user.recentApprovals.map((a) => (<li key={a.id}>{a.kind.replace("_", " ")}: {a.status} ({dateTime(a.createdAt)})</li>))}</ul>
-        </Panel>
-      )}
+      <section aria-label="More about this client" className="flex flex-col gap-3">
+        <div className="px-1">
+          <h2 className="text-[17px] font-bold tracking-[-0.02em]">More about this client</h2>
+          <p className="text-[13px] text-muted">Each part opens on its own page, so this one stays short.</p>
+        </div>
+        <SectionGrid cols={3}>
+          {tabs.map((t) => (
+            <SectionCard row key={t.key} href={`${here}?tab=${t.key}`} icon={TAB_INFO[t.key]?.icon ?? LayoutGrid} tone="blue" title={t.label} hint={TAB_INFO[t.key]?.hint} />
+          ))}
+        </SectionGrid>
+      </section>
     </>
   );
 }
@@ -223,24 +296,19 @@ async function BillingTab({ c }: { c: C }) {
   const fx = moneyFmt(await adminMoney());
   const b = await billingSection(c);
   return (
-    <Panel title="Payments and refunds" description={b.provider ? `From ${b.provider.toLowerCase()} webhooks, newest first. Amounts are what the customer was charged or refunded, tax included.` : "This client has never paid."}>
-      {b.items.length === 0 ? (
-        <Empty>No payments or refunds recorded.</Empty>
-      ) : (
-        <TableWrap caption="Payments and refunds">
-          <thead><tr><Th>When</Th><Th>Type</Th><Th>Provider id</Th><Th right>Amount</Th></tr></thead>
-          <tbody>
-            {b.items.map((i) => (
-              <tr key={i.id}>
-                <Td className="whitespace-nowrap">{dateTime(i.at)}</Td>
-                <Td>{i.kind === "payment" ? <Badge tone="success">Payment</Badge> : <Badge tone="danger">Refund</Badge>}</Td>
-                <Td className="font-mono text-xs">{i.providerId ?? ""}</Td>
-                <Td right>{i.amountMinor === null ? "n/a" : fx.text(i.kind === "refund" ? -i.amountMinor : i.amountMinor, /^[A-Z]{3}$/.test(i.currency) ? i.currency : "USD")}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableWrap>
-      )}
+    <Panel icon={CreditCard} tone="green" title="Payments and refunds" description={b.provider ? `From ${b.provider.toLowerCase()} webhooks, newest first. Amounts are what the customer was charged or refunded, tax included.` : "This client has never paid."}>
+      <DataList
+        caption="Payments and refunds"
+        rows={b.items}
+        rowKey={(i) => i.id}
+        columns={[
+          { key: "at", header: "When", cell: (i) => <span className="whitespace-nowrap">{dateTime(i.at)}</span>, primary: true },
+          { key: "kind", header: "Type", cell: (i) => (i.kind === "payment" ? <StatusPill tone="good" dot>Payment</StatusPill> : <StatusPill tone="bad" dot>Refund</StatusPill>) },
+          { key: "id", header: "Provider id", cell: (i) => <span className="break-all font-mono text-xs">{i.providerId ?? ""}</span>, hideOnPhone: true },
+          { key: "amount", header: "Amount", align: "right", cell: (i) => (i.amountMinor === null ? "n/a" : fx.text(i.kind === "refund" ? -i.amountMinor : i.amountMinor, /^[A-Z]{3}$/.test(i.currency) ? i.currency : "USD")) },
+        ]}
+        empty={<EmptyState icon={CreditCard} title="No payments or refunds recorded." />}
+      />
     </Panel>
   );
 }
@@ -250,60 +318,82 @@ async function UsageTab({ c }: { c: C }) {
   const u = await usageSection(c);
   return (
     <>
-      <Panel title="Credits this period" description={u.periodStart ? `Period started ${dateTime(u.periodStart)}. Limits follow the client’s plan, including any override you set.` : "No usage recorded yet."}>
-        <ul className="flex flex-col gap-4">
+      <Panel icon={BarChart3} tone="blue" title="Credits this period" description={u.periodStart ? `Period started ${dateTime(u.periodStart)}. Limits follow the client’s plan, including any override you set.` : "No usage recorded yet."}>
+        <ul className="grid gap-4 sm:grid-cols-2">
           {u.metrics.map((m) => (
-            <li key={m.key} className="flex flex-col gap-1.5">
+            <li key={m.key} className="flex flex-col gap-1.5 rounded-2xl bg-soft/60 p-3.5">
               <div className="flex justify-between gap-3 text-[14px]"><span className="font-medium">{m.label}</span><span className="tabular-nums text-muted">{m.limit === 0 || m.limit === null ? `${num(m.used)} (not in plan)` : `${num(m.used)} / ${num(m.limit)}`}</span></div>
               {m.limit ? <Meter value={m.used} max={m.limit} label={m.label} /> : null}
             </li>
           ))}
         </ul>
       </Panel>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Stat label="AI cost, 30 days" value={fx.text(u.ai.costUsd30d * 100)} title={fx.title(u.ai.costUsd30d * 100)} source="AI call ledger" href="/admin/ai" />
-        <Stat label="AI calls, 30 days" value={num(u.ai.calls30d)} source="AI call ledger" />
-        <Stat label="Failed AI calls" value={num(u.ai.failures30d)} source="AI call ledger" />
-        <Stat label="AI spend this month" value={`${fx.text(u.ai.monthUsd * 100)} of ${fx.text(u.ai.allowanceUsd * 100)}`} source="Company allowance (the plan's AI allowance, else AI_COMPANY_MONTHLY_USD)" />
-        <Stat label="Website chat AI, this month" value={`${fx.text(u.ai.widgetUsd * 100)} of ${fx.text(u.ai.widgetCapUsd * 100)}`} source="Chat share (WIDGET_AI_SHARE); when used, the chat collects details" />
-        <Stat label="Owner features AI, this month" value={fx.text(u.ai.ownerUsd * 100)} source="Studio, Autopilot, designs and the rest" />
-      </div>
+      <StatGrid cols={3}>
+        <StatTile icon={Coins} tone="violet" label="AI cost, 30 days" value={fx.text(u.ai.costUsd30d * 100)} title={fx.title(u.ai.costUsd30d * 100)} hint="From the AI call ledger." href="/admin/ai" />
+        <StatTile icon={Sparkles} tone="violet" label="AI calls, 30 days" value={num(u.ai.calls30d)} hint="Every AI request they made." />
+        <StatTile icon={AlertTriangle} tone="violet" label="Failed AI calls" value={num(u.ai.failures30d)} hint="In the last 30 days." alert={u.ai.failures30d > 0} />
+        <StatTile icon={Coins} tone="violet" label="AI spend this month" value={<span className="text-[20px] sm:text-[22px]">{`${fx.text(u.ai.monthUsd * 100)} of ${fx.text(u.ai.allowanceUsd * 100)}`}</span>} hint="Against the company allowance (the plan's AI allowance, else AI_COMPANY_MONTHLY_USD)." />
+        <StatTile icon={MessageSquare} tone="teal" label="Website chat AI, this month" value={<span className="text-[20px] sm:text-[22px]">{`${fx.text(u.ai.widgetUsd * 100)} of ${fx.text(u.ai.widgetCapUsd * 100)}`}</span>} hint="Chat share (WIDGET_AI_SHARE); when used up, the chat collects details." />
+        <StatTile icon={Zap} tone="blue" label="Owner features AI, this month" value={fx.text(u.ai.ownerUsd * 100)} hint="Studio, Autopilot, designs and the rest." />
+      </StatGrid>
     </>
   );
 }
 
 async function ChannelsTab({ c }: { c: C }) {
   const ch = await channelsSection(c);
+  const q = encodeURIComponent(c.email);
+  const facts: [string, ReactNode][] = [
+    ["Stores", ch.connectors?.stores ?? "n/a"],
+    ["Cloudflare", ch.connectors?.cloudflare ?? "n/a"],
+    ["Imported files", ch.connectors?.importedFiles ?? "n/a"],
+    ["Webhook endpoints", ch.counts.webhooks],
+    ["API keys in use", ch.counts.apiKeys],
+  ];
   return (
     <>
-      <Panel title="Social channels" action={<Link href={`/admin/connections?tab=channels&q=${encodeURIComponent(c.email)}`} className="text-sm font-medium underline">Manage on Connections</Link>}>
-        {ch.connections.length === 0 ? (
-          <Empty>No channels connected.</Empty>
-        ) : (
-          <TableWrap caption="Channels">
-            <thead><tr><Th>Account</Th><Th>Network</Th><Th>Status</Th><Th>Expires</Th></tr></thead>
-            <tbody>
-              {ch.connections.map((x) => (
-                <tr key={x.id}>
-                  <Td>{x.displayName ?? x.provider}{x.lastError && <span className="block max-w-[18rem] truncate text-xs text-danger" title={x.lastError}>{x.lastError}</span>}</Td>
-                  <Td>{x.provider}</Td>
-                  <Td><Badge tone={x.status === "ACTIVE" ? "success" : "neutral"}>{x.status.toLowerCase()}</Badge></Td>
-                  <Td className="whitespace-nowrap">{x.expiresAt ? dateTime(x.expiresAt) : "n/a"}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrap>
-        )}
+      <Panel icon={Plug} tone="blue" title="Social channels" description="The accounts this client posts to, and whether each one still works." action={<Link href={`/admin/connections?tab=channels&q=${q}`} className="text-sm font-semibold text-pulse-blue underline-offset-2 hover:underline dark:text-[#8db0ff]">Manage on Connections</Link>}>
+        <DataList
+          caption="Channels"
+          rows={ch.connections}
+          rowKey={(x) => x.id}
+          columns={[
+            { key: "acc", header: "Account", primary: true, cell: (x) => <>{x.displayName ?? x.provider}{x.lastError && <span className="block max-w-[18rem] truncate text-xs font-normal text-danger" title={x.lastError}>{x.lastError}</span>}</> },
+            { key: "net", header: "Network", cell: (x) => x.provider },
+            { key: "status", header: "Status", cell: (x) => <StatusPill tone={x.status === "ACTIVE" ? "good" : "muted"} dot>{x.status.toLowerCase()}</StatusPill> },
+            { key: "exp", header: "Expires", cell: (x) => <span className="whitespace-nowrap">{x.expiresAt ? dateTime(x.expiresAt) : "n/a"}</span> },
+          ]}
+          empty={<EmptyState icon={Plug} title="No channels connected." />}
+        />
       </Panel>
-      <Panel title="Connectors, webhooks and chat widget" action={<span className="flex gap-3 text-sm font-medium"><Link href={`/admin/connections?tab=connectors&q=${encodeURIComponent(c.email)}`} className="underline">Connectors</Link><Link href={`/admin/connections?tab=webhooks&q=${encodeURIComponent(c.email)}`} className="underline">Webhooks</Link><Link href={`/admin/connections?tab=widgets&q=${encodeURIComponent(c.email)}`} className="underline">Chat widget</Link></span>}>
-        <ul className="grid gap-3 text-[14px] sm:grid-cols-2">
-          <li>Stores: <strong>{ch.connectors?.stores ?? "n/a"}</strong></li>
-          <li>Cloudflare: <strong>{ch.connectors?.cloudflare ?? "n/a"}</strong></li>
-          <li>Imported files: <strong>{ch.connectors?.importedFiles ?? "n/a"}</strong></li>
-          <li>Webhook endpoints: <strong>{ch.counts.webhooks}</strong></li>
-          <li>API keys in use: <strong>{ch.counts.apiKeys}</strong></li>
-          <li>Chat widget: <strong>{ch.widget ? (ch.widget.disabledByAdmin ? "switched off by you" : ch.widget.enabled ? "on" : "off") : "not set up"}</strong>{ch.widget?.lastSeenAt ? <span className="text-muted"> (seen {dateTime(ch.widget.lastSeenAt)}{ch.widget.lastSeenHost ? ` on ${ch.widget.lastSeenHost}` : ""})</span> : null}</li>
-        </ul>
+      <Panel
+        icon={LayoutGrid}
+        tone="blue"
+        title="Connectors, webhooks and chat widget"
+        description="Stores, files, developer tools and the chat on their website."
+        action={
+          <span className="flex flex-wrap gap-3 text-sm font-semibold text-pulse-blue dark:text-[#8db0ff]">
+            <Link href={`/admin/connections?tab=connectors&q=${q}`} className="underline-offset-2 hover:underline">Connectors</Link>
+            <Link href={`/admin/connections?tab=webhooks&q=${q}`} className="underline-offset-2 hover:underline">Webhooks</Link>
+            <Link href={`/admin/connections?tab=widgets&q=${q}`} className="underline-offset-2 hover:underline">Chat widget</Link>
+          </span>
+        }
+      >
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {facts.map(([k, v]) => (
+            <div key={k} className="flex flex-col gap-0.5 rounded-2xl bg-soft/60 p-3.5">
+              <dt className="text-[12px] text-muted">{k}</dt>
+              <dd className="text-[18px] font-bold tabular-nums">{v}</dd>
+            </div>
+          ))}
+          <div className="col-span-2 flex flex-col gap-0.5 rounded-2xl bg-soft/60 p-3.5 sm:col-span-3">
+            <dt className="text-[12px] text-muted">Chat widget</dt>
+            <dd className="text-[15px] font-semibold">
+              {ch.widget ? (ch.widget.disabledByAdmin ? "Switched off by you" : ch.widget.enabled ? "On" : "Off") : "Not set up"}
+              {ch.widget?.lastSeenAt ? <span className="font-normal text-muted"> (seen {dateTime(ch.widget.lastSeenAt)}{ch.widget.lastSeenHost ? ` on ${ch.widget.lastSeenHost}` : ""})</span> : null}
+            </dd>
+          </div>
+        </dl>
       </Panel>
     </>
   );
@@ -312,24 +402,21 @@ async function ChannelsTab({ c }: { c: C }) {
 async function ContentTab({ c }: { c: C }) {
   const ct = await contentSection(c);
   return (
-    <Panel title="Posts" description={Object.entries(ct.counts).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(" · ") || undefined}>
-      {ct.posts.length === 0 ? (
-        <Empty>No posts yet.</Empty>
-      ) : (
-        <TableWrap caption="Latest posts">
-          <thead><tr><Th>Post</Th><Th>Network</Th><Th>Status</Th><Th>When</Th><Th right>Reach</Th><Th right>Likes</Th></tr></thead>
-          <tbody>
-            {ct.posts.map((p) => (
-              <tr key={p.id}>
-                <Td className="max-w-[22rem]"><span className="line-clamp-2">{p.text || "(no text)"}</span>{p.lastError && <span className="block text-xs text-danger">{p.lastError}</span>}</Td>
-                <Td>{p.network}</Td><Td>{p.status.toLowerCase()}</Td>
-                <Td className="whitespace-nowrap">{p.at ? dateTime(p.at) : ""}</Td>
-                <Td right>{p.metrics?.reach ?? p.metrics?.views ?? "n/a"}</Td><Td right>{p.metrics?.likes ?? "n/a"}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableWrap>
-      )}
+    <Panel icon={Send} tone="pink" title="Posts" description={Object.entries(ct.counts).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(" · ") || "Their latest posts."}>
+      <DataList
+        caption="Latest posts"
+        rows={ct.posts}
+        rowKey={(p) => p.id}
+        columns={[
+          { key: "post", header: "Post", primary: true, className: "max-w-[22rem]", cell: (p) => <><span className="line-clamp-2 font-normal">{p.text || "(no text)"}</span>{p.lastError && <span className="block text-xs font-normal text-danger">{p.lastError}</span>}</> },
+          { key: "net", header: "Network", cell: (p) => p.network },
+          { key: "status", header: "Status", cell: (p) => p.status.toLowerCase() },
+          { key: "when", header: "When", cell: (p) => <span className="whitespace-nowrap">{p.at ? dateTime(p.at) : ""}</span>, hideOnPhone: true },
+          { key: "reach", header: "Reach", align: "right", cell: (p) => p.metrics?.reach ?? p.metrics?.views ?? "n/a" },
+          { key: "likes", header: "Likes", align: "right", cell: (p) => p.metrics?.likes ?? "n/a" },
+        ]}
+        empty={<EmptyState icon={Send} title="No posts yet." />}
+      />
     </Panel>
   );
 }
@@ -338,23 +425,23 @@ async function LeadsTab({ c }: { c: C }) {
   const l = await leadsSection(c);
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Stat label="Leads" value={num(l.total)} source={Object.entries(l.byStatus).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(", ") || "none yet"} />
-        <Stat label="Website chats, 30 days" value={num(l.chat.sessions30d)} source="Chat sessions" />
-      </div>
-      <Panel title="Latest leads">
-        {l.leads.length === 0 ? (
-          <Empty>No leads yet.</Empty>
-        ) : (
-          <TableWrap caption="Latest leads">
-            <thead><tr><Th>Lead</Th><Th>Source</Th><Th>Status</Th><Th>When</Th></tr></thead>
-            <tbody>
-              {l.leads.map((x) => (
-                <tr key={x.id}><Td>{x.name ?? "Unnamed"}<span className="block text-xs text-muted">{x.email ?? ""}</span></Td><Td>{x.source}</Td><Td>{x.status.toLowerCase()}</Td><Td className="whitespace-nowrap">{dateTime(x.createdAt)}</Td></tr>
-              ))}
-            </tbody>
-          </TableWrap>
-        )}
+      <StatGrid cols={2}>
+        <StatTile icon={Users} tone="teal" label="Leads" value={num(l.total)} hint={Object.entries(l.byStatus).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(", ") || "None yet."} />
+        <StatTile icon={MessageSquare} tone="teal" label="Website chats, 30 days" value={num(l.chat.sessions30d)} hint="Visitor conversations on their website." />
+      </StatGrid>
+      <Panel icon={Users} tone="teal" title="Latest leads" description="People who left their details, newest first.">
+        <DataList
+          caption="Latest leads"
+          rows={l.leads}
+          rowKey={(x) => x.id}
+          columns={[
+            { key: "lead", header: "Lead", primary: true, cell: (x) => <>{x.name ?? "Unnamed"}<span className="block text-xs font-normal text-muted">{x.email ?? ""}</span></> },
+            { key: "src", header: "Source", cell: (x) => x.source },
+            { key: "status", header: "Status", cell: (x) => x.status.toLowerCase() },
+            { key: "when", header: "When", cell: (x) => <span className="whitespace-nowrap">{dateTime(x.createdAt)}</span> },
+          ]}
+          empty={<EmptyState icon={Users} title="No leads yet." />}
+        />
       </Panel>
     </>
   );
@@ -363,12 +450,12 @@ async function LeadsTab({ c }: { c: C }) {
 async function ErrorsTab({ c }: { c: C }) {
   const e = await errorsSection(c);
   return (
-    <Panel title="Errors for this client" action={<Link href={`/admin/errors?userId=${c.id}`} className="text-sm underline">Open the error log</Link>}>
+    <Panel icon={AlertTriangle} tone="red" title="Errors for this client" description="The latest problems logged for this account." action={<Link href={`/admin/errors?userId=${c.id}`} className="text-sm font-semibold text-pulse-blue underline-offset-2 hover:underline dark:text-[#8db0ff]">Open the error log</Link>}>
       {e.length === 0 ? (
-        <Empty>No errors for this client.</Empty>
+        <EmptyState icon={ShieldCheck} tone="good" title="No errors for this client." />
       ) : (
-        <ul className="flex flex-col gap-2 text-[14px]">
-          {e.map((x) => (<li key={x.id}><span className="block break-words font-medium"><code className="font-mono text-[13px]">{x.source}</code> {x.message}</span><span className="text-xs text-muted">{dateTime(x.createdAt)} · {x.level}</span></li>))}
+        <ul className="flex flex-col divide-y divide-line text-[14px]">
+          {e.map((x) => (<li key={x.id} className="py-2.5 first:pt-0 last:pb-0"><span className="block break-words font-medium"><code className="font-mono text-[13px]">{x.source}</code> {x.message}</span><span className="text-xs text-muted">{dateTime(x.createdAt)} · {x.level}</span></li>))}
         </ul>
       )}
     </Panel>
@@ -378,9 +465,9 @@ async function ErrorsTab({ c }: { c: C }) {
 async function AuditTab({ c }: { c: C }) {
   const rows = await auditSection(c);
   return (
-    <Panel title="Audit history" description="Admin and Jarvis actions on this client, newest first.">
+    <Panel icon={History} tone="slate" title="Audit history" description="Admin and Jarvis actions on this client, newest first. Tap one to see what changed.">
       {rows.length === 0 ? (
-        <Empty>Nothing has been done to this client yet.</Empty>
+        <EmptyState icon={History} title="Nothing has been done to this client yet." />
       ) : (
         <ul className="flex flex-col divide-y divide-line">
           {rows.map((r) => {
@@ -409,17 +496,17 @@ async function AuditTab({ c }: { c: C }) {
 async function NotesTab({ id, c }: { id: string; c: C }) {
   const notes = await notesSection(c);
   return (
-    <>
-      <Panel title="Add a note" description="Private to the admin console. Notes are written to the audit log and erased with the account.">
+    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <Panel icon={NotebookPen} tone="blue" title="Add a note" description="Private to the admin console. Notes are written to the audit log and erased with the account.">
         <form action={addNoteAction} className="flex flex-col gap-3">
           <input type="hidden" name="userId" value={id} />
           <Field label="Note"><Textarea name="body" rows={3} maxLength={2000} required /></Field>
           <Button type="submit" className="self-start">Save note</Button>
         </form>
       </Panel>
-      <Panel title="Notes">
+      <Panel icon={NotebookPen} tone="slate" title="Notes" description="Newest first.">
         {notes.length === 0 ? (
-          <Empty>No notes about this client yet.</Empty>
+          <EmptyState icon={NotebookPen} title="No notes about this client yet." />
         ) : (
           <ul className="flex flex-col divide-y divide-line">
             {notes.map((n) => (
@@ -431,6 +518,6 @@ async function NotesTab({ id, c }: { id: string; c: C }) {
           </ul>
         )}
       </Panel>
-    </>
+    </div>
   );
 }

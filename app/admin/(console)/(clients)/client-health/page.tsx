@@ -1,4 +1,5 @@
-import { PageHeader } from "@/components/app";
+import { Stethoscope } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { ClientHealthView } from "@/components/admin/clients/health-view";
 import { requirePermission } from "@/lib/admin/auth";
 import { getClientRows } from "@/lib/admin/client-health";
@@ -14,7 +15,7 @@ export default async function ClientHealthPage({ searchParams }: PageProps<"/adm
   const rows = await getClientRows();
   return (
     <>
-      <PageHeader title="Client health" description="Who is active, whose trial ends soon, who is late paying or barely using BuPulse, with one-click WhatsApp and email." />
+      <PageHeader icon={Stethoscope} tone="blue" title="Client health" description="Who is active, whose trial ends soon, and who is late paying or barely using BuPulse. One tap to WhatsApp or email them." />
       <ClientHealthView rows={rows} flag={flag} now={nowMs()} />
     </>
   );

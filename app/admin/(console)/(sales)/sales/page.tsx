@@ -1,6 +1,7 @@
 import { moneyFmt } from "@/components/admin/money";
 import { adminMoney } from "@/lib/money/display-server";
-import { PageHeader } from "@/components/app";
+import { Contact } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { MyClientsView } from "@/components/admin/sales/sales-views";
 import { can, requirePermission } from "@/lib/admin/auth";
 import { nowMs } from "@/lib/admin/format";
@@ -19,7 +20,7 @@ export default async function MyClientsPage() {
     : [[], [], null];
   return (
     <>
-      <PageHeader title="My clients" description="Your clients, how to reach them and how they stand, your referral link and your numbers this month." />
+      <PageHeader icon={Contact} tone="orange" title="My clients" description="Your clients, how to reach them and how they stand, your referral link and your numbers this month." />
       <MyClientsView
         fx={moneyFmt(await adminMoney())}
         d={{ isStaff: !!staffId, clients, link: code ? { code, url: refUrl(code) } : null, month, board, staffId, canViewClients: can(identity, "clients.view"), now: nowMs() }}
