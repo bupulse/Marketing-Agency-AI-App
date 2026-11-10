@@ -10,17 +10,19 @@ import { AdminError } from "@/lib/admin/types";
 import { clearPaddleSettings, savePaddleSettings, SECRET_LABEL } from "@/lib/billing/paddle-config";
 import { setUpPaddleStep, testPaddleConnection, type SetUpStep, type StepResult } from "@/lib/billing/paddle-setup";
 import { connectTelegram, disconnectTelegram, sendTelegramTestAlert } from "@/lib/lead-alerts/telegram-settings";
+import { settingsBackFor, settingsHref } from "@/components/admin/system/settings-areas";
 
-const BACK = "/admin/settings";
+// Settings is a hub of small pages (components/admin/system/settings-areas.ts): each action returns to the page its
+// form is on, so the notice shows there.
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates", "demoDailyCap", "pageLoader", "displayCurrency", "usdToEur", "revenueGoalRwf", "goalStartMonth"];
 
 // Each action re-checks the admin (adminAction: allow-listed email, AAL2). Every saved setting is audited.
 
-/** Saves whichever settings the form carries (one form per panel). */
+/** Saves whichever settings the form carries (one form per panel); back to that panel's page. */
 export async function saveSettingsAction(f: FormData) {
   const ctx = await adminAction("system");
-  await finish(BACK, "Settings saved.", async () => {
+  await finish(settingsBackFor((k) => f.has(k)), "Settings saved.", async () => {
     for (const name of NAMES) if (f.has(name)) await setSetting(ctx, name, text(f, name));
     // A checkbox is absent when unticked: the currency panel says it carries the switch.
     if (f.has("currencyPanel")) await setSetting(ctx, "eurRateAuto", f.get("eurRateAuto") === "on");
@@ -36,27 +38,27 @@ export async function saveSettingsAction(f: FormData) {
 /** "Refresh now": fetches the day's ECB EUR rate (api.frankfurter.app) even when the daily refresh is off. */
 export async function refreshEurRateAction() {
   await adminAction("system");
-  await finish(`${BACK}#currency`, (r) => (r.ok ? `EUR rate refreshed: 1 USD = ${r.rate} EUR (ECB).` : "The ECB rate could not be fetched; the stored rate stays in use."), () => refreshEurRate({ force: true }));
+  await finish(settingsHref("currency"), (r) => (r.ok ? `EUR rate refreshed: 1 USD = ${r.rate} EUR (ECB).` : "The ECB rate could not be fetched; the stored rate stays in use."), () => refreshEurRate({ force: true }));
 }
 
 export async function recomputeCardPricesAction() {
   const ctx = await adminAction("plans.manage");
-  await finish(BACK, (r) => (r.changed === 0 ? "Card prices were already up to date." : `${r.changed} card ${r.changed === 1 ? "price" : "prices"} recomputed. Creating them in Paddle is still to do (docs/REGIONS.md).`), () => recomputeCardPrices(ctx));
+  await finish(settingsHref("currency"), (r) => (r.changed === 0 ? "Card prices were already up to date." : `${r.changed} card ${r.changed === 1 ? "price" : "prices"} recomputed. Creating them in Paddle is still to do (docs/REGIONS.md).`), () => recomputeCardPrices(ctx));
 }
 
 export async function addAvailabilityAction(f: FormData) {
   const ctx = await adminAction(["system", "demos"]);
-  await finish(`${BACK}#availability`, "Window added.", () => addAvailability(ctx, { weekday: Number(text(f, "weekday")), start: text(f, "start"), end: text(f, "end") }));
+  await finish(settingsHref("availability"), "Window added.", () => addAvailability(ctx, { weekday: Number(text(f, "weekday")), start: text(f, "start"), end: text(f, "end") }));
 }
 
 export async function removeAvailabilityAction(f: FormData) {
   const ctx = await adminAction(["system", "demos"]);
-  await finish(`${BACK}#availability`, "Window removed.", () => removeAvailability(ctx, text(f, "id")));
+  await finish(settingsHref("availability"), "Window removed.", () => removeAvailability(ctx, text(f, "id")));
 }
 
 // ---- Google Calendar (connecting is a link to /api/admin/google-calendar/connect, which checks AAL2 itself) ----------
 
-const GOOGLE = `${BACK}#google-calendar`;
+const GOOGLE = settingsHref("google-calendar");
 
 export async function testGoogleCalendarAction() {
   await adminAction(["system", "demos"]); // read-only, so nothing to audit; the admin gate (AAL2) still runs first
@@ -75,7 +77,7 @@ export async function disconnectGoogleCalendarAction() {
 
 // ---- Card payments (Paddle); the Mobile Money form uses savePaymentSettingsAction (../payments/actions.ts) ---------------------------------------------
 
-const PADDLE = `${BACK}#paddle`;
+const PADDLE = settingsHref("paddle");
 
 /** Saves the environment and any secret typed (an empty field keeps the saved one). Values are never sent back. */
 export async function savePaddleSettingsAction(f: FormData) {
@@ -116,7 +118,7 @@ export async function paddleSetUpStepAction(step: string, attempted: string[] = 
 
 // ---- Lead alerts: Telegram (the bot token is saved in Admin -> Services; lib/lead-alerts/telegram-settings.ts) ------------
 
-const ALERTS = `${BACK}#lead-alerts`;
+const ALERTS = settingsHref("lead-alerts");
 
 /** "Connect": finds the chat that sent /start to the bot and saves it. Audited. */
 export async function connectTelegramAction() {

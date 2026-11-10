@@ -168,6 +168,20 @@ is a small pill "Back to ..." link for sub-pages (or use `PageHeader`'s `back`).
 
 A white icon on a tone gradient (`size="sm|md|lg"`). Decorative: always next to text that says the same.
 
+### `RadioChips` and `SwitchRow` (forms; import from `@/components/admin/kit/form-choices`)
+
+Choices **inside a form**, instead of a `<select>` or a bare checkbox. `RadioChips` is real radio buttons drawn as chips
+(or `tiles` with an icon and a hint each), so the form posts `name=value` exactly like the select did, works without
+JavaScript and the arrow keys move between options; the chosen one has a ring and a tick. `SwitchRow` is a real checkbox
+(`role="switch"`, posts `name=on` when on, nothing when off) drawn as a switch, with a label and a plain line.
+
+```tsx
+<RadioChips name="environment" legend="Which Paddle account" tiles defaultValue={env} options={[{ value: "sandbox", label: "Sandbox", hint: "For testing.", icon: FlaskConical }, { value: "production", label: "Live", hint: "Real payments." }]} />
+<SwitchRow name="dailyPosts" defaultChecked={on} label="Make daily posts for clients" hint="Stops for everyone when off." />
+```
+
+Radios group per form, so the same `name` in several forms on one page is fine.
+
 ## The older pieces (`components/admin/ui.tsx`)
 
 `Panel`, `Section`, `Stat`, `HowCalculated`, `Empty`, `TableWrap`/`Th`/`Td`, `RangeTabs` and the `notice` class strings
