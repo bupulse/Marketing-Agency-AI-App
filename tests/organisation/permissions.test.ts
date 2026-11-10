@@ -39,7 +39,7 @@ vi.mock("@/lib/admin/auth", async (orig) => {
 // Anything past the gate must not reach a real database or service: make every call fail loudly but not as a 404.
 vi.mock("@/lib/db", () => ({ prisma: new Proxy({}, { get: () => { throw new Error("db not available in this test"); } }) }));
 
-import { ADMIN_PAGES } from "@/components/admin/nav";
+import { ADMIN_PAGES, hubFor } from "@/components/admin/nav";
 import { BUILT_IN_ROLES, isPermission, permissionsOf, type Permission } from "@/lib/staff/permissions";
 
 const ROOT = join(process.cwd(), "app/admin/(console)");
@@ -68,6 +68,12 @@ describe("every admin page names its permission", () => {
       const url = urlOf(file);
       if (url === "/admin") {
         expect(src, url).toMatch(/can\(me, "overview"\)/);
+        continue;
+      }
+      // A group's hub (landing page of cards) opens for anyone who may open one of the group's pages
+      // (hubPermissions, checked in tests/admin/hubs.test.ts) and shows only the cards they may open.
+      if (url === "/admin/hub/[group]" || hubFor(url)) {
+        expect(src, url).toMatch(/requirePermission\(hubPermissions\(group\)\)/);
         continue;
       }
       const m = /requirePermission\(([^)]*)\)/.exec(src);

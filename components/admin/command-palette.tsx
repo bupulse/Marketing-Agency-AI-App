@@ -1,14 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Building2, CornerDownLeft, Search, X } from "lucide-react";
+import { Building2, CornerDownLeft, Search, X, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { searchPages } from "./nav";
+import { IconBadge } from "./kit/icon-badge";
+import type { KitTone } from "./kit/tones";
 import type { Permission } from "@/lib/staff/permissions";
 
 type Company = { id: string; name: string; email: string | null; plan: string | null; status: string | null };
-type Result = { key: string; href: string; title: string; sub: string; kind: "page" | "company" };
+type Result = { key: string; href: string; title: string; sub: string; kind: "page" | "company"; icon?: LucideIcon; tone?: KitTone };
 
 /**
  * Jump to any admin page or company: Cmd+K (Mac) or Ctrl+K, or the Search button. Arrow keys move, Enter opens, Esc
@@ -54,7 +56,7 @@ export function CommandPalette({ open, onOpenChange, permissions }: { open: bool
   }, [q, open, companies_]);
 
   const results: Result[] = useMemo(() => {
-    const pages = searchPages(q).filter((p) => allowed(p.perm)).slice(0, q ? 8 : 40).map((p) => ({ key: p.href, href: p.href, title: p.label, sub: p.group.title ? `${p.group.title} · ${p.description}` : p.description, kind: "page" as const }));
+    const pages = searchPages(q).filter((p) => allowed(p.perm)).slice(0, q ? 8 : 40).map((p) => ({ key: p.href, href: p.href, title: p.label, sub: p.group.title ? `${p.group.title} · ${p.description}` : p.description, kind: "page" as const, icon: p.icon, tone: p.group.tone }));
     const firms = !companies_ || q.trim().length < 2 ? [] : companies.map((c) => ({ key: `c:${c.id}`, href: `/admin/companies/${c.id}`, title: c.name, sub: [c.email, c.plan, c.status?.toLowerCase()].filter(Boolean).join(" · "), kind: "company" as const }));
     return [...pages, ...firms];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,10 +76,11 @@ export function CommandPalette({ open, onOpenChange, permissions }: { open: bool
   const current = Math.min(active, Math.max(0, results.length - 1));
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-3 pt-[10vh] backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div role="dialog" aria-modal="true" aria-label="Search the admin console" className="glass-strong flex max-h-[75vh] w-full max-w-xl flex-col overflow-hidden rounded-[24px] bg-surface">
-        <div className="flex items-center gap-2 border-b border-line px-4">
-          <Search aria-hidden className="size-5 shrink-0 text-muted" />
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 p-3 pt-[8vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <div role="dialog" aria-modal="true" aria-label="Search the admin console" className="relative flex max-h-[78vh] w-full max-w-xl flex-col overflow-hidden rounded-[24px] border border-line bg-surface shadow-[0_30px_80px_-30px_rgba(17,24,39,0.6)] dark:bg-[#15151b]">
+        <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-brand-gradient" />
+        <div className="flex items-center gap-2 border-b border-line px-4 pt-1">
+          <Search aria-hidden className="size-5 shrink-0 text-pulse-blue dark:text-[#8db0ff]" />
           <input
             ref={input}
             value={q}
@@ -104,7 +107,8 @@ export function CommandPalette({ open, onOpenChange, permissions }: { open: bool
             aria-controls="admin-search-results"
             aria-activedescendant={results[current] ? `res-${results[current].key}` : undefined}
             placeholder={companies_ ? "Find a page or a company..." : "Find a page..."}
-            className="min-h-14 flex-1 bg-transparent text-[16px] outline-none placeholder:text-muted"
+            style={{ outline: "none" }}
+            className="min-h-14 flex-1 bg-transparent text-[16px] font-medium outline-none placeholder:font-normal placeholder:text-muted"
           />
           <button type="button" onClick={close} aria-label="Close search" className="inline-flex size-11 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-soft">
             <X aria-hidden className="size-5" />
@@ -120,18 +124,18 @@ export function CommandPalette({ open, onOpenChange, permissions }: { open: bool
               aria-selected={i === current}
               onMouseEnter={() => setActive(i)}
               onClick={() => go(r)}
-              className={cn("flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl px-3 py-2", i === current && "bg-soft")}
+              className={cn("flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl px-2.5 py-2", i === current && "bg-soft ring-1 ring-pulse-blue/25")}
             >
-              {r.kind === "company" ? <Building2 aria-hidden className="size-4 shrink-0 text-pulse-violet" /> : <span aria-hidden className="size-4 shrink-0 rounded-full bg-pulse-blue/20" />}
+              <IconBadge icon={r.kind === "company" ? Building2 : (r.icon ?? Search)} tone={r.kind === "company" ? "violet" : (r.tone ?? "blue")} size="sm" />
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-[15px] font-medium">{r.title}</span>
+                <span className="truncate text-[15px] font-semibold">{r.title}</span>
                 <span className="truncate text-xs text-muted">{r.kind === "company" ? `Company · ${r.sub}` : r.sub}</span>
               </span>
               {i === current && <CornerDownLeft aria-hidden className="size-4 shrink-0 text-muted" />}
             </li>
           ))}
         </ul>
-        <p className="border-t border-line px-4 py-2 text-xs text-muted">Up and down to move, Enter to open, Esc to close.</p>
+        <p className="hidden border-t border-line px-4 py-2 text-xs text-muted sm:block">Up and down to move, Enter to open, Esc to close.</p>
       </div>
     </div>
   );

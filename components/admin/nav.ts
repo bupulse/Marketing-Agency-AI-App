@@ -48,6 +48,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/staff/permissions";
+import type { KitTone } from "./kit/tones";
 
 // The admin console's map: one group ("folder") per area, each page with a one-line explanation. The sidebar, the
 // breadcrumbs, the page headers and the search (Cmd/Ctrl+K) all read this list, so a page added here is findable
@@ -56,12 +57,17 @@ import type { Permission } from "@/lib/staff/permissions";
 export type BadgeKey = "inbox" | "quotes" | "approvals" | "payments" | "requests" | "reports" | "health" | "errors";
 /** `perm`: the permission the page needs (any of a list); the page checks it and the menu hides what you cannot open. */
 export type AdminNavItem = { href: string; perm: Permission | readonly Permission[]; label: string; icon: LucideIcon; description: string; badge?: BadgeKey; keywords?: string };
-export type AdminNavGroup = { id: string; title: string | null; icon?: LucideIcon; items: AdminNavItem[] };
+/**
+ * `hub`: the group's landing page of section cards (the hub routes under app/admin/(console)/); `hint`: one line on
+ * what the group holds (hub header, More sheet, Overview cards); `tone`: the colour of its icon badges.
+ */
+export type AdminNavGroup = { id: string; title: string | null; icon?: LucideIcon; items: AdminNavItem[]; hub?: string; hint?: string; tone?: KitTone };
 
 export const ADMIN_NAV: AdminNavGroup[] = [
   {
     id: "home",
     title: null,
+    tone: "blue",
     items: [
       { href: "/admin", perm: "overview", label: "Overview", icon: Gauge, description: "Today and this month at a glance: money, clients, AI spend and what needs you." },
       { href: "/admin/inbox", perm: "overview", label: "Inbox", icon: Inbox, badge: "inbox", description: "Everything waiting for you: payments, demos, requests, invoices, offers.", keywords: "to-do todo tasks" },
@@ -71,6 +77,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     id: "sales",
     title: "Sales",
     icon: Handshake,
+    hub: "/admin/hub/sales",
+    tone: "orange",
+    hint: "People to call, your clients, the sales team and partners.",
     items: [
       { href: "/admin/quotes", perm: "requests", label: "Quote requests", icon: PhoneCall, badge: "quotes", description: "\"Get a free quote\" requests from the website, newest first: call or WhatsApp them, then mark them called.", keywords: "leads quote call phone instagram facebook rwanda telegram" },
       { href: "/admin/sales", perm: "clients.own", label: "My clients", icon: Contact, description: "Your clients: contact, plan, trial days left, last sign-in, posts and payment status, and your referral link.", keywords: "agent referral link whatsapp" },
@@ -83,6 +92,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     id: "clients",
     title: "Clients",
     icon: Users,
+    hub: "/admin/clients",
+    tone: "blue",
+    hint: "Every company and person, who is healthy, what they use, demos and requests.",
     items: [
       { href: "/admin/companies", perm: "clients.view", label: "Companies", icon: Building2, description: "Every company, newest first. Open one for its users, usage and actions.", keywords: "business customers" },
       { href: "/admin/users", perm: "clients.view", label: "Users", icon: Users, description: "Every person with an account, and their company.", keywords: "people email" },
@@ -98,6 +110,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     id: "money",
     title: "Money",
     icon: Wallet,
+    hub: "/admin/money",
+    tone: "green",
+    hint: "Revenue and profit, payments to confirm, invoices, plans, prices and costs.",
     items: [
       { href: "/admin/revenue", perm: "money.revenue", label: "Revenue and profit", icon: Coins, description: "Revenue from every client ever, MRR, ARPU, churn, costs and profit by month.", keywords: "income mrr arpu churn lifetime" },
       { href: "/admin/costs", perm: "money.costs", label: "Costs", icon: Receipt, description: "Hosting, the domain, subscriptions and each AI provider's real bill or estimate.", keywords: "expenses bills hosting domain google" },
@@ -113,6 +128,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     id: "livechat",
     title: "Live chat",
     icon: Headset,
+    tone: "teal",
+    hint: "BuPulse's own help chat: agents, departments, hours and greetings.",
     items: [
       { href: "/admin/live-chat", perm: "liveChat", label: "Live chat", icon: Headset, description: "Support agents, departments, team hours, greetings and the AI rules of BuPulse's own help chat.", keywords: "support agents chat helpdesk tawk" },
     ],
@@ -121,6 +138,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     id: "content",
     title: "Content",
     icon: Palette,
+    hub: "/admin/hub/content",
+    tone: "pink",
+    hint: "What clients post, funnels, the design and music libraries, banners and testimonials.",
     items: [
       { href: "/admin/content", perm: "content", label: "Content performance", icon: ChartLine, description: "What clients post and how it performs." },
       { href: "/admin/funnels", perm: "content", label: "Funnels", icon: Funnel, description: "Visit to sign-up to paying, and where people drop off.", keywords: "conversion marketing" },
@@ -135,6 +155,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     id: "ai",
     title: "AI and usage",
     icon: Cpu,
+    hub: "/admin/hub/ai",
+    tone: "violet",
+    hint: "AI spend against the cap, money approvals, the Training Lab and Jarvis.",
     items: [
       { href: "/admin/ai", perm: "ai", label: "AI calls and spend", icon: Cpu, description: "AI spend against the monthly cap, by day, model, feature and client.", keywords: "gemini claude elevenlabs budget tokens" },
       { href: "/admin/approvals", perm: "approvals.decide", label: "Approvals", icon: BadgeCheck, badge: "approvals", description: "Money requests from Jarvis or the console, waiting for your OK." },
@@ -146,6 +169,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     id: "system",
     title: "System",
     icon: Wrench,
+    hub: "/admin/system",
+    tone: "slate",
+    hint: "Is everything up: health, services, errors, logs, flags, settings and updates.",
     items: [
       { href: "/admin/health", perm: "system", label: "Health", icon: HeartPulse, badge: "health", description: "Jobs, queues and checks: is anything down?" },
       { href: "/admin/services", perm: "system", label: "Services", icon: Server, description: "Every outside service: test it, switch it off." },
@@ -161,6 +187,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     id: "organisation",
     title: "Organisation",
     icon: Network,
+    hub: "/admin/hub/organisation",
+    tone: "indigo",
+    hint: "Who works in the console, their roles, and the sales room screen.",
     items: [
       { href: "/admin/organisation", perm: "staff.manage", label: "Staff", icon: ShieldCheck, description: "Who works in the console, their role, invitations, disabling and removing.", keywords: "team people invite roles permissions" },
       { href: "/admin/organisation/roles", perm: "staff.manage", label: "Roles", icon: Layers, description: "Built-in roles and custom roles with ticked permissions." },
@@ -183,14 +212,29 @@ export function findNavItem(pathname: string): (AdminNavItem & { group: AdminNav
 
 export type Crumb = { label: string; href?: string };
 
-/** Admin > Money > Invoices > Details: the group, the page, and "Details" for anything below the page. */
+/** The group whose hub (landing page of cards) is this path, if any. */
+export function hubFor(pathname: string): AdminNavGroup | null {
+  return ADMIN_NAV.find((g) => g.hub && g.hub === pathname) ?? null;
+}
+
+/** The group with this id, when it has a hub. */
+export const hubGroup = (id: string): AdminNavGroup | null => ADMIN_NAV.find((g) => g.id === id && g.hub) ?? null;
+
+/** Every permission that opens at least one page of a group: its hub asks for any one of them. */
+export function hubPermissions(group: AdminNavGroup): Permission[] {
+  return [...new Set(group.items.flatMap((i) => (typeof i.perm === "string" ? [i.perm] : [...i.perm])))];
+}
+
+/** Admin > Money > Invoices > Details: the group (linking to its hub), the page, and "Details" for anything below. */
 export function breadcrumbsFor(pathname: string): Crumb[] {
+  const hub = hubFor(pathname);
+  if (hub) return [{ label: "Admin", href: "/admin" }, { label: hub.title ?? "" }];
   const item = findNavItem(pathname);
   if (!item) return [{ label: "Admin", href: "/admin" }];
   const crumbs: Crumb[] = [{ label: "Admin", href: "/admin" }];
   if (item.href === "/admin") return [{ label: "Overview" }];
   // A one-page folder named like its page (Live chat) is not repeated.
-  if (item.group.title && item.group.title !== item.label) crumbs.push({ label: item.group.title });
+  if (item.group.title && item.group.title !== item.label) crumbs.push(item.group.hub ? { label: item.group.title, href: item.group.hub } : { label: item.group.title });
   const deeper = pathname !== item.href;
   crumbs.push({ label: item.label, href: deeper ? item.href : undefined });
   if (deeper) {
@@ -208,6 +252,49 @@ export function navFor(permissions: readonly Permission[]): AdminNavGroup[] {
 
 /** The first page a person may open (where /admin sends someone without the Overview). */
 export const firstPageFor = (permissions: readonly Permission[]): string | null => navFor(permissions)[0]?.items[0]?.href ?? null;
+
+/**
+ * Where a group leads one person (pass their filtered group from navFor): straight to the page when they can open only
+ * one, otherwise the group's hub (or its first page when it has none).
+ */
+export function groupHref(group: AdminNavGroup): string {
+  if (group.items.length === 1 || !group.hub) return group.items[0]?.href ?? "/admin";
+  return group.hub;
+}
+
+/** Whether a path is inside a group: one of its pages (or below one), or its hub. */
+export function inGroup(pathname: string, groupId: string): boolean {
+  return findNavItem(pathname)?.group.id === groupId || hubFor(pathname)?.id === groupId;
+}
+
+export type PhoneTab = { key: string; href: string; label: string; icon: LucideIcon; badges: BadgeKey[]; groupId: string | null };
+
+/**
+ * The phone tab bar for one person (the shell adds More): Overview, Inbox, Clients and Sales when they may open them,
+ * topped up to four with their other groups in menu order. Everything else is in the More sheet.
+ */
+export function phoneTabsFor(permissions: readonly Permission[]): PhoneTab[] {
+  const groups = navFor(permissions);
+  const home = groups.find((g) => g.id === "home");
+  const tabs: PhoneTab[] = [];
+  const addGroup = (g: AdminNavGroup) => {
+    if (tabs.some((t) => t.groupId === g.id)) return;
+    tabs.push({ key: g.id, href: groupHref(g), label: g.title ?? "", icon: g.icon ?? Gauge, badges: g.items.flatMap((i) => (i.badge ? [i.badge] : [])), groupId: g.id });
+  };
+  for (const href of ["/admin", "/admin/inbox"]) {
+    const item = home?.items.find((i) => i.href === href);
+    if (item) tabs.push({ key: item.href, href: item.href, label: item.label, icon: item.icon, badges: item.badge ? [item.badge] : [], groupId: null });
+  }
+  for (const id of ["clients", "sales"]) {
+    const g = groups.find((x) => x.id === id);
+    if (g) addGroup(g);
+  }
+  for (const g of groups) {
+    if (tabs.length >= 4) break;
+    if (g.id !== "home") addGroup(g);
+  }
+  return tabs.slice(0, 4);
+}
 
 /** Simple ranking for the search: label start, then word start, then anywhere (label, group, keywords). */
 export function searchPages(query: string): (AdminNavItem & { group: AdminNavGroup })[] {

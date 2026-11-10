@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { BackgroundBlobs } from "@/components/motion";
 import { AdminShell, type ShellBadges } from "@/components/admin/shell";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getHealthSummary } from "@/lib/admin/health";
@@ -26,7 +25,7 @@ export default async function AdminConsoleLayout({ children }: { children: React
   };
   return (
     <>
-      <BackgroundBlobs />
+      {/* A plain calm page now (the support app's look): the moving background blobs are gone. */}
       <AdminShell email={admin.email} roleName={admin.isOwner && !admin.staffId ? undefined : admin.roleName} permissions={admin.permissions} badges={badges} currency={display.currency}>
         {children}
       </AdminShell>

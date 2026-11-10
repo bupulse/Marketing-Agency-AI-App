@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ADMIN_NAV, ADMIN_PAGES, breadcrumbsFor, findNavItem, searchPages } from "@/components/admin/nav";
+import { ADMIN_NAV, ADMIN_PAGES, breadcrumbsFor, findNavItem, hubFor, searchPages } from "@/components/admin/nav";
 
 const ROOT = join(process.cwd(), "app/admin/(console)");
 
@@ -20,8 +20,8 @@ function pageUrls(dir = ROOT): string[] {
 }
 
 describe("admin map", () => {
-  it("puts every console page in a sidebar folder (details pages under their list)", () => {
-    const missing = pageUrls().filter((url) => !findNavItem(url.replace(/\[[^\]]+\]/g, "x")));
+  it("puts every console page in a sidebar folder (details pages under their list; hubs are a folder's own page)", () => {
+    const missing = pageUrls().filter((url) => url !== "/admin/hub/[group]" && !findNavItem(url.replace(/\[[^\]]+\]/g, "x")) && !hubFor(url));
     expect(missing).toEqual([]);
   });
 
@@ -47,7 +47,7 @@ describe("admin map", () => {
   it("matches the most specific page and builds breadcrumbs", () => {
     expect(findNavItem("/admin/settings/regions")?.label).toBe("Regions");
     expect(findNavItem("/admin/settings")?.label).toBe("Settings");
-    expect(breadcrumbsFor("/admin/invoices/abc")).toEqual([{ label: "Admin", href: "/admin" }, { label: "Money" }, { label: "Invoices", href: "/admin/invoices" }, { label: "Details" }]);
+    expect(breadcrumbsFor("/admin/invoices/abc")).toEqual([{ label: "Admin", href: "/admin" }, { label: "Money", href: "/admin/money" }, { label: "Invoices", href: "/admin/invoices" }, { label: "Details" }]);
     expect(breadcrumbsFor("/admin/offers/new").at(-1)).toEqual({ label: "New" });
     expect(breadcrumbsFor("/admin")).toEqual([{ label: "Overview" }]);
   });

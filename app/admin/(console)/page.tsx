@@ -2,19 +2,21 @@ import { moneyFmt } from "@/components/admin/money";
 import { adminMoney } from "@/lib/money/display-server";
 import { notFound, redirect } from "next/navigation";
 import { can, requireAdmin } from "@/lib/admin/auth";
-import { findNavItem, firstPageFor } from "@/components/admin/nav";
+import { findNavItem, firstPageFor, navFor } from "@/components/admin/nav";
 import Link from "next/link";
-import { PageHeader } from "@/components/app";
+import { Activity, ChartLine, Smartphone, Sun } from "lucide-react";
 import { LineChart } from "@/components/admin/charts";
 import { ActivityFeed } from "@/components/admin/activity-feed";
-import { OverviewDashboard, type OverviewData } from "@/components/admin/overview-dashboard";
-import { Empty, Panel, notice } from "@/components/admin/ui";
-import { Badge } from "@/components/ui";
+import { AreaCards, OverviewDashboard, OverviewToday, areaFigures, greeting, kigaliDayLabel, needsYouItems, type OverviewData } from "@/components/admin/overview-dashboard";
+import { KitStyles } from "@/components/admin/kit/kit-styles";
+import { PageHeader } from "@/components/admin/kit/page-header";
+import { TodoList } from "@/components/admin/kit/todo-list";
+import { Empty, Panel, Section, notice } from "@/components/admin/ui";
 import { getActivity } from "@/lib/admin/activity";
 import { getAiBudgetStatus } from "@/lib/admin/ai-usage";
 import { getAttention } from "@/lib/admin/attention";
 import { param, rangeFor } from "@/lib/admin/format";
-import { getInboxCounts, inboxTotalFor } from "@/lib/admin/inbox";
+import { getInboxCounts, inboxTotalFor, INBOX_PERMISSION, type InboxKey } from "@/lib/admin/inbox";
 import { getClientCounts, getDemosToday } from "@/lib/admin/overview";
 import { getMetrics } from "@/lib/analytics/queries";
 import { getMoneyReportCached } from "@/lib/money/report";
@@ -29,6 +31,11 @@ export const metadata = { title: "Overview" };
 
 const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
+const link = "text-sm font-semibold text-pulse-blue underline-offset-2 hover:underline dark:text-[#8db0ff]";
+
+// The console's home, calm (owner, 10 Nov 2026): a greeting, "Needs you" (every to-do and warning this person may act
+// on), the payments waiting (approve or reject right here, as before), today's numbers, one card per area, then this
+// month's money, clients and AI, today's payments and timeline, and the visits chart and live feed. Same data as before.
 export default async function AdminOverview({ searchParams }: PageProps<"/admin">) {
   const me = await requireAdmin(); // pages render alongside the layout, so check here too
   // Without the Overview (a sales agent, the content team...), /admin opens the first page the role may see.
@@ -82,31 +89,51 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
     ai,
   };
 
+  // The to-do counts this person may act on (the same rule as the Inbox and its badge).
+  const myCounts: Partial<Record<InboxKey, number>> = {};
+  for (const key of Object.keys(INBOX_PERMISSION) as InboxKey[]) if (can(me, INBOX_PERMISSION[key])) myCounts[key] = inbox[key];
+  const todos = needsYouItems({ counts: myCounts, attention: attentionShown, paymentsWaiting: waiting });
+  const groups = navFor(me.permissions).filter((g) => g.id !== "home");
+  const figures = areaFigures({ counts: myCounts, d: data, fx, see: { money: seeMoney, clients: can(me, "clients.view"), ai: can(me, "ai"), system: can(me, "system") } });
+
   const dates = (series.visits ?? []).filter((x) => x.dimension === "").map((x) => x.date);
   const col = (key: string) => {
     const by = new Map((series[key] ?? []).filter((x) => x.dimension === "").map((x) => [x.date, x.value]));
     return dates.map((d) => by.get(d) ?? 0);
   };
+  const now = new Date();
 
   return (
     <>
-      <PageHeader title="Overview" description="Today and this month at a glance. Every number links to the page behind it." />
+      <KitStyles />
+      <PageHeader
+        icon={Sun}
+        tone="orange"
+        eyebrow={kigaliDayLabel(now)}
+        title={greeting(now, me.email)}
+        description={todos.length ? "Here is what needs you today. Everything else is one tap away in the cards below." : "Nothing is waiting for you. Everything else is one tap away in the cards below."}
+      />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
-      {seeMoney && !report && <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">The money numbers could not be loaded just now. Reload in a moment.</p>}
+      {seeMoney && !report && <p role="alert" className={notice.bad}>The money numbers could not be loaded just now. Reload in a moment.</p>}
 
-      {seePayments && (
+      <Section title="Needs you" description="Anything waiting for you or looking wrong right now, worst first." action={<Link href="/admin/inbox" className={link}>Open the inbox</Link>}>
+        <TodoList items={todos} limit={6} columns={2} empty={{ title: "Nothing needs you right now.", hint: "No to-dos and no warnings. System health is all good." }} />
+      </Section>
+
+      {seePayments && (pending === null || pending.length > 0) && (
         <Panel
+          id="waiting"
+          icon={Smartphone}
+          tone="green"
           title={waiting ? `Waiting for approval (${waiting})` : "Waiting for approval"}
           description={canApprove ? "Mobile Money payments clients say they made. Check the money arrived, then approve or reject with a reason." : "Mobile Money payments waiting for Finance or the owner."}
-          action={<Link href="/admin/payments" className="text-sm font-medium underline">All payments</Link>}
+          action={<Link href="/admin/payments" className={link}>All payments</Link>}
         >
           {pending === null ? (
             <p role="alert" className={notice.bad}>
               The payments waiting could not be loaded just now. Reload in a moment, or open <Link href="/admin/payments" className="underline">Payments</Link>.
             </p>
-          ) : pending.length === 0 ? (
-            <Empty>Nothing to approve right now.</Empty>
           ) : (
             <>
               <PendingPaymentList items={pending} canApprove={canApprove} confirmAction={confirmPaymentAction} rejectAction={rejectPaymentAction} />
@@ -116,30 +143,25 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
         </Panel>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <Section title="Today" description="Right now, at a glance. Tap a number for the page behind it.">
+        <OverviewToday d={data} />
+      </Section>
+
+      {groups.length > 0 && (
+        <Section title="Go to" description="Every area of the console, one card each. The number is the one to watch.">
+          <AreaCards groups={groups} figures={figures} />
+        </Section>
+      )}
+
+      <OverviewDashboard d={data} fx={fx} today={false} show={{ money: seeMoney, clients: can(me, "clients.view"), ai: can(me, "ai") }} />
+
+      <div className="grid items-start gap-5 xl:grid-cols-2">
         {(seePayments || seeMoney) && <TodayPayments payments={todayPayments} fx={fx} />}
         <TodayTimeline items={timeline} />
       </div>
 
-      <Panel title="Needs your attention" description="Anything waiting for you or looking wrong right now." action={<Link href="/admin/inbox" className="text-sm font-medium underline">Open the inbox</Link>}>
-        {attentionShown.length === 0 ? (
-          <p role="status" className="rounded-2xl bg-success-bg px-4 py-3 text-[15px] font-medium text-success">Nothing needs you right now. <Link href="/admin/health" className="underline">System health</Link> is all good.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {attentionShown.slice(0, 8).map((a) => (
-              <li key={a.key} className="flex items-start gap-3 text-[15px]">
-                <Badge tone={a.level === "problem" ? "danger" : "violet"}>{a.level}</Badge>
-                <Link href={a.href} className="underline">{a.text}</Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-
-      <OverviewDashboard d={data} fx={fx} show={{ money: seeMoney, clients: can(me, "clients.view"), ai: can(me, "ai") }} />
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Visits and sign-ups, 30 days" description="Daily counts from BuPulse's own tracker." action={<Link href="/admin/funnels" className="text-sm font-medium underline">Funnels</Link>}>
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <Panel icon={ChartLine} tone="pink" title="Visits and sign-ups, 30 days" description="Daily counts from BuPulse's own tracker." action={<Link href="/admin/funnels" className={link}>Funnels</Link>}>
           {dates.length > 1 ? (
             <LineChart
               labels={dates}
@@ -153,7 +175,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
             <Empty>No daily data yet. It appears after the first visits and the nightly roll-up.</Empty>
           )}
         </Panel>
-        <Panel title="Live activity" description="The latest things that happened. Updates every 5 seconds." action={<Link href="/admin/activity" className="text-sm font-medium underline">Full feed</Link>}>
+        <Panel icon={Activity} tone="slate" title="Live activity" description="The latest things that happened. Updates every 5 seconds." action={<Link href="/admin/activity" className={link}>Full feed</Link>}>
           <ActivityFeed initial={activity} compact limit={8} />
         </Panel>
       </div>
