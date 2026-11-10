@@ -4,11 +4,12 @@ import { adminAction, finish } from "@/lib/admin/console";
 import { AdminError } from "@/lib/admin/types";
 import { setApprovedVoice } from "@/lib/content-languages/service";
 import { APPROVAL_LANGUAGES, type ApprovalLanguage } from "@/lib/content-languages/voice";
+import { settingsHref } from "@/components/admin/system/settings-areas";
 
-// Admin -> Settings, "Voices for Kinyarwanda and Swahili" (lib/content-languages/voice.ts): the voice the owner approved
+// Admin -> Settings -> Kinyarwanda and Swahili voices (/admin/settings/voices) (lib/content-languages/voice.ts): the voice the owner approved
 // for a language's daily videos, or none (music and subtitles only). Audited.
 
-const BACK = "/admin/settings#language-voices";
+const BACK = settingsHref("voices");
 
 function languageOf(f: FormData): ApprovalLanguage {
   const language = String(f.get("language") ?? "");

@@ -1,6 +1,9 @@
+import { Repeat, Zap } from "lucide-react";
 import { ConfirmButton } from "@/components/admin/confirm-button";
+import { RadioChips } from "@/components/admin/kit/form-choices";
+import { StatusPill } from "@/components/admin/kit";
 import { Panel } from "@/components/admin/ui";
-import { Badge, Field, Input, Meter, Select } from "@/components/ui";
+import { Field, Input, Meter } from "@/components/ui";
 import type { InboxAdminView } from "@/lib/social/inbox/admin";
 import { MAX_MONTHLY_CAP } from "@/lib/social/inbox/settings";
 import { setInboxCapAction, setInboxTransportAction, setPrivateReplyAction } from "@/app/admin/(console)/(system)/services/inbox-actions";
@@ -16,7 +19,7 @@ export function SocialInboxPanel({ view }: { view: InboxAdminView }) {
     <Panel
       title="Instagram and Facebook replies"
       description="Brings clients' Instagram and Facebook comments and DMs into their inbox so automations and their team can answer. BuPulse-Socials checks each switched-on account every few minutes (Composio has no notifications for Meta); Meta direct gets them instantly from Meta's webhooks once Meta has approved BuPulse."
-      action={<Badge tone={ready ? "success" : "danger"}>{ready ? "Working" : "Not set up"}</Badge>}
+      action={ready ? <StatusPill tone="good" dot>Working</StatusPill> : <StatusPill tone="bad" dot>Not set up</StatusPill>}
     >
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
         <dt className="text-muted">Route</dt>
@@ -24,7 +27,7 @@ export function SocialInboxPanel({ view }: { view: InboxAdminView }) {
           {composio ? "BuPulse-Socials (Composio)" : "Meta direct (BuPulse's own Meta app)"}
           {!ready && (
             <span className="block text-xs text-danger">
-              {composio ? "Composio needs COMPOSIO_API_KEY and must be switched on (its card above)." : "Meta direct needs FACEBOOK_APP_SECRET or INSTAGRAM_APP_SECRET, META_WEBHOOK_VERIFY_TOKEN, and Meta switched on."}
+              {composio ? "Composio needs COMPOSIO_API_KEY and must be switched on (its page in Services)." : "Meta direct needs FACEBOOK_APP_SECRET or INSTAGRAM_APP_SECRET, META_WEBHOOK_VERIFY_TOKEN, and Meta switched on."}
             </span>
           )}
         </dd>
@@ -56,12 +59,17 @@ export function SocialInboxPanel({ view }: { view: InboxAdminView }) {
           confirmLabel="Save"
           pendingLabel="Saving…"
         >
-          <Field label="Route" required>
-            <Select name="transport" defaultValue={settings.transport} required>
-              <option value="composio">BuPulse-Socials (Composio): checks every few minutes</option>
-              <option value="meta">Meta direct: webhooks, needs Meta approval</option>
-            </Select>
-          </Field>
+          <RadioChips
+            name="transport"
+            legend="Route"
+            required
+            tiles
+            defaultValue={settings.transport}
+            options={[
+              { value: "composio", label: "BuPulse-Socials (Composio)", hint: "Checks every few minutes.", icon: Repeat, tone: "slate" },
+              { value: "meta", label: "Meta direct", hint: "Instant webhooks, needs Meta approval.", icon: Zap, tone: "blue" },
+            ]}
+          />
         </ConfirmButton>
         <ConfirmButton
           action={setInboxCapAction}

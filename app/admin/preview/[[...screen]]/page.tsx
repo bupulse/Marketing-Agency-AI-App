@@ -17,12 +17,13 @@ import { BOOKS } from "@/lib/money/display";
 import { BUSINESS_SCREENS } from "../business-screens";
 import { MONEY_SCREENS } from "../money-screens";
 import { PREVIEW_ATTENTION, PREVIEW_BADGES, PREVIEW_COMPANIES, PREVIEW_COUNTS, PREVIEW_OVERVIEW, PREVIEW_PAYMENTS, PREVIEW_TIMELINE, previewPermissions, type PreviewCompany } from "../preview-data";
+import { SYSTEM_SCREENS, SystemPreview, isSystemScreen, systemPreviewPath } from "../system-screens";
 
 const fx = moneyFmt({ ...BOOKS, currency: "RWF" });
 
 export const metadata = { title: "Preview" };
 
-const SCREENS = ["overview", "hub", "kit"] as const;
+const SCREENS = ["overview", "hub", "kit", ...SYSTEM_SCREENS] as const;
 /** Round 2's section screens (Clients, Sales, Money), each with the console path it stands for. */
 const MORE_SCREENS = { ...BUSINESS_SCREENS, ...MONEY_SCREENS };
 
@@ -52,12 +53,12 @@ export default async function AdminPreviewPage({ params, searchParams }: PagePro
   const can = (p: readonly string[] | string) => (typeof p === "string" ? [p] : p).some((x) => who.permissions.includes(x as never));
   const groupId = typeof sp.group === "string" ? sp.group : "money";
   const group = hubGroup(groupId) ?? hubGroup("money")!;
-  const path = which === "hub" ? group.hub! : which === "kit" ? "/admin/companies" : "/admin";
+  const path = isSystemScreen(which) ? systemPreviewPath(which, sp) : which === "hub" ? group.hub!: which === "kit" ? "/admin/companies" : "/admin";
 
   return (
     <AdminShell email={who.email} roleName={who.roleName} permissions={who.permissions} badges={PREVIEW_BADGES} currency="RWF" pathname={path}>
       <KitStyles />
-      {which === "overview" ? <OverviewPreview can={can} email={who.email} permissions={who.permissions} /> : which === "hub" ? <HubPreview groupId={group.id} permissions={who.permissions} /> : <KitPreview sp={sp} />}
+      {isSystemScreen(which) ? <SystemPreview which={which} sp={sp} /> : which === "overview" ?<OverviewPreview can={can} email={who.email} permissions={who.permissions} /> : which === "hub" ? <HubPreview groupId={group.id} permissions={who.permissions} /> : <KitPreview sp={sp} />}
     </AdminShell>
   );
 }

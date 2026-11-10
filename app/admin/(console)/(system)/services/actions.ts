@@ -2,10 +2,10 @@
 
 import { refresh } from "next/cache";
 import type { ConfirmResult } from "@/components/admin/confirm-button";
-import { actionMessage, adminAction } from "@/lib/admin/console";
-import { serviceInfo } from "@/lib/admin/service-catalog";
+import { actionMessage, adminAction, finish } from "@/lib/admin/console";
+import { isServiceId, serviceInfo } from "@/lib/admin/service-catalog";
 import { removeCustomKey, removeServiceKey, saveCustomKey, saveServiceKey } from "@/lib/admin/service-keys";
-import { testService } from "@/lib/admin/services";
+import { setServiceEnabled, testService } from "@/lib/admin/services";
 
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
@@ -60,4 +60,23 @@ export async function saveCustomKeyAction(f: FormData): Promise<ConfirmResult> {
 export async function removeCustomKeyAction(f: FormData): Promise<ConfirmResult> {
   const ctx = await adminAction("system");
   return done((r) => `Custom key ${r.envName} removed.`, () => removeCustomKey(ctx, { id: text(f, "id") }));
+}
+
+// ---- Test now and the on/off switch, from a service's own page (/admin/services/<id>) -----------------------------
+// The same checks and audit as testServiceAction / setServiceEnabledAction in app/admin/(console)/actions.ts, which
+// return to the Services list; these return to the service's page so the result shows where it was asked.
+
+const servicePage = (id: string) => (isServiceId(id) ? `/admin/services/${id}` : "/admin/services");
+
+export async function testServiceHereAction(f: FormData) {
+  const ctx = await adminAction("system");
+  const id = text(f, "service");
+  await finish(servicePage(id), (r) => `${r.ok ? "Working" : "Not working"}: ${r.message ?? (r.ok ? "the check passed" : "the check failed")} (${r.latencyMs} ms).`, () => testService(ctx, id));
+}
+
+export async function setServiceEnabledHereAction(f: FormData) {
+  const ctx = await adminAction("system");
+  const id = text(f, "service");
+  const enabled = text(f, "enabled") === "1";
+  await finish(servicePage(id), enabled ? "Service switched on." : "Service switched off. Clients see a friendly unavailable message.", () => setServiceEnabled(ctx, { service: id, enabled, reason: text(f, "reason") || undefined }));
 }
