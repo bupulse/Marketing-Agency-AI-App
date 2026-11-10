@@ -101,6 +101,17 @@ export function parseVisitorPeriod(sp: Record<string, string | string[] | undefi
   return { key, from, to, by, month, label };
 }
 
+/** The same number of days just before a period (7 days → the 7 days before them), for "up 12% on the 7 days before". */
+export function previousRange(from: string, to: string): { from: string; to: string; days: number } {
+  const days = eachDay(from, to).length;
+  return { from: addDays(from, -days), to: addDays(from, -1), days };
+}
+
+/** "the day before", "the 7 days before", for the comparisons under the totals. */
+export function previousLabel(days: number): string {
+  return days === 1 ? "the day before" : `the ${days} days before`;
+}
+
 // --- Counting method ----------------------------------------------------------------------------------------------
 
 /** How a day's visitors were counted: "new" (IP + device), "old" (one per browser), "mixed" (the day of the switch). */

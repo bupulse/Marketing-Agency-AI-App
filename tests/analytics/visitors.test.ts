@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  countryName, dayMethod, durationLabel, funnelSteps, groupSeries, lastOldMethodDay, oldMethodNote, parseVisitorPeriod, recentMonths, sourceLabel, weekStart,
+  countryName, dayMethod, durationLabel, funnelSteps, groupSeries, lastOldMethodDay, oldMethodNote, parseVisitorPeriod, previousLabel, previousRange, recentMonths, sourceLabel, weekStart,
   type DayPoint,
 } from "@/lib/analytics/visitors-shared";
 
@@ -118,6 +118,16 @@ describe("funnel and labels", () => {
   });
 });
 
+describe("previousRange", () => {
+  it("is the same number of days just before the period", () => {
+    expect(previousRange("2026-11-03", "2026-11-09")).toEqual({ from: "2026-10-27", to: "2026-11-02", days: 7 });
+    expect(previousRange("2026-11-09", "2026-11-09")).toEqual({ from: "2026-11-08", to: "2026-11-08", days: 1 });
+    expect(previousRange("2026-03-01", "2026-03-31")).toEqual({ from: "2026-01-29", to: "2026-02-28", days: 31 });
+    expect(previousLabel(1)).toBe("the day before");
+    expect(previousLabel(30)).toBe("the 30 days before");
+  });
+});
+
 // --- The server query: shapes, with the database and the roll-up mocked ---------------------------------------------
 
 const raw = vi.fn();
@@ -139,11 +149,15 @@ vi.mock("@/lib/support/live", () => ({ liveVisitors: () => live() }));
 
 describe("getVisitorAnalytics", () => {
   beforeEach(() => {
-    metrics.mockReset().mockResolvedValue({
-      visits: [{ date: "2026-11-08", dimension: "", value: 30 }, { date: "2026-11-09", dimension: "", value: 12 }],
-      unique_visitors: [{ date: "2026-11-08", dimension: "", value: 10 }, { date: "2026-11-09", dimension: "", value: 6 }],
-      visits_v2: [{ date: "2026-11-08", dimension: "", value: 18 }, { date: "2026-11-09", dimension: "", value: 12 }],
-    });
+    metrics.mockReset().mockImplementation(async (range: { from: string }) =>
+      range.from === "2026-11-06"
+        ? { visits: [{ date: "2026-11-06", dimension: "", value: 20 }], unique_visitors: [{ date: "2026-11-06", dimension: "", value: 8 }, { date: "2026-11-07", dimension: "", value: 4 }], visits_v2: [] }
+        : {
+            visits: [{ date: "2026-11-08", dimension: "", value: 30 }, { date: "2026-11-09", dimension: "", value: 12 }],
+            unique_visitors: [{ date: "2026-11-08", dimension: "", value: 10 }, { date: "2026-11-09", dimension: "", value: 6 }],
+            visits_v2: [{ date: "2026-11-08", dimension: "", value: 18 }, { date: "2026-11-09", dimension: "", value: 12 }],
+          },
+    );
     raw.mockReset().mockImplementation(async (sql: string) => {
       if (sql.includes("with_city")) return [{ visitors: BigInt(16), with_city: BigInt(12), avg_ms: 41_234.5 }];
       if (sql.includes("DISTINCT ON")) return [{ key: "google", visitors: BigInt(9), views: BigInt(20) }, { key: "direct", visitors: BigInt(7), views: BigInt(22) }];
@@ -151,6 +165,7 @@ describe("getVisitorAnalytics", () => {
       if (sql.includes('"country" AS key')) return [{ key: "RW", visitors: BigInt(14), views: BigInt(38) }, { key: null, visitors: BigInt(2), views: BigInt(4) }];
       if (sql.includes('SELECT "path"')) return [{ path: "/pricing", views: BigInt(20), visitors: BigInt(9), avg_ms: 61_000.4, timed: BigInt(15) }, { path: "/", views: BigInt(22), visitors: BigInt(16), avg_ms: null, timed: BigInt(0) }];
       if (sql.includes("'upgrade'")) return [{ c: BigInt(1) }];
+      if (sql.includes('"device" AS key')) return [{ key: "mobile", visitors: BigInt(12), views: BigInt(30) }, { key: "desktop", visitors: BigInt(4), views: BigInt(12) }];
       return [];
     });
     counts.contactRequest.mockReset().mockResolvedValue(3);
@@ -173,6 +188,10 @@ describe("getVisitorAnalytics", () => {
     expect(d.pages).toEqual([{ path: "/pricing", views: 20, visitors: 9, avgMs: 61_000, timedViews: 15 }, { path: "/", views: 22, visitors: 16, avgMs: null, timedViews: 0 }]);
     expect(d.funnel.map((s) => [s.key, s.count])).toEqual([["visitors", 16], ["quotes", 3], ["chats", 2], ["signups", 2], ["paid", 1]]);
     expect(d.liveNow).toBe(3);
+    expect(d.devices).toEqual([{ key: "mobile", visitors: 12, views: 30 }, { key: "desktop", visitors: 4, views: 12 }]);
+    // The two days before, from the roll-up, for "up 33% on the 2 days before".
+    expect(metrics).toHaveBeenCalledWith({ from: "2026-11-06", to: "2026-11-07" }, ["visits", "unique_visitors", "visits_v2"]);
+    expect(d.previous).toEqual({ from: "2026-11-06", to: "2026-11-07", visitors: 8, views: 20 });
     expect(JSON.parse(JSON.stringify(d))).toEqual(d); // no BigInt or Date left
   });
 
@@ -187,8 +206,11 @@ describe("getVisitorAnalytics", () => {
 
   it("says where the breakdowns start when the period reaches past the 90 days of page views, and survives a live-count failure", async () => {
     live.mockRejectedValue(new Error("down"));
+    const current = metrics.getMockImplementation()!;
+    metrics.mockImplementation(async (range: { from: string }) => (range.from === "2026-06-01" ? current(range) : Promise.reject(new Error("roll-up down"))));
     const { getVisitorAnalytics } = await import("@/lib/analytics/visitors");
     const d = await getVisitorAnalytics({ from: "2026-06-01", to: "2026-11-09", by: "month" }, NOW);
+    expect(d.previous).toBeNull();
     expect(d.breakdownFrom).toBe("2026-08-11");
     expect(d.liveNow).toBeNull();
     expect(d.series.map((p) => p.key)).toEqual(["2026-06", "2026-07", "2026-08", "2026-09", "2026-10", "2026-11"]);
