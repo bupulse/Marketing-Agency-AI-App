@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/support-app/server/auto-refresh", () => ({ AutoRefresh: () => null }));
+vi.mock("@/components/support-app/server/run-check", () => ({ RunCheck: () => null }));
 
 import { ServerView } from "@/components/support-app/server/server-view";
 import type { ServerMonitor } from "@/lib/monitor/dashboard";
@@ -12,6 +13,10 @@ const base: ServerMonitor = {
   issues: [],
   site: { kind: "up", lastCheckAt: "2026-11-09T11:58:00.000Z" },
   uptime: { today: 100, week: 99.8, month: 99.95, since: "2026-11-09T09:00:00.000Z" },
+  timeline: {
+    hours: [{ start: "2026-11-09T11:00:00.000Z", checks: 12, failed: 1, avgMs: 640, uptime: 96.6 }, { start: "2026-11-09T12:00:00.000Z", checks: 0, failed: 0, avgMs: null, uptime: 100 }],
+    days: [{ day: "2026-11-08T22:00:00.000Z", uptime: 99.2 }],
+  },
   outages: [{ startedAt: "2026-11-09T09:30:00.000Z", endedAt: "2026-11-09T09:53:00.000Z", minutes: 23, reason: "failed-check" }],
   pc: {
     state: "ok",
@@ -58,6 +63,13 @@ describe("ServerView", () => {
     expect(out).toContain("Backup servers");
     expect(out).toContain("Not set up yet");
     expect(out).not.toContain("What is left to set up");
+    // The timeline, its colour key and its table for screen readers.
+    expect(out).toContain("Uptime timeline");
+    expect(out).toContain("13:00–14:00");
+    expect(out).toContain("12 checks, 1 failed");
+    expect(out).toContain("Some trouble (1)");
+    // Every reading says what it means.
+    expect(out).toContain("Above 90% may slow the site");
   });
 
   it("a red banner when something is down, and the set-up steps before anything reported", () => {
