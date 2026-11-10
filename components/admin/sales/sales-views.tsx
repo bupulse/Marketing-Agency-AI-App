@@ -1,29 +1,26 @@
 import { BOOKS_FMT, type MoneyFmt } from "@/components/admin/money";
-import Link from "next/link";
+import { NO_RWF, sumRwf } from "@/lib/money/revenue-shared";
 import type { ReactNode } from "react";
-import { Mail, MessageCircle, Share2 } from "lucide-react";
-import { Badge, Button, Input, Select } from "@/components/ui";
+import { ArrowRightLeft, Coins, Contact as ContactIcon, Crown, Hash, Link2, Medal, Share2, Trophy, UserRound, Users } from "lucide-react";
+import { CARD, DataList, EmptyState, ExpandCard, FilterChips, IconBadge, StatGrid, StatTile, StatusPill } from "@/components/admin/kit";
+import { ContactCircles, daysAgo } from "@/components/admin/business/shared";
+import { Button, Input, Select } from "@/components/ui";
 import { CopyButton } from "@/components/studio/copy-button";
 import { mailtoLink, whatsappLink } from "@/lib/admin/client-health-shared";
 import { dateTime, num } from "@/lib/admin/format";
 import type { LeaderRow } from "@/lib/sales/attribution";
 import type { Reassignment, SalesClient, TeamMember } from "@/lib/sales/clients";
 import { REASON_MAX, REASON_MIN } from "@/lib/sales/assign-rules";
-import { Empty, HowCalculated, Panel, Section, Stat, TableWrap, Td, Th } from "../ui";
+import { cn } from "@/lib/cn";
+import { Empty, HowCalculated, Panel, Section } from "../ui";
 
 // Admin -> Sales: My clients, Sales team and Leaderboard. Plain data in, no database: tests render them directly.
 
 const DAY = 86_400_000;
 const STATUS_LABEL: Record<string, string> = { PENDING_DEMO: "Waiting for demo", TRIALING: "On trial", ACTIVE: "Paying", PAST_DUE: "Payment late", CANCELED: "Cancelled", EXPIRED: "Expired" };
-const STATUS_TONE: Record<string, "neutral" | "blue" | "violet" | "success" | "danger"> = { PENDING_DEMO: "violet", TRIALING: "blue", ACTIVE: "success", PAST_DUE: "danger", CANCELED: "neutral", EXPIRED: "neutral" };
+const STATUS_TONE: Record<string, "muted" | "info" | "new" | "good" | "bad"> = { PENDING_DEMO: "new", TRIALING: "info", ACTIVE: "good", PAST_DUE: "bad", CANCELED: "muted", EXPIRED: "muted" };
 
 export const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-
-function daysAgo(iso: string | null, now: number): string {
-  if (!iso) return "Never";
-  const days = Math.floor((now - Date.parse(iso)) / DAY);
-  return days <= 0 ? "Today" : days === 1 ? "Yesterday" : `${days} days ago`;
-}
 
 function trialLeft(c: SalesClient, now: number): string {
   if (c.status !== "TRIALING" || !c.trialEndsAt) return "-";
@@ -36,22 +33,7 @@ function Contact({ c }: { c: SalesClient }) {
   const mail = mailtoLink(c.email, `BuPulse: ${c.name}`);
   return (
     <span className="flex flex-col gap-1">
-      <span className="flex gap-1.5">
-        {wa ? (
-          <a href={wa} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp ${c.name}`} className="inline-flex size-11 items-center justify-center rounded-full bg-success-bg text-success">
-            <MessageCircle aria-hidden className="size-4" />
-          </a>
-        ) : (
-          <span title="No phone number on file" className="inline-flex size-11 items-center justify-center rounded-full bg-soft text-muted opacity-50" aria-hidden>
-            <MessageCircle className="size-4" />
-          </span>
-        )}
-        {mail && (
-          <a href={mail} aria-label={`Email ${c.name}`} className="inline-flex size-11 items-center justify-center rounded-full bg-ok-bg text-ok">
-            <Mail aria-hidden className="size-4" />
-          </a>
-        )}
-      </span>
+      <ContactCircles name={c.name} wa={wa} mail={mail} />
       {c.phone && <span className="text-xs text-muted tabular-nums">{c.phone}</span>}
       {c.email && <span className="break-all text-xs text-muted">{c.email}</span>}
     </span>
@@ -61,24 +43,18 @@ function Contact({ c }: { c: SalesClient }) {
 function Payment({ c, fx }: { c: SalesClient; fx: MoneyFmt }) {
   return (
     <span className="flex flex-col gap-1">
-      {c.status ? <Badge tone={STATUS_TONE[c.status] ?? "neutral"}>{STATUS_LABEL[c.status] ?? c.status}</Badge> : <span className="text-muted">No plan</span>}
+      {c.status ? <StatusPill tone={STATUS_TONE[c.status] ?? "muted"} dot className="w-fit">{STATUS_LABEL[c.status] ?? c.status}</StatusPill> : <span className="text-muted">No plan</span>}
       <span className="text-xs text-muted">{c.lastPayment ? `Last paid ${fx.amount(c.lastPayment.usdCents, c.lastPayment.currency === "RWF" && c.lastPayment.localMinor !== null ? { rwfMinor: c.lastPayment.localMinor, rwfUsdCents: c.lastPayment.usdCents } : null)}, ${dateTime(c.lastPayment.at)}` : "No payment yet"}</span>
     </span>
   );
 }
 
-/** The company name, linked to its admin page only for staff who may see all clients. */
-function ClientName({ c, link }: { c: SalesClient; link: boolean }) {
+/** The company name (the list links it to its admin page only for staff who may see all clients) and the contact. */
+function ClientName({ c }: { c: SalesClient }) {
   return (
     <span className="flex flex-col">
-      {link ? (
-        <Link href={`/admin/companies/${encodeURIComponent(c.businessId)}`} className="font-medium underline">
-          {c.name}
-        </Link>
-      ) : (
-        <span className="font-medium">{c.name}</span>
-      )}
-      {c.contactName && <span className="text-xs text-muted">{c.contactName}</span>}
+      <span>{c.name}</span>
+      {c.contactName && <span className="text-xs font-normal text-muted">{c.contactName}</span>}
     </span>
   );
 }
@@ -86,73 +62,74 @@ function ClientName({ c, link }: { c: SalesClient; link: boolean }) {
 function LinkPanel({ link }: { link: { url: string; code: string } }) {
   const share = `https://wa.me/?text=${encodeURIComponent(`Try BuPulse for your business: ${link.url}`)}`;
   return (
-    <Panel title="My link" description="Share it anywhere. Anyone who signs up within 30 days of first opening it becomes your client. Add it to any page, for example /pricing?ref=CODE.">
-      <div className="flex flex-col gap-3">
-        <p className="break-all rounded-2xl bg-soft px-4 py-3 font-mono text-[15px]">{link.url}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <CopyButton text={link.url} label="Copy link" variant="outline" />
-          <a href={share} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-success-bg px-4 text-sm font-medium text-success">
-            <Share2 aria-hidden className="size-4" />
-            Share on WhatsApp
-          </a>
-          <span className="text-[13px] text-muted">
-            Code <span className="font-mono font-semibold text-text">{link.code}</span>
-          </span>
+    <section aria-label="My link" className={cn("relative flex flex-col gap-4 overflow-hidden p-5 sm:p-6", CARD)}>
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-brand-gradient" />
+      <div className="flex items-start gap-3">
+        <IconBadge icon={Link2} tone="orange" />
+        <div className="min-w-0">
+          <h2 className="text-[17px] font-bold leading-snug tracking-[-0.02em]">My link</h2>
+          <p className="mt-0.5 text-[13px] leading-snug text-muted">Share it anywhere. Anyone who signs up within 30 days of first opening it becomes your client. Add it to any page, for example /pricing?ref=CODE.</p>
         </div>
       </div>
-    </Panel>
+      <p className="break-all rounded-2xl bg-soft px-4 py-3 font-mono text-[15px]">{link.url}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <CopyButton text={link.url} label="Copy link" variant="outline" />
+        <a href={share} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-success-bg px-4 text-sm font-semibold text-success focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30">
+          <Share2 aria-hidden className="size-4" />
+          Share on WhatsApp
+        </a>
+        <span className="text-[13px] text-muted">
+          Code <span className="font-mono font-semibold text-text">{link.code}</span>
+        </span>
+      </div>
+    </section>
   );
 }
 
-function ClientsTable({ clients, now, link, agentOf, reassign, fx }: { clients: SalesClient[]; now: number; link: boolean; fx: MoneyFmt; agentOf?: (c: SalesClient) => string; reassign?: (c: SalesClient) => ReactNode }) {
+function ClientsList({ clients, now, link, agentOf, reassign, fx }: { clients: SalesClient[]; now: number; link: boolean; fx: MoneyFmt; agentOf?: (c: SalesClient) => string; reassign?: (c: SalesClient) => ReactNode }) {
   return (
-    <TableWrap caption="Clients" tall>
-      <thead>
-        <tr>
-          <Th>Company</Th>
-          <Th>Contact</Th>
-          <Th>Plan</Th>
-          <Th>Trial left</Th>
-          <Th>Last sign-in</Th>
-          <Th right>Posts</Th>
-          <Th>Payment</Th>
-          {agentOf && <Th>Agent</Th>}
-        </tr>
-      </thead>
-      <tbody>
-        {clients.map((c) => (
-          <tr key={c.businessId}>
-            <Td><ClientName c={c} link={link} /></Td>
-            <Td><Contact c={c} /></Td>
-            <Td>{c.plan ?? "-"}</Td>
-            <Td>{trialLeft(c, now)}</Td>
-            <Td>{daysAgo(c.lastSignInAt, now)}</Td>
-            <Td right>{num(c.posts)}</Td>
-            <Td><Payment c={c} fx={fx} /></Td>
-            {agentOf && (
-              <Td>
-                <span className="flex flex-col gap-1">
-                  <span>{agentOf(c)}</span>
-                  {reassign?.(c)}
-                </span>
-              </Td>
-            )}
-          </tr>
-        ))}
-      </tbody>
-    </TableWrap>
+    <DataList<SalesClient>
+      caption="Clients"
+      rows={clients}
+      rowKey={(c) => c.businessId}
+      rowHref={link ? (c) => `/admin/companies/${encodeURIComponent(c.businessId)}` : undefined}
+      columns={[
+        { key: "name", header: "Company", primary: true, cell: (c) => <ClientName c={c} /> },
+        { key: "contact", header: "Contact", cell: (c) => <Contact c={c} /> },
+        { key: "plan", header: "Plan", cell: (c) => c.plan ?? "-", hideOnPhone: true },
+        { key: "trial", header: "Trial left", cell: (c) => trialLeft(c, now) },
+        { key: "seen", header: "Last sign-in", cell: (c) => daysAgo(c.lastSignInAt, now) },
+        { key: "posts", header: "Posts", align: "right", cell: (c) => num(c.posts), hideOnPhone: true },
+        { key: "pay", header: "Payment", cell: (c) => <Payment c={c} fx={fx} /> },
+        ...(agentOf
+          ? [
+              {
+                key: "agent",
+                header: "Agent",
+                cell: (c: SalesClient) => (
+                  <span className="flex flex-col gap-1">
+                    <span>{agentOf(c)}</span>
+                    {reassign?.(c)}
+                  </span>
+                ),
+              },
+            ]
+          : []),
+      ]}
+      empty={<EmptyState icon={Users} title="No clients yet." />}
+    />
   );
 }
 
 function Numbers({ row, rank, of, month, fx }: { row: LeaderRow | null; rank: number | null; of: number; month: string; fx: MoneyFmt }) {
   return (
     <Section title={`My numbers, ${monthName(month)}`} description="USD, net of refunds. Performance only.">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Own sales" value={fx.amount(row?.ownCents ?? 0, row?.ownRwf)} title={fx.amountTitle(row?.ownCents ?? 0, row?.ownRwf)} source="Payments of your clients" />
-        <Stat label="Team share" value={fx.amount(row?.teamShareCents ?? 0, row?.teamShareRwf)} title={fx.amountTitle(row?.teamShareCents ?? 0, row?.teamShareRwf)} source="Unassigned clients, split equally" />
-        <Stat label="Total" value={fx.amount(row?.totalCents ?? 0, row?.totalRwf)} title={fx.amountTitle(row?.totalCents ?? 0, row?.totalRwf)} />
-        <Stat label="Rank" value={rank ? `${rank} of ${of}` : "-"} href="/admin/sales/leaderboard" source="Leaderboard" />
-      </div>
+      <StatGrid cols={4}>
+        <StatTile icon={Coins} tone="orange" label="Own sales" value={fx.amount(row?.ownCents ?? 0, row?.ownRwf)} title={fx.amountTitle(row?.ownCents ?? 0, row?.ownRwf)} hint="Payments of your clients." />
+        <StatTile icon={Users} tone="orange" label="Team share" value={fx.amount(row?.teamShareCents ?? 0, row?.teamShareRwf)} title={fx.amountTitle(row?.teamShareCents ?? 0, row?.teamShareRwf)} hint="Unassigned clients, split equally." />
+        <StatTile icon={Trophy} tone="orange" label="Total" value={fx.amount(row?.totalCents ?? 0, row?.totalRwf)} title={fx.amountTitle(row?.totalCents ?? 0, row?.totalRwf)} hint="Own sales plus team share." />
+        <StatTile icon={Medal} tone="orange" label="Rank" value={rank ? `${rank} of ${of}` : "-"} hint="Where you stand on the leaderboard." href="/admin/sales/leaderboard" />
+      </StatGrid>
     </Section>
   );
 }
@@ -179,8 +156,8 @@ export function MyClientsView({ d, fx = BOOKS_FMT }: { d: MyClientsData; /** Mon
     <>
       {d.link && <LinkPanel link={d.link} />}
       <Numbers row={i >= 0 ? d.board[i] : null} rank={i >= 0 ? i + 1 : null} of={d.board.length} month={d.month} fx={fx} />
-      <Panel title="My clients" description="Companies assigned to you: how to reach them and how they stand. Nothing of their content or settings.">
-        {d.clients.length === 0 ? <Empty>No clients yet. Share your link: a company that signs up through it is yours.</Empty> : <ClientsTable clients={d.clients} now={d.now} link={d.canViewClients} fx={fx} />}
+      <Panel icon={ContactIcon} tone="orange" title="My clients" description="Companies assigned to you: how to reach them and how they stand. Nothing of their content or settings.">
+        {d.clients.length === 0 ? <Empty>No clients yet. Share your link: a company that signs up through it is yours.</Empty> : <ClientsList clients={d.clients} now={d.now} link={d.canViewClients} fx={fx} />}
       </Panel>
     </>
   );
@@ -201,7 +178,9 @@ function ReassignForm({ c, members, action }: { c: SalesClient; members: TeamMem
   const choices = members.filter((m) => m.status !== "disabled");
   return (
     <details className="text-[13px]">
-      <summary className="inline-flex min-h-11 cursor-pointer items-center font-medium underline">Reassign</summary>
+      <summary className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 font-semibold text-pulse-blue dark:text-[#8db0ff]">
+        <ArrowRightLeft aria-hidden className="size-3.5" /> Reassign
+      </summary>
       <form action={action} className="mt-2 flex min-w-56 flex-col gap-2">
         <input type="hidden" name="businessId" value={c.businessId} />
         <label className="flex flex-col gap-1">
@@ -228,53 +207,41 @@ export function TeamView({ d, reassignAction, fx = BOOKS_FMT }: { d: TeamData; r
   const nameOf = new Map(d.members.map((m) => [m.staffId, m.name]));
   const clientsOf = (id: string) => d.clients.filter((c) => c.agentId === id).length;
   const unassigned = d.clients.filter((c) => !c.agentId).length;
+  const total = d.board.reduce((s, r) => s + r.totalCents, 0);
+  const totalRwf = sumRwf(d.board.map((r) => r.totalRwf ?? NO_RWF));
   return (
     <>
-      <Panel title="Agents" description={`Everyone with a sales role, their code and their numbers for ${monthName(d.month)} (${fx.display.currency}).`}>
+      <StatGrid cols={4}>
+        <StatTile icon={UserRound} tone="orange" label="Agents" value={num(d.members.filter((m) => m.status === "active").length)} hint="Active staff with a sales role." />
+        <StatTile icon={Users} tone="orange" label="Clients" value={num(d.clients.length)} hint="Every company, with or without an agent." />
+        <StatTile icon={Hash} tone="orange" label="Unassigned" value={num(unassigned)} hint="Their payments are the team share." />
+        <StatTile className="max-lg:col-span-2" icon={Coins} tone="orange" label={`Sales, ${monthName(d.month)}`} value={fx.amount(total, totalRwf)} title={fx.amountTitle(total, totalRwf)} hint="Every agent's total this month." href="/admin/sales/leaderboard" />
+      </StatGrid>
+      <Panel icon={UserRound} tone="orange" title="Agents" description={`Everyone with a sales role, their code and their numbers for ${monthName(d.month)} (${fx.display.currency}).`}>
         {d.members.length === 0 ? (
           <Empty>No sales staff yet. Add a staff member with the Sales agent or Sales manager role.</Empty>
         ) : (
-          <TableWrap caption="Sales agents">
-            <thead>
-              <tr>
-                <Th>Agent</Th>
-                <Th>Role</Th>
-                <Th>Code</Th>
-                <Th right>Clients</Th>
-                <Th right>Own sales</Th>
-                <Th right>Team share</Th>
-                <Th right>Total</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.members.map((m) => {
-                const r = rowOf.get(m.staffId);
-                return (
-                  <tr key={m.staffId}>
-                    <Td>
-                      <span className="flex flex-col">
-                        <span className="font-medium">{m.name}</span>
-                        <span className="text-xs text-muted">{m.status === "active" ? m.email : `${m.email}, ${m.status}`}</span>
-                      </span>
-                    </Td>
-                    <Td>{m.roleName}</Td>
-                    <Td><span className="font-mono">{m.refCode ?? "Not yet"}</span></Td>
-                    <Td right>{num(clientsOf(m.staffId))}</Td>
-                    <Td right>{fx.amountEl(r?.ownCents ?? 0, r?.ownRwf)}</Td>
-                    <Td right>{fx.amountEl(r?.teamShareCents ?? 0, r?.teamShareRwf)}</Td>
-                    <Td right>{fx.amountEl(r?.totalCents ?? 0, r?.totalRwf)}</Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </TableWrap>
+          <DataList<TeamMember>
+            caption="Sales agents"
+            rows={d.members}
+            rowKey={(m) => m.staffId}
+            columns={[
+              { key: "agent", header: "Agent", primary: true, cell: (m) => <span className="flex flex-col"><span>{m.name}</span><span className="text-xs font-normal text-muted">{m.status === "active" ? m.email : `${m.email}, ${m.status}`}</span></span> },
+              { key: "role", header: "Role", cell: (m) => m.roleName, hideOnPhone: true },
+              { key: "code", header: "Code", cell: (m) => <span className="font-mono">{m.refCode ?? "Not yet"}</span> },
+              { key: "clients", header: "Clients", align: "right", cell: (m) => num(clientsOf(m.staffId)) },
+              { key: "own", header: "Own sales", align: "right", cell: (m) => fx.amountEl(rowOf.get(m.staffId)?.ownCents ?? 0, rowOf.get(m.staffId)?.ownRwf), hideOnPhone: true },
+              { key: "share", header: "Team share", align: "right", cell: (m) => fx.amountEl(rowOf.get(m.staffId)?.teamShareCents ?? 0, rowOf.get(m.staffId)?.teamShareRwf), hideOnPhone: true },
+              { key: "total", header: "Total", align: "right", cell: (m) => <span className="font-semibold">{fx.amountEl(rowOf.get(m.staffId)?.totalCents ?? 0, rowOf.get(m.staffId)?.totalRwf)}</span> },
+            ]}
+          />
         )}
       </Panel>
-      <Panel title="Clients and their agent" description={`${num(d.clients.length)} companies, ${num(unassigned)} unassigned. A reassignment counts from now on; earlier payments stay with the agent who had the client then.`}>
+      <Panel icon={Users} tone="orange" title="Clients and their agent" description={`${num(d.clients.length)} companies, ${num(unassigned)} unassigned. A reassignment counts from now on; earlier payments stay with the agent who had the client then.`}>
         {d.clients.length === 0 ? (
           <Empty>No clients yet.</Empty>
         ) : (
-          <ClientsTable
+          <ClientsList
             fx={fx}
             clients={d.clients}
             now={d.now}
@@ -284,34 +251,22 @@ export function TeamView({ d, reassignAction, fx = BOOKS_FMT }: { d: TeamData; r
           />
         )}
       </Panel>
-      <Panel title="Recent reassignments" description="The latest changes made by a manager, with their reason.">
-        {d.reassignments.length === 0 ? (
-          <Empty>No reassignments yet.</Empty>
-        ) : (
-          <TableWrap caption="Recent reassignments">
-            <thead>
-              <tr>
-                <Th>When</Th>
-                <Th>Client</Th>
-                <Th>New agent</Th>
-                <Th>Reason</Th>
-                <Th>By</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.reassignments.map((r) => (
-                <tr key={r.id}>
-                  <Td>{dateTime(r.at)}</Td>
-                  <Td>{r.client}</Td>
-                  <Td>{r.agent ?? "Unassigned"}</Td>
-                  <Td>{r.reason ?? "-"}</Td>
-                  <Td><span className="text-xs text-muted">{r.by}</span></Td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrap>
-        )}
-      </Panel>
+      <ExpandCard icon={ArrowRightLeft} tone="orange" title="Recent reassignments" summary={d.reassignments.length === 0 ? "No reassignments yet." : `${d.reassignments.length} recent, latest ${dateTime(d.reassignments[0].at)}`}>
+        <p className="pb-3 text-[13px] text-muted">The latest changes made by a manager, with their reason.</p>
+        <DataList<Reassignment>
+          caption="Recent reassignments"
+          rows={d.reassignments}
+          rowKey={(r) => r.id}
+          columns={[
+            { key: "client", header: "Client", primary: true, cell: (r) => r.client },
+            { key: "when", header: "When", cell: (r) => dateTime(r.at) },
+            { key: "agent", header: "New agent", cell: (r) => r.agent ?? "Unassigned" },
+            { key: "reason", header: "Reason", cell: (r) => r.reason ?? "-" },
+            { key: "by", header: "By", cell: (r) => <span className="text-xs text-muted">{r.by}</span>, hideOnPhone: true },
+          ]}
+          empty={<Empty>No reassignments yet.</Empty>}
+        />
+      </ExpandCard>
     </>
   );
 }
@@ -329,48 +284,48 @@ export function LeaderboardHow() {
   );
 }
 
-export function LeaderboardView({ rows, month, months, me, fx = BOOKS_FMT }: { rows: LeaderRow[]; month: string; months: string[]; me?: string | null; fx?: MoneyFmt }) {
+const PODIUM = [
+  { label: "1st", ring: "ring-2 ring-[#fbbf24]/60", icon: Crown },
+  { label: "2nd", ring: "ring-1 ring-line", icon: Medal },
+  { label: "3rd", ring: "ring-1 ring-line", icon: Medal },
+] as const;
+
+export function LeaderboardView({ rows, month, months, me, fx = BOOKS_FMT, base = "/admin/sales/leaderboard" }: { rows: LeaderRow[]; month: string; months: string[]; me?: string | null; fx?: MoneyFmt; base?: string }) {
+  const top = rows.slice(0, 3).filter((r) => r.totalCents > 0);
   return (
     <>
-      <form method="get" className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-[13px] font-medium text-muted">
-          Month
-          <Select name="month" defaultValue={month}>
-            {months.map((m) => (
-              <option key={m} value={m}>{monthName(m)}</option>
-            ))}
-          </Select>
-        </label>
-        <Button type="submit" size="sm" variant="outline">Show</Button>
-      </form>
-      <Panel title={`Leaderboard, ${monthName(month)}`} description="USD, net of refunds. Highest total first.">
+      <FilterChips label="Month" param="month" base={base} current={month} allValue={months[0]} options={months.map((m) => ({ value: m, label: monthName(m) }))} />
+      {top.length > 0 && (
+        <ol aria-label={`Top agents, ${monthName(month)}`} className="kit-rise grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {top.map((r, i) => (
+            <li key={r.staffId} className={cn("flex items-center gap-3 p-4 sm:flex-col sm:items-start sm:p-5", CARD, PODIUM[i].ring)}>
+              <IconBadge icon={PODIUM[i].icon} tone={i === 0 ? "orange" : "slate"} size="lg" />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="text-[12px] font-bold uppercase tracking-[0.08em] text-muted">{PODIUM[i].label}</span>
+                <span className="truncate text-[16px] font-bold">{r.name}{r.staffId === me ? " (you)" : ""}</span>
+                <span className="text-[13px] text-muted">{num(r.clients)} {r.clients === 1 ? "client" : "clients"}</span>
+              </span>
+              <span className="text-[20px] font-bold tabular-nums tracking-[-0.02em] sm:text-[24px]">{fx.amountEl(r.totalCents, r.totalRwf)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      <Panel icon={Trophy} tone="orange" title={`Leaderboard, ${monthName(month)}`} description="Net of refunds. Highest total first.">
         {rows.length === 0 ? (
           <Empty>No sales agents that month.</Empty>
         ) : (
-          <TableWrap caption={`Leaderboard for ${monthName(month)}`}>
-            <thead>
-              <tr>
-                <Th right>#</Th>
-                <Th>Agent</Th>
-                <Th right>Clients</Th>
-                <Th right>Own sales</Th>
-                <Th right>Team share</Th>
-                <Th right>Total</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.staffId} aria-current={r.staffId === me ? "true" : undefined} className={r.staffId === me ? "bg-soft" : undefined}>
-                  <Td right>{i + 1}</Td>
-                  <Td><span className="font-medium">{r.name}{r.staffId === me ? " (you)" : ""}</span></Td>
-                  <Td right>{num(r.clients)}</Td>
-                  <Td right>{fx.amountEl(r.ownCents, r.ownRwf)}</Td>
-                  <Td right>{fx.amountEl(r.teamShareCents, r.teamShareRwf)}</Td>
-                  <Td right className="font-semibold">{fx.amountEl(r.totalCents, r.totalRwf)}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrap>
+          <DataList<LeaderRow>
+            caption={`Leaderboard for ${monthName(month)}`}
+            rows={rows}
+            rowKey={(r) => r.staffId}
+            columns={[
+              { key: "agent", header: "Agent", primary: true, cell: (r) => <span className="inline-flex items-center gap-2"><span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-soft text-[12px] font-bold tabular-nums">{rows.indexOf(r) + 1}</span><span className={r.staffId === me ? "text-pulse-blue dark:text-[#8db0ff]" : undefined}>{r.name}{r.staffId === me ? " (you)" : ""}</span></span> },
+              { key: "clients", header: "Clients", align: "right", cell: (r) => num(r.clients) },
+              { key: "own", header: "Own sales", align: "right", cell: (r) => fx.amountEl(r.ownCents, r.ownRwf) },
+              { key: "share", header: "Team share", align: "right", cell: (r) => fx.amountEl(r.teamShareCents, r.teamShareRwf) },
+              { key: "total", header: "Total", align: "right", cell: (r) => <span className="font-semibold">{fx.amountEl(r.totalCents, r.totalRwf)}</span> },
+            ]}
+          />
         )}
         <LeaderboardHow />
       </Panel>

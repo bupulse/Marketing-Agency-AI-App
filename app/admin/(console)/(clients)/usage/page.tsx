@@ -1,6 +1,7 @@
 import { moneyFmt } from "@/components/admin/money";
 import { adminMoney } from "@/lib/money/display-server";
-import { PageHeader } from "@/components/app";
+import { LayoutGrid } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { UsageView } from "@/components/admin/clients/usage-view";
 import { requirePermission } from "@/lib/admin/auth";
 import { getClientRows } from "@/lib/admin/client-health";
@@ -16,7 +17,7 @@ export default async function UsagePage({ searchParams }: PageProps<"/admin/usag
   const rows = await getClientRows();
   return (
     <>
-      <PageHeader title="Usage per client" description="What each client used this period, what it cost in AI this month, what they pay, and the margin." />
+      <PageHeader icon={LayoutGrid} tone="blue" title="Usage per client" description="What each client used this period, what their AI cost this month, what they pay, and what is left (the margin)." />
       <UsageView rows={rows} sort={sort} fx={fx} />
     </>
   );

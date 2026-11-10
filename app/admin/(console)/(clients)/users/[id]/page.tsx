@@ -1,8 +1,8 @@
 import { notFound, redirect } from "next/navigation";
-import { PageHeader } from "@/components/app";
-import { Client360, clientHeader } from "@/components/admin/client360";
-import { notice } from "@/components/admin/ui";
-import { Badge } from "@/components/ui";
+import { UserRound } from "lucide-react";
+import { Client360, ClientStatusPill, clientHeader } from "@/components/admin/client360";
+import { PageHeader } from "@/components/admin/kit";
+import { Notices } from "@/components/admin/business/shared";
 import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/service";
@@ -30,9 +30,8 @@ export default async function UserRedirect({ params, searchParams }: { params: P
   }
   return (
     <>
-      <PageHeader title={h.email} description={[h.name, "No company yet"].filter(Boolean).join(" · ")} action={<Badge tone={h.tone}>{h.status}</Badge>} />
-      {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
-      {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
+      <PageHeader icon={UserRound} tone="blue" title={<span className="break-all">{h.email}</span>} description={[h.name, "No company yet"].filter(Boolean).join(" · ")} back={{ href: "/admin/companies", label: "Companies" }} actions={<ClientStatusPill status={h.status} />} />
+      <Notices sp={sp} />
       <Client360 userId={id} tab={param(sp.tab)} basePath={`/admin/users/${id}`} />
     </>
   );

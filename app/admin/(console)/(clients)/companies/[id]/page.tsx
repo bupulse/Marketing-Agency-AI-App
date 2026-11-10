@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/app";
-import { Client360, clientHeader } from "@/components/admin/client360";
+import { Building2 } from "lucide-react";
+import { Client360, ClientStatusPill, clientHeader } from "@/components/admin/client360";
 import { CompanyUsers } from "@/components/admin/company-users";
 import { DemoPanel } from "@/components/admin/demo-panel";
 import { CompanyOffers } from "@/components/admin/company-offers";
-import { notice } from "@/components/admin/ui";
-import { Badge } from "@/components/ui";
+import { PageHeader } from "@/components/admin/kit";
+import { Notices } from "@/components/admin/business/shared";
 import { getCompany } from "@/lib/admin/actions/companies";
 import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
@@ -29,18 +29,30 @@ export default async function CompanyPage({ params, searchParams }: { params: Pr
     throw e;
   }
   const tab = param(sp.tab);
+  const overview = !tab || tab === "overview";
   return (
     <>
       <PageHeader
+        icon={Building2}
+        tone="blue"
         title={company.name}
         description={[company.accountEmail, company.subscription?.plan, `${company.users.length} ${company.users.length === 1 ? "user" : "users"}`].filter(Boolean).join(" · ")}
-        action={<Badge tone={h.tone}>{h.status}</Badge>}
+        back={{ href: "/admin/companies", label: "Companies" }}
+        actions={<ClientStatusPill status={h.status} />}
       />
-      {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
-      {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
-      {(!tab || tab === "overview") && <DemoPanel businessId={id} back={`/admin/companies/${id}`} />}
-      {(!tab || tab === "overview" || tab === "billing") && <CompanyOffers businessId={id} />}
-      <Client360 userId={company.accountUserId} tab={tab} basePath={`/admin/companies/${id}`} extraTabs={EXTRA_TABS} />
+      <Notices sp={sp} />
+      <Client360
+        userId={company.accountUserId}
+        tab={tab}
+        basePath={`/admin/companies/${id}`}
+        extraTabs={EXTRA_TABS}
+        lead={
+          <>
+            {overview && <DemoPanel businessId={id} back={`/admin/companies/${id}`} />}
+            {(overview || tab === "billing") && <CompanyOffers businessId={id} />}
+          </>
+        }
+      />
       {tab === "users" && <CompanyUsers company={company} />}
     </>
   );

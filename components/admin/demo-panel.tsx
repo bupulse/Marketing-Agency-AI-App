@@ -1,29 +1,27 @@
 import Link from "next/link";
+import { CalendarCheck } from "lucide-react";
 import { ConfirmButton } from "@/components/admin/confirm-button";
-import { Panel } from "@/components/admin/ui";
-import { Badge, Button, Select, type BadgeTone } from "@/components/ui";
+import { ExpandCard, StatusPill } from "@/components/admin/kit";
+import { SUB_STATUS } from "@/components/admin/business/shared";
+import { Badge, Button, Select } from "@/components/ui";
 import { demoPanel } from "@/lib/admin/demos";
 import { dateTime } from "@/lib/admin/format";
 import { getRegions } from "@/lib/region";
 import { companyRegionAction, demoStatusAction, dismissRegionMismatchAction } from "@/app/admin/(console)/(clients)/demos/actions";
 import { ActivateAccount } from "./activate-account";
 import { SubscriptionStatus } from "./subscription-status";
-import { subscriptionSummary } from "@/lib/admin/subscription-summary";
+import { subscriptionSummary, type SubscriptionSummary } from "@/lib/admin/subscription-summary";
 import { prisma } from "@/lib/db";
 import { getPlans } from "@/lib/plan-catalog";
 
-const SUB: Record<string, { label: string; tone: BadgeTone }> = {
-  PENDING_DEMO: { label: "Waiting for demo", tone: "violet" },
-  TRIALING: { label: "On trial", tone: "blue" },
-  ACTIVE: { label: "Paying", tone: "success" },
-  PAST_DUE: { label: "Past due", tone: "danger" },
-  CANCELED: { label: "Cancelled", tone: "neutral" },
-  EXPIRED: { label: "Expired", tone: "neutral" },
-};
 const SOURCE: Record<string, string> = { signup: "sign-up", momo: "a Mobile Money payment", card: "a card checkout" };
 const DEMO: Record<string, string> = { booked: "Booked", done: "Done", no_show: "No-show", cancelled: "Cancelled" };
 
-/** The company page's "Demo and trial" panel: where the company is in the demo-first flow, its region, and the admin buttons. */
+/**
+ * The company page's "Demo and trial" card: where the company is in the demo-first flow, its region, and the admin
+ * buttons. A one-line summary; the details open on hover, tap or focus, and start open when something waits (a demo to
+ * run, an account to activate, a region to check).
+ */
 export async function DemoPanel({ businessId, back }: { businessId: string; back: string }) {
   const [p, regions, plans, owner] = await Promise.all([demoPanel(businessId), getRegions(), getPlans(), prisma.business.findUnique({ where: { id: businessId }, select: { userId: true } })]);
   // The subscription as it is now: Activate account only while the company waits for its demo; past that, where it
@@ -31,10 +29,23 @@ export async function DemoPanel({ businessId, back }: { businessId: string; back
   const current = owner ? await prisma.subscription.findUnique({ where: { userId: owner.userId }, select: { status: true, plan: true, provider: true, interval: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true } }) : null;
   const sub = current ?? p.subscription;
   const summary = current ? subscriptionSummary(current, (key) => plans.find((pl) => pl.key === key)?.name ?? key) : null;
-  const status = sub ? (SUB[sub.status] ?? { label: sub.status, tone: "neutral" as BadgeTone }) : null;
+  return <DemoPanelView businessId={businessId} back={back} p={p} regions={regions} sub={sub} summary={summary} />;
+}
+
+/** The "Demo and trial" card from plain data (the dev preview renders it too). */
+export function DemoPanelView({ businessId, back, p, regions, sub, summary }: { businessId: string; back: string; p: Awaited<ReturnType<typeof demoPanel>>; regions: Awaited<ReturnType<typeof getRegions>>; sub: { status: string; trialEndsAt: Date | string | null } | null; summary: SubscriptionSummary | null }) {
+  const status = sub ? (SUB_STATUS[sub.status] ?? { label: sub.status, tone: "muted" as const }) : null;
   const regionName = regions.find((r) => r.key === p.region)?.name ?? p.region ?? "GLOBAL";
   return (
-    <Panel title="Demo and trial" description="New clients book a demo, then an admin activates the account: a trial, or an invoice to pay. Region decides the plans, prices and payment methods the company sees in Billing." action={status && <Badge tone={status.tone}>{status.label}</Badge>}>
+    <ExpandCard
+      icon={CalendarCheck}
+      tone="blue"
+      title="Demo and trial"
+      summary={[p.chosenPlanName ? `Chose ${p.chosenPlanName}` : "No plan chosen yet", p.booking ? `demo ${DEMO[p.booking.status]?.toLowerCase() ?? p.booking.status}, ${p.booking.when}` : "no demo booked", `region ${regionName}`].join(" · ")}
+      aside={status && <StatusPill tone={p.regionMismatch ? "bad" : status.tone} dot className="max-sm:hidden">{p.regionMismatch ? "Check region" : status.label}</StatusPill>}
+      defaultOpen={sub?.status === "PENDING_DEMO" || p.booking?.status === "booked" || Boolean(p.regionMismatch)}
+    >
+      <p className="pb-3 text-[13px] text-muted">New clients book a demo, then an admin activates the account: a trial, or an invoice to pay. Region decides the plans, prices and payment methods the company sees in Billing.</p>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
         <dt className="text-muted">Plan chosen</dt>
         <dd>{p.chosenPlanName ?? <span className="text-muted">Not chosen yet</span>}</dd>
@@ -96,7 +107,7 @@ export async function DemoPanel({ businessId, back }: { businessId: string; back
           </>
         )}
       </dl>
-      <div className="flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {sub?.status === "PENDING_DEMO" && (
           <ActivateAccount businessId={businessId} back={back} businessName="this company" planName={p.chosenPlanName} trialDays={p.trialDays} interval="MONTH" />
         )}
@@ -109,6 +120,6 @@ export async function DemoPanel({ businessId, back }: { businessId: string; back
         <Link href="/admin/demos" className="inline-flex min-h-11 items-center px-2 text-sm font-medium underline">All demos</Link>
         <Link href={`/admin/invoices?businessId=${encodeURIComponent(businessId)}`} className="inline-flex min-h-11 items-center px-2 text-sm font-medium underline">Invoices</Link>
       </div>
-    </Panel>
+    </ExpandCard>
   );
 }
