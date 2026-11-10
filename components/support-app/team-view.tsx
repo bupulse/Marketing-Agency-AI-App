@@ -7,12 +7,27 @@ import { cn } from "@/lib/cn";
 import { initials } from "@/lib/support/app-client/lists";
 import { kigaliTime } from "@/lib/monitor/uptime-rules";
 import { filterTeam, teamCounts, type TeamRoleFilter, type TeamStatusFilter } from "./team/team-filters";
+import { AddMemberCard, ManageMember } from "./team/account-forms";
 
 // The Team page (admin@bupulse.com only): requests to join as cards with Approve / Decline, then the team as cards
 // with chip filters by status and role. Approve / Decline use the same server action as before (team/actions.ts).
 
 type Request = { id: string; name: string; email: string; role: string; createdAt: string };
-type Member = { id: string; name: string; email: string; role: string; status: string; availability: string; lastSeenAt: string | null };
+type Member = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  availability: string;
+  lastSeenAt: string | null;
+  /** Has a sign-in (an invite opened, or an account made with a password). */
+  hasSignIn?: boolean;
+  /** Has added an authenticator app; null when it could not be read. */
+  authenticator?: boolean | null;
+  /** The admin may set a password or ask for a new authenticator (not admin@bupulse.com itself). */
+  manageable?: boolean;
+};
 
 const ROLE: Record<string, { label: string; hint: string; icon: typeof Headphones; pill: string }> = {
   AGENT: { label: "Chat agent", hint: "Answers chats", icon: Headphones, pill: "bg-ok-bg text-ok" },
@@ -21,7 +36,7 @@ const ROLE: Record<string, { label: string; hint: string; icon: typeof Headphone
 };
 const STATUS: Record<string, { label: string; pill: string; icon: typeof Check }> = {
   active: { label: "Active", pill: "bg-success-bg text-success", icon: UserCheck },
-  invited: { label: "Invite sent", pill: "bg-[#fff4e0] text-[#b45309] dark:bg-[#3a2a0a] dark:text-[#ffc65c]", icon: Mail },
+  invited: { label: "Not signed in yet", pill: "bg-[#fff4e0] text-[#b45309] dark:bg-[#3a2a0a] dark:text-[#ffc65c]", icon: Mail },
   locked: { label: "Locked", pill: "bg-danger-bg text-danger", icon: Lock },
 };
 const AVAILABILITY: Record<string, { label: string; dot: string }> = {
@@ -118,7 +133,7 @@ function RequestCard({ r, preview }: { r: Request; preview: boolean }) {
   );
 }
 
-function MemberCard({ m }: { m: Member }) {
+function MemberCard({ m, preview }: { m: Member; preview: boolean }) {
   const s = STATUS[m.status];
   const a = AVAILABILITY[m.availability] ?? AVAILABILITY.offline;
   const active = m.status === "active";
@@ -134,7 +149,10 @@ function MemberCard({ m }: { m: Member }) {
       <div className="flex flex-wrap gap-1.5">
         <RolePill role={m.role} />
         {s ? <Pill className={s.pill} icon={<s.icon aria-hidden className="size-3.5" />}>{s.label}</Pill> : <Pill className="bg-soft text-muted">{m.status}</Pill>}
+        {m.hasSignIn && m.authenticator === true && <Pill className="bg-success-bg text-success" icon={<ShieldCheck aria-hidden className="size-3.5" />}>Authenticator added</Pill>}
+        {m.hasSignIn && m.authenticator === false && <Pill className="bg-[#fff4e0] text-[#b45309] dark:bg-[#3a2a0a] dark:text-[#ffc65c]" icon={<ShieldCheck aria-hidden className="size-3.5" />}>Needs an authenticator</Pill>}
       </div>
+      {m.manageable && <ManageMember id={m.id} name={m.name} authenticator={m.authenticator ?? null} preview={preview} />}
       <div className="flex items-center justify-between gap-2 border-t border-line pt-2.5 text-[12.5px] text-muted">
         <span className="flex items-center gap-1.5">
           {active ? (
@@ -182,7 +200,7 @@ function Tile({ icon, label, value, hint }: { icon: ReactNode; label: string; va
 }
 
 /** Requests to join first (they need an answer), then the whole team. */
-export function TeamView({ requests, team, preview = false }: { requests: Request[]; team: Member[]; preview?: boolean }) {
+export function TeamView({ requests, team, preview = false, signInUrl = "https://support.bupulse.com/sign-in" }: { requests: Request[]; team: Member[]; preview?: boolean; signInUrl?: string }) {
   const [status, setStatus] = useState<TeamStatusFilter>("all");
   const [role, setRole] = useState<TeamRoleFilter>("all");
   const counts = teamCounts(team, status, role);
@@ -200,7 +218,7 @@ export function TeamView({ requests, team, preview = false }: { requests: Reques
           <div>
             <h1 className="text-[22px] font-bold tracking-[-0.02em]">Team</h1>
             <p className="mt-0.5 text-sm text-muted">
-              People ask to join on the sign-in page (Ask to join). Approving sends them an email to choose a password and add an authenticator app. Edit roles, lock someone or reset an authenticator in Admin → Live chat.
+              Add someone with a password (no email needed), or approve people who asked to join. Everyone must add an authenticator app before they can open anything. Edit departments or lock someone in Admin → Live chat.
             </p>
           </div>
         </div>
@@ -210,6 +228,8 @@ export function TeamView({ requests, team, preview = false }: { requests: Reques
           <Tile icon={<span aria-hidden className="size-2 rounded-full bg-[#0ca30c]" />} label="Online now" value={counts.online} hint="Set to Online right now" />
         </div>
       </section>
+
+      <AddMemberCard signInUrl={signInUrl} preview={preview} />
 
       <section aria-labelledby="requests" className="flex flex-col gap-3">
         <h2 id="requests" className="flex items-center gap-2 text-[17px] font-bold">
@@ -255,7 +275,7 @@ export function TeamView({ requests, team, preview = false }: { requests: Reques
         ) : (
           <ul key={`${status}:${role}`} className="team-rise grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {shown.map((m) => (
-              <MemberCard key={m.id} m={m} />
+              <MemberCard key={m.id} m={m} preview={preview} />
             ))}
           </ul>
         )}

@@ -9,7 +9,8 @@ import { loadServiceKeys } from "@/lib/admin/service-keys";
 import { padTo, publicLimited, requestIp } from "@/lib/request-limits";
 import { rateLimit, RateLimitError } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
-import { requestToJoin, sendAgentPasswordReset } from "@/lib/support/agents";
+import { clearSetupGrant, requestToJoin, sendAgentPasswordReset } from "@/lib/support/agents";
+import { hasSetupGrant } from "@/lib/support/setup-grant";
 import { turnstileEnabled, verifyTurnstile } from "@/lib/widget/turnstile";
 import { AdminError } from "@/lib/admin/types";
 import { agentIdentity, hasRecentMailboxProof } from "@/lib/support/app-access";
@@ -216,7 +217,8 @@ export async function confirmAgentEnrollCode(_prev: CodeState, formData: FormDat
 export async function startAgentEnrollment(): Promise<EnrollState> {
   const { supabase, methods, hasVerifiedTotp } = await requireAgentIdentity();
   if (hasVerifiedTotp) redirect(await supportUrl("/verify"));
-  if (!hasRecentMailboxProof(methods)) return { needEmail: true, error: "Confirm your email first." };
+  // An emailed code, or the one-time permission of an account the admin made with a password (lib/support/setup-grant.ts).
+  if (!hasRecentMailboxProof(methods) && !(await setupGrantOf(supabase))) return { needEmail: true, error: "Confirm your email first." };
   const { data: factors } = await supabase.auth.mfa.listFactors();
   // A setup started earlier and never finished is replaced (agents enrol from one device at a time).
   for (const f of factors?.all ?? []) if (f.status === "unverified") await supabase.auth.mfa.unenroll({ factorId: f.id });
@@ -234,7 +236,16 @@ export async function confirmAgentEnrollment(_prev: CodeState, formData: FormDat
   if (!factors?.all?.some((f) => f.id === factorId && f.status === "unverified")) return { error: "This setup expired. Reload the page and start again." };
   const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code });
   if (error) return { error: "That code did not match. Check your phone's clock and try the next code." };
+  // The authenticator is added: an admin-made account's one-time setup permission is used up.
+  const { data: me } = await supabase.auth.getUser();
+  if (me.user && hasSetupGrant(me.user.app_metadata)) await clearSetupGrant(me.user.id);
   redirect(await supportUrl("/"));
+}
+
+/** True when the signed-in account may add an authenticator without an emailed code (setup-grant.ts). */
+async function setupGrantOf(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
+  const { data } = await supabase.auth.getUser();
+  return !!data.user && hasSetupGrant(data.user.app_metadata);
 }
 
 const LINK_TYPES = ["invite", "recovery", "magiclink"] as const;
