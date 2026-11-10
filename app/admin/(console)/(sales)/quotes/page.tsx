@@ -77,6 +77,16 @@ export default async function QuoteRequestsPage({ searchParams }: { searchParams
                         <dd className="whitespace-pre-line break-words">{q.note}</dd>
                       </div>
                     )}
+                    <div>
+                      <dt className="text-[13px] text-muted">Lead of</dt>
+                      <dd>{q.leadOf}</dd>
+                    </div>
+                    {q.link && (
+                      <div>
+                        <dt className="text-[13px] text-muted">Came via link</dt>
+                        <dd className="break-words">{q.link}</dd>
+                      </div>
+                    )}
                     {q.pageUrl && (
                       <div className="sm:col-span-2">
                         <dt className="text-[13px] text-muted">Sent from</dt>

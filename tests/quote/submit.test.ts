@@ -12,6 +12,7 @@ vi.mock("@/lib/request-limits", () => ({ publicLimited: m.publicLimited }));
 vi.mock("@/lib/lead-alerts/channels", () => ({ alertInBackground: m.alertInBackground }));
 vi.mock("@/lib/errors", () => ({ logError: m.logError }));
 vi.mock("@/lib/auth/site-url", () => ({ publicSiteUrl: () => "https://test.bupulse.com" }));
+vi.mock("@/lib/links/service", () => ({ currentTrackedLinkId: async () => null, linkTagFor: async () => null }));
 
 import { submitQuoteRequest } from "@/lib/quote/submit";
 
@@ -32,7 +33,7 @@ describe("submitQuoteRequest", () => {
   it("stores the request as a quote with an E.164 number, then alerts the owner", async () => {
     expect(await submitQuoteRequest(form())).toEqual({ status: "success", firstName: "Test" });
     expect(m.prisma.contactRequest.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { kind: "quote", name: "Test Person", email: "test@example.com", phone: "+250788123456", businessName: "Sample Shop Ltd", message: "Shoes and bags.", source: "instagram", pageUrl: "/pricing" } }),
+      expect.objectContaining({ data: { kind: "quote", name: "Test Person", email: "test@example.com", phone: "+250788123456", businessName: "Sample Shop Ltd", message: "Shoes and bags.", source: "instagram", pageUrl: "/pricing", trackedLinkId: null } }),
     );
     expect(m.publicLimited).toHaveBeenCalledWith("quote", "test@example.com");
     expect(m.alertInBackground).toHaveBeenCalledTimes(1);

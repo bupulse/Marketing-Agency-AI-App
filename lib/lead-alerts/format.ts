@@ -22,6 +22,8 @@ export type LeadAlert = {
   source: string | null;
   /** The page it was sent from, a full address. */
   page: string | null;
+  /** The tracked link the person came through (lib/links/service.ts linkTagText), when there was one. */
+  link?: string | null;
   at: Date;
   /** Where the owner opens it: Admin -> Quote requests, or the chat in the support app. */
   openUrl: string | null;
@@ -103,6 +105,7 @@ export function alertFields(a: LeadAlert): AlertField[] {
     a.company?.trim() ? { label: "Company", value: a.company.trim() } : null,
     a.note?.trim() ? { label: noteLabel(a), value: a.note.trim() } : null,
     sourceLabel(a.source) ? { label: "Source", value: sourceLabel(a.source)! } : null,
+    a.link ? { label: "Came via link", value: a.link } : null,
     a.page ? { label: "Page", value: a.page, href: a.page } : null,
     { label: "Time", value: kigaliTime(a.at) },
   ];

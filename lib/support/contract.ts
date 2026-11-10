@@ -194,6 +194,8 @@ export type ConversationDetail = ConversationListItem & {
   account: AccountFacts | null;
   visit: VisitView | null;
   past: { id: string; number: number; title: string; outcome: string; at: string }[];
+  /** Whose lead this visitor is ("BuPulse (company)", "Jean (their link)", "Jean (talked in the chat)") and the tracked link they came through. */
+  lead?: { of: string; link: string | null };
   /** `original`: what the agent wrote before it was translated into the visitor's language (agentMessageBody.translateTo). */
   messages: (MessageView & { seenByVisitorAt: string | null; original: string | null })[];
 };

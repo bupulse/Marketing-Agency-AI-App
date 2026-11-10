@@ -2,6 +2,7 @@ import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import type { User as AuthUser } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
+import { currentTrackedLinkId } from "@/lib/links/service";
 import type { SignUpMethod } from "@/lib/generated/prisma/client";
 import { getIndustries, slugForIndustryName } from "@/lib/industries/server";
 import { INDUSTRY_DESCRIPTION_MIN } from "@/lib/industries/shared";
@@ -120,6 +121,8 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
   const pricingRegion = await regionFromCountryName(details.country);
   const sector = await industryColumns(details);
   const phone = details.phone ? (toE164(details.phone, phoneCountry(details.country)) ?? details.phone) : null;
+  // A first sign-up keeps the tracked link (bupulse.com/go/<code>) they came through in the last 30 days, if any.
+  const trackedLinkId = existing ? null : await currentTrackedLinkId();
 
   const created = await prisma.user.upsert({
     where: { id: authUser.id },
@@ -128,6 +131,7 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
       id: authUser.id,
       email,
       name,
+      trackedLinkId,
       signUpMethod: signUpMethodOf(authUser),
       business: {
         create: {

@@ -2,6 +2,7 @@ import "server-only";
 import type { z } from "zod";
 import { prisma } from "@/lib/db";
 import { scheduleJob } from "@/lib/jobs/due";
+import { currentTrackedLinkId } from "@/lib/links/service";
 import { needsChallenge, turnstileEnabled, verifyTurnstile, warnTurnstileOff } from "@/lib/widget/turnstile";
 import { answerVisitor, JOB_JUDGE } from "./answer";
 import type { ConversationView, MessageView, ratingBody, SendMessageResponse, sendMessageBody } from "./contract";
@@ -111,8 +112,10 @@ export async function startConversation(session: VisitorSession, body: z.infer<t
   if (open) return sendMessage(session, open.id, body, ctx);
   await challenge(body.turnstileToken, null, ctx.ip);
   const id = newId();
+  // A chat on the marketing site keeps the tracked link (bupulse.com/go/<code>) the visitor came through, if any.
+  const trackedLinkId = session.surface === "public" ? await currentTrackedLinkId() : null;
   await prisma.supportConversation.create({
-    data: { id, visitorId: session.visitorId, visitId: session.visitId, surface: session.surface, topicTokenHash: await sha256Hex(await topicSecret(id)) },
+    data: { id, visitorId: session.visitorId, visitId: session.visitId, surface: session.surface, trackedLinkId, topicTokenHash: await sha256Hex(await topicSecret(id)) },
   });
   await prisma.supportEvent.create({ data: { name: "conversation_started", conversationId: id } });
   await noteLeadQuestion(session.visitor.leadId, body.text ?? "");

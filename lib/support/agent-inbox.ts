@@ -2,6 +2,8 @@ import "server-only";
 import type { z } from "zod";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { conversationLeadInfo, linkTagText } from "@/lib/links/service";
+import { leadOwnerText } from "@/lib/links/rules";
 import { logError } from "@/lib/errors";
 import { scheduleJob } from "@/lib/jobs/due";
 import { generateAssist, rewriteText } from "./ai";
@@ -112,10 +114,11 @@ export async function conversationDetail(agent: AgentSession, id: string): Promi
       visit: { select: { country: true, city: true, ip: true, device: true, os: true, browser: true, referrer: true, surface: true, currentPath: true, startedAt: true, lastSeenAt: true, pages: { orderBy: { at: "asc" }, take: 50, select: { path: true, title: true, at: true } } } },
     },
   });
-  const [rows, past, account] = await Promise.all([
+  const [rows, past, account, lead] = await Promise.all([
     prisma.supportMessage.findMany({ where: { conversationId: id }, orderBy: { createdAt: "desc" }, take: 200, select: messageSelect }),
     prisma.supportConversation.findMany({ where: { visitorId: c.visitor.id, id: { not: id } }, orderBy: { createdAt: "desc" }, take: 10, select: { id: true, number: true, summary: true, status: true, rating: true, aiResolved: true, handoverAt: true, createdAt: true, messages: { where: { author: "VISITOR" }, orderBy: { createdAt: "asc" }, take: 1, select: { body: true } } } }),
     c.visitor.businessId ? accountFacts(c.visitor.businessId).catch(() => null) : null,
+    conversationLeadInfo(id).catch(() => null),
   ]);
   const messages = rows.reverse();
   const unseen = messages.filter((m) => m.author === "VISITOR" && !m.seenByAgentAt).map((m) => m.id);
@@ -129,6 +132,7 @@ export async function conversationDetail(agent: AgentSession, id: string): Promi
     visitor: { id: c.visitor.id, name: c.visitor.name, email: c.visitor.email, phone: c.visitor.phone, signedIn: !!c.visitor.userId },
     account,
     visit: c.visit ? visitView(c.visit, c.visitor.visitCount) : null,
+    lead: lead ? { of: leadOwnerText(lead.owner), link: lead.link ? linkTagText(lead.link) : null } : undefined,
     past: past.map((p) => ({
       id: p.id,
       number: p.number,

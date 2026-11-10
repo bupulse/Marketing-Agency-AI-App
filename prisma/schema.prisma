@@ -42,6 +42,8 @@ model User {
   // Set by the admin console (suspend_user). A suspended user cannot sign in or use the app; data is kept.
   suspendedAt          DateTime?
   suspendedReason      String?
+  // The tracked link (support app -> Links, bupulse.com/go/<code>) this person came through within 30 days of signing up.
+  trackedLinkId        String?
   // Last time this person used the dashboard (a throttled heartbeat, lib/staff/heartbeat.ts): "active now" on the
   // sales screen counts the last 5 minutes.
   lastSeenAt           DateTime?
@@ -1002,6 +1004,8 @@ model ContactRequest {
   source       String?
   /// The page the quote form was sent from: the path of the page the pop-up was opened on, or /quote.
   pageUrl      String?
+  /// The tracked link (bupulse.com/go/<code>) the visitor came through in the 30 days before sending it.
+  trackedLinkId String?
   createdAt    DateTime @default(now())
   handled      Boolean  @default(false)
 
@@ -1665,6 +1669,38 @@ model PageView {
   @@index([createdAt])
   @@index([sessionId])
   @@index([viewId])
+}
+
+// A tracked link (docs/SUPPORT_DASHBOARD.md "Tracked links"): bupulse.com/go/<code> counts the click, remembers the
+// link for 30 days in a first-party cookie, and opens the chosen page with utm tags (source = the channel, medium =
+// "link", campaign = the code), so the landing page's PageView names it. Made in the support app by admin@bupulse.com
+// (for BuPulse's own social media) or by any support staff member (links they give to clients). Archived, never deleted,
+// so old leads keep their link.
+model TrackedLink {
+  id          String             @id @default(cuid())
+  code        String             @unique // lower case a-z, 0-9 and -, 3 to 40 characters
+  label       String // "Instagram bio", "Jean's WhatsApp"
+  channel     String // lib/links/rules.ts CHANNELS: instagram, facebook, tiktok, linkedin, whatsapp, google ...
+  destination String // a path of the site: "/", "/pricing", "/quote"
+  createdById String?
+  createdBy   SupportAgent?      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime           @default(now())
+  archivedAt  DateTime?
+  clicks      TrackedLinkClick[]
+
+  @@index([createdById])
+}
+
+// One click on a tracked link (bots left out). Unique visitors come from the landing PageView (same counting method as
+// the rest of the analytics); a click is counted even for visitors who opted out of tracking (nothing about them is kept).
+model TrackedLinkClick {
+  id        String      @id @default(cuid())
+  linkId    String
+  link      TrackedLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+  country   String? // ISO 3166 alpha-2
+
+  @@index([linkId, createdAt])
 }
 
 // A product event (signup, onboarding_step, generation ...). Written by lib/analytics/events.ts trackEvent.
@@ -3403,6 +3439,7 @@ model SupportAgent {
   departments  SupportAgentDepartment[]
   assigned     SupportConversation[]
   messages     SupportMessage[]
+  trackedLinks TrackedLink[]
   devices      SupportDevice[]
 
   @@index([status, availability])
@@ -3499,6 +3536,7 @@ model SupportConversation {
   visitId           String?
   visit             SupportVisit?             @relation(fields: [visitId], references: [id], onDelete: SetNull)
   surface           String // where it started: public | dashboard | creator | bio
+  trackedLinkId     String? // the tracked link (bupulse.com/go/<code>) the visitor came through in the last 30 days
   status            SupportConversationStatus @default(AI)
   departmentId      String?
   department        SupportDepartment?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)

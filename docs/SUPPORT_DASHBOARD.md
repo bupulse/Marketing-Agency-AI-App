@@ -6,12 +6,12 @@ not a new app: the same `SupportAgent` rows as Admin → Live chat, so staff are
 
 ## Who sees what (`lib/support/roles.ts`)
 
-| Role | Chats | Live visitors, Analytics | Stats | Server |
-| --- | --- | --- | --- | --- |
-| AGENT | own and unassigned | yes | no | no |
-| TECH | own and unassigned | yes | no | yes |
-| SUPERVISOR | all | yes | yes | yes |
-| admin@bupulse.com | all | yes | yes | yes, and approves staff |
+| Role | Chats | Live visitors, Analytics | Links | Stats | Server |
+| --- | --- | --- | --- | --- | --- |
+| AGENT | own and unassigned | yes | their own | no | no |
+| TECH | own and unassigned | yes | their own | no | yes |
+| SUPERVISOR | all | yes | their own | yes | yes |
+| admin@bupulse.com | all | yes | all, and leads by staff | yes | yes, and approves staff |
 
 - admin@bupulse.com is the only admin. It signs in with the admin console's session (no second password).
 - Staff can sign up on the dashboard. The account waits as "pending" until admin@bupulse.com approves it, in the
@@ -38,6 +38,40 @@ not a new app: the same `SupportAgent` rows as Admin → Live chat, so staff are
   It only arrives when the bupulse.com zone has the free Managed Transform "Add visitor location headers" switched on
   (Cloudflare dashboard → Rules → Settings → Managed Transforms). A Rwandan address the host placed in another
   country is counted as Rwanda with no city.
+
+## Tracked links (built 10 November 2026)
+
+The owner, 10 November 2026: know whether visitors came from Google, Facebook, Instagram, TikTok, LinkedIn or
+elsewhere, and let admin@bupulse.com make links for BuPulse's social media while every staff member makes their own
+links to give to clients.
+
+- **Where from, without links:** the Analytics page already groups visitors by source (utm_source, else the referrer
+  site: google, facebook, instagram, tiktok, linkedin, whatsapp...). In-app browsers (Facebook, Instagram, TikTok)
+  often send no referrer, so those visits look "direct": a tracked link fixes that.
+- **The link:** `bupulse.com/go/<code>` (`app/go/[code]/route.ts`). It counts the click (`TrackedLinkClick`, bots
+  left out, 30 counted per address per minute), keeps the link's id in a 30-day first-party cookie `bp-link`
+  (functional, httpOnly; not set for visitors with Do Not Track / Global Privacy Control, who still count as a click),
+  and opens the chosen page with `utm_source=<channel>&utm_medium=link&utm_campaign=<code>&src=<channel>`. So the
+  landing page view names the link (unique visitors use the site's one counting method) and the quote form's source is
+  the channel. The last link opened wins. An archived link still opens its page but counts nothing; an unknown code
+  opens the home page.
+- **Links page** in the support app (every role that sees Analytics; `app/support/(app)/links`): make a link (name,
+  channel, page, optional words after /go/), copy, archive or bring back. Each link shows clicks, unique visitors,
+  quote requests, website chats, sign-ups and paid starts in the chosen period, and its top countries.
+  admin@bupulse.com sees every link and a "Leads by staff" table; anyone else sees only their own links and their chat
+  leads (owner's choice).
+- **Whose lead** (`lib/links/rules.ts leadOwnerOf`, the owner's rule): visitors from Google, Facebook and every other
+  channel, and from the company's own links (made by admin@bupulse.com), are the company's ("BuPulse (company)").
+  A visitor is a staff member's lead when they came through that person's link, or when that person talked to them
+  first in the website chat (the first staff reply). A staff link wins over a chat with someone else.
+- **On the lead:** quote requests (`ContactRequest.trackedLinkId`), website chats (`SupportConversation.trackedLinkId`)
+  and sign-ups (`User.trackedLinkId`) keep the link from the cookie. Admin -> Quote requests and the chat panel in the
+  support app show "Came via link" and "Lead of"; the quote alert (email, Telegram) has a "Came via link" line. A quote
+  is a staff member's chat lead when the same email address chatted with them from 30 days before the request.
+- Code: `lib/links/rules.ts` (pure: channels, codes, pages, lead rule), `lib/links/service.ts` (create, archive,
+  report, cookie, lead lookups), `components/support-app/links-view.tsx`.
+- Separate from the sales staff referral links of the admin console (`?ref=CODE`, `lib/sales/referral.ts`), which
+  give a new company to a sales agent for commission.
 
 ## Server monitoring
 

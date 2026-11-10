@@ -1,4 +1,6 @@
 import "server-only";
+import { linkTagText, quoteLeadInfo, type LeadInfo } from "@/lib/links/service";
+import { leadOwnerText } from "@/lib/links/rules";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
@@ -23,6 +25,10 @@ export type QuoteRow = {
   pageUrl: string | null;
   handled: boolean;
   createdAt: Date;
+  /** The tracked link it came through ("Instagram bio (bupulse.com/go/ig-bio, Instagram, company link)"), or null. */
+  link: string | null;
+  /** Whose lead it is: "BuPulse (company)", "Jean (their link)", "Jean (talked in the chat)" (lib/links/rules.ts). */
+  leadOf: string;
 };
 
 const ID = /^[a-z0-9]{10,40}$/i;
@@ -34,12 +40,18 @@ export async function listQuoteRequests({ filter = "open", after, limit = QUOTES
     where: { kind: QUOTE_KIND, ...(filter === "all" ? {} : { handled: filter === "handled" }) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: take + 1,
-    select: { id: true, name: true, email: true, phone: true, businessName: true, message: true, source: true, pageUrl: true, handled: true, createdAt: true },
+    select: { id: true, name: true, email: true, phone: true, businessName: true, message: true, source: true, pageUrl: true, handled: true, createdAt: true, trackedLinkId: true },
     ...(after && ID.test(after) ? { cursor: { id: after }, skip: 1 } : {}),
   });
   const page = rows.slice(0, take);
+  const leads = await quoteLeadInfo(page).catch(() => new Map<string, LeadInfo>());
   return {
-    items: page.map(({ message, ...r }) => ({ ...r, note: message })),
+    items: page.map(({ message, ...row }) => {
+      const { trackedLinkId, ...r } = row;
+      void trackedLinkId;
+      const info = leads.get(r.id);
+      return { ...r, note: message, link: info?.link ? linkTagText(info.link) : null, leadOf: leadOwnerText(info?.owner ?? { kind: "company" }) };
+    }),
     next: rows.length > take ? (page.at(-1)?.id ?? null) : null,
   };
 }

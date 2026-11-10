@@ -6,6 +6,7 @@ import { calledUrl } from "@/lib/lead-alerts/called-link";
 import { alertInBackground } from "@/lib/lead-alerts/channels";
 import { scheduleLeadReminder } from "@/lib/lead-alerts/reminders";
 import type { LeadAlert } from "@/lib/lead-alerts/format";
+import { currentTrackedLinkId, linkTagFor } from "@/lib/links/service";
 import { publicLimited } from "@/lib/request-limits";
 import { QUOTE_FIELDS, QUOTE_KIND, quoteSchema, type QuoteFields, type QuoteFormState, type QuoteRequest } from "./schema";
 
@@ -16,7 +17,7 @@ import { QUOTE_FIELDS, QUOTE_KIND, quoteSchema, type QuoteFields, type QuoteForm
 const DUPLICATE_WINDOW_MS = 60_000;
 
 /** The alert for a stored request. Pure apart from the site address. */
-export function quoteAlert(q: QuoteRequest, at: Date, id?: string): LeadAlert {
+export function quoteAlert(q: QuoteRequest, at: Date, id?: string, link?: string | null): LeadAlert {
   const site = publicSiteUrl();
   return {
     kind: "quote",
@@ -27,6 +28,7 @@ export function quoteAlert(q: QuoteRequest, at: Date, id?: string): LeadAlert {
     note: q.note ?? null,
     source: q.source,
     page: q.pageUrl ? `${site}${q.pageUrl}` : null,
+    link: link ?? null,
     at,
     openUrl: `${site}/admin/quotes`,
     calledUrl: id ? calledUrl(site, id) : null,
@@ -62,11 +64,14 @@ export async function submitQuoteRequest(formData: FormData): Promise<QuoteFormS
       select: { id: true },
     });
     if (!recent) {
+      // The tracked link (bupulse.com/go/<code>) this visitor came through in the last 30 days, if any.
+      const trackedLinkId = await currentTrackedLinkId();
       const row = await prisma.contactRequest.create({
-        data: { kind: QUOTE_KIND, name: q.name, email: q.email, phone: q.phone, businessName: q.businessName, message: q.note ?? null, source: q.source, pageUrl: q.pageUrl },
+        data: { kind: QUOTE_KIND, name: q.name, email: q.email, phone: q.phone, businessName: q.businessName, message: q.note ?? null, source: q.source, pageUrl: q.pageUrl, trackedLinkId },
         select: { id: true, createdAt: true },
       });
-      await alertInBackground(quoteAlert(q, row.createdAt, row.id), "quote lead alert");
+      const link = await linkTagFor(trackedLinkId).catch(() => null);
+      await alertInBackground(quoteAlert(q, row.createdAt, row.id, link), "quote lead alert");
       // Reminders on Telegram every 2 minutes until "✅ Called" is pressed; a failure here never fails the form.
       await scheduleLeadReminder(row.id).catch((error) => logError(error, { source: "quote.reminder", level: "warn" }));
     }

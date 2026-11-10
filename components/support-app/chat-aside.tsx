@@ -66,6 +66,8 @@ export function ChatAside({ detail, onOpenChat }: { detail: ConversationDetail; 
             {visit.ip && <><dt className="text-muted">IP</dt><dd>{visit.ip}</dd></>}
             {(visit.device || visit.browser) && <><dt className="text-muted">Device</dt><dd>{[visit.device, visit.browser].filter(Boolean).join(" · ")}</dd></>}
             <dt className="text-muted">Came from</dt><dd>{visit.referrer ?? "direct"}</dd>
+            {detail.lead?.link && <><dt className="text-muted">Via link</dt><dd className="break-words">{detail.lead.link}</dd></>}
+            {detail.lead && <><dt className="text-muted">Lead of</dt><dd>{detail.lead.of}</dd></>}
             <dt className="text-muted">On site</dt><dd>{minutesOnSite(seconds)} · {ordinal(visit.visitCount)} visit</dd>
           </dl>
           {visit.pages.length > 0 && (
