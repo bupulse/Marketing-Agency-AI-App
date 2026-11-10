@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSystemHealth } from "@/lib/admin/health";
 import type { HeartbeatDisk, HeartbeatTask } from "./heartbeat-input";
 import { PC_TASKS } from "./heartbeat-input";
+import { dailyBars, hourlyBars, type DayBar, type HourBar } from "./timeline";
 import { CHECKED_PAGES, durationWords, kigaliMidnight, kigaliTime, minutesBetween, PC_SILENT_MS, siteState, uptimePercent, type OutageReason, type PageResult } from "./uptime-rules";
 
 // Everything the support app's Server page shows (app/support/(app)/server), read in one go. Dates are ISO strings so
@@ -25,6 +26,8 @@ export type ServerMonitor = {
     | { kind: "late"; lastCheckAt: string; minutes: number }
     | { kind: "down"; since: string | null; minutes: number | null; lastCheckAt: string };
   uptime: { today: number | null; week: number | null; month: number | null; since: string | null };
+  /** The uptime timeline: the last 24 hours, one bar per hour, and the last 30 days, one bar per Kigali day. */
+  timeline: { hours: HourBar[]; days: DayBar[] };
   outages: { startedAt: string; endedAt: string | null; minutes: number; reason: OutageReason | "ongoing" }[];
   pc: {
     state: "never" | "ok" | "silent";
@@ -81,7 +84,7 @@ export async function getServerMonitor(now = new Date()): Promise<ServerMonitor>
     prisma.uptimeCheck.findFirst({ where: { ok: true }, orderBy: { checkedAt: "desc" }, select: { checkedAt: true } }),
     prisma.uptimeCheck.aggregate({ _min: { checkedAt: true } }),
     prisma.uptimeIncident.findMany({ where: { endedAt: { gte: monthAgo } }, orderBy: { startedAt: "desc" }, take: 200 }),
-    prisma.uptimeCheck.findMany({ where: { checkedAt: { gte: dayAgo } }, select: { ok: true, pages: true }, take: 2_000 }),
+    prisma.uptimeCheck.findMany({ where: { checkedAt: { gte: dayAgo } }, select: { checkedAt: true, ok: true, pages: true }, take: 2_000 }),
     prisma.monitorHeartbeat.findFirst({ orderBy: { receivedAt: "desc" } }),
     prisma.monitorHeartbeat.aggregate({ where: { receivedAt: { gte: new Date(now.getTime() - 3_600_000) } }, _avg: { cpuPercent: true } }),
     getSystemHealth(now).catch(() => null),
@@ -155,6 +158,7 @@ export async function getServerMonitor(now = new Date()): Promise<ServerMonitor>
     issues,
     site,
     uptime: { today: pct(kigaliMidnight(now)), week: pct(new Date(now.getTime() - 7 * DAY)), month: pct(monthAgo), since: iso(since) },
+    timeline: { hours: hourlyBars(recent.map((c) => ({ checkedAt: c.checkedAt, ok: c.ok, pages: pagesOf(c.pages) })), spans, since, now), days: dailyBars(spans, since, now) },
     outages: [
       ...(ongoing ? [{ startedAt: ongoing.startedAt.toISOString(), endedAt: null, minutes: minutesBetween(ongoing.startedAt, now), reason: "ongoing" as const }] : []),
       ...incidents.slice(0, 10).map((i) => ({ startedAt: i.startedAt.toISOString(), endedAt: i.endedAt.toISOString(), minutes: i.minutes, reason: i.reason as OutageReason })),

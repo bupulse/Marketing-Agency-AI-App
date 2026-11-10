@@ -5,6 +5,11 @@
 # page (POST /api/monitor/heartbeat, same secret): CPU, memory, disks, restart time, the three tasks, node and
 # cloudflared versions. Everything about the heartbeat is inside its own try/catch: if it fails, the tick goes on as
 # before. Its failures go to heartbeat.log (only when something changes), never to cron.log. Windows PowerShell 5.1.
+#
+# And every 5 minutes (on :02, :07, :12, ..., between GitHub's runs), on a third thread: the PC's own uptime check
+# (scripts/monitor/pc-self-check.mjs): it times https://bupulse.com from outside the PC (through the internet and the
+# tunnel) and records the result on the local server, so the Server page's uptime has a point every 5 minutes even when
+# GitHub's 5-minute check runs late. One line per check in self-check.log. If it fails, nothing else is affected.
 $logs = Join-Path $env:USERPROFILE "bupulse-prod"
 $log = Join-Path $logs "cron.log"
 
@@ -99,6 +104,39 @@ try {
   [void]$heartbeatRunner.BeginInvoke()
 } catch {
   try { Add-Content (Join-Path $logs "heartbeat.log") "heartbeat could not start: $($_.Exception.Message) $((Get-Date).ToUniversalTime().ToString('s'))Z" } catch { }
+}
+
+$selfCheck = {
+  param($logs, $repo)
+  $scLog = Join-Path $logs "self-check.log"
+  $script = Join-Path $repo "scripts\monitor\pc-self-check.mjs"
+  $secretFile = Join-Path $logs "cron-secret.txt"
+  $stateFile = Join-Path $logs "self-check-state.json"
+  while ($true) {
+    try {
+      # Wait for the next :02, :07, :12, ... minute.
+      $now = Get-Date
+      $wait = ((7 - ($now.Minute % 5)) % 5) * 60 - $now.Second
+      if ($wait -le 0) { $wait += 300 }
+      Start-Sleep -Seconds $wait
+      $out = ((& node $script $secretFile $stateFile 2>&1) | Out-String).Trim()
+      Add-Content $scLog "$out $((Get-Date).ToUniversalTime().ToString('s'))Z"
+    } catch {
+      try { Add-Content $scLog "self-check failed: $($_.Exception.Message) $((Get-Date).ToUniversalTime().ToString('s'))Z" } catch { }
+      Start-Sleep -Seconds 60
+    }
+  }
+}
+
+# The self-check's own thread. If it cannot start, the jobs below still run.
+$selfCheckRunner = $null
+try {
+  $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+  $selfCheckRunner = [PowerShell]::Create()
+  [void]$selfCheckRunner.AddScript($selfCheck).AddArgument($logs).AddArgument($repoRoot)
+  [void]$selfCheckRunner.BeginInvoke()
+} catch {
+  try { Add-Content (Join-Path $logs "self-check.log") "self-check could not start: $($_.Exception.Message) $((Get-Date).ToUniversalTime().ToString('s'))Z" } catch { }
 }
 
 while ($true) {

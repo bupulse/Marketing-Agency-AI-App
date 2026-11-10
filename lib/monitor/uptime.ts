@@ -4,7 +4,7 @@ import { logError } from "@/lib/errors";
 import { sendBackUpAlert, type AlertOutcome } from "./alerts";
 import { gapOutage, longestGapMs, PC_SILENT_MS, type Outage, type UptimeCheckInput } from "./uptime-rules";
 
-// Stores one outside check (POST /api/monitor/uptime) and, when it is a good check after an outage, records the outage
+// Stores one check (POST /api/monitor/uptime: GitHub's outside check, or the server PC's own 5-minute check) and, when it is a good check after an outage, records the outage
 // and sends the "back up" alert. The outage's start is unique (UptimeIncident.startedAt), so a check posted twice, or two
 // at once, can never send the alert twice: only the request that created the row sends it.
 
@@ -36,14 +36,19 @@ export async function recordUptimeCheck(input: UptimeCheckInput, now = new Date(
   }
   if (!input.ok || !prev) return { stored: true, outage: null, alerted: false };
 
+  // "After a failure" (the poster's previous check found the site down) is old news when the good check before this one
+  // already closed an outage: the PC's own 5-minute check (scripts/monitor/pc-self-check.mjs) can end an outage before
+  // GitHub's next run says so, and that must not record a second, made-up outage after it.
+  const afterFailure = input.afterFailure && !(await db.uptimeIncident.findFirst({ where: { endedAt: prev.checkedAt }, select: { id: true } }));
+
   // Only a gap needs the slower look at what happened in it.
   const gap = now.getTime() - prev.checkedAt.getTime();
   const between = { failedChecks: 0, pcSilent: false };
-  if (gap > 0 && !input.afterFailure) {
+  if (gap > 0 && !afterFailure) {
     between.failedChecks = await db.uptimeCheck.count({ where: { ok: false, checkedAt: { gt: prev.checkedAt, lt: now } } });
     if (!between.failedChecks) between.pcSilent = await pcSilentBetween(db, prev.checkedAt, now);
   }
-  const outage = gapOutage(prev, { checkedAt: now, afterFailure: input.afterFailure }, between);
+  const outage = gapOutage(prev, { checkedAt: now, afterFailure }, between);
   if (!outage) return { stored: true, outage: null, alerted: false };
 
   let incidentId: string;
