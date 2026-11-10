@@ -11,10 +11,14 @@ async function uptimeSecret(): Promise<string | null> {
   return process.env.UPTIME_SECRET?.trim() || (await getCustomKey("UPTIME_SECRET"))?.trim() || null;
 }
 
+// The server PC's own check every 5 minutes (scripts/monitor/pc-self-check.mjs, run by cron-loop.ps1) posts here too,
+// with the PC's CRON_SECRET (the heartbeat's bearer), so the record has a point every 5 minutes when GitHub runs late.
 export async function POST(request: NextRequest) {
   const secret = await uptimeSecret();
-  if (!secret) return NextResponse.json({ error: "UPTIME_SECRET is not set" }, { status: 500 });
-  if (!bearerMatches(request.headers.get("authorization"), secret)) {
+  const pcSecret = process.env.CRON_SECRET?.trim() || null;
+  if (!secret && !pcSecret) return NextResponse.json({ error: "UPTIME_SECRET is not set" }, { status: 500 });
+  const authorization = request.headers.get("authorization");
+  if (!bearerMatches(authorization, secret) && !bearerMatches(authorization, pcSecret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const body = await readJsonBody(request, UPTIME_MAX_BYTES);

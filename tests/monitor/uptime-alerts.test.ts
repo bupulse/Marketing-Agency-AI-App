@@ -18,7 +18,7 @@ const inRange = (d: Date, r: Range = {}) => (!r.gt || d > r.gt) && (!r.lt || d <
 
 function fakeDb() {
   const checks: Check[] = [];
-  const incidents: { id: string; startedAt: Date; alertedAt?: Date | null }[] = [];
+  const incidents: { id: string; startedAt: Date; endedAt?: Date; alertedAt?: Date | null }[] = [];
   const beats: { receivedAt: Date }[] = [];
   const db = {
     uptimeCheck: {
@@ -32,9 +32,10 @@ function fakeDb() {
       count: async ({ where }: { where: { ok: boolean; checkedAt: Range } }) => checks.filter((c) => c.ok === where.ok && inRange(c.checkedAt, where.checkedAt)).length,
     },
     uptimeIncident: {
-      create: async ({ data }: { data: { startedAt: Date } }) => {
+      findFirst: async ({ where }: { where: { endedAt: Date } }) => incidents.find((i) => i.endedAt && +i.endedAt === +where.endedAt) ?? null,
+      create: async ({ data }: { data: { startedAt: Date; endedAt: Date } }) => {
         if (incidents.some((i) => +i.startedAt === +data.startedAt)) throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
-        const row = { id: `inc${incidents.length + 1}`, startedAt: data.startedAt };
+        const row = { id: `inc${incidents.length + 1}`, startedAt: data.startedAt, endedAt: data.endedAt };
         incidents.push(row);
         return row;
       },
@@ -115,6 +116,17 @@ describe("recordUptimeCheck: the back-up alert goes out once per outage", () => 
     expect(alert).not.toHaveBeenCalled();
   });
 
+  it("the PC's own check closed the outage first: the workflow's late \"after a failure\" records nothing more", async () => {
+    await run(good(), 0);
+    await run(bad(), 7); // the PC's check: down (the workflow could not post its failed run)
+    const pcBack = await run(good({ afterFailure: true }), 12); // the PC's next check: back up
+    expect(pcBack.outage).toEqual({ startedAt: at(0), endedAt: at(12), minutes: 12, reason: "failed-check" });
+    const late = await run(good({ afterFailure: true }), 15); // the workflow's run after its own down run
+    expect(late.outage).toBeNull();
+    expect(alert).toHaveBeenCalledTimes(1);
+    expect(f.incidents).toHaveLength(1);
+  });
+
   it("a failing alert sender does not fail the check", async () => {
     alert.mockRejectedValueOnce(new Error("Resend down"));
     await run(good(), 0);
@@ -133,6 +145,7 @@ describe("uptime route", () => {
     recordUptimeCheckMock.mockResolvedValue({ stored: true, outage: null, alerted: false });
     vi.doMock("@/lib/monitor/uptime", () => ({ recordUptimeCheck: recordUptimeCheckMock }));
     delete process.env.UPTIME_SECRET;
+    delete process.env.CRON_SECRET;
   });
 
   async function call(authorization: string | undefined, body: unknown = good()) {
@@ -151,6 +164,15 @@ describe("uptime route", () => {
     getCustomKey.mockResolvedValue("saved-secret");
     expect((await call("Bearer saved-secret")).status).toBe(200);
     expect(getCustomKey).toHaveBeenCalledWith("UPTIME_SECRET");
+  });
+
+  it("also takes the server PC's CRON_SECRET (its own 5-minute check), and only that or UPTIME_SECRET", async () => {
+    process.env.CRON_SECRET = "pc-secret";
+    expect((await call("Bearer pc-secret")).status).toBe(200);
+    expect((await call("Bearer other")).status).toBe(401);
+    process.env.UPTIME_SECRET = "env-secret";
+    expect((await call("Bearer env-secret")).status).toBe(200);
+    expect((await call("Bearer pc-secret")).status).toBe(200);
   });
 
   it("401 for a wrong or missing bearer, 400 for a bad body", async () => {
