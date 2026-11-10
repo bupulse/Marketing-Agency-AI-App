@@ -25,7 +25,7 @@ function amountOf(f: FormData): number {
 
 export async function saveRecurringCostAction(f: FormData) {
   const ctx = await adminAction("money.costs");
-  await finish("/admin/costs#recurring", "Recurring cost saved.", () =>
+  await finish("/admin/costs/recurring", "Recurring cost saved.", () =>
     fresh(saveRecurringCost(ctx, {
       id: text(f, "id") || undefined,
       name: text(f, "name"),
@@ -43,22 +43,22 @@ export async function saveRecurringCostAction(f: FormData) {
 
 export async function endRecurringCostAction(f: FormData) {
   const ctx = await adminAction("money.costs");
-  await finish("/admin/costs#recurring", "Recurring cost stopped. Earlier months still count it.", () => fresh(endRecurringCost(ctx, text(f, "id"), text(f, "lastMonth"))));
+  await finish("/admin/costs/recurring", "Recurring cost stopped. Earlier months still count it.", () => fresh(endRecurringCost(ctx, text(f, "id"), text(f, "lastMonth"))));
 }
 
 export async function deleteRecurringCostAction(f: FormData) {
   const ctx = await adminAction("money.costs");
-  await finish("/admin/costs#recurring", "Recurring cost deleted from every month.", () => fresh(deleteRecurringCost(ctx, text(f, "id"))));
+  await finish("/admin/costs/recurring", "Recurring cost deleted from every month.", () => fresh(deleteRecurringCost(ctx, text(f, "id"))));
 }
 
 export async function saveProviderBillAction(f: FormData) {
   const ctx = await adminAction("money.costs");
-  await finish("/admin/costs#bills", "Bill saved. It replaces the estimate for that provider and month.", () =>
+  await finish("/admin/costs/bills", "Bill saved. It replaces the estimate for that provider and month.", () =>
     fresh(saveProviderBill(ctx, { provider: text(f, "provider"), month: text(f, "month"), amount: amountOf(f), currency: text(f, "currency") as never, note: text(f, "note") || undefined })),
   );
 }
 
 export async function deleteProviderBillAction(f: FormData) {
   const ctx = await adminAction("money.costs");
-  await finish("/admin/costs#bills", "Bill deleted. The estimate counts again for that month.", () => fresh(deleteProviderBill(ctx, text(f, "id"))));
+  await finish("/admin/costs/bills", "Bill deleted. The estimate counts again for that month.", () => fresh(deleteProviderBill(ctx, text(f, "id"))));
 }

@@ -58,5 +58,5 @@ export async function savePaymentSettingsAction(f: FormData) {
 
 export async function reprocessCardEventAction(f: FormData) {
   const ctx = await adminAction("payments.approve");
-  await finish("/admin/payments#card-events", (r) => `Reprocessed ${r.type}.${r.note ? ` Note: ${r.note}.` : ""}`, () => reprocessBillingEvent(ctx, text(f, "id")));
+  await finish("/admin/payments/card-events", (r) => `Reprocessed ${r.type}.${r.note ? ` Note: ${r.note}.` : ""}`, () => reprocessBillingEvent(ctx, text(f, "id")));
 }

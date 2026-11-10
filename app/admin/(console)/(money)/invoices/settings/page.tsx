@@ -1,11 +1,11 @@
-import Link from "next/link";
-import { PageHeader } from "@/components/app";
+import { Image as ImageIcon, PenLine, Settings2 } from "lucide-react";
 import { ConfirmButton } from "@/components/admin/confirm-button";
-import { Panel, notice } from "@/components/admin/ui";
+import { PageHeader } from "@/components/admin/kit";
+import { MoneyNotices } from "@/components/admin/business/money-common";
+import { Panel } from "@/components/admin/ui";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
 import { Button, Field, Input, PhoneInput, Textarea } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
-import { param } from "@/lib/admin/format";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { sampleInvoiceDocument } from "@/lib/invoices/service";
 import { getInvoiceSettings, logoDataUrl } from "@/lib/invoices/settings";
@@ -25,14 +25,18 @@ export default async function InvoiceSettingsPage({ searchParams }: { searchPara
 
   return (
     <>
-      <PageHeader title="Invoice settings" description="What every invoice shows about BuPulse: logo, details, tax, payment instructions and colour. Drafts and new invoices use these; a sent invoice keeps what it was sent with. Every change is audited." />
-      {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
-      {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
-      <Link href="/admin/invoices" className="inline-flex min-h-11 items-center self-start px-2 text-sm font-medium underline">All invoices</Link>
+      <PageHeader
+        icon={Settings2}
+        tone="green"
+        title="Invoice settings"
+        description="What every invoice shows about BuPulse: logo, details, tax, how to pay and colour. Drafts and new invoices use these; a sent invoice keeps what it was sent with."
+        back={{ href: "/admin/invoices", label: "All invoices" }}
+      />
+      <MoneyNotices sp={sp} />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-5">
-          <Panel title="Logo" description="PNG or JPEG, at most 512 KB and 2000 × 2000 pixels. Stored privately; printed at the top left of every invoice.">
+          <Panel icon={ImageIcon} tone="green" title="Logo" description="PNG or JPEG, at most 512 KB and 2000 × 2000 pixels. Stored privately; printed at the top left of every invoice.">
             <form action={uploadInvoiceLogoAction} className="flex flex-wrap items-end gap-3">
               <Field label="Logo file">
                 <Input name="logo" type="file" accept="image/png,image/jpeg" required />
@@ -44,7 +48,7 @@ export default async function InvoiceSettingsPage({ searchParams }: { searchPara
             )}
           </Panel>
 
-          <Panel title="Details and texts">
+          <Panel icon={PenLine} tone="green" title="Details and texts" description="Every change is audited.">
             <form action={saveInvoiceSettingsAction} className="flex flex-col gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Business / legal name" required><Input name="businessName" defaultValue={s.businessName} maxLength={L.businessName} required /></Field>
@@ -67,7 +71,7 @@ export default async function InvoiceSettingsPage({ searchParams }: { searchPara
           </Panel>
         </div>
         <div className="min-w-0">
-          <p className="mb-2 text-sm text-muted">Preview with a made-up client</p>
+          <p className="mb-2 px-1 text-[13px] font-semibold text-muted">Preview with a made-up client</p>
           <InvoicePreview doc={sample.doc} logoSrc={logoSrc} />
         </div>
       </div>

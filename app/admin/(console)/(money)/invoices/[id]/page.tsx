@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/app";
+import { Building2, Download, Eye, FileText } from "lucide-react";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { InvoiceEditor } from "@/components/admin/invoice-editor";
-import { Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
+import { CARD, DataList, PageHeader, StatusPill } from "@/components/admin/kit";
+import { InvoiceStatus } from "@/components/admin/business/money-invoices";
+import { MoneyNotices } from "@/components/admin/business/money-common";
+import { Panel, notice } from "@/components/admin/ui";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
-import { Badge, Field, Input, Select, Textarea, type BadgeTone } from "@/components/ui";
+import { buttonClasses, Field, Input, Select, Textarea } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
-import { dateTime, param } from "@/lib/admin/format";
+import { dateTime } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { getInvoiceSettings, logoDataUrl } from "@/lib/invoices/settings";
 import { getInvoiceRow, invoiceDocument, invoicePayments, MANUAL_PAY_LABEL, MANUAL_PAY_METHODS } from "@/lib/invoices/service";
@@ -18,7 +21,7 @@ import { markInvoicePaidAction, resendInvoiceAction, voidInvoiceAction } from ".
 export const metadata = { title: "Invoice" };
 export const dynamic = "force-dynamic";
 
-const TONE: Record<string, BadgeTone> = { draft: "neutral", sent: "blue", paid: "success", void: "neutral" };
+const PAY_TONE = { confirmed: "good", rejected: "bad", pending: "new" } as const;
 
 export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("payments.view"); // pages render alongside the layout, so check here too
@@ -47,12 +50,14 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   return (
     <>
       <PageHeader
+        icon={FileText}
+        tone="green"
         title={`Invoice ${row.number}`}
         description={`${owner?.name ?? "A company"} · ${total} · due ${longInvoiceDate(row.dueDate)}`}
-        action={<Badge tone={overdue ? "danger" : (TONE[row.status] ?? "neutral")}>{overdue ? "Overdue" : INVOICE_STATUS_LABEL[row.status as keyof typeof INVOICE_STATUS_LABEL] ?? row.status}</Badge>}
+        back={{ href: "/admin/invoices", label: "All invoices" }}
+        actions={<InvoiceStatus status={row.status} overdue={overdue} />}
       />
-      {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
-      {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
+      <MoneyNotices sp={sp} />
       {received.length > 0 && (
         <div role="alert" className={notice.bad}>
           <p className="font-semibold">{received.length > 1 ? "Payments received" : "Payment received"}: check and mark paid. {received.length > 1 && "More than one payment came in: possible double payment, refund the extra one."}</p>
@@ -65,11 +70,10 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Link href="/admin/invoices" className="inline-flex min-h-11 items-center px-2 text-sm font-medium underline">All invoices</Link>
-        <Link href={`/admin/companies/${row.businessId}`} className="inline-flex min-h-11 items-center px-2 text-sm font-medium underline">Company</Link>
-        <a href={pdfHref} target="_blank" rel="noopener" className="glass inline-flex min-h-11 items-center rounded-full px-4 text-sm font-medium no-underline">Preview PDF</a>
-        <a href={`${pdfHref}?download=1`} className="glass inline-flex min-h-11 items-center rounded-full px-4 text-sm font-medium no-underline">Download PDF</a>
+      <div className={`flex flex-wrap items-center gap-2 p-3 sm:p-4 ${CARD}`}>
+        <a href={pdfHref} target="_blank" rel="noopener" className={buttonClasses({ variant: "outline", size: "sm" })}><Eye aria-hidden className="size-4" /> Preview PDF</a>
+        <a href={`${pdfHref}?download=1`} className={buttonClasses({ variant: "outline", size: "sm" })}><Download aria-hidden className="size-4" /> Download PDF</a>
+        <Link href={`/admin/companies/${row.businessId}`} className={buttonClasses({ variant: "outline", size: "sm" })}><Building2 aria-hidden className="size-4" /> Company</Link>
         {row.status === "sent" && (
           <>
             <ConfirmButton action={resendInvoiceAction} fields={{ id: row.id }} label="Resend email" title={`Email ${row.number} again?`} description={`To ${row.sentTo.join(", ") || "the addresses it was sent to"}, with the same PDF. Written to the audit log.`} confirmLabel="Resend" />
@@ -109,8 +113,8 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
         </Panel>
       ) : (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <Panel title="Details">
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
+          <Panel icon={FileText} tone="green" title="Details" description="When it was sent, reminded, paid or voided, and by whom.">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[14px]">
               <dt className="text-muted">Status</dt><dd>{INVOICE_STATUS_LABEL[row.status as keyof typeof INVOICE_STATUS_LABEL] ?? row.status}{overdue ? " (overdue)" : ""}</dd>
               {row.sentAt && (<><dt className="text-muted">Sent</dt><dd>{dateTime(row.sentAt)} to {row.sentTo.join(", ")}</dd></>)}
               {row.reminderSentAt && (<><dt className="text-muted">Reminder</dt><dd>{dateTime(row.reminderSentAt)}</dd></>)}
@@ -125,21 +129,19 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
       )}
 
       {payments.length > 0 && (
-        <Panel title="Payments for this invoice" description="Mobile Money payments with this invoice number as the reference. Confirm or reject reported ones in Payments.">
-          <TableWrap caption="Payments for this invoice">
-            <thead><tr><Th>Status</Th><Th right>Amount</Th><Th>Transaction</Th><Th>Reported</Th><Th>Decided</Th></tr></thead>
-            <tbody>
-              {payments.map((p) => (
-                <tr key={p.id}>
-                  <Td><Badge tone={p.status === "confirmed" ? "success" : p.status === "rejected" ? "danger" : p.status === "pending" ? "violet" : "neutral"}>{p.status}</Badge></Td>
-                  <Td right>{formatInvoiceMoney(p.amountMinor, p.currency)}</Td>
-                  <Td><span className="font-mono">{p.transactionId ?? ""}</span>{p.network && <span className="block text-[13px] text-muted">{p.network}</span>}</Td>
-                  <Td className="whitespace-nowrap">{p.submittedAt ? dateTime(p.submittedAt) : "Not yet"}</Td>
-                  <Td className="whitespace-nowrap">{p.decidedAt ? `${dateTime(p.decidedAt)} · ${p.decidedBy ?? ""}` : p.status === "pending" && p.submittedAt ? <Link href="/admin/payments" className="underline">Decide in Payments</Link> : ""}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrap>
+        <Panel tone="green" title="Payments for this invoice" description="Mobile Money payments with this invoice number as the reference. Confirm or reject reported ones in Payments.">
+          <DataList
+            caption="Payments for this invoice"
+            rows={payments}
+            rowKey={(p) => p.id}
+            columns={[
+              { key: "amount", header: "Amount", cell: (p) => formatInvoiceMoney(p.amountMinor, p.currency), primary: true },
+              { key: "status", header: "Status", cell: (p) => <StatusPill tone={PAY_TONE[p.status as keyof typeof PAY_TONE] ?? "muted"} dot>{p.status}</StatusPill> },
+              { key: "tx", header: "Transaction", cell: (p) => <span className="flex flex-col"><span className="font-mono">{p.transactionId ?? ""}</span>{p.network && <span className="text-[13px] text-muted">{p.network}</span>}</span> },
+              { key: "reported", header: "Reported", cell: (p) => <span className="whitespace-nowrap">{p.submittedAt ? dateTime(p.submittedAt) : "Not yet"}</span> },
+              { key: "decided", header: "Decided", cell: (p) => <span className="whitespace-nowrap">{p.decidedAt ? `${dateTime(p.decidedAt)} · ${p.decidedBy ?? ""}` : p.status === "pending" && p.submittedAt ? <Link href="/admin/payments" className="underline">Decide in Payments</Link> : ""}</span> },
+            ]}
+          />
         </Panel>
       )}
     </>

@@ -1,18 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/app";
+import { Building2, FileText, MessageSquarePlus, Sparkles } from "lucide-react";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { OfferEditor } from "@/components/admin/offer-editor";
-import { Panel, notice } from "@/components/admin/ui";
+import { PageHeader } from "@/components/admin/kit";
+import { OfferStatus } from "@/components/admin/business/money-offers";
+import { MoneyNotices } from "@/components/admin/business/money-common";
+import { Panel } from "@/components/admin/ui";
 import { OfferCard } from "@/components/billing/offer-card";
-import { Badge, Field, Input } from "@/components/ui";
+import { buttonClasses, Field, Input } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
-import { dateTime, param } from "@/lib/admin/format";
+import { dateTime } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { clientViewOf, getOffer, offerEditorContext } from "@/lib/offers/service";
-import { OFFER_STATUS_LABEL } from "@/lib/offers/shared";
 import { formatMinor } from "@/lib/region-format";
-import { OFFER_TONE } from "@/components/admin/offer-tone";
 import { withdrawOfferAction } from "../actions";
 
 export const metadata = { title: "Offer" };
@@ -44,24 +45,26 @@ export default async function OfferPage({ params, searchParams }: { params: Prom
   return (
     <>
       <PageHeader
+        icon={Sparkles}
+        tone="green"
         title={`Offer for ${offer.company}`}
         description={editing ? "A draft: the client does not see it yet." : "What the client sees is on the right."}
-        action={<Badge tone={OFFER_TONE[offer.status] ?? "neutral"}>{OFFER_STATUS_LABEL[offer.status]}</Badge>}
+        back={{ href: "/admin/offers", label: "All offers" }}
+        actions={<OfferStatus status={offer.status} />}
       />
-      {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
-      {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
-      <p className="flex flex-wrap gap-4 px-1 text-sm">
-        <Link href={`/admin/companies/${offer.businessId}`} className="underline">Company page</Link>
-        <Link href={`/admin/offers?businessId=${offer.businessId}`} className="underline">All offers of this company</Link>
-        {offer.invoiceId && !offer.invoiceId.startsWith("claim:") && <Link href={`/admin/invoices/${offer.invoiceId}`} className="underline">Its invoice</Link>}
-        {offer.requestId && <Link href={`/admin/requests?open=${offer.requestId}`} className="underline">The request</Link>}
-      </p>
+      <MoneyNotices sp={sp} />
+      <nav aria-label="Related pages" className="flex flex-wrap gap-2">
+        <Link href={`/admin/companies/${offer.businessId}`} className={buttonClasses({ variant: "outline", size: "sm" })}><Building2 aria-hidden className="size-4" /> Company page</Link>
+        <Link href={`/admin/offers?businessId=${offer.businessId}`} className={buttonClasses({ variant: "outline", size: "sm" })}><Sparkles aria-hidden className="size-4" /> All offers of this company</Link>
+        {offer.invoiceId && !offer.invoiceId.startsWith("claim:") && <Link href={`/admin/invoices/${offer.invoiceId}`} className={buttonClasses({ variant: "outline", size: "sm" })}><FileText aria-hidden className="size-4" /> Its invoice</Link>}
+        {offer.requestId && <Link href={`/admin/requests?open=${offer.requestId}`} className={buttonClasses({ variant: "outline", size: "sm" })}><MessageSquarePlus aria-hidden className="size-4" /> The request</Link>}
+      </nav>
 
       {editing && ctx ? (
         <OfferEditor businessId={offer.businessId} offerId={offer.id} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} notSetUp={ctx.notSetUp} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} />
       ) : (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <Panel title="Details">
+          <Panel icon={Sparkles} tone="green" title="Details" description="What was offered, when, and what happened since.">
             <dl className="grid grid-cols-[8rem_1fr] gap-x-4 gap-y-2 text-[15px]">
               {facts.filter(([, v]) => v).map(([k, v]) => (
                 <div key={k} className="contents"><dt className="text-muted">{k}</dt><dd className="min-w-0 break-words">{v}</dd></div>

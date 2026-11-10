@@ -1,5 +1,6 @@
 import { requirePermission } from "@/lib/admin/auth";
-import { PageHeader } from "@/components/app";
+import { Layers } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { PlanForm } from "@/components/admin/plan-form";
 import { paddleConnected } from "@/lib/billing/paddle-catalog";
 
@@ -9,7 +10,7 @@ export default async function NewPlanPage() {
   await requirePermission("plans.manage");
   return (
     <>
-      <PageHeader title="New plan" description="Saved as a draft unless you make it active. Creating it also creates the product and prices in Paddle." />
+      <PageHeader icon={Layers} tone="green" title="New plan" description="Saved as a draft unless you make it active. Creating it also creates the product and prices in Paddle." back={{ href: "/admin/plans", label: "All plans" }} />
       <PlanForm
         mode="create"
         paddleConnected={await paddleConnected()}
