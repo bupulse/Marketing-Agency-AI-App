@@ -2,10 +2,41 @@
 
 import { useActionState } from "react";
 import { Button, Field, Input } from "@/components/ui";
-import { sendAdminCode, verifyAdminCode, type AdminLoginState } from "./actions";
+import { sendAdminCode, signInWithAuthenticator, verifyAdminCode, type AdminLoginState } from "./actions";
 
-/** Email → emailed code. The page after it asks for the authenticator code. */
-export function AdminLoginForm() {
+/** While the emailed code is off: the admin email and the authenticator code on one form. */
+function AuthenticatorLoginForm() {
+  const [state, action, pending] = useActionState<AdminLoginState, FormData>(signInWithAuthenticator, {});
+  return (
+    <form action={action} className="flex flex-col gap-4">
+      <Field label="Admin email">
+        <Input name="email" type="email" autoComplete="username" required autoFocus />
+      </Field>
+      <Field label="Code from your authenticator app" error={state.error}>
+        <Input
+          name="code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9]{6}"
+          maxLength={6}
+          placeholder="123456"
+          required
+          className="text-center text-2xl tracking-[0.4em] tabular-nums"
+        />
+      </Field>
+      <Button type="submit" disabled={pending} className="w-full">
+        {pending ? "Checking…" : "Sign in"}
+      </Button>
+    </form>
+  );
+}
+
+/** Email → emailed code (the page after it asks for the authenticator code), or email + authenticator code while the emailed code is off. */
+export function AdminLoginForm({ emailCode }: { emailCode: boolean }) {
+  return emailCode ? <EmailCodeLoginForm /> : <AuthenticatorLoginForm />;
+}
+
+function EmailCodeLoginForm() {
   const [sent, sendAction, sending] = useActionState<AdminLoginState, FormData>(sendAdminCode, {});
   const [checked, verifyAction, verifying] = useActionState<AdminLoginState, FormData>(verifyAdminCode, {});
   const email = checked.sentTo ?? sent.sentTo;

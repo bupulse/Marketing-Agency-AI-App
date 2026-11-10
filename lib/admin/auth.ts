@@ -11,6 +11,16 @@ import { ALL_PERMISSIONS, OWNER_ROLE, builtInRole, isSalesRole, permissionsOf, t
 /** Six-digit code attempts: 8 per 10 minutes per admin. */
 export const ADMIN_VERIFY_RULE: RateLimitRule = { limit: 8, windowSeconds: 10 * 60 };
 
+/**
+ * Does admin sign-in ask for an emailed code? Off for now (the owner, 10 November 2026: "my email are down"): the admin
+ * email and the authenticator code are enough (login/actions.ts signInWithAuthenticator). ADMIN_LOGIN_EMAIL_CODE=on (the
+ * hosting environment, or a custom key in Admin -> Services) brings the emailed code back. Setting up a new authenticator
+ * always needs the emailed code, so an admin with no authenticator yet cannot sign in while it is off.
+ */
+export function adminEmailCodeOn(): boolean {
+  return (process.env.ADMIN_LOGIN_EMAIL_CODE ?? "").trim().toLowerCase() === "on";
+}
+
 /** Addresses allowed into the console: ADMIN_EMAILS, comma-separated, case-insensitive. */
 export function adminEmails(env: string | undefined = process.env.ADMIN_EMAILS): string[] {
   return (env ?? "")
