@@ -124,6 +124,8 @@ export function mockData(now = Date.now(), me: AgentMe = MOCK_AGENT) {
       { id: me.id, name: me.name, availability: "online", openChats: 3, maxChats: 5, ratedGoodPercent: 95 },
       { id: "ag-claudine", name: "Claudine I.", availability: "away", openChats: 1, maxChats: 5, ratedGoodPercent: 89 },
       { id: "ag-samuel", name: "Samuel B.", availability: "offline", openChats: 0, maxChats: 5, ratedGoodPercent: 91 },
+      { id: "ag-aline", name: "Aline M.", availability: "online", openChats: 4, maxChats: 5, ratedGoodPercent: 97 },
+      { id: "ag-patrick", name: "Patrick N.", availability: "online", openChats: 2, maxChats: 6, ratedGoodPercent: null },
     ],
   };
   return { list, details, visitors, team, stats };
@@ -226,9 +228,25 @@ export function createMockAgentApi({ me = MOCK_AGENT, now = Date.now(), delayMs 
       if (v) Object.assign(v, { group: "chatting", conversationId: "c1044" });
       return { conversationId: "c1044" };
     },
-    async stats() {
+    async stats(from, to) {
       await pause();
-      return structuredClone(data.stats);
+      // Made-up numbers that follow the period: more chats over more days, and a slightly weaker period before it, so
+      // the Stats page's comparisons have something to show.
+      const days = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / (24 * 60 * MIN)));
+      const before = Date.now() - Date.parse(to) > 60 * MIN; // the period before the one on screen
+      const base = structuredClone(data.stats);
+      const k = before ? 0.86 : 1;
+      return {
+        ...base,
+        from,
+        to,
+        chats: Math.round((base.chats / 7) * days * k),
+        aiSolvedPercent: (base.aiSolvedPercent ?? 0) - (before ? 6 : 0) + (days > 7 ? 2 : 0),
+        handoverPercent: (base.handoverPercent ?? 0) + (before ? 4 : 0) - (days > 7 ? 1 : 0),
+        firstHumanReplySec: Math.round((base.firstHumanReplySec ?? 0) * (before ? 1.35 : 1) * (days === 1 ? 0.8 : 1)),
+        ratedGoodPercent: (base.ratedGoodPercent ?? 0) - (before ? 3 : 0),
+        newLeads: Math.round((base.newLeads / 7) * days * k),
+      };
     },
     async team() {
       await pause();

@@ -8,7 +8,7 @@ import { liveVisitors } from "@/lib/support/live";
 import { addDays } from "./math";
 import { getMetrics } from "./queries";
 import { PAGE_VIEW_DAYS } from "./rollup";
-import { dayMethod, funnelSteps, groupSeries, lastOldMethodDay, type DayMethod, type DayPoint, type FunnelStepView, type Grouping, type SeriesPoint } from "./visitors-shared";
+import { dayMethod, funnelSteps, groupSeries, lastOldMethodDay, previousRange, type DayMethod, type DayPoint, type FunnelStepView, type Grouping, type SeriesPoint } from "./visitors-shared";
 import type { DateRange } from "./types";
 
 const TOP = 25;
@@ -32,6 +32,10 @@ export type VisitorAnalytics = {
   sources: Ranked[];
   pages: PageRow[];
   funnel: FunnelStepView[];
+  /** Visitors by device ("mobile", "tablet", "desktop"), from the raw page views like the other breakdowns. */
+  devices: Ranked[];
+  /** The same number of days just before the period (from the roll-up), for the comparisons; null when it could not be read. */
+  previous: { from: string; to: string; visitors: number; views: number } | null;
   /** People on the site right now (the Live visitors page's number), or null when it could not be read. */
   liveNow: number | null;
 };
@@ -56,14 +60,18 @@ export async function lastOldMethodDayIn(range: DateRange): Promise<string | nul
 }
 
 export async function getVisitorAnalytics(period: DateRange & { by: Grouping }, now = new Date()): Promise<VisitorAnalytics> {
-  const days = await visitorDays({ from: period.from, to: period.to });
+  const prev = previousRange(period.from, period.to);
+  const [days, prevDays] = await Promise.all([
+    visitorDays({ from: period.from, to: period.to }),
+    visitorDays({ from: prev.from, to: prev.to }).catch(() => null),
+  ]);
   const start = new Date(`${period.from}T00:00:00Z`);
   const end = new Date(`${addDays(period.to, 1)}T00:00:00Z`);
   const keptFrom = new Date(now.getTime() - PAGE_VIEW_DAYS * 86_400_000);
   const rawStart = start < keptFrom ? keptFrom : start;
   const range = { gte: start, lt: end };
 
-  const [summary, countries, cities, sources, pages, quotes, chats, signups, paid, live] = await Promise.all([
+  const [summary, countries, cities, sources, pages, devices, quotes, chats, signups, paid, live] = await Promise.all([
     prisma.$queryRaw<{ visitors: bigint; with_city: bigint; avg_ms: number | null }[]>`
       SELECT COUNT(DISTINCT "visitorHash")::bigint AS visitors,
              COUNT(DISTINCT "visitorHash") FILTER (WHERE "city" IS NOT NULL)::bigint AS with_city,
@@ -95,6 +103,10 @@ export async function getVisitorAnalytics(period: DateRange & { by: Grouping }, 
              AVG("durationMs")::float8 AS avg_ms, COUNT("durationMs")::bigint AS timed
       FROM "PageView" WHERE "createdAt" >= ${rawStart} AND "createdAt" < ${end}
       GROUP BY 1 ORDER BY 2 DESC, 3 DESC LIMIT ${TOP}`,
+    prisma.$queryRaw<{ key: string; visitors: bigint; views: bigint }[]>`
+      SELECT "device" AS key, COUNT(DISTINCT "visitorHash")::bigint AS visitors, COUNT(*)::bigint AS views
+      FROM "PageView" WHERE "createdAt" >= ${rawStart} AND "createdAt" < ${end}
+      GROUP BY 1 ORDER BY 2 DESC, 3 DESC`,
     prisma.contactRequest.count({ where: { kind: "quote", createdAt: range } }),
     // Chats started on the public website (not clients chatting from their dashboard).
     prisma.supportConversation.count({ where: { surface: "public", createdAt: range } }),
@@ -122,6 +134,8 @@ export async function getVisitorAnalytics(period: DateRange & { by: Grouping }, 
     sources: sources.map((r) => ({ key: r.key, visitors: n(r.visitors), views: n(r.views) })),
     pages: pages.map((r) => ({ path: r.path, views: n(r.views), visitors: n(r.visitors), avgMs: r.avg_ms == null ? null : Math.round(Number(r.avg_ms)), timedViews: n(r.timed) })),
     funnel: funnelSteps({ visitors, quotes, chats, signups, paid: n(paid[0]?.c) }),
+    devices: devices.map((r) => ({ key: r.key, visitors: n(r.visitors), views: n(r.views) })),
+    previous: prevDays && { from: prev.from, to: prev.to, visitors: prevDays.reduce((t, d) => t + d.visitors, 0), views: prevDays.reduce((t, d) => t + d.views, 0) },
     liveNow: live,
   };
 }
