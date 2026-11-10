@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/admin/auth";
-import { PageHeader } from "@/components/app";
+import { Briefcase } from "lucide-react";
+import { PageHeader, StatusPill } from "@/components/admin/kit";
 import { Panel } from "@/components/admin/ui";
 import { IndustryForm } from "@/components/admin/industry-form";
-import { Badge } from "@/components/ui";
 import { getIndustryAdmin } from "@/lib/admin/industries-service";
 import { AdminError } from "@/lib/admin/types";
 
@@ -25,7 +25,10 @@ export default async function EditIndustryPage({ params }: { params: Promise<{ i
       <PageHeader
         title={industry.name}
         description={`${industry.businesses} ${industry.businesses === 1 ? "company uses" : "companies use"} this sector. Changes apply to their next generated post, plan or chat reply.`}
-        action={<Badge tone={industry.active ? "success" : "neutral"}>{industry.active ? "Active" : "Hidden"}</Badge>}
+        icon={Briefcase}
+        tone="pink"
+        back={{ href: "/admin/industries", label: "Industries" }}
+        actions={<StatusPill tone={industry.active ? "good" : "muted"} dot>{industry.active ? "Offered at sign-up" : "Hidden"}</StatusPill>}
       />
       <Panel title="Edit industry">
         <IndustryForm initial={{ ...industry, id: industry.id }} />

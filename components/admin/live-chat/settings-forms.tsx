@@ -2,6 +2,7 @@ import { Button, Field, Input, PhoneInput, Textarea } from "@/components/ui";
 import type { SupportSettings } from "@/lib/support/settings";
 import { AI_LIMITS, GREETING_LIMITS, WEEKDAYS } from "@/lib/support/settings-form";
 import { Panel } from "../ui";
+import { FormSwitch } from "../kit/form-chips";
 
 type Save = (f: FormData) => Promise<void>;
 
@@ -16,10 +17,7 @@ export function HoursForm({ hours, save }: { hours: SupportSettings["hours"]; sa
           const extra = ranges.slice(1);
           return (
             <div key={key} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line py-2.5 first:border-t-0">
-              <label className="flex min-h-11 w-40 items-center gap-3 text-[14px] font-medium">
-                <input type="checkbox" name={`open_${key}`} defaultChecked={ranges.length > 0} className="size-5" />
-                <span>{label}</span>
-              </label>
+              <FormSwitch name={`open_${key}`} label={label} defaultChecked={ranges.length > 0} className="w-40 items-center" />
               <span className="flex items-center gap-2 text-[14px] text-muted">
                 <Input type="time" name={`from_${key}`} defaultValue={first.from} aria-label={`${label}: opens at`} className="min-h-11 w-32" />
                 to
@@ -29,7 +27,7 @@ export function HoursForm({ hours, save }: { hours: SupportSettings["hours"]; sa
             </div>
           );
         })}
-        <p className="mt-2 text-xs text-muted">Untick a day to close it. The chat header shows &ldquo;team open until 20:00&rdquo; or when the team opens next.</p>
+        <p className="mt-2 text-xs text-muted">Switch a day off to close it. The chat header shows &ldquo;team open until 20:00&rdquo; or when the team opens next.</p>
         <div><Button type="submit" className="mt-2">Save team hours</Button></div>
       </form>
     </Panel>
@@ -76,10 +74,7 @@ export function AiForm({ settings, save }: { settings: Pick<SupportSettings, "ai
   return (
     <Panel title="AI rules" description="The AI answers from the BuPulse guide. These notes set its tone and what it never does on its own.">
       <form action={save} className="flex max-w-2xl flex-col gap-4">
-        <label className="flex min-h-11 items-start gap-3 text-[14px]">
-          <input type="checkbox" name="aiEnabled" defaultChecked={settings.aiEnabled} className="mt-0.5 size-5" />
-          <span><span className="font-medium">AI answers</span><span className="block text-[13px] text-muted">Off: the AI does not answer, and every chat waits for a person.</span></span>
-        </label>
+        <FormSwitch name="aiEnabled" label="AI answers" hint="Off: the AI does not answer, and every chat waits for a person." defaultChecked={settings.aiEnabled} />
         <Field label="Rules for the AI" hint={`Tone and policy, in plain words. Up to ${AI_LIMITS.rules} characters.`}><Textarea name="aiRules" rows={8} maxLength={AI_LIMITS.rules} defaultValue={settings.aiRules} /></Field>
         <Field label="Hand-over topics" hint={`One per line, up to ${AI_LIMITS.topics}. The AI passes these chats to a person straight away.`}><Textarea name="handoverTopics" rows={6} defaultValue={settings.handoverTopics.join("\n")} /></Field>
         <PhoneInput name="whatsapp" label="Support WhatsApp number" hint="Leave it empty to hide the Continue on WhatsApp button." defaultValue={settings.whatsapp} />

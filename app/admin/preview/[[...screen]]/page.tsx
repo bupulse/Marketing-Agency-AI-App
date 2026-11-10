@@ -11,6 +11,7 @@ import { hubFiguresFrom } from "@/app/admin/(console)/hub/hub-content";
 import { hubGroup, navFor } from "@/components/admin/nav";
 import { INBOX_PERMISSION, type InboxKey } from "@/lib/admin/inbox";
 import { previewAllowed } from "@/lib/support/preview";
+import { CONTENT_SCREENS } from "../content-screens";
 import { moneyFmt } from "@/components/admin/money";
 import { BOOKS } from "@/lib/money/display";
 import { PREVIEW_ATTENTION, PREVIEW_BADGES, PREVIEW_COMPANIES, PREVIEW_COUNTS, PREVIEW_OVERVIEW, PREVIEW_PAYMENTS, PREVIEW_TIMELINE, previewPermissions, type PreviewCompany } from "../preview-data";
@@ -29,6 +30,8 @@ const SCREENS = ["overview", "hub", "kit"] as const;
 export default async function AdminPreviewPage({ params, searchParams }: PageProps<"/admin/preview/[[...screen]]">) {
   if (!previewAllowed()) notFound();
   const [{ screen }, sp] = await Promise.all([params, searchParams]);
+  const contentScreen = Object.hasOwn(CONTENT_SCREENS, screen?.[0] ?? "") ? CONTENT_SCREENS[screen![0]] : null;
+  if (contentScreen) { const w = previewPermissions(typeof sp.role === "string" ? sp.role : undefined); return <AdminShell email={w.email} roleName={w.roleName} permissions={w.permissions} badges={PREVIEW_BADGES} currency="RWF" pathname={contentScreen.path}><KitStyles />{contentScreen.render(sp)}</AdminShell>; }
   const which = (screen?.[0] ?? "overview") as (typeof SCREENS)[number];
   if (!SCREENS.includes(which) || (screen?.length ?? 0) > 1) notFound();
   const role = typeof sp.role === "string" ? sp.role : undefined;

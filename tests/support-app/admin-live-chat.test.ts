@@ -78,9 +78,10 @@ const departments: DepartmentView[] = [
 ];
 const agent = (over: Partial<AgentAdminView>): AgentAdminView => ({ id: "a1", email: "agent@example.com", name: "Agent One", role: "AGENT", status: "active", availability: "offline", maxChats: 5, departments: ["sales"], authenticator: true, lastSeenAt: "2026-10-22T08:00:00Z", createdAt: "2026-10-01T08:00:00Z", ...over });
 const actions = { invite: vi.fn(), update: vi.fn(), setLocked: vi.fn(), resend: vi.fn(), resetAuthenticator: vi.fn(), answerRequest: vi.fn() };
-const row = (out: string, name: string) => out.slice(out.indexOf(name), out.indexOf("</tr>", out.indexOf(name)));
+// One agent's card: from its name to the end of its <li data-agent> (the cards hold no other list items).
+const row = (out: string, name: string) => out.slice(out.indexOf(name), out.indexOf("</li>", out.indexOf(name)));
 
-describe("agents table", () => {
+describe("agents cards", () => {
   const out = html(createElement(AgentsView, { departments, actions, agents: [
     agent({ id: "s1", name: "Grace Supervisor", role: "SUPERVISOR", departments: [] }),
     agent({ id: "j1", name: "Jean Agent", departments: ["billing", "sales"] }),
@@ -108,8 +109,10 @@ describe("agents table", () => {
   });
   it("has the Add an agent form with the roles and the four departments", () => {
     expect(out).toContain("Add an agent");
-    expect(out).toContain("Agent: replies to chats");
-    expect(out).toContain("Supervisor: sees all chats and stats");
+    // The role is chosen with tiles (radio buttons), Agent ticked by default on the invite form.
+    expect(out).toContain("Replies to chats");
+    expect(out).toContain("Sees all chats and stats");
+    expect(out).toMatch(/<input(?=[^>]*type="radio")(?=[^>]*name="role")(?=[^>]*value="AGENT")(?=[^>]*checked="")/);
     for (const d of departments) expect(out).toContain(`value="${d.key}"`);
     expect(out).toContain("Send invite");
   });

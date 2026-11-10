@@ -119,7 +119,7 @@ const fromReelMessage = (r: FromReel, verdict: "more" | "never") =>
 /** "More like this" on a finished reel: a 5-star Lab example with the reel's MP4 (copied privately). */
 export async function moreLikeThisAction(f: FormData) {
   const { ctx, identity } = await owner();
-  await finish(`${BACK}#finished-reels`, (r: FromReel) => fromReelMessage(r, "more"), () => exampleFromReel(ctx, identity, text(f, "reelId"), "more"));
+  await finish(`${BACK}/reels`, (r: FromReel) => fromReelMessage(r, "more"), () => exampleFromReel(ctx, identity, text(f, "reelId"), "more"));
 }
 
 /** "Never this" on a finished reel, with the owner's one-line reason (the dialog keeps it open on a refusal). */

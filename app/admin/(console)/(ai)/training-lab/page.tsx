@@ -1,27 +1,25 @@
-import Link from "next/link";
+import { BookOpen, Plus, SlidersHorizontal, Sparkles } from "lucide-react";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/app";
+import { ExpandCard, FilterChips, PageHeader } from "@/components/admin/kit";
 import { ConfirmButton } from "@/components/admin/confirm-button";
-import { Empty, Panel, notice } from "@/components/admin/ui";
-import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui";
+import { Panel, notice } from "@/components/admin/ui";
+import { Badge, Button, Field, Textarea } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { analysisStatus, exampleProblem, type AnalysisStatus } from "@/lib/training-lab/analyse";
 import { filterChoices, LIST_MAX, listExamples, NOTE_FIELDS, NOTE_LABELS, parseFilter, previewLinks, readNotes, type ExampleFilter } from "@/lib/training-lab/examples";
 import { ENGINE_LABELS, ENGINES, KIND_LABELS, type TrainingKind } from "@/lib/training-lab/types";
-import { deleteExampleAction, draftNotesAction, moreLikeThisAction, neverThisAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
+import { deleteExampleAction, draftNotesAction, rateExampleAction, saveNotesAction, setEngineAction } from "./actions";
 import { finishedReels, type FinishedReel } from "@/lib/training-lab/from-result";
 import { presenterUses } from "@/lib/training-lab/consent";
-import { HEALTH_SHOWN, healthRows, labHealth, type HealthIssue } from "@/lib/training-lab/health";
+import { healthRows, labHealth } from "@/lib/training-lab/health";
 import { describeExtras } from "@/lib/training-lab/language";
 import { exampleUsage, usageLine, type ExampleUse } from "@/lib/training-lab/usage";
 import { describeSchedule } from "@/lib/training-lab/schedule";
-import { chipHref, galleryItem, KIND_CHIPS } from "@/lib/training-lab/gallery";
+import { galleryItem, KIND_CHIPS } from "@/lib/training-lab/gallery";
 import { EditExample } from "./example-form";
-import { PendingButton } from "./pending-button";
-import { DropZone } from "./drop/drop-zone";
+import { LabHubCards } from "./hub-cards";
 import { Gallery } from "./gallery";
-import { LabTabs } from "./lab-tabs";
 import { PortraitFromVideo } from "./portrait-from-video";
 
 export const metadata = { title: "Training Lab" };
@@ -66,123 +64,45 @@ export default async function TrainingLabPage({ searchParams }: PageProps<"/admi
   return (
     <>
       <PageHeader
+        icon={Sparkles}
+        tone="violet"
         title="Training Lab"
-        description="Teach the engines by example. Add a reel, video, image or post, a Kinyarwanda recording, an actor who agreed to be used, or a posting habit, and say in your own words how it was made and what is good about it. The engines you switch on read it when they plan. Only you see this page."
+        description="Teach the engines by example: add a reel, video, photo, Kinyarwanda recording, actor or posting habit, and say in your own words what is good about it. Only you see this page."
+        actions={<Button href={`${BASE}/add`} leading={<Plus aria-hidden className="size-4" />}>Add an example</Button>}
       />
-      <LabTabs current="library" />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
 
-      {health && <LabHealth issues={health} />}
+      <LabHubCards reelsWaiting={reels.filter((r) => !r.inLab).length} health={health} />
 
-      <DropZone />
-
-      <Panel title={`Examples (${examples.length}${examples.length === LIST_MAX ? "+" : ""})`} description="Newest first. Tap an example to see everything about it and change it.">
-        <nav aria-label="Filter by kind" className="flex min-w-0 flex-wrap gap-2">
-          {KIND_CHIPS.map((chip) => {
-            const on = (filter.kind ?? null) === chip.kind;
-            return (
-              <Link key={chip.label} href={chipHref(BASE, filter, chip.kind)} aria-current={on ? "true" : undefined} className={`inline-flex min-h-11 items-center rounded-full border px-4 text-[14px] font-medium no-underline ${on ? "border-transparent bg-brand-gradient text-white" : "border-line text-muted hover:bg-soft"}`}>
-                {chip.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <details open={!!(filter.sector || filter.language || filter.engine)} className="min-w-0">
-          <summary className="inline-flex min-h-11 cursor-pointer items-center text-[14px] font-medium text-pulse-blue">More filters</summary>
-          <form method="get" action={BASE} className="grid min-w-0 gap-3 pt-2 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
-            {filter.kind && <input type="hidden" name="kind" value={filter.kind} />}
-            <FilterSelect name="sector" label="Sector" value={filter.sector} options={choices.sectors.map((sc) => [sc, sc])} />
-            <FilterSelect name="language" label="Language" value={filter.language} options={choices.languages.map((l) => [l, l])} />
-            <FilterSelect name="engine" label="Engine" value={filter.engine} options={ENGINES.map((e) => [e, ENGINE_LABELS[e]])} />
-            <div className="flex gap-2">
-              <Button type="submit" size="sm">Filter</Button>
-              {filtered && <Button href={BASE} size="sm" variant="outline">Clear</Button>}
-            </div>
-          </form>
-        </details>
+      <Panel icon={BookOpen} tone="violet" title={`Library (${examples.length}${examples.length === LIST_MAX ? "+" : ""})`} description="Newest first. Tap an example to see everything about it and change it.">
+        <FilterChips label="Filter by kind" param="kind" base={BASE} params={sp} current={filter.kind ?? ""} options={KIND_CHIPS.map((chip) => ({ value: chip.kind ?? "", label: chip.label }))} />
+        <ExpandCard icon={SlidersHorizontal} tone="violet" title="More filters" summary={[filter.sector, filter.language, filter.engine ? ENGINE_LABELS[filter.engine] : null].filter(Boolean).join(" · ") || "Sector, language and engine"} defaultOpen={!!(filter.sector || filter.language || filter.engine)} className="shadow-none">
+          <div className="flex min-w-0 flex-col gap-3">
+            <MoreFilter label="Sector" param="sector" sp={sp} current={filter.sector} options={choices.sectors.map((v) => [v, v])} />
+            <MoreFilter label="Language" param="language" sp={sp} current={filter.language} options={choices.languages.map((v) => [v, v])} />
+            <MoreFilter label="Engine" param="engine" sp={sp} current={filter.engine} options={ENGINES.map((e) => [e, ENGINE_LABELS[e]])} />
+            {filtered && <Button href={BASE} size="sm" variant="outline" className="self-start">Clear all filters</Button>}
+          </div>
+        </ExpandCard>
         <Gallery
           items={examples.map((e) => galleryItem(e, { link: e.path ? links.get(e.path) : undefined, times: usage.get(e.id)?.times, warning: warnings.get(e.id) ?? null }))}
           details={Object.fromEntries(examples.map((e) => [e.id, <ExampleDetail key={e.id} example={e} link={e.path ? links.get(e.path) : undefined} back={back} analysis={analysis} use={usage.get(e.id)} presenterUses={presenterCounts.get(e.id) ?? 0} />]))}
-          empty={filtered ? "No example matches these filters." : "Your Lab is empty. Drop your best reel above to start."}
+          empty={filtered ? "No example matches these filters." : "Your Lab is empty. Tap Add an example to drop your best reel."}
         />
       </Panel>
-
-      <FinishedReels reels={reels} />
     </>
   );
 }
 
-/** What makes examples useless or risky, at most 8 with how many more, each linked to its example. */
-function LabHealth({ issues }: { issues: HealthIssue[] }) {
-  if (!issues.length) return <p role="status" className={notice.ok}>Lab health: all examples are ready to use.</p>;
-  const shown = issues.slice(0, HEALTH_SHOWN);
+/** One more filter as chips (sector, language or engine), with "All" to clear it; the other filters stay. */
+function MoreFilter({ label, param: key, sp, current, options }: { label: string; param: string; sp: Record<string, string | string[] | undefined>; current?: string; options: [string, string][] }) {
+  if (options.length === 0) return null;
   return (
-    <section aria-label="Lab health" className="flex min-w-0 flex-col gap-2 rounded-2xl border border-line px-4 py-3">
-      <p className="text-[14px] font-medium">Lab health: {issues.length} thing{issues.length === 1 ? "" : "s"} to fix</p>
-      <ul className="flex min-w-0 flex-col gap-1 text-[14px]">
-        {shown.map((i, k) => (
-          <li key={`${i.id}-${k}`} className="min-w-0 break-words">
-            <a href={`${BASE}#ex-${i.id}`} className="font-medium text-pulse-blue underline">{i.title}</a>: {i.problem}
-          </li>
-        ))}
-      </ul>
-      {issues.length > shown.length && <p className="text-[13px] text-muted">and {issues.length - shown.length} more</p>}
-    </section>
-  );
-}
-
-/** The newest finished reels: the owner's verdict on each becomes a Lab example (the client's reel is not changed). */
-function FinishedReels({ reels }: { reels: FinishedReel[] }) {
-  return (
-    <section id="finished-reels" className="scroll-mt-24">
-      <Panel title="Finished reels" description="The 20 newest reels the engine made, for every business. Your verdict becomes a Lab example with the video, so the reel engine makes more like it or never repeats it. The client's reel stays as it is.">
-        {reels.length === 0 ? (
-          <Empty>No finished reels yet.</Empty>
-        ) : (
-          <ul className="flex min-w-0 flex-col divide-y divide-line">
-            {reels.map((r) => (
-              <li key={r.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
-                <div className="min-w-0">
-                  <p className="break-words font-medium">{r.title}</p>
-                  <p className="text-[13px] text-muted">{r.business} · {r.language} · {dateTime(r.createdAt)}</p>
-                  <Link href={`/admin/training-lab/editor?reel=${encodeURIComponent(r.id)}`} className="inline-flex min-h-11 items-center text-[14px] font-medium text-pulse-blue underline">Open in the editor</Link>
-                </div>
-                {r.inLab ? (
-                  <Badge tone="neutral">In the Lab</Badge>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    <form action={moreLikeThisAction}>
-                      <input type="hidden" name="reelId" value={r.id} />
-                      <PendingButton label="More like this" pendingLabel="Copying the reel…" />
-                    </form>
-                    <ConfirmButton action={neverThisAction} fields={{ reelId: r.id }} label="Never this" title={`Never this: “${r.title}”?`} description="It becomes a 1-star example with your reason, and the engines never copy it." confirmLabel="Never this" pendingLabel="Saving…">
-                      <Field label="What must never happen again" hint="One line, for example: the presenter walks through the product." required>
-                        <Input name="reason" maxLength={300} required />
-                      </Field>
-                    </ConfirmButton>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-    </section>
-  );
-}
-
-function FilterSelect({ name, label, value, options }: { name: string; label: string; value?: string; options: [string, string][] }) {
-  return (
-    <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
-      {label}
-      <Select name={name} defaultValue={value ?? ""}>
-        <option value="">All</option>
-        {options.map(([v, l]) => (
-          <option key={v} value={v}>{l}</option>
-        ))}
-      </Select>
-    </label>
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <p className="text-[12px] font-bold uppercase tracking-[0.05em] text-muted">{label}</p>
+      <FilterChips label={`Filter by ${label.toLowerCase()}`} param={key} base={BASE} params={sp} current={current ?? ""} options={[{ value: "", label: "All" }, ...options.map(([value, text]) => ({ value, label: text }))]} />
+    </div>
   );
 }
 

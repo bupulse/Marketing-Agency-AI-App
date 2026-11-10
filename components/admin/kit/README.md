@@ -164,6 +164,21 @@ Icon, short title, one line on why or what to do, optional button. `tone="good"`
 The shell already shows breadcrumbs from `nav.ts` (the group links to its hub), so pages rarely need them. `BackLink`
 is a small pill "Back to ..." link for sub-pages (or use `PageHeader`'s `back`).
 
+### `FormChips` and `FormSwitch` (`kit/form-chips.tsx`)
+
+Chips that are **form fields**, for choices inside a `<form>` (where `FilterChips` would be a link): real radio buttons
+(one choice) or checkboxes (`multiple`), drawn as chips with a ring and a tick when chosen. Use them instead of a
+`<select>` or a column of tick boxes. `tiles` draws bigger tiles with a hint under each label. No script, so they work
+in server components. `FormSwitch` is one on/off checkbox drawn as a switch (sends `on` when on). Import them from the
+file (`@/components/admin/kit/form-chips`).
+
+```tsx
+<FormChips name="mood" legend="Mood" options={MOODS.map((m) => ({ value: m, label: MOOD_LABEL[m] }))} defaultValue="upbeat" required />
+<FormChips name="role" legend="Role" tiles options={[{ value: "AGENT", label: "Agent", hint: "Replies to chats" }]} defaultValue="AGENT" />
+<FormChips name="plans" legend="Show to" hint="Pick none to show it to everyone." multiple options={plans} />
+<FormSwitch name="aiEnabled" label="AI answers" hint="Off: every chat waits for a person." defaultChecked />
+```
+
 ### `IconBadge`
 
 A white icon on a tone gradient (`size="sm|md|lg"`). Decorative: always next to text that says the same.

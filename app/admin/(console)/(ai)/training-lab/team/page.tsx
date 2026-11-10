@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/app";
+import { Users } from "lucide-react";
+import { CARD, IconBadge, PageHeader } from "@/components/admin/kit";
+import { cn } from "@/lib/cn";
 import { notice } from "@/components/admin/ui";
 import { Badge } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
@@ -33,11 +35,11 @@ export default async function TrainingLabTeamPage({ searchParams }: PageProps<"/
 
   return (
     <>
-      <PageHeader title="Training Lab" description="Your studio team: each member does one job, learns from your Lab examples, and works on the brain you choose." />
+      <PageHeader icon={Users} tone="violet" title="Team" description="Your studio team: each member does one job, learns from your Lab examples, and works on the brain you choose." back={{ href: "/admin/training-lab", label: "Training Lab" }} />
       <LabTabs current="team" />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
-      <p className={onSubscription.length ? notice.bad : "rounded-2xl bg-soft px-4 py-3 text-sm text-muted"}>
+      <p className={onSubscription.length ? notice.bad : notice.info}>
         Your Claude subscription is for you, on your Mac only. Before anything goes to bupulse.com, move the members using it to the Claude key.
         {onSubscription.length > 0 && ` Using it now: ${onSubscription.join(", ")}.`}
         {subscription.prompter && " The image engine's Prompter also uses it when there is no Claude key."}
@@ -45,7 +47,7 @@ export default async function TrainingLabTeamPage({ searchParams }: PageProps<"/
 
       <Pipeline />
 
-      <ul className="grid min-w-0 gap-4 lg:grid-cols-2">
+      <ul className="kit-rise grid min-w-0 gap-3 lg:grid-cols-2">
         {cards.map((card) => (
           <li key={card.agent.id} id={`agent-${card.agent.id}`} className="min-w-0 scroll-mt-24">
             <MemberCard card={card} summary={byAgent.get(card.agent.id)} labels={labels} />
@@ -67,11 +69,9 @@ function MemberCard({ card, summary, labels }: { card: Card; summary?: AgentSumm
   const unwired = !agent.wired && !single;
   const unavailable = card.options.filter((o) => o.note);
   return (
-    <section aria-label={agent.name} className="flex h-full min-w-0 flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+    <section aria-label={agent.name} className={cn("flex h-full min-w-0 flex-col gap-3 p-4 sm:p-5", CARD)}>
       <div className="flex min-w-0 items-start gap-3">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-white shadow-glow">
-          <Icon aria-hidden className="size-5" />
-        </span>
+        <IconBadge icon={Icon} tone="violet" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2 className="text-base font-semibold">{agent.name}</h2>

@@ -1,6 +1,8 @@
 import { CalendarClock, ChevronRight, Clapperboard, Film, MessageSquareText, Paintbrush, Palette, PenLine, ScanSearch, Scissors, Search, type LucideIcon } from "lucide-react";
 import { AGENTS, agentById, type AgentId } from "@/lib/training-lab/agents";
 import { POST_PIPELINE, REEL_PIPELINE } from "./view";
+import { CARD } from "@/components/admin/kit";
+import { cn } from "@/lib/cn";
 
 export const AGENT_ICONS: Record<AgentId, LucideIcon> = {
   researcher: Search,
@@ -48,7 +50,7 @@ function Row({ label, ids }: { label: string; ids: AgentId[] }) {
 export function Pipeline() {
   if (AGENTS.length === 0) return null;
   return (
-    <section aria-label="How a reel or post is made" className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line p-4">
+    <section aria-label="How a reel or post is made" className={cn("flex min-w-0 flex-col gap-3 p-4 sm:p-5", CARD)}>
       <Row label="A reel is made by" ids={REEL_PIPELINE} />
       <Row label="A post adds" ids={POST_PIPELINE} />
     </section>

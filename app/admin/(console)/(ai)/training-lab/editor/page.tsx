@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/app";
+import { Clapperboard } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { SpecEditor } from "@/components/editor/spec-editor";
 import { DEMO_SPEC } from "@/components/editor/demo-spec";
 import { requirePermission } from "@/lib/admin/auth";
@@ -25,7 +26,7 @@ export default async function TrainingLabEditorPage({ searchParams }: PageProps<
   ]);
   return (
     <>
-      <PageHeader title="Training Lab" description="Edit a video: change the order and the length of the shots, the words, the stickers and the look, then export the MP4 or save the edit as a Lab example. Start from the example or open a finished reel." />
+      <PageHeader icon={Clapperboard} tone="violet" title="Editor" description="Edit a video: change the order and the length of the shots, the words, the stickers and the look, then export the MP4 or save the edit as a Lab example. Start from the example or open a finished reel." back={{ href: "/admin/training-lab", label: "Training Lab" }} />
       <LabTabs current="editor" />
       {reelId && !initialReel && <p role="status" className={notice.bad}>That reel is not finished or is gone, so the example is open instead.</p>}
       <SpecEditor initial={DEMO_SPEC} initialReel={initialReel} reels={reels} openReel={openReelAction} createExample={createExampleAction} confirmFile={confirmExampleFileAction} />
