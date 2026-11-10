@@ -252,7 +252,7 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
   const mainFields = (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
-        <Field label={showTabs ? "Text for all accounts" : "Text"}>
+        <Field label={showTabs ? "Text for all accounts" : "Text"} hint="When it posts, BuPulse adds your website from Business info at the end: the address on LinkedIn and other apps, “Link in bio” on Instagram, Facebook and TikTok.">
           <Textarea rows={7} value={text} placeholder="What do you want to share?" onChange={(e) => setText(e.target.value)} />
         </Field>
         {!showTabs && checks[0] && (

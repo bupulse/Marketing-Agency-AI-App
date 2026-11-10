@@ -18,6 +18,7 @@ import { queueWebhookEvent } from "@/lib/webhooks/emit";
 import { postData } from "@/lib/webhooks/events";
 import { createMarkPostedToken } from "./token";
 import { composeText } from "./validate";
+import { withSiteLine } from "./site-line";
 import { CONTEST_NOTE, contestBlocked } from "@/lib/content-flow/contest";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { recordStudioOutcome } from "@/lib/video-studio/outcomes";
@@ -51,7 +52,7 @@ export function backoffMinutes(attempts: number): number | null {
 
 const postInclude = {
   connection: true,
-  business: { select: { id: true, name: true, user: { select: { email: true } } } },
+  business: { select: { id: true, name: true, website: true, contentLanguage: true, user: { select: { email: true } } } },
 } satisfies Prisma.PostInclude;
 type ClaimedPost = Prisma.PostGetPayload<{ include: typeof postInclude }>;
 
@@ -202,7 +203,7 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
           ? `Your ${network} post is scheduled for now. ${network} is not connected to BuPulse yet, so here is everything ready to copy and post yourself. Connect it in Channels and the next posts go out on their own.`
           : `Your ${network} post is scheduled for now. ${post.connection.displayName ?? "This account"} is set to remind you instead of posting automatically, so here is everything ready to copy.`,
       blocks: [
-        { label: isScript ? "Script" : "Caption", value: post.text },
+        { label: isScript ? "Script" : "Caption", value: isScript ? post.text : captionWithSite(post) },
         ...(post.hashtags.length ? [{ label: "Hashtags", value: post.hashtags.join(" ") }] : []),
         ...(post.link ? [{ label: "Link", value: post.link }] : []),
       ],
@@ -398,7 +399,7 @@ async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResu
       const request: PublishRequest = {
         format: post.format === "CAROUSEL" || post.format === "ARTICLE" ? post.format : "POST",
         title: post.title,
-        text: composeText(post.text, post.hashtags),
+        text: composeText(captionWithSite(post, provider.rules.maxText), post.hashtags),
         media: post.mediaPaths.map((path) => {
           const asset = assets.find((a) => a.path === path);
           return { url: signed.get(path) as string, mimeType: jpeg.has(path) ? "image/jpeg" : (asset?.mimeType ?? guessMime(path)), width: asset?.width, height: asset?.height };
@@ -448,4 +449,10 @@ export async function publishPostsNow(businessId: string, postIds: string[], now
   const ids = await claimDuePosts({ now, limit: Math.min(postIds.length, MAX_POSTS_PER_RUN), ids: postIds, businessId });
   if (ids.length > 0) await runClaimed(ids, totals);
   return totals;
+}
+
+/** The post's caption with the company's website line (lib/publishing/site-line.ts), within the app's limit. */
+function captionWithSite(post: Pick<ClaimedPost, "text" | "hashtags" | "network" | "business">, maxLength?: number): string {
+  const tags = post.hashtags.join(" ");
+  return withSiteLine(post.text, post.network, post.business.website, post.business.contentLanguage, { maxLength, reserved: tags ? tags.length + 2 : 0 });
 }

@@ -11,7 +11,7 @@ const prisma = vi.hoisted(() => ({
   mediaAsset: { findMany: vi.fn() },
   serviceSwitch: { findMany: vi.fn() },
 }));
-const provider = vi.hoisted(() => ({ publish: vi.fn() }));
+const provider = vi.hoisted(() => ({ publish: vi.fn(), rules: { maxText: 2200 } }));
 const connections = vi.hoisted(() => ({ loadCredentials: vi.fn(), markConnectionError: vi.fn() }));
 const email = vi.hoisted(() => ({ sendEmail: vi.fn() }));
 const media = vi.hoisted(() => ({ signPaths: vi.fn(), signPathsForNetwork: vi.fn(), adminStorageClient: vi.fn() }));
@@ -231,6 +231,17 @@ describe("back-off", () => {
 });
 
 describe("publishing", () => {
+  it("adds the company's website: the address on LinkedIn, Link in bio on Instagram", async () => {
+    const business = { id: "b1", name: "Sunrise", website: "https://www.sunrise.rw/", contentLanguage: "English", user: { email: "owner@example.com" } };
+    claimOnce(post({ network: "linkedin", business }));
+    await publishDue(now);
+    expect(provider.publish.mock.calls[0][1].text).toBe("Fresh bread today\n\nhttps://sunrise.rw\n\n#bread");
+    provider.publish.mockClear();
+    claimOnce(post({ network: "instagram", business }));
+    await publishDue(now);
+    expect(provider.publish.mock.calls[0][1].text).toBe("Fresh bread today\n\n🔗 Link in bio\n\n#bread");
+  });
+
   it("publishes with signed one-hour media URLs and records the result", async () => {
     claimOnce(post({ mediaPaths: ["u1/gallery/a.jpg"], network: "instagram" }));
     prisma.mediaAsset.findMany.mockResolvedValue([{ path: "u1/gallery/a.jpg", mimeType: "image/jpeg", width: 1080, height: 1350 }]);
