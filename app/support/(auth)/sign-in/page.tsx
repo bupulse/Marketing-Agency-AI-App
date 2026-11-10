@@ -1,5 +1,7 @@
 import { SupportAuthShell, noteClass } from "@/components/support-app/auth-shell";
-import { CodeSignInForm, SignInForm } from "@/components/support-app/sign-in-forms";
+import { AuthenticatorSignInForm, CodeSignInForm, SignInForm } from "@/components/support-app/sign-in-forms";
+import { adminEmailCodeOn } from "@/lib/admin/auth";
+import { loadServiceKeys } from "@/lib/admin/service-keys";
 
 export const metadata = { title: "Sign in" };
 
@@ -12,10 +14,14 @@ const NOTES: Record<string, string> = {
 export default async function SupportSignInPage({ searchParams }: PageProps<"/support/sign-in">) {
   const { error, with: method } = await searchParams;
   const note = typeof error === "string" ? NOTES[error] : undefined;
+  // While the emailed code is off (ADMIN_LOGIN_EMAIL_CODE), "?with=code" is the email + authenticator code form.
+  await loadServiceKeys();
+  const emailCode = adminEmailCodeOn();
+  const withCode = method === "code";
   return (
-    <SupportAuthShell step="STEP 1 OF 2" title="Sign in">
+    <SupportAuthShell step={withCode && !emailCode ? "SIGN IN" : "STEP 1 OF 2"} title="Sign in">
       {note && <p role="status" className={noteClass}>{note}</p>}
-      {method === "code" ? <CodeSignInForm /> : <SignInForm />}
+      {withCode ? emailCode ? <CodeSignInForm /> : <AuthenticatorSignInForm /> : <SignInForm emailCode={emailCode} />}
     </SupportAuthShell>
   );
 }

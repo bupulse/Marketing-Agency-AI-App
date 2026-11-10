@@ -12,6 +12,7 @@ import {
   sendAgentEnrollCode,
   setAgentPassword,
   signInAgent,
+  signInWithAuthenticator,
   signInWithCode,
   startAgentEnrollment,
   type EnrollState,
@@ -24,8 +25,8 @@ import { alertClass } from "./auth-shell";
 import { useSupportHref } from "./base";
 import { SupportCodeForm } from "./code-form";
 
-/** Step 1 of 2: work email and password. */
-export function SignInForm() {
+/** Step 1 of 2: work email and password. While the emailed code is off, the other way in is the authenticator code. */
+export function SignInForm({ emailCode = true }: { emailCode?: boolean }) {
   const [state, action, pending] = useActionState<SignInState, FormData>(signInAgent, {});
   const href = useSupportHref();
   return (
@@ -43,10 +44,34 @@ export function SignInForm() {
         Forgot password?
       </Link>
       <Link href={href("/sign-in?with=code")} className="self-center text-[13px] text-ok underline-offset-2 hover:underline">
-        Sign in with an emailed code instead (admin@bupulse.com signs in this way)
+        {emailCode
+          ? "Sign in with an emailed code instead (admin@bupulse.com signs in this way)"
+          : "Sign in with your authenticator code instead (admin@bupulse.com signs in this way)"}
       </Link>
       <Link href={href("/join")} className="self-center text-[13px] text-muted underline-offset-2 hover:underline">
         New to the support team? Ask to join
+      </Link>
+    </form>
+  );
+}
+
+/** Without a password while the emailed code is off: the work email and the authenticator code, on one form. */
+export function AuthenticatorSignInForm() {
+  const [state, action, pending] = useActionState<SignInState, FormData>(signInWithAuthenticator, {});
+  const href = useSupportHref();
+  return (
+    <form action={action} className="flex flex-col gap-3.5">
+      <Field label="Work email">
+        <Input name="email" type="email" autoComplete="username" required autoFocus />
+      </Field>
+      <Field label="Code from your authenticator app" error={state.error}>
+        <Input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="123456" required />
+      </Field>
+      <Button type="submit" disabled={pending} className="w-full">
+        {pending ? "Checking…" : "Sign in"}
+      </Button>
+      <Link href={href("/sign-in")} className="self-center text-[13px] text-ok underline-offset-2 hover:underline">
+        Sign in with a password instead
       </Link>
     </form>
   );

@@ -3,6 +3,9 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { emailSchema, passwordSchema } from "@/lib/auth/schemas";
+import { signInWithAuthenticatorCode } from "@/lib/auth/authenticator-sign-in";
+import { adminEmailCodeOn } from "@/lib/admin/auth";
+import { loadServiceKeys } from "@/lib/admin/service-keys";
 import { padTo, publicLimited, requestIp } from "@/lib/request-limits";
 import { rateLimit, RateLimitError } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
@@ -106,6 +109,52 @@ async function codeSignInNow(formData: FormData): Promise<CodeSignInState> {
   }
   const { data: factors } = await supabase.auth.mfa.listFactors();
   redirect(await supportUrl(factors?.totp?.some((f) => f.status === "verified") ? "/verify" : "/setup"));
+}
+
+/**
+ * Without a password while the emailed code is off (adminEmailCodeOn; the owner, 10 November 2026: email is down): the
+ * work email and the authenticator code on one form, for admin@bupulse.com and any agent who has an authenticator.
+ * The code is checked before any session is stored (lib/auth/authenticator-sign-in.ts); the owner's agent row is made
+ * only after that. Every failure gets the same answer after the same time.
+ */
+export async function signInWithAuthenticator(_prev: SignInState, formData: FormData): Promise<SignInState> {
+  const started = Date.now();
+  const result = await authenticatorSignInNow(formData);
+  if (typeof result === "string") {
+    await padTo(started, ANSWER_MS);
+    return { error: result };
+  }
+  redirect(await supportUrl("/"));
+}
+
+const wrongAuthenticator = "That did not work. Check the email and the latest code from your authenticator app.";
+
+async function authenticatorSignInNow(formData: FormData): Promise<true | string> {
+  await loadServiceKeys();
+  if (adminEmailCodeOn()) return "Sign in with your password or an emailed code. Reload the page.";
+  const parsed = emailSchema.safeParse(String(formData.get("email") ?? ""));
+  if (!parsed.success) return "Enter your work email.";
+  const email = parsed.data.trim().toLowerCase();
+  const code = String(formData.get("code") ?? "").trim();
+  if (!/^\d{6}$/.test(code)) return "Enter the 6-digit code from your authenticator app.";
+  const limited = await publicLimited("login", email);
+  if (limited) return limited;
+  const row = await prisma.supportAgent.findUnique({ where: { email }, select: { status: true } }).catch(() => null);
+  if (!isSupportOwnerEmail(email) && row?.status !== "active" && row?.status !== "invited") return wrongAuthenticator;
+  const result = await signInWithAuthenticatorCode({
+    email,
+    code,
+    limit: (userId) => rateLimit(`support-verify:${userId}`, CODE_RULE),
+    allow: async (u) => {
+      const user = { id: u.id, email: u.email ?? null, emailConfirmed: !!u.email_confirmed_at };
+      await ensureOwnerAgent(user).catch(() => undefined);
+      const who = agentIdentity({ user, agent: await agentFor(user), methods: [{ method: "otp" }] });
+      if (who.ok) return true;
+      return who.note === "locked" ? "Your account is locked. Ask your supervisor to unlock it." : wrongAuthenticator;
+    },
+    source: "support.sign-in.authenticator",
+  });
+  return result.ok ? true : (result.error ?? wrongAuthenticator);
 }
 
 const codeSchema = z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from your authenticator app.");
