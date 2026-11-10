@@ -52,7 +52,7 @@ export function TestimonialsView({ rows, message }: { rows: TestimonialRow[]; me
                     // eslint-disable-next-line @next/next/no-img-element -- a small stored data URL
                     <img src={t.photoUrl} alt="" width={48} height={48} className="size-12 shrink-0 rounded-full object-cover" />
                   ) : (
-                    <span aria-hidden className="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#db2777,#f472b6)] text-[17px] font-bold text-white">{t.clientName.trim().charAt(0).toUpperCase()}</span>
+                    <span aria-hidden className="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#7b5cff,#b18cff)] text-[17px] font-bold text-white">{t.clientName.trim().charAt(0).toUpperCase()}</span>
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="text-[15px] font-bold">{t.clientName}</p>

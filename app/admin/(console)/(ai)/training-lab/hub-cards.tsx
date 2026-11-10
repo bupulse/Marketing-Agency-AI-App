@@ -31,7 +31,7 @@ function LabHealth({ issues }: { issues: HealthIssue[] }) {
   return (
     <ExpandCard
       icon={HeartPulse}
-      tone={issues.length ? "orange" : "green"}
+      tone={issues.length ? "warn" : "good"}
       title="Lab health"
       summary={issues.length ? `${issues.length} thing${issues.length === 1 ? "" : "s"} to fix so the engines can use every example.` : "All examples are ready to use."}
       aside={<StatusPill tone={issues.length ? "warn" : "good"} dot>{issues.length ? `${issues.length} to fix` : "All good"}</StatusPill>}

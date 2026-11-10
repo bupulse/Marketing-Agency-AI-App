@@ -33,7 +33,7 @@ export function GoalSection({ g, newThisMonth, startMonth }: { g: GoalProgress; 
         <StatTile icon={Flag} tone="green" label="MRR now" value={rwf(g.mrrRwf)} href="#mrr" hint={`What paying clients bring in each month. ${rwf(g.gapRwf)} to go.`} />
         <StatTile
           icon={Target}
-          tone={g.onTrack === false ? "red" : "green"}
+          tone={g.onTrack === false ? "red" : "good"}
           alert={g.onTrack === false}
           label={g.monthNo ? `Target for the end of month ${g.monthNo}` : "Target"}
           value={g.targetRwf === null ? "Not started" : rwf(g.targetRwf)}

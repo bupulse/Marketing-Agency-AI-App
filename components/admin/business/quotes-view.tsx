@@ -34,7 +34,7 @@ export function QuotesView({ items, filter, next, back, sp, setHandledAction }: 
         <ul className="kit-rise grid gap-3 xl:grid-cols-2">
           {items.map((q) => (
             <li key={q.id}>
-              <article className={cn("flex h-full flex-col gap-3.5 p-4 sm:p-5", CARD, !q.handled && "ring-1 ring-[#f97316]/30")}>
+              <article className={cn("flex h-full flex-col gap-3.5 p-4 sm:p-5", CARD, !q.handled && "ring-1 ring-[#f59e0b]/35")}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h2 className="break-words text-[16px] font-bold leading-snug">{q.businessName ?? q.name}</h2>

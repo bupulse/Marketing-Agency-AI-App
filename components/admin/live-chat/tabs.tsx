@@ -39,7 +39,7 @@ export function LiveChatTabs({ current }: { current: LiveChatTab }) {
               className={cn(
                 "inline-flex min-h-10 shrink-0 items-center rounded-full border-2 px-3.5 text-[13px] font-semibold no-underline transition-colors duration-200 motion-reduce:transition-none",
                 FOCUS,
-                current === key ? "border-[#0e7490] bg-[#0e7490]/[0.08] text-text dark:border-[#22d3ee] dark:bg-[#22d3ee]/10" : "border-line bg-surface text-muted hover:border-[#0e7490]/40 hover:text-text dark:bg-white/[0.03]",
+                current === key ? "border-pulse-blue bg-pulse-blue/[0.08] text-text dark:border-[#8db0ff] dark:bg-pulse-blue/15" : "border-line bg-surface text-muted hover:border-pulse-blue/40 hover:text-text dark:bg-white/[0.03]",
               )}
             >{label}</Link>
           </li>
