@@ -60,7 +60,7 @@ export default async function SettingsAreaPage({ params, searchParams }: PagePro
     }
     case "content": {
       const [s, daily, previewCost] = await Promise.all([getSettings(), dailyPostsToday(), previewCostSummary()]);
-      return <ContentArea {...msg} dailyPosts={s.dailyPosts} dailyLine={dailyTodayLine(daily)} skitVideos={s.skitVideos} firstPostPreview={s.firstPostPreview} previewCost={previewCost} adBrainPerAdUsd={s.adBrainPerAdUsd} adBrainMonthlyUsd={s.adBrainMonthlyUsd} />;
+      return <ContentArea {...msg} dailyPosts={s.dailyPosts} dailyLine={dailyTodayLine(daily)} skitVideos={s.skitVideos} firstPostPreview={s.firstPostPreview} previewCost={previewCost} adBrainPerAdUsd={s.adBrainPerAdUsd} adBrainMonthlyUsd={s.adBrainMonthlyUsd} adBrainGalleryVideoMb={s.adBrainGalleryVideoMb} />;
     }
     case "voices":
       return <VoicesArea {...msg} languages={APPROVAL_LANGUAGES} voices={await approvedVoices()} />;

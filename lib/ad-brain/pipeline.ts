@@ -23,11 +23,12 @@ import { validateEdl, type Edl } from "./edl";
 import { pickEffects, seededRandom } from "./effects";
 import { BUPULSE_BRAND, companyAccount, fixtureWords, loadFacts } from "./facts";
 import { isFixtureName, FIXTURES } from "./fixtures";
-import { decideFix, hardRuleFailures, judgePrompt, judgeSchema, lowerMusic, type JudgeAnswer } from "./judge";
+import { combineJudgements, decideFix, hardRuleFailures, JUDGE_LOOKS, judgePrompt, judgeSchema, lowerMusic, type JudgeAnswer } from "./judge";
 import { assetNeeds, buildEdl, needsCost, type AssetNeed, type Concept, type MadeAsset } from "./plan";
 import { askAboutMedia, makeImage, makeMusic, makeSpeech, MODELS, ProviderError, wordTimings } from "./providers";
 import { pickRecipe, recipeById, recipeEffects } from "./recipes";
 import { analyzeMusic, jobDir, judgeCopy, probeSeconds, readRenderResult, startRender } from "./render";
+import { refreshScreensIfStale } from "./screens";
 import { checkScript, type Script } from "./script-rules";
 import { assetHash, downloadFile, findAsset, localFile, saveAsset, uploadFile } from "./store";
 
@@ -183,6 +184,9 @@ async function recentJobs(businessId: string, excludeId: string) {
 
 async function understand(job: Job, ctx: LedgerContext): Promise<"next"> {
   await allow(job, "the brand brief", UNIT_USD.think);
+  // Real screens no older than 24 hours before the brain picks them (free: the server's own headless Chrome).
+  const screens = await refreshScreensIfStale();
+  if (screens) await save(job.id, {}, { step: "understanding", note: screens.note });
   const facts = await loadFacts(job.businessId);
   const recent = await recentJobs(job.businessId, job.id);
   const brief = (job.brief ?? {}) as { notes?: string };
@@ -220,7 +224,7 @@ async function writeScript(job: Job, ctx: LedgerContext): Promise<"next"> {
   const facts = await loadFacts(job.businessId);
   const brief = job.brandBrief as BrandBrief;
   const rules = { brandName: "BuPulse", url: BUPULSE_BRAND.url, facts: `${facts.text}\n${brief.claims.map((x) => x.claim).join("\n")}`, beats: recipe.beats.map((b) => ({ id: b.id, speech: b.speech, titleWords: b.titleWords, screens: b.screens })), screenIds: facts.screens.map((s) => s.id) };
-  if (facts.screens.length < 3) throw new StopError("There are fewer than 3 real screen captures to show (Admin -> Ad Brain, \"Load the real captures\"). Ads only show real screens.");
+  if (facts.screens.length < 3) throw new StopError("There are fewer than 3 real screen captures with real data to show (Admin -> Ad Brain, \"Capture the screens now\"). Ads only show real screens, and never an empty page.");
   let problems: string[] = [];
   for (let round = 0; round < 2; round++) {
     await allow(job, "the script", UNIT_USD.think * 2);
@@ -487,13 +491,19 @@ async function judge(job: Job, ctx: LedgerContext): Promise<"next"> {
   await allow(job, "the judge", UNIT_USD.judge);
   const edl = job.plan as Edl;
   const file = await adFile(job);
-  const small = await judgeCopy(file, file.replace(/\.mp4$/, "-judge.mp4"));
-  const bytes = await fs.readFile(small);
-  const r = await withLedger(ctx, { provider: "gemini", model: MODELS.think() }, () => askAboutMedia<unknown>(process.env.GEMINI_API_KEY ?? "", { bytes, mimeType: "video/mp4", prompt: judgePrompt(edl) }), (x) => ({ provider: "gemini", model: x.model, usage: x.usage }));
-  await addCost(job.id, estimateCostUsd(r.model, r.usage));
-  const parsed = judgeSchema.safeParse(r.answer);
-  if (!parsed.success) throw new ProviderError("The judge's answer could not be read.");
-  const a = parsed.data;
+  // The ad at 720p (the file itself when small enough), looked at JUDGE_LOOKS times at once, the looks combined.
+  const copy = await judgeCopy(file, file.replace(/\.mp4$/, "-judge.mp4"));
+  const bytes = await fs.readFile(/*turbopackIgnore: true*/ copy);
+  const looks = await Promise.all(
+    Array.from({ length: JUDGE_LOOKS }, async () => {
+      const r = await withLedger(ctx, { provider: "gemini", model: MODELS.think() }, () => askAboutMedia<unknown>(process.env.GEMINI_API_KEY ?? "", { bytes, mimeType: "video/mp4", prompt: judgePrompt(edl) }), (x) => ({ provider: "gemini", model: x.model, usage: x.usage }));
+      await addCost(job.id, estimateCostUsd(r.model, r.usage));
+      return judgeSchema.safeParse(r.answer);
+    }),
+  );
+  const readable = looks.flatMap((l) => (l.success ? [l.data] : []));
+  if (!readable.length) throw new ProviderError("The judge's answer could not be read.");
+  const a = combineJudgements(readable);
   const scores = [...((job.scores ?? []) as unknown[]), { at: new Date().toISOString(), version: job.planVersion, ...a }];
   const decision = decideFix(a, edl, job.fixedOnce);
   const note = `Judge: ${a.overall}/10 (hook ${a.scores.thumbStop}, retention ${a.scores.retention}, clarity ${a.scores.productClarity}, sound ${a.scores.sound}). ${decision.note}`;

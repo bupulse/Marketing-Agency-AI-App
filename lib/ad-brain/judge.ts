@@ -19,11 +19,25 @@ export const judgeSchema = z.object({
 });
 export type JudgeAnswer = z.infer<typeof judgeSchema>;
 
-export function judgePrompt(edl: Edl): string {
-  const plan = edl.segments.map((s) => `${s.start.toFixed(1)}-${s.end.toFixed(1)} s ${s.id} (${s.source})`).join("; ");
-  return `You are a strict creative director judging a 30-second vertical UGC-style video ad for BuPulse (an AI marketing app; the name is said "Boo-pulse"). Watch AND listen to the whole video.
-The plan's segments: ${plan}.
-Score 0-10 (10 = top creator level): thumbStop (do the first 2 seconds stop a scrolling viewer?), retention (does it keep you to the end?), productClarity (do you understand what BuPulse does?), wow, humour, sound (voice clear, music fits, effects land), and overall as a social ad.
+export function judgePrompt(edl: Edl | null): string {
+  const plan = edl ? edl.segments.map((s) => `${s.start.toFixed(1)}-${s.end.toFixed(1)} s ${s.id} (${s.source})`).join("; ") : "";
+  return `You are a creative director at a performance-marketing agency judging a vertical UGC-style video ad (up to 30 s) for BuPulse (an AI marketing app; the name is said "Boo-pulse"). Watch AND listen to the whole video.
+${plan ? `The plan's segments: ${plan}.` : ""}
+Judge it as a social ad for small-business owners in Rwanda, against other short-form ads. UGC should look like phone footage: that is a strength, not a flaw. Judge the creative craft only; the hard-rule checks below are separate and must not lower these scores.
+Score each 0-10 and use the whole scale:
+- thumbStop: do the first 2 seconds stop a scrolling viewer (a question, a confession, a pattern break, motion)?
+- retention: is there a reason to keep watching to the end (a twist, a story, rising energy, cuts on the beat)?
+- productClarity: after watching, do you know what BuPulse does and see it working on real screens?
+- wow: a memorable moment (a transformation, a reveal, a freeze-frame, a beat drop) that people would rewatch or share.
+- humour: is it genuinely funny or charming (0-3 when it does not try)?
+- sound: clear voice, music that fits and stays under the voice, effects that land.
+- overall, with these anchors:
+  9-10: a scroll-stopping concept built on an identity twist, transformation or reveal that pays off on the product, edits synced to the music, real screens, a strong finish.
+  8: a strong format without that twist: a funny story (freeze-frame, rewind, loop), a demo or a split-screen, with a clear wow or humour moment, real product screens and good pacing.
+  7: a competent creator talking straight to camera with captions and an end card, even short and without product screens: clear and believable but ordinary, little surprise.
+  6: flat or slow, or the message is unclear.
+  5 or less: broken (bad audio, obvious AI artefacts, confusing).
+A short ad (under 30 s) is not marked down for its length.
 Hard-rule checks (true/false):
 - fakeScreen: is any phone, laptop or app screen visibly AI-drawn, blank or gibberish? (Real dashboard screenshots are fine.)
 - watermark: is there a burned-in "AI-generated" label or watermark?
@@ -32,6 +46,38 @@ Hard-rule checks (true/false):
 - kinyarwandaAiVoice: does an AI voice speak Kinyarwanda?
 Then the weakest moment ("at": seconds from the start, "why") and the single most important fix, written as an instruction for re-making that moment's picture or line.
 Return JSON only: {"scores": {"thumbStop": n, "retention": n, "productClarity": n, "wow": n, "humour": n, "sound": n}, "overall": n, "checks": {"fakeScreen": b, "watermark": b, "spokenCta": b, "musicTooLoud": b, "kinyarwandaAiVoice": b}, "weakest": {"at": n, "why": "..."}, "fix": "...", "summary": "one or two sentences"}`;
+}
+
+/** The judge looks twice (two calls at once, about $0.006 each): one look can swing a point. */
+export const JUDGE_LOOKS = 2;
+
+const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+const halfPoint = (x: number) => Math.round(x * 2) / 2;
+
+/**
+ * Several looks at the same ad as one answer: scores averaged (to the half point), a hard rule broken when ANY look
+ * saw it (the safe side), the weakest moment and fix from the harshest look. Calibrated on 11 Nov 2026 against the
+ * owner's hand scores (tests/ad-brain/judge-calibration.test.ts).
+ */
+export function combineJudgements(looks: JudgeAnswer[]): JudgeAnswer {
+  if (looks.length === 0) throw new Error("No judgement to combine.");
+  if (looks.length === 1) return looks[0];
+  const harshest = [...looks].sort((a, b) => a.overall - b.overall)[0];
+  const keys = Object.keys(looks[0].scores) as (keyof JudgeAnswer["scores"])[];
+  return {
+    scores: Object.fromEntries(keys.map((k) => [k, halfPoint(mean(looks.map((l) => l.scores[k])))])) as JudgeAnswer["scores"],
+    overall: halfPoint(mean(looks.map((l) => l.overall))),
+    checks: {
+      fakeScreen: looks.some((l) => l.checks.fakeScreen),
+      watermark: looks.some((l) => l.checks.watermark),
+      spokenCta: looks.every((l) => l.checks.spokenCta),
+      musicTooLoud: looks.some((l) => l.checks.musicTooLoud),
+      kinyarwandaAiVoice: looks.some((l) => l.checks.kinyarwandaAiVoice),
+    },
+    weakest: harshest.weakest,
+    fix: harshest.fix,
+    summary: harshest.summary,
+  };
 }
 
 /** The hard rules the judge saw broken, in plain English. */

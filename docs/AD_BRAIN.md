@@ -189,7 +189,134 @@ the tagged plan, progress log, Cancel). The video-jobs cron moves ads on every 4
 - The full plan for that script was estimated at **$2.02**, inside the $3 limit. A full real ad has **not** been made
   yet: it needs the owner's OK to spend about $2-3.
 
-**Not in phase 1:** the screen robot (phase 2; real captures are loaded from the 10 Nov prototype folder for now), the
-dashboard's small edits and re-render (phase 3; the plan, the tagged script and the log are shown read-only),
-learning from reference reels and post results (phase 4), the split-screen / kinetic / walkthrough formats, and 1:1 or
-4:5 versions.
+**Not in phase 1:** the dashboard's small edits and re-render (phase 3; the plan, the tagged script and the log are
+shown read-only), learning from reference reels and post results (phase 4), the split-screen / kinetic / walkthrough
+formats, and 1:1 or 4:5 versions. The screen robot (phase 2) came next, before go-live: section 13.
+
+## 13. Phase 2 and judge calibration (11 Nov 2026, branch `ad-brain`)
+
+The owner decided to build the screen robot before going live, then ship one release.
+
+### The screen robot (section 7)
+
+**The pass.** `lib/ad-brain/screen-pass.ts` makes a signed (HMAC-SHA256), 5-minute pass naming the BuPulse company
+account. The key is derived from `SCREEN_PASS_SECRET`, else from `SUPABASE_SECRET_KEY`. The pass is never stored, and
+two places check it:
+- `proxy.ts` accepts it only when the request comes from this computer (host `127.0.0.1` or `localhost`, and no
+  `cf-connecting-ip`, `x-forwarded-for` or `x-real-ip`), only for GET and HEAD, and only on `/dashboard/**` and the read
+  API (never `/admin`, `/api/admin`, `/api/cron` or `/api/auth`). Anything else carrying a pass gets a 403, and a pass
+  never falls back to a normal session.
+- `getCurrentUser` (`lib/supabase/server.ts`, through `lib/ad-brain/screen-user.ts`) checks the pass again, checks that
+  the request is local, and checks that the user's email is the company account (`AD_BRAIN_COMPANY_EMAIL`, else
+  office@bupulse.com).
+
+Admin pages never read the pass: they verify the Supabase session themselves (`lib/admin/auth.ts`).
+
+**The capture.** `scripts/ad-brain/capture-screens.mjs` is a separate Node process using `playwright-core` with the
+installed Google Chrome (the video robot's approach).
+- **What it opens:** Home, Posts, Calendar, Autopilot, Designs and Photos, plus Leads only when there are leads.
+- **Sizes:** phone (390×844 @3x = 1170×2532) and desktop (1512×900).
+- **What it records:** the main content's crop, and the position of a real button such as "Approve all" (read only,
+  for the tap ripple).
+- **Read only:** it never clicks or types, and it also aborts any non-GET request a page tries to make.
+- **Storage:** `lib/ad-brain/screens.ts` saves each picture as an `AdAsset` of kind `screen` and provider `robot`, with
+  the capture date, the page, the size and the page's data count.
+
+**Refresh.** The robot runs before an ad when the newest capture is 24 hours old (the "understanding" step; a failure
+keeps the last captures), and from Admin → Ad Brain → "Capture the screens now".
+
+**No misleading pages.** A page with no data (no posts, no designs, Autopilot off, an empty calendar) is captured but
+marked `empty`. `listScreens` never offers it to the brain, and Leads is not even opened at 0. The labels tell the
+brain how many items each page has.
+
+**Prototype captures.** The 10 Nov captures (`~/bupulse-ugc-ads`) stand in only in tests and development
+(`NODE_ENV` is not production, or `AD_BRAIN_FIXTURE_SCREENS=1`). The production pipeline uses robot captures only.
+
+**Checked.** The pass, the proxy gate and the capture rules have unit tests (`tests/ad-brain/screen-pass.test.ts`). The
+capture script and Chrome were run against a local stand-in page, which confirmed:
+- the cookie is needed (a page that asks to sign in gives a clear error);
+- the 1170×2532 and 1512×900 sizes;
+- the crop that leaves out the sidebar, and the button position;
+- a page script's POST never reaches the server.
+
+Per the owner, it was **not** run against TEST's LEAF account. The first real capture happens on bupulse.com after
+go-live, as step 8 of the checklist below.
+
+**BuPulse's own gallery space.** `lib/media/company-video-max.ts` gives the company account its own gallery-video
+limit: Admin → Settings → "BuPulse's own gallery videos", 1,024 MB by default (owner decision). Every other company
+keeps `MEDIA_COMPANY_VIDEO_MAX_BYTES` (100 MB).
+
+### Judge calibration
+
+The judge now:
+- watches the ad at 720p: the file itself when it is 14 MB or less, else a 720p re-encode;
+- answers at temperature 0;
+- uses an anchored rubric: 9-10 is a twist, transformation or reveal paying off on the product; 8 is a funny story,
+  demo or split-screen; 7 is a competent selfie testimonial with captions;
+- scores the hard rules separately from craft;
+- looks twice in parallel and combines the answers (`combineJudgements`): scores averaged, a hard rule broken if either
+  look saw it.
+
+It costs about **$0.012 per ad** (two looks of about $0.006 each), under the $0.02 cap.
+
+Against the owner's hand scores, over two rounds:
+
+| Ad | Owner | Judge |
+|---|---|---|
+| "Who's real?" twist | 9 | 9 / 9 |
+| "Yep, that's me" | 8 | 8 / 9 |
+| 30 s split-screen | 8 | 8 / 8 |
+| Salon testimonial | 7 | 5 / 5 |
+
+The salon ad has real defects the judge names: its voice is cut off at the end card, and it carries an old burned-in
+"AI-generated" badge. So it lands under the pass mark and would get its one re-roll. Before calibration the same ads
+scored 7/7/6/5. Those answers are kept as a test (`tests/ad-brain/judge-calibration.test.ts`). Calibration calls cost
+$0.14 in all.
+
+### Merging into main (for the coordinator)
+
+- `ad-brain` merges into the current `main` (98f2414a) with **no conflicts** (`git merge-tree` dry run, 11 Nov). It
+  touches files `main` changed since (`.env.example`, `components/admin/nav.ts`, `docs/AI_COSTS.md`), but on different
+  lines.
+- **Recommended: merge, don't rebase.** `git merge --no-ff ad-brain` from `main` keeps the branch's commits and their
+  dates (the migrations were applied to TEST from these commits). A rebase would only rewrite those dates.
+- **The uncommitted `docs/AD_BRAIN.md` in the main working tree** is the coordinator's BuPulse-only edit. The branch
+  commits that same text plus sections 12 and 13. Before merging:
+  1. Compare: `git diff --no-index docs/AD_BRAIN.md <(git show ad-brain:docs/AD_BRAIN.md)`. Only sections 12 and 13
+     should differ.
+  2. Move the uncommitted file aside, or discard it, so the merge's copy is the one kept. Git refuses to merge over an
+     untracked file of the same name.
+- **Migrations:** `20261110230000_ad_brain`, `20261110233000_ad_brain_video_engine` and `20261110234000_ad_brain_grants`
+  all sort after `main`'s latest (`20261110120000_tracked_links`). They are additive: two new tables, one bucket, and
+  `adbrain` allowed as a `VideoJob` engine. All three are applied to TEST. On TEST the second one was marked applied
+  with `prisma migrate resolve` after its connection dropped; its change is confirmed in the database.
+
+### Go-live checklist (owner and coordinator; nothing here has been done)
+
+1. **Backup first**, on the server PC from the repo folder: `node scripts/self-host/windows/server.mjs tool backup`.
+   It writes to `%USERPROFILE%\bupulse-prod\backups\bupulse-<time>.jsonl.gz`. Keep it private.
+2. **Merge** `ad-brain` into `main` as above, run `npx tsc --noEmit -p .`, `npx vitest run` and `npx next build`, then
+   push (owner's OK).
+3. **Windows installs**, as the server task's user (`docs/SELF_HOST.md`):
+   - `winget install Python.Python.3.12`
+   - `winget install Gyan.FFmpeg`
+   - `winget install Google.Chrome`
+   - `python -m pip install -r D:\BuPulse\tools\ad-render\requirements.txt`
+   - check with `python D:\BuPulse\tools\ad-render\render.py selftest`
+4. **Update the PC**: `powershell -ExecutionPolicy Bypass -File D:\BuPulse\scripts\self-host\windows\update.ps1`. Its
+   build runs `prisma migrate deploy`, which applies the three migrations to production. Then restart the "BuPulse
+   server" task so it sees the new PATH (Python, ffmpeg, Chrome).
+5. **Admin settings** on bupulse.com:
+   - AI → monthly AI cap **$60**
+   - Settings → Daily posts and videos → Ad Brain spend limits: **$3 per ad, $30 per month**, and BuPulse's own
+     gallery videos **1,024 MB**
+   - Services: Google Gemini and Google Veo AI clips (Omni) **on**
+6. **Company account**: check that office@bupulse.com is BuPulse's own business on production (Business info, logo, a
+   week of posts), so the robot's captures have real data.
+7. **ANTHROPIC_API_KEY** is not needed: the Ad Brain uses Gemini unless `AD_BRAIN_MODEL=claude`.
+8. **First run**:
+   - Admin → Ad Brain → "Capture the screens now". Expect about 12 pictures, empty pages kept out.
+   - Then "Re-render the cached ad". This works only where the prototype folder exists, so skip it on the PC.
+   - Then "Make an ad": about $2-3 and 15-30 minutes. The owner approved this first full ad on the live site.
+9. **Check the result**: the ad plays in the company account's Videos library, and its 4 posts wait on the Posts page.
+   Approve one by hand only after watching it.

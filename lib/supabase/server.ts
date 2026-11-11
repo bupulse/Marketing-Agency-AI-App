@@ -2,6 +2,7 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { loadServiceKeys } from "@/lib/admin/service-keys";
+import { screenPassUser } from "@/lib/ad-brain/screen-user";
 
 // Create a new client per request (never share one across requests).
 export async function createClient() {
@@ -31,10 +32,12 @@ export async function createClient() {
   );
 }
 
-// The signed-in user, verified with Supabase Auth, or null.
+// The signed-in user, verified with Supabase Auth, or null. Without a session, the Ad Brain's screen robot (the
+// server's own headless Chrome with a 5-minute signed pass, read-only, BuPulse's company account only;
+// lib/ad-brain/screen-pass.ts) is that account; nobody else can carry such a pass.
 export async function getCurrentUser() {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return null;
-  return data.user;
+  if (!error && data.user) return data.user;
+  return screenPassUser();
 }

@@ -55,9 +55,19 @@ why.
 
 ## Real screens
 
-Ads only show real captures of BuPulse's dashboard. Until the screen robot is built (phase 2), the 10 November captures
-are loaded from the Mac's prototype folder with **Load the real captures** on the Ad Brain page. The page shows how many
-there are; an ad needs at least 3.
+Ads only show real captures of BuPulse's own dashboard, taken by the **screen robot**. The robot is the server opening
+the company account's pages in a hidden browser:
+- **Pages:** Home, Posts, Calendar, Autopilot, Designs and Photos, plus Leads only when there are leads.
+- **Sizes:** each page at phone and at computer size.
+- **Read only:** it only looks. It cannot click, change anything, open admin pages or see any other account.
+- **When:** by itself before an ad when the captures are a day old, or at once with **Capture the screens now** on the
+  Ad Brain page. The page shows how many usable captures there are and when they were taken. An ad needs at least 3.
+- **No misleading pages:** a page with nothing on it (no posts yet, Autopilot off, no leads) is never shown in an ad.
+  So fill the company account with real posts and designs first.
+
+The judge watches each finished ad twice (about 1 cent in all) and scores it like you would. On your 10 November ads
+it gave "Who's real?" 9, "Yep, that's me" 8 to 9, and the split-screen 8. It gave the salon ad 5, because its voice is
+cut off at the end and it has the old "AI-generated" badge.
 
 ## For developers
 
@@ -80,6 +90,11 @@ there are; an ad needs at least 3.
   - `store.ts`: the `ad-brain` bucket and asset cache
   - `facts.ts`: the company account, BuPulse's facts, real screens
   - `fixtures.ts`: the cached twist ad
+  - `screen-pass.ts`: the robot's 5-minute signed read-only pass, also checked in `proxy.ts`
+  - `screen-user.ts`: the pass's user for `getCurrentUser`, the company account only
+  - `screen-plan.ts`: the pages, the 24 h refresh and the empty-page rule
+  - `screens.ts`: runs `scripts/ad-brain/capture-screens.mjs` (headless Chrome) and stores the captures
+- **BuPulse's gallery space:** `lib/media/company-video-max.ts` (setting `adBrainGalleryVideoMb`).
   - `service.ts`: Admin
 - **Renderer:** `tools/ad-render/` (Python 3.9+, Pillow, numpy, ffmpeg). See its README.
 - **Admin:**
@@ -91,14 +106,16 @@ there are; an ad needs at least 3.
   - migrations `20261110230000_ad_brain` and `20261110233000_ad_brain_video_engine`
   - tables `AdJob` and `AdAsset`, and the private bucket `ad-brain`
   - finished ads are `VideoJob` rows of engine `adbrain`, plus `Post` rows (`PENDING_APPROVAL`, group `ad-<job id>`)
-- **Tests:** `tests/ad-brain/*` (EDL check, budget, effects and the renderer registry, script rules, planner, judge).
+- **Tests:** `tests/ad-brain/*` (EDL check, budget, effects and the renderer registry, script rules, planner, judge, judge calibration, screen pass and proxy gate, gallery space).
 
 ## If something goes wrong
 
 | Symptom | Where to look | Usual fix |
 |---|---|---|
 | "Stopped before passing … limit" | The card's message | Raise the limit in Settings, or wait for next month. |
-| "fewer than 3 real screen captures" | Ad Brain → Real screens | Press "Load the real captures" (on the Mac), later the screen robot. |
+| "fewer than 3 real screen captures with real data" | Ad Brain → Real screens | Press "Capture the screens now"; if pages are empty, add real posts and designs to the company account first. |
+| "Google Chrome could not start for the screen robot" | The server PC | `winget install Google.Chrome`, or set `AD_BRAIN_CHROME_PATH` (docs/SELF_HOST.md). |
+| "No page could be captured … the pass was not accepted" | `AD_BRAIN_SELF_URL` | It must be this server's own local address (default `http://127.0.0.1:3002`), never bupulse.com. |
 | Stuck on "Editing" | The server's temp folder `bupulse-ad-brain/<job>/render.log` | Python, Pillow, numpy or ffmpeg missing on the server: see `tools/ad-render/README.md`. |
 | "The renderer could not start" | Same | Install Python, or set `AD_RENDER_PYTHON` to its full path. |
 | Clips fail with "at its limit" | Progress | Google's daily Omni limit: speech lines turn into voice-overs by themselves; or try after 10:00 Kigali time. |

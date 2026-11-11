@@ -10,10 +10,12 @@ import { FEATURES } from "@/lib/features";
 import { getSellablePlans } from "@/lib/plan-catalog";
 import { fixtureWordFiles } from "./fixtures";
 import type { BrandInfo, ScreenCapture } from "./plan";
+import { adBrainCompanyEmail } from "./screen-pass";
+import { currentCaptures } from "./screen-plan";
 import { assetHash, findAsset, fixtureDir, saveAsset } from "./store";
 
 /** The BuPulse company account (AD_BRAIN_COMPANY_EMAIL, else office@bupulse.com). */
-export const companyEmail = () => (process.env.AD_BRAIN_COMPANY_EMAIL?.trim() || "office@bupulse.com").toLowerCase();
+export const companyEmail = () => adBrainCompanyEmail();
 
 export class AdBrainSetupError extends Error {}
 
@@ -54,12 +56,30 @@ export async function loadFacts(businessId: string): Promise<Facts> {
 }
 
 /** The real screen captures the ads may show (AdAsset rows of kind "screen"), newest first. */
+/** The 10 Nov prototype's captures may stand in for robot captures only in tests and development (never in production). */
+export const allowFixtureScreens = (env: Record<string, string | undefined> = process.env) => env.NODE_ENV !== "production" || env.AD_BRAIN_FIXTURE_SCREENS === "1";
+
+type ScreenMeta = { key?: string; page?: string; pageId?: string; viewport?: string; label?: string; capturedAt?: string; crop?: [number, number, number, number]; tap?: [number, number]; items?: number; empty?: boolean };
+
+/**
+ * The real screen captures an ad may show: the robot's newest capture of each page and size, never a page that was
+ * empty when captured (screen-plan.ts currentCaptures). The labels tell the brain how much data each page has.
+ */
 export async function listScreens(): Promise<ScreenCapture[]> {
-  const rows = await prisma.adAsset.findMany({ where: { kind: "screen" }, orderBy: { createdAt: "desc" }, take: 40, select: { id: true, meta: true, createdAt: true } });
-  return rows.map((r) => {
-    const m = (r.meta ?? {}) as { page?: string; label?: string; capturedAt?: string; crop?: [number, number, number, number]; tap?: [number, number]; key?: string };
-    return { id: m.key ?? r.id, page: m.page ?? "Dashboard", label: m.label ?? m.page ?? "Dashboard", capturedAt: m.capturedAt ?? r.createdAt.toISOString().slice(0, 10), ref: `ad:${r.id}`, ...(m.crop ? { crop: m.crop } : {}), ...(m.tap ? { tap: m.tap } : {}) };
+  const rows = await prisma.adAsset.findMany({ where: { kind: "screen" }, orderBy: { createdAt: "desc" }, take: 120, select: { id: true, meta: true, createdAt: true, provider: true } });
+  const shaped = rows.map((r) => {
+    const m = (r.meta ?? {}) as ScreenMeta;
+    return { row: r, m, id: r.id, key: m.key ?? r.id, page: m.pageId ?? m.page ?? "dashboard", viewport: m.viewport ?? "desktop", capturedAt: m.capturedAt ?? r.createdAt.toISOString(), empty: Boolean(m.empty), createdAt: r.createdAt, provider: r.provider };
   });
+  return currentCaptures(shaped, allowFixtureScreens()).map(({ row, m, key }) => ({
+    id: key,
+    page: m.page ?? "Dashboard",
+    label: `${m.label ?? m.page ?? "Dashboard"}${typeof m.items === "number" && m.pageId !== "home" ? `, ${m.items} item${m.items === 1 ? "" : "s"}` : ""}`,
+    capturedAt: (m.capturedAt ?? row.createdAt.toISOString()).slice(0, 10),
+    ref: `ad:${row.id}`,
+    ...(m.crop ? { crop: m.crop } : {}),
+    ...(m.tap ? { tap: m.tap } : {}),
+  }));
 }
 
 /**
@@ -67,6 +87,7 @@ export async function listScreens(): Promise<ScreenCapture[]> {
  * screen cache, until the screen robot (phase 2) captures them itself. Free. Returns how many were added.
  */
 export async function seedPrototypeScreens(jobId: string | null = null): Promise<number> {
+  if (!allowFixtureScreens()) throw new AdBrainSetupError("The prototype captures are for tests and development only; in production the screen robot captures the real pages.");
   const { twistFixture } = await import("./fixtures");
   const edl = twistFixture();
   const labels: Record<string, string> = {};

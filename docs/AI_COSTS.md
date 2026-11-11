@@ -229,3 +229,6 @@ Paid test calls by the video-engine agent (the coordinator's cap: $1.00 without 
 | 3 | 11 Nov 2026 | Real brief + concept + script with the fixed parser (brain run 2) | 0.0172 | 0.0809 |
 | 4 | 11 Nov 2026 | One assets pass: Nano Banana portrait, Lyria track, TTS call to action + its word timings | 0.0774 | 0.1583 |
 | 5 | 11 Nov 2026 | One 4 s silent Omni clip from that portrait (47 s wait) | 0.4032 | 0.5615 |
+| 6 | 11 Nov 2026 | Judge calibration: the 4 hand-judged reference ads at 720p, 6 rounds (rubric before and after, two at temperature 0), plus one salon check | 0.1429 | 0.7044 |
+
+The calibrated judge looks twice per ad (two calls at once): about **$0.012 an ad**, measured on the reference ads.

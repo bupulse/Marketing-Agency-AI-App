@@ -66,8 +66,19 @@ edited on this PC by a Python process the server starts (`tools/ad-render/`). On
 before the first ad, as the user the "BuPulse server" task runs as, then open a new PowerShell:
 1. `winget install Python.Python.3.12`
 2. `winget install Gyan.FFmpeg`
-3. `python -m pip install -r D:\BuPulse\tools\ad-render\requirements.txt`
-4. Check with `python D:\BuPulse\tools\ad-render\render.py selftest`.
+3. `winget install Google.Chrome` (the screen robot's headless browser; its driver, `playwright-core`, is already in
+   `node_modules` from `npm ci`)
+4. `python -m pip install -r D:\BuPulse\tools\ad-render\requirements.txt`
+5. Check the renderer with `python D:\BuPulse\tools\ad-render\render.py selftest`.
+
+**The screen robot.** Before each ad (when the captures are a day old), and from Admin → Ad Brain → "Capture the
+screens now", the server opens the BuPulse company account's real dashboard pages in headless Chrome. It does not use
+a password: it carries a 5-minute signed, read-only pass (`lib/ad-brain/screen-pass.ts`). The proxy accepts that pass
+only from this PC (`http://127.0.0.1:3002`, no Cloudflare headers), only for reading dashboard pages, and never for
+admin pages, writes or any other account.
+- If Chrome is not at its usual place, set `AD_BRAIN_CHROME_PATH`, for example
+  `C:\Program Files\Google\Chrome\Application\chrome.exe`.
+- If the server is not on port 3002, set `AD_BRAIN_SELF_URL`.
 
 Then restart the "BuPulse server" task, so the server sees the new PATH. If Python or ffmpeg is not on that task's
 PATH, set `AD_RENDER_PYTHON`, `AD_RENDER_FFMPEG` and `AD_RENDER_FFPROBE` to their full paths in the production settings.

@@ -21,6 +21,7 @@ export function ContentArea({
   previewCost,
   adBrainPerAdUsd,
   adBrainMonthlyUsd,
+  adBrainGalleryVideoMb,
   ok,
   bad,
 }: Msg & {
@@ -29,6 +30,7 @@ export function ContentArea({
   skitVideos: boolean;
   adBrainPerAdUsd: number;
   adBrainMonthlyUsd: number;
+  adBrainGalleryVideoMb: number;
   firstPostPreview: boolean;
   previewCost: { model: string; estimateUsd: number | null; made: number; averageUsd: number | null };
 }) {
@@ -71,6 +73,9 @@ export function ContentArea({
             </Field>
             <Field label="Limit per month (USD)" hint="The owner's decision: $30.">
               <Input name="adBrainMonthlyUsd" type="number" min={1} max={500} step={1} defaultValue={adBrainMonthlyUsd} required />
+            </Field>
+            <Field label="BuPulse's own gallery videos (MB)" hint="Space for the ads in the company account's Gallery (about 10 MB each). The owner's decision: 1,024 MB. Other companies keep their normal limit.">
+              <Input name="adBrainGalleryVideoMb" type="number" min={100} max={10000} step={1} defaultValue={adBrainGalleryVideoMb} required />
             </Field>
           </div>
           <div>

@@ -9,7 +9,7 @@ import { notice } from "@/components/admin/ui";
 import { AutoRefresh } from "@/components/support-app/server/auto-refresh";
 import { Button, Field, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { cancelAdAction, loadCapturesAction, runAdJobsNowAction, startAdAction } from "./actions";
+import { cancelAdAction, captureScreensAction, loadCapturesAction, runAdJobsNowAction, startAdAction } from "./actions";
 
 export const metadata = { title: "Ad Brain" };
 
@@ -48,7 +48,7 @@ export default async function AdBrainPage({ searchParams }: PageProps<"/admin/ad
       <StatGrid cols={3} className="lg:grid-cols-3">
         <StatTile icon={Coins} tone="violet" label="Spent this month" value={`${money(overview.monthSpentUsd)} of ${money(overview.limits.monthlyUsd)}`} hint={`At most ${money(overview.limits.perAdUsd)} an ad. Change the limits in Settings.`} />
         <StatTile icon={Film} tone="violet" label="Ads made" value={String(jobs.filter((j) => j.status === "ready").length)} hint="The latest 20 are listed below." />
-        <StatTile icon={MonitorSmartphone} tone="violet" label="Real screens" value={String(overview.screens)} hint="Ads only ever show real captures of BuPulse." />
+        <StatTile icon={MonitorSmartphone} tone="violet" label="Real screens" value={String(overview.screens)} hint="Real captures of BuPulse with real data; empty pages are kept out." />
       </StatGrid>
 
       <div className="grid items-start gap-3 lg:grid-cols-2">
@@ -72,12 +72,23 @@ export default async function AdBrainPage({ searchParams }: PageProps<"/admin/ad
             <form action={runAdJobsNowAction}>
               <Button type="submit" size="sm">Move it on now</Button>
             </form>
-            <form action={loadCapturesAction} className="flex flex-col gap-1">
-              <p className="text-[13px] text-muted">Until the screen robot is built, the real dashboard captures of 10 November are loaded from this computer&apos;s prototype folder.</p>
+            <form action={captureScreensAction} className="flex flex-col gap-1">
+              <p className="text-[13px] text-muted">
+                The screen robot opens the company account&apos;s real pages (read only) and captures them at phone and desktop size. It does this by itself when the captures are a day old.{" "}
+                {overview.capturedAt ? `Last capture: ${dateTime(overview.capturedAt)}.` : "No capture yet."}
+              </p>
               <div>
-                <Button type="submit" variant="outline" size="sm">Load the real captures</Button>
+                <Button type="submit" variant="outline" size="sm">Capture the screens now</Button>
               </div>
             </form>
+            {overview.fixtures && (
+              <form action={loadCapturesAction} className="flex flex-col gap-1">
+                <p className="text-[13px] text-muted">Tests and development only: the 10 November captures from this computer&apos;s prototype folder, used while there is no robot capture.</p>
+                <div>
+                  <Button type="submit" variant="ghost" size="sm">Load the prototype captures</Button>
+                </div>
+              </form>
+            )}
             <p className="text-[13px] text-muted">
               Limits: <Link href="/admin/settings/content#ad-brain">Settings, Daily posts and videos</Link>. Costs: <Link href="/admin/ai">AI calls and spend</Link> (feature “adBrain”).
             </p>

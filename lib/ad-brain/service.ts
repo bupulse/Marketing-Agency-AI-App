@@ -6,7 +6,9 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Edl } from "./edl";
-import { companyAccount, listScreens, seedPrototypeScreens } from "./facts";
+import { allowFixtureScreens, companyAccount, listScreens, seedPrototypeScreens } from "./facts";
+import { adBrainCompanyEmail } from "./screen-pass";
+import { captureScreens, newestCaptureAt } from "./screens";
 import { isFixtureName } from "./fixtures";
 import { adLimits, monthSpentUsd, sweepAdJobs, TERMINAL } from "./pipeline";
 import { GALLERY_VIDEO_BUCKET } from "@/lib/media/rules";
@@ -97,10 +99,13 @@ export async function listAdJobs(limit = 20): Promise<AdJobView[]> {
   });
 }
 
-export async function adBrainOverview(): Promise<{ limits: { perAdUsd: number; monthlyUsd: number }; monthSpentUsd: number; screens: number; account: { email: string; name: string } | { error: string } }> {
-  const [limits, spent, screens, account] = await Promise.all([adLimits(), monthSpentUsd(), listScreens().then((s) => s.length), companyAccount().then((a) => ({ email: process.env.AD_BRAIN_COMPANY_EMAIL?.trim() || "office@bupulse.com", name: a.name })).catch((e: Error) => ({ error: e.message }))]);
-  return { limits, monthSpentUsd: spent, screens, account };
+export async function adBrainOverview(): Promise<{ limits: { perAdUsd: number; monthlyUsd: number }; monthSpentUsd: number; screens: number; capturedAt: string | null; fixtures: boolean; account: { email: string; name: string } | { error: string } }> {
+  const [limits, spent, screens, capturedAt, account] = await Promise.all([adLimits(), monthSpentUsd(), listScreens().then((s) => s.length), newestCaptureAt(), companyAccount().then((a) => ({ email: adBrainCompanyEmail(), name: a.name })).catch((e: Error) => ({ error: e.message }))]);
+  return { limits, monthSpentUsd: spent, screens, capturedAt: capturedAt?.toISOString() ?? null, fixtures: allowFixtureScreens(), account };
 }
+
+/** "Capture the screens now": the robot takes every page again (free; about a minute). */
+export const captureScreensNow = () => captureScreens({ force: true });
 
 /** "Move it on now": one sweep from Admin (the video-jobs cron does the same every few minutes). */
 export const runAdJobsNow = () => sweepAdJobs({ budgetMs: 100_000 });

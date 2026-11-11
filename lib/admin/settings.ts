@@ -66,6 +66,8 @@ export type Settings = {
   adBrainPerAdUsd: number;
   /** The Ad Brain's spend limit per calendar month (UTC), in USD (docs/AD_BRAIN.md: $30). */
   adBrainMonthlyUsd: number;
+  /** The BuPulse company account's Gallery video space in MB (its Ad Brain ads; owner decision: 1 GB). Others keep MEDIA_COMPANY_VIDEO_MAX_BYTES. */
+  adBrainGalleryVideoMb: number;
 };
 export type SettingName = keyof Settings;
 
@@ -90,6 +92,7 @@ const KEYS: Record<SettingName, string> = {
   skitVideos: "content.skitVideos",
   adBrainPerAdUsd: "adBrain.perAdUsd",
   adBrainMonthlyUsd: "adBrain.monthlyUsd",
+  adBrainGalleryVideoMb: "adBrain.galleryVideoMb",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -113,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
   skitVideos: false,
   adBrainPerAdUsd: 3,
   adBrainMonthlyUsd: 30,
+  adBrainGalleryVideoMb: 1024,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -170,6 +174,7 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   skitVideos: (value) => value === true || value === "on" || value === "true" || value === "1",
   adBrainPerAdUsd: number("The Ad Brain limit per ad (USD)", 0.5, 50, false),
   adBrainMonthlyUsd: number("The Ad Brain monthly limit (USD)", 1, 500, false),
+  adBrainGalleryVideoMb: number("BuPulse's own gallery videos (MB)", 100, 10_000),
   goalStartMonth: (value) => {
     const v = String(value ?? "").trim();
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new AdminError("invalid", "The launch month must look like 2026-11 (year and month).");

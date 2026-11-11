@@ -86,9 +86,18 @@ export async function probeSeconds(file: string): Promise<number | null> {
   return r.code === 0 && Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** A small copy of the ad for the judge (540 px wide, lower quality): fewer bytes to send, same content. */
+/** Gemini takes a file of up to about 20 MB in the request (base64 adds a third): bigger ads are re-encoded first. */
+export const JUDGE_INLINE_MAX_BYTES = 14 * 1024 * 1024;
+
+/**
+ * The ad as the judge sees it: at full 720p (owner's calibration, 11 Nov 2026: small text and screens must be readable),
+ * the file itself when it is small enough to send, else a 720p re-encode at lower quality (same frames and sound; Gemini
+ * bills by duration, not bytes).
+ */
 export async function judgeCopy(file: string, out: string): Promise<string> {
-  const r = await runTool(process.env.AD_RENDER_FFMPEG?.trim() || "ffmpeg", ["-v", "error", "-y", "-i", file, "-vf", "scale=540:-2", "-c:v", "libx264", "-crf", "30", "-preset", "fast", "-c:a", "aac", "-b:a", "96k", out], 180_000);
+  const size = (await fs.stat(/*turbopackIgnore: true*/ file).catch(() => null))?.size ?? 0;
+  if (size > 0 && size <= JUDGE_INLINE_MAX_BYTES) return file;
+  const r = await runTool(process.env.AD_RENDER_FFMPEG?.trim() || "ffmpeg", ["-v", "error", "-y", "-i", file, "-vf", "scale=720:-2", "-c:v", "libx264", "-crf", "28", "-preset", "fast", "-c:a", "aac", "-b:a", "128k", out], 180_000);
   return r.code === 0 ? out : file;
 }
 

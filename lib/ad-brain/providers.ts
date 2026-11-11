@@ -116,7 +116,7 @@ export async function makeSpeech(key: string, input: { text: string; voice: stri
 /** Gemini 3.8 Flash on a media file with a JSON answer (word timings, the judge). */
 export async function askAboutMedia<T>(key: string, input: { bytes: Buffer; mimeType: string; prompt: string }, f: F = fetch): Promise<{ answer: T; usage: TokenUsage; model: string }> {
   const model = MODELS.think();
-  const b = await post(`${GEMINI_API}/models/${model}:generateContent`, key, { contents: [{ parts: [{ inline_data: { mime_type: input.mimeType, data: input.bytes.toString("base64") } }, { text: input.prompt }] }], generationConfig: { responseMimeType: "application/json" } }, 150_000, f);
+  const b = await post(`${GEMINI_API}/models/${model}:generateContent`, key, { contents: [{ parts: [{ inline_data: { mime_type: input.mimeType, data: input.bytes.toString("base64") } }, { text: input.prompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0 } }, 150_000, f);
   const text = partsOf(b).map((p) => p.text ?? "").join("");
   try {
     return { answer: JSON.parse(text) as T, usage: genUsage(b.usageMetadata as GenUsage), model };

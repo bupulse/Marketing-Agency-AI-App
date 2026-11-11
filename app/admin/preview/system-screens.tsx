@@ -82,7 +82,7 @@ function SettingsAreaPreview({ slug, ok }: { slug: SettingsSlug; ok?: string }) 
     case "goal":
       return <GoalArea ok={ok} revenueGoalRwf={9_000_000} goalStartMonth="2026-11" />;
     case "content":
-      return <ContentArea ok={ok} dailyPosts dailyLine="Today (10 Nov): 12 companies, 31 posts made, 2 skipped (AI allowance used up), none failed." skitVideos={false} firstPostPreview={false} previewCost={{ model: "gemini-2.5-flash", estimateUsd: 0.0021, made: 0, averageUsd: null }} adBrainPerAdUsd={3} adBrainMonthlyUsd={30} />;
+      return <ContentArea ok={ok} dailyPosts dailyLine="Today (10 Nov): 12 companies, 31 posts made, 2 skipped (AI allowance used up), none failed." skitVideos={false} firstPostPreview={false} previewCost={{ model: "gemini-2.5-flash", estimateUsd: 0.0021, made: 0, averageUsd: null }} adBrainPerAdUsd={3} adBrainMonthlyUsd={30} adBrainGalleryVideoMb={1024} />;
     case "voices":
       return <VoicesArea ok={ok} languages={["Kinyarwanda", "Swahili"]} voices={{ Kinyarwanda: "pNInz6obpgDQGcFmaJgB", Swahili: null }} />;
     case "lead-alerts":

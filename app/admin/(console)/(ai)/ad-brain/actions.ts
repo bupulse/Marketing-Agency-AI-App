@@ -3,7 +3,7 @@
 import { requireAdmin } from "@/lib/admin/auth";
 import { adminAction, finish } from "@/lib/admin/console";
 import { AdminError } from "@/lib/admin/types";
-import { AdBrainError, cancelAdJob, loadRealCaptures, runAdJobsNow, startAdJob } from "@/lib/ad-brain/service";
+import { AdBrainError, cancelAdJob, captureScreensNow, loadRealCaptures, runAdJobsNow, startAdJob } from "@/lib/ad-brain/service";
 import { AdBrainSetupError } from "@/lib/ad-brain/facts";
 
 // Admin -> Ad Brain (docs/AD_BRAIN.md). Each action re-checks the admin (allow-listed email, AAL2, the "ai" area):
@@ -38,6 +38,11 @@ export async function runAdJobsNowAction() {
 export async function cancelAdAction(f: FormData) {
   await adminAction("ai");
   await finish(BACK, "Cancelled. Nothing more is paid for this ad.", () => plain(() => cancelAdJob(text(f, "id"))));
+}
+
+export async function captureScreensAction() {
+  await adminAction("ai");
+  await finish(BACK, (r) => (r ? `${r.captured} real screens captured${r.skippedEmpty ? ` (${r.skippedEmpty} of empty pages are kept out of ads)` : ""}${r.failed ? `; ${r.failed} could not be captured: ${r.errors[0] ?? ""}` : ""}.` : "The screens were already fresh."), () => plain(() => captureScreensNow()));
 }
 
 export async function loadCapturesAction() {
