@@ -86,7 +86,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
   const span = view === "week" ? "week" : "month";
   const visuals = contents
     .filter((c) => c.image || c.video)
-    .map((c) => ({ id: c.id, label: c.network && isNetwork(c.network) ? NETWORK_STYLE[c.network].label : "Post", angle: isAngleId(c.angle) ? ANGLES[c.angle].label : null, image: c.image, video: c.video, hasScript: c.hasScript }));
+    .map((c) => ({ id: c.id, label: c.network && isNetwork(c.network) ? NETWORK_STYLE[c.network].label : "Post", angle: isAngleId(c.angle) ? ANGLES[c.angle].label : null, image: c.image, video: c.video, hasScript: c.hasScript, groupId: c.groupId }));
   const create = <CreateDayContent scope={scope} path={path} subjectName={info.name} networks={networks} allowance={allowance} album={album} />;
   // Today's header button opens by itself on ?create=1 (+ Create → New post); the empty state's copy never does.
   const createHere = periodContains(period, today) ? <CreateDayContent scope={scope} path={path} subjectName={info.name} networks={networks} allowance={allowance} album={album} openOnAsk /> : create;

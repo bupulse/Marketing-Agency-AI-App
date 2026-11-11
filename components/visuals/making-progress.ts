@@ -5,6 +5,8 @@
 // Real progress comes from the server when it has it (MakingProgress: the shape lib/visuals/progress.ts is expected to
 // give; any part may be missing), else it is estimated from the visuals the page already has (progressFromVisuals).
 // The shown number is the larger of the real one and the eased clock, and never goes back.
+// fromSetProgress turns the server's SetProgress (daySetProgressAction) into this shape.
+import type { SetProgress } from "@/lib/visuals/progress";
 import type { VisualView } from "@/lib/visuals/types";
 
 export const MAKING_STEPS = ["captions", "images", "reel", "music", "ready"] as const;
@@ -104,4 +106,49 @@ export function progressFromVisuals(input: {
     return { ...base, step: "reel", fraction: r === null ? null : Math.min(1, r / 0.85) };
   }
   return { ...base, step: "ready", fraction: 1 };
+}
+
+/** A set is finished (ready or failed): the screen stops asking. */
+export const setSettled = (s: Pick<SetProgress, "ready" | "failed">) => s.ready || s.failed;
+
+/**
+ * The real progress of the day's sets (lib/visuals/progress.ts, read by daySetProgressAction) as the screen shows it.
+ * Several sets (2 or more posts per app) count as one: the step is the earliest of the sets still being made, the
+ * fraction is that step's share of the work done across them (from the units done / total: each AI picture 3 or 4,
+ * each own photo 1; the reel is planned, then rendered), and every picture of every set fills in as it is ready.
+ * Null without sets (the screen keeps its own estimate).
+ */
+export function fromSetProgress(sets: readonly SetProgress[]): MakingProgress | null {
+  if (sets.length === 0) return null;
+  const images = sets.flatMap((s) => s.images.filter((i) => i.status !== "skipped").map((i) => ({ url: i.status === "ready" ? (i.url ?? null) : null })));
+  const reels = sets.flatMap((s) => (s.reel ? [s.reel] : []));
+  const reel = reels.length > 0;
+  // A reel not planned yet gets a song from the library; a planned one says which (none when the library is empty).
+  const music = reels.some((r) => r.status === "waiting" || !!r.music);
+  const base = { images, reel, music };
+  const working = sets.filter((s) => !setSettled(s));
+  if (working.length === 0) {
+    const failed = sets.every((s) => s.failed) ? (sets.find((s) => s.error)?.error ?? "The pictures could not be made.") : null;
+    return { ...base, step: "ready", fraction: 1, failed };
+  }
+  const step = MAKING_STEPS[Math.min(...working.map((s) => MAKING_STEPS.indexOf(s.step)))];
+  const at = working.filter((s) => s.step === step);
+  if (step === "images") {
+    // The pictures' units: everything but the captions (1, done) and the reel (2; none done while pictures are made).
+    let done = 0;
+    let total = 0;
+    for (const s of at) {
+      const reelDone = !s.reel || s.reel.status === "waiting" ? 0 : s.reel.status === "ready" || s.reel.status === "failed" ? 2 : 1;
+      done += Math.max(0, s.done - 1 - reelDone);
+      total += Math.max(0, s.total - 1 - (s.reel ? 2 : 0));
+    }
+    return { ...base, step, fraction: total > 0 ? Math.min(1, done / total) : null };
+  }
+  if (step === "reel") {
+    // Planned from the pictures (1 of its 2 units) and waiting for the renderer; rendering without music is further on.
+    const parts = at.map((s): number => (s.reel?.status === "rendering" ? 0.6 : s.reel?.status === "pending" ? 0.5 : 0));
+    return { ...base, step, fraction: parts.reduce((a, b) => a + b, 0) / parts.length };
+  }
+  // Captions (a set not saved yet) and music (the renderer reports no fraction): the clock carries the number.
+  return { ...base, step, fraction: null };
 }

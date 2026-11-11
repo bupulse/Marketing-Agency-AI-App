@@ -4,6 +4,7 @@ import { getEnglishVoice } from "@/lib/voice/provider-setting";
 import { z } from "zod";
 import { knowledgeAction, type Result } from "@/lib/knowledge/guard";
 import { remakeContentVisuals } from "@/lib/visuals/content";
+import { remakeDaySetVisuals } from "@/lib/content-flow/set-remake";
 import { finalizeVideo, leaseVideoForBrowser, markVideoFailed, prepareVideoUpload, removeVisual, renderImageStep, updateImageVisual, updateVideoPlan } from "@/lib/visuals/service";
 import { activeTracks } from "@/lib/music/service";
 import { featureStatus } from "@/lib/entitlements";
@@ -38,6 +39,15 @@ export async function remakeVisual(contentId: string, only?: "image" | "video", 
   if (!id.safeParse(contentId).success || (only && only !== "image" && only !== "video")) return BAD;
   if (script !== undefined && (typeof script !== "string" || only !== "video" || script.length > SCRIPT_RULES.maxLength)) return { ok: false, error: `Keep your script under ${SCRIPT_RULES.maxLength} characters.` };
   return knowledgeAction({ ...GUARD, source: "visuals.remake" }, ({ userId, businessId }) => remakeContentVisuals({ userId, businessId }, contentId, only, script === undefined ? {} : { script }));
+}
+
+/**
+ * "New pictures" on a day's shared set (lib/content-flow/set-remake.ts): the set is made again by its group, drawn on
+ * the server right away, and the group's posts take the new pictures and reel when they are ready. Never per post.
+ */
+export async function remakeDaySet(groupId: string): Promise<Result<{ groupId: string }>> {
+  if (typeof groupId !== "string" || !/^[A-Za-z0-9-]{8,64}$/.test(groupId)) return BAD;
+  return knowledgeAction({ ...GUARD, source: "visuals.remake-set" }, async ({ userId, businessId }) => ({ groupId: (await remakeDaySetVisuals({ userId, businessId }, groupId)).groupId }));
 }
 
 const changesSchema = z.object({

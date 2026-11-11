@@ -12,6 +12,7 @@ import { z } from "zod";
 import { withLedger } from "@/lib/ai/ledger";
 import { composeMusic, ELEVENLABS_MUSIC_MODEL } from "@/lib/ai/tts";
 import { rateLimit, RateLimitError } from "@/lib/rate-limit";
+import { trackCredit } from "./credit";
 import { ELEVENLABS_MUSIC_LICENCE, ELEVENLABS_MUSIC_SOURCE, isOwnedLicence, MOOD_LABEL, MOODS, pickTrack, sniffAudio, TRACK_MAX_BYTES, TRACK_TYPES, trackInputSchema, type TrackInput } from "./tracks";
 
 export const MUSIC_BUCKET = "music";
@@ -24,12 +25,20 @@ export function musicUrl(path: string): string {
   return `${base}/storage/v1/object/public/${MUSIC_BUCKET}/${encodeURIComponent(path)}`;
 }
 
-export type LibraryTrack = { id: string; title: string; moods: string[]; attribution: string; licence: string; path: string; url: string };
+export type LibraryTrack = { id: string; title: string; moods: string[]; attribution: string; licence: string; path: string; url: string; sourceUrl?: string };
 
 /** Active tracks for the pickers and the art director, newest first. Empty library: videos have no music. */
 export async function activeTracks(): Promise<LibraryTrack[]> {
-  const rows = await prisma.musicTrack.findMany({ where: { active: true }, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, title: true, moods: true, attribution: true, licence: true, path: true } });
+  const rows = await prisma.musicTrack.findMany({ where: { active: true }, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, title: true, moods: true, attribution: true, licence: true, path: true, sourceUrl: true } });
   return rows.map((r) => ({ ...r, url: musicUrl(r.path) }));
+}
+
+/**
+ * A library track as a video's music, with the credit line its posts need (lib/music/credit.ts: CC BY and other
+ * licences that ask for one; none for BuPulse's own music, Pixabay or CC0).
+ */
+export function videoMusicOf(track: { id: string; title: string; path: string; attribution: string; licence: string; sourceUrl?: string | null }): VideoMusic {
+  return { trackId: track.id, title: track.title, path: track.path, attribution: track.attribution, owned: isOwnedLicence(track.licence), credit: trackCredit(track) };
 }
 
 let cache: { at: number; tracks: LibraryTrack[] } | null = null;
@@ -42,7 +51,7 @@ export async function trackForVideo(mood: string | null | undefined, seed: strin
   try {
     if (!cache || Date.now() - cache.at > 60_000) cache = { at: Date.now(), tracks: await activeTracks() };
     const track = pickTrack(cache.tracks, mood, seed);
-    return track ? { trackId: track.id, title: track.title, path: track.path, attribution: track.attribution, owned: isOwnedLicence(track.licence) } : null;
+    return track ? videoMusicOf(track) : null;
   } catch {
     return null;
   }

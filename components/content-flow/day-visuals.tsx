@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ContentVisual } from "@/components/visuals/content-visual";
 import { MakingScreen } from "@/components/visuals/making-screen";
-import { progressFromVisuals, type MakingProgress } from "@/components/visuals/making-progress";
+import { fromSetProgress, progressFromVisuals, type MakingProgress } from "@/components/visuals/making-progress";
+import { useSetProgress } from "./use-set-progress";
 import { GlassCard } from "@/components/ui";
 import type { VisualView } from "@/lib/visuals/types";
 
-export type DayVisualItem = { id: string; label: string; angle: string | null; image: VisualView | null; video: VisualView | null; hasScript?: boolean };
+export type DayVisualItem = { id: string; label: string; angle: string | null; image: VisualView | null; video: VisualView | null; hasScript?: boolean; /** The day's shared set shown on this post (lib/content-flow/queries.ts loadDayContents), or none. */ groupId?: string | null };
 
 /** One set per day (docs/CONTENT.md): the same image may sit on several posts; each is shown once. */
 function uniqueVisuals(list: (VisualView | null)[]): VisualView[] {
@@ -16,11 +18,25 @@ function uniqueVisuals(list: (VisualView | null)[]): VisualView[] {
 }
 
 /**
- * The day's set while it is made: the loading screen (ring, step, images fading in), from the visuals the page has,
- * or from the server's progress when it is given. It stays at "Ready" for a moment once everything is made, then goes.
+ * The day's set while it is made: the loading screen (ring, step, images fading in), from the server's real progress
+ * (polled while a set of the day is still being made, lib/visuals/progress.ts), else estimated from the visuals the
+ * page has; a `progress` given wins. The page refreshes when the pictures are done and when a set is finished, so the
+ * cards below show them. It stays at "Ready" for a moment once everything is made, then goes.
  */
 export function DaySetProgress({ items, progress }: { items: DayVisualItem[]; progress?: MakingProgress | null }) {
-  const estimate = progress ?? progressFromVisuals({ images: uniqueVisuals(items.map((i) => i.image)), videos: uniqueVisuals(items.map((i) => i.video)) });
+  const router = useRouter();
+  const groups = [...new Set(items.flatMap((i) => (i.groupId ? [i.groupId] : [])))];
+  const making = [...new Set(items.flatMap((i) => (i.groupId && (i.image?.status === "pending" || i.video?.status === "pending") ? [i.groupId] : [])))];
+  const polled = useSetProgress(making, () => router.refresh());
+  const real = fromSetProgress(groups.flatMap((id) => polled.get(id) ?? []));
+  const estimate = progress ?? real ?? progressFromVisuals({ images: uniqueVisuals(items.map((i) => i.image)), videos: uniqueVisuals(items.map((i) => i.video)) });
+  // The pictures are done (the reel is next): the cards below show them now.
+  const realStep = real?.step ?? null;
+  const lastStep = useRef(realStep);
+  useEffect(() => {
+    if (lastStep.current === "images" && realStep && realStep !== "images") router.refresh();
+    lastStep.current = realStep;
+  }, [realStep, router]);
   const working = estimate.step !== "ready";
   const [seenWorking, setSeenWorking] = useState(working);
   const [hidden, setHidden] = useState(false);

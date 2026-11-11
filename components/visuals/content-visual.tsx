@@ -25,7 +25,7 @@ import { MediaPicker } from "@/components/media/media-picker";
 import { changeVideoMusic, changeVideoVoice, loadSoundOptions } from "@/app/dashboard/visuals/actions";
 import { isMood, MOOD_LABEL } from "@/lib/music/tracks";
 import { ALL_VOICES, DEFAULT_VOICE_ID, voicesOf } from "@/lib/voice/voices";
-import { changeVideo, changeVisual, deleteVisual, remakeVisual, renderVisual } from "@/app/dashboard/visuals/actions";
+import { changeVideo, changeVisual, deleteVisual, remakeDaySet, remakeVisual, renderVisual } from "@/app/dashboard/visuals/actions";
 import { cn } from "@/lib/cn";
 import { PACKS } from "@/lib/designs/packs";
 import { checkScript, SCRIPT_RULES } from "@/lib/visuals/script";
@@ -84,8 +84,10 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
     started.current = visual.id;
     let stop = false;
     void (async () => {
-      // Each slide once, and an AI picture a few calls more (it is made one step per call).
-      const calls = VISUAL_LIMITS.maxCarouselSlides + VISUAL_LIMITS.maxAiPhotosPerVisual * VISUAL_LIMITS.aiPictureCalls + 2;
+      // Each slide once, and each AI picture a few calls more (it is made one step per call): one per visual, up to 4
+      // in a day's shared set (lib/content-flow/day-set.ts).
+      const aiPictures = visual.imagePlan?.daySet ? Math.min(VISUAL_LIMITS.maxDaySetImages, Math.max(1, visual.imagePlan.slides.filter((s) => s.source === "ai").length)) : VISUAL_LIMITS.maxAiPhotosPerVisual;
+      const calls = VISUAL_LIMITS.maxCarouselSlides + aiPictures * VISUAL_LIMITS.aiPictureCalls + 2;
       for (let i = 0; i < calls && !stop; i++) {
         const r = await renderVisual(visual.id);
         if (!r.ok) {
@@ -126,6 +128,7 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
   const slide = slides[current];
   const isCarousel = slides.length > 1;
   const busy = pending || !!drawing || visual.status === "pending";
+  const setGroup = plan?.daySet?.groupId ?? null;
 
   function saveTexts() {
     run(async () => {
@@ -212,10 +215,17 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
             >
               Edit text
             </Button>
-            {contentId && (
-              <Button variant="outline" size="sm" disabled={busy} title="A new art direction. AI photos use image credits." leading={<RefreshCw aria-hidden className="size-4" />} onClick={() => run(() => remakeVisual(contentId, "image"), "A new picture is on its way.")}>
-                New picture
+            {setGroup ? (
+              // The day's shared set: made again by its group, for every post of the day (never a picture per post).
+              <Button variant="outline" size="sm" disabled={busy} title="The day's pictures drawn again, then a new reel from them, for every post of the day. AI pictures use image credits." leading={<RefreshCw aria-hidden className="size-4" />} onClick={() => run(() => remakeDaySet(setGroup), "New pictures for today's posts are on their way; the reel follows them.")}>
+                New pictures
               </Button>
+            ) : (
+              contentId && (
+                <Button variant="outline" size="sm" disabled={busy} title="A new art direction. AI photos use image credits." leading={<RefreshCw aria-hidden className="size-4" />} onClick={() => run(() => remakeVisual(contentId, "image"), "A new picture is on its way.")}>
+                  New picture
+                </Button>
+              )
             )}
             {visual.status === "failed" && (
               <Button variant="outline" size="sm" disabled={pending} onClick={() => run(() => renderVisual(visual.id))}>

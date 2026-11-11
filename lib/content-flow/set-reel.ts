@@ -57,12 +57,13 @@ export function reelPlanFromSet(draft: ReelDraft, images: readonly string[], ctx
  * null when the set has no reel. The reel is a pending video like every other (the robot or the browser renders it;
  * a reel marked for AI clips waits for them first).
  */
-export async function createSetReel(row: { id: string; businessId: string; groupId: string | null }, plan: ImagePlan, images: readonly string[]): Promise<string | null> {
+export async function createSetReel(row: { id: string; businessId: string; groupId: string | null; createdAt?: Date }, plan: ImagePlan, images: readonly string[]): Promise<string | null> {
   const set = plan.daySet;
   if (!set?.reel || !row.groupId) return null;
   if (set.reelVisualId) return set.reelVisualId;
-  // Called under the picture visual's drawing lease (one finisher at a time); a reel already there is kept.
-  const existing = await prisma.contentVisual.findFirst({ where: { businessId: row.businessId, groupId: row.groupId, kind: "video" }, select: { id: true } });
+  // Called under the picture visual's drawing lease (one finisher at a time); a reel already there is kept. A reel
+  // older than these pictures belongs to the set before a remake ("New pictures", set-remake.ts): a new one is made.
+  const existing = await prisma.contentVisual.findFirst({ where: { businessId: row.businessId, groupId: row.groupId, kind: "video", ...(row.createdAt ? { createdAt: { gte: row.createdAt } } : {}) }, select: { id: true } });
   if (existing) return existing.id;
   const business = await prisma.business.findUnique({ where: { id: row.businessId }, select: { name: true, brandColors: true, tone: true, industry: true } });
   if (!business) return null;

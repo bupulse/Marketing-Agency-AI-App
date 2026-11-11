@@ -95,10 +95,11 @@ export function setProgressOf(input: {
     if (status === "ready" || status === "failed") done += 1;
     reel = { status, visualId: input.reel?.id ?? null, path, music: video?.music?.title ?? null, error: input.reel?.error ?? null };
   }
-  const picturesDone = input.picture?.status === "ready" || input.picture?.status === "failed";
+  // A set with nothing to draw (no AI picture, no photo) has only its reel, made on the brand backdrop.
+  const picturesDone = input.picture ? input.picture.status === "ready" || input.picture.status === "failed" : !!input.reel;
   const failed = input.picture?.status === "failed" && (!reel || reel.status === "failed" || reel.status === "waiting");
   const ready = !failed && picturesDone && (!reel || reel.status === "ready" || reel.status === "failed");
-  const step: SetStep = !input.picture ? "captions" : ready || failed ? "ready" : !picturesDone ? "images" : reel?.status === "rendering" && reel.music ? "music" : "reel";
+  const step: SetStep = !input.picture && !input.reel ? "captions" : ready || failed ? "ready" : !picturesDone ? "images" : reel?.status === "rendering" && reel.music ? "music" : "reel";
   if (ready || failed) done = total;
   return {
     groupId: input.groupId,
@@ -122,13 +123,18 @@ export async function setProgress(businessId: string, groupIds: readonly string[
   const visuals = await prisma.contentVisual.findMany({
     where: { businessId, groupId: { in: ids } },
     orderBy: { createdAt: "desc" },
-    select: { id: true, groupId: true, kind: true, status: true, error: true, plan: true, items: true, renderingUntil: true },
+    select: { id: true, groupId: true, kind: true, status: true, error: true, plan: true, items: true, renderingUntil: true, createdAt: true },
   });
   const conceptIds = visuals.flatMap((v) => (v.kind === "video" ? [] : (readImagePlan(v.plan)?.slides ?? []).flatMap((s) => (s.conceptId ? [s.conceptId] : []))));
   const concepts = conceptIds.length ? await prisma.imageConcept.findMany({ where: { businessId, id: { in: conceptIds } }, select: { id: true, status: true } }) : [];
   const stages = new Map(concepts.map((c) => [c.id, { status: c.status }]));
   return ids.map((groupId) => {
     const mine = visuals.filter((v) => v.groupId === groupId);
-    return setProgressOf({ groupId, picture: mine.find((v) => v.kind !== "video") ?? null, concepts: stages, reel: mine.find((v) => v.kind === "video") ?? null, now });
+    const picture = mine.find((v) => v.kind !== "video") ?? null;
+    // A remade day's set (lib/content-flow/set-remake.ts) gets a new reel from its new pictures: an older reel still on
+    // a post waiting to go out is not this set's reel.
+    const daySet = !!picture && !!readImagePlan(picture.plan)?.daySet;
+    const reel = mine.find((v) => v.kind === "video" && (!daySet || !picture?.createdAt || !v.createdAt || v.createdAt >= picture.createdAt)) ?? null;
+    return setProgressOf({ groupId, picture, concepts: stages, reel, now });
   });
 }

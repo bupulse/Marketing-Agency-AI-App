@@ -25,7 +25,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import type { VideoPlan } from "@/lib/visuals/types";
 import { readVideoPlan, withSceneTexts } from "@/lib/visuals/video-plan";
-import { estimateSpeechMs, fitPlanToVoice, lineTimings, MAX_SPEECH_MS, speechText, spokenLines, type Timing } from "./speech";
+import { estimateSpeechMs, fitPlanToVoice, hasVoiceScript, lineTimings, MAX_SPEECH_MS, speechText, spokenLines, type Timing } from "./speech";
 import { DEFAULT_VOICE_ID, isVoiceId, providerOfVoice, providerVoiceName } from "./voices";
 import { getEnglishVoice, pickVoice } from "./provider-setting";
 import { approvedVoices } from "@/lib/content-languages/service";
@@ -224,7 +224,8 @@ export async function ensureVoiceover(owner: Owner, visualId: string): Promise<V
   if (!fits()) {
     const shorter = await shortenLines(owner, lines, Math.min(MAX_VOICE_CHARS - 40, Math.floor(MAX_SPEECH_MS / 70)));
     if (shorter) {
-      plan = withSceneTexts(plan, shorter);
+      // A voice-over script is shortened on its own (the words on screen stay); otherwise the captions are.
+      plan = hasVoiceScript(plan) ? { ...plan, voiceScript: shorter } : withSceneTexts(plan, shorter);
       lines = spokenLines(plan);
       ({ text, ranges } = speechText(lines));
     }

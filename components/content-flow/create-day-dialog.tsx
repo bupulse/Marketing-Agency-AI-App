@@ -16,6 +16,8 @@ import { ImagePlus, PenLine, Sparkles, Upload, Wand2, X } from "lucide-react";
 import { createDayContentAction } from "@/app/dashboard/content/day-actions";
 import { MediaPicker, type PickedPhoto } from "@/components/media/media-picker";
 import { MakingScreen } from "@/components/visuals/making-screen";
+import { fromSetProgress, type MakingProgress } from "@/components/visuals/making-progress";
+import { useSetProgress } from "./use-set-progress";
 import { Button, Chip, Dialog, Field, Select, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { ContentScope } from "@/lib/content-board/filters";
@@ -84,6 +86,10 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // After Create: the day's sets the server is making, followed on the loading screen until they are ready.
+  const [making, setMaking] = useState<{ groupIds: string[]; reel: boolean; posts: number } | null>(null);
+  const [startedAt, setStartedAt] = useState<number | undefined>(undefined);
+  const polled = useSetProgress(open && making ? making.groupIds : [], () => router.refresh());
   // A new key each time the dialog opens: a double click or a retry of the same request is not run twice.
   const [requestKey, setRequestKey] = useState("");
   // ?create=1 opens the dialog once, then leaves the address (a reload or Back does not open it again).
@@ -113,9 +119,33 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   const videos = mode === "own" ? 0 : expectedVideos({ networks: chosen, perApp: each, preference: format, videoInPlan: allowance.videoInPlan, videosLeft: allowance.videosLeft });
   const cost = runCost({ mode, design, posts, designed, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videosLeft: allowance.videosLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
   const missing = mode === "describe" && !brief.trim() ? "Describe today's content." : mode === "own" && media.length === 0 ? "Choose your photos or videos." : mode === "own" && !caption.trim() ? "Write your caption." : null;
+  const madePosts = making?.posts ?? posts;
+  const live = making ? fromSetProgress(making.groupIds.flatMap((id) => polled.get(id) ?? [])) : null;
+  const screen: MakingProgress | null = pending
+    ? { step: "captions", reel: videos > 0, music: videos > 0, images: [] }
+    : making
+      ? (live ?? { step: "images", fraction: null, reel: making.reel, music: making.reel, images: [] })
+      : null;
+  const doneOk = !!making && screen?.step === "ready" && !screen.failed;
+
+  function close() {
+    setOpen(false);
+    setMaking(null);
+  }
+
+  // Everything made: "Ready" stays a moment, then the dialog goes (the page behind already shows the posts).
+  useEffect(() => {
+    if (!doneOk) return;
+    const timer = setTimeout(() => {
+      setOpen(false);
+      setMaking(null);
+    }, 2_500);
+    return () => clearTimeout(timer);
+  }, [doneOk]);
 
   function submit() {
     setError(null);
+    setStartedAt(Date.now());
     start(async () => {
       // A request lost on the way back (the phone slept, the network dropped) must not take the page down: the posts
       // may well have been made, so the page behind is refreshed to show them and the dialog says so.
@@ -147,7 +177,11 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
       if (res.contests) parts.push(`${res.contests === 1 ? "1 contest waits" : `${res.contests} contests wait`} for your prize and rules`);
       if (res.failed.length) parts.push(`${res.failed.map((n) => NETWORK_STYLE[n].label).join(", ")} could not be written (not charged)`);
       toast(parts.join(". ") + ".", "success");
-      setOpen(false);
+      // The day's sets being made on the server: the dialog stays on the loading screen with their real progress (it
+      // may be closed any time; the page behind shows the same). Otherwise it closes, as before.
+      const live = (res.sets ?? []).filter((s) => s.drawing || s.reel);
+      if (live.length > 0) setMaking({ groupIds: live.map((s) => s.groupId), reel: live.some((s) => s.reel), posts: res.posts });
+      else setOpen(false);
       setBrief("");
       setCaption("");
       setMedia([]);
@@ -164,11 +198,24 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
       <Button onClick={() => { setRequestKey(globalThis.crypto.randomUUID()); setOpen(true); }} leading={<Sparkles aria-hidden className="size-4" />}>
         {label}
       </Button>
-      <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)} title="Create today's content" description={`Posts for ${subjectName}, for today. They wait for your OK on this page (or go out on their own where your settings say so).`}>
-        {/* While the run writes the captions and plans the set: the loading screen, not the form. The pictures and the
-            reel are then made on the server and fill in on the page (DaySetProgress). */}
-        {pending && <MakingScreen progress={{ step: "captions", reel: videos > 0, music: videos > 0, images: [] }} title={`Making ${posts === 1 ? "1 post" : `${posts} posts`}`} className="mb-5" />}
-        <div className={cn("@container flex flex-col gap-5", pending && "hidden")}>
+      <Dialog open={open} onOpenChange={(o) => !pending && (o ? setOpen(true) : close())} title="Create today's content" description={`Posts for ${subjectName}, for today. They wait for your OK on this page (or go out on their own where your settings say so).`}>
+        {/* While the run writes the captions and plans the set, then while the server makes the set's pictures and
+            reel: the loading screen, not the form, with the server's real progress (useSetProgress) once there is a
+            set. One screen throughout, so the number never goes back. */}
+        {screen && (
+          <div className="mb-5 flex flex-col gap-4">
+            <MakingScreen key="making" progress={screen} startedAt={startedAt} title={`Making ${madePosts === 1 ? "1 post" : `${madePosts} posts`}`} />
+            {making && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[13px] text-muted">{screen.step === "ready" ? (screen.failed ? "Your posts are made; open them to try the pictures again." : "Everything is made. Your posts are on the page.") : "You can close this: BuPulse keeps making them, and the page shows them when they are ready."}</p>
+                <Button variant={screen.step === "ready" ? "primary" : "outline"} size="sm" onClick={close}>
+                  {screen.step === "ready" ? "See your posts" : "Close"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+        <div className={cn("@container flex flex-col gap-5", screen && "hidden")}>
           <div role="radiogroup" aria-label="How to make it" className="grid gap-3 @md:grid-cols-2">
             <Option selected={!manual} onSelect={() => { setManual(false); setMode("ai"); }} icon={<Wand2 className="size-5" />} title="AI makes it for me" text="A caption, a 30-second video script and 3 ad headlines for each app, from your Business info; then pictures and videos, your own Photos first." />
             <Option selected={manual} onSelect={() => { setManual(true); setMode("describe"); }} icon={<PenLine className="size-5" />} title="I'll create it" text="Describe what to post today, or bring your own photos and caption." />

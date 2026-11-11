@@ -59,3 +59,24 @@ describe("setProgress (read from the database, the business's own sets only)", (
     expect(p.images[0]).toMatchObject({ status: "working", stage: "fixing" });
   });
 });
+
+describe("sets with only a reel, and remade sets", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("a set with nothing to draw (only its reel, on the brand backdrop) goes straight to the reel", () => {
+    const p = setProgressOf({ groupId: "g1", picture: null, concepts: new Map(), reel: { id: "r1", status: "pending", error: null, items: [], plan: videoPlan, renderingUntil: null }, now: NOW });
+    expect(p).toMatchObject({ step: "reel", ready: false, reel: { status: "pending" } });
+    const done = setProgressOf({ groupId: "g1", picture: null, concepts: new Map(), reel: { id: "r1", status: "ready", error: null, items: [{ path: "u/videos/r1.mp4" }], plan: videoPlan, renderingUntil: null }, now: NOW });
+    expect(done).toMatchObject({ step: "ready", ready: true });
+  });
+
+  it("after 'New pictures' the reel left on a waiting post (older than the new pictures) is not the set's reel", async () => {
+    const t = (min: number) => new Date(NOW.getTime() + min * 60_000);
+    prisma.contentVisual.findMany.mockResolvedValue([
+      { id: "v2", groupId: "g1", kind: "carousel", status: "pending", error: null, plan: picturePlan([slide({ conceptId: "a" })]), items: [], renderingUntil: null, createdAt: t(10) },
+      { id: "r-old", groupId: "g1", kind: "video", status: "ready", error: null, plan: videoPlan, items: [{ path: "u/videos/old.mp4" }], renderingUntil: null, createdAt: t(1) },
+    ]);
+    prisma.imageConcept.findMany.mockResolvedValue([{ id: "a", status: "painting" }]);
+    const [p] = await setProgress("b1", ["g1"], NOW);
+    expect(p).toMatchObject({ step: "images", ready: false, reel: { status: "waiting", visualId: null } });
+  });
+});

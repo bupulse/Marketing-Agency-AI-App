@@ -36,6 +36,8 @@ import { buildVideoPlan, readVideoPlan, withSceneTexts } from "./video-plan";
 import { createSetReel } from "@/lib/content-flow/set-reel";
 import { videoGetsAiClips, type VideoQuality } from "./video-quality";
 import { CLIPS_IN_PROGRESS, clipsInProgress, releaseClips } from "./ai-clips";
+import { voiceScriptAfterEdit } from "@/lib/voice/speech";
+import { creditLine, withCredit } from "@/lib/music/credit";
 
 /** A problem the owner can read and act on (a KnowledgeError, so the content actions show its message). */
 export class VisualError extends KnowledgeError {}
@@ -902,6 +904,8 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
 export async function updateVideoPlan(owner: Owner, visualId: string, changes: { texts?: string[]; photos?: (string | null)[] }) {
   const { row, plan } = await videoRow(owner, visualId);
   let next: VideoPlan = changes.texts ? withSceneTexts(plan, changes.texts) : plan;
+  // A reel's voice-over script (lib/voice/speech.ts): a scene whose caption the owner changed speaks the new words.
+  if (changes.texts && plan.voiceScript) next = { ...next, voiceScript: voiceScriptAfterEdit(plan, next) };
   if (changes.photos) {
     const photos = changes.photos;
     if (!photos.every((p) => p === null || isOwnPhotoPath(owner.userId, p) || isOwnDesignPath(owner.userId, p))) throw new VisualError("That photo could not be used.");
@@ -961,16 +965,19 @@ export async function readyMedia(businessId: string, key: { contentId: string } 
   const videoPath = video ? (readItems(video.items)[0]?.path ?? null) : null;
   // The music's credit line, when its licence asks for one (docs/VOICE_AND_MUSIC.md).
   const music = videoPath && video ? readVideoPlan(video.plan)?.music : null;
-  const credit = music && !music.owned ? music.attribution : null;
-  return { images: image ? readItems(image.items).map((i) => i.path) : [], video: videoPath, videoCredit: credit || null };
+  // Plans from before lib/music/credit.ts carry no `credit`: their attribution, unless the music is BuPulse's own.
+  const credit = music ? (music.credit !== undefined ? music.credit : music.owned ? null : creditLine(music.attribution)) : null;
+  // A video being made again (a new song) still has its old file: its credit is left as it is until the new one is saved.
+  return { images: image ? readItems(image.items).map((i) => i.path) : [], video: videoPath, videoCredit: video && video.status !== "ready" ? undefined : credit || null };
 }
 
-/** A video post's text with the music credit line at the end (once). Pure. */
-export function withMusicCredit(text: string, credit: string | null | undefined): string {
-  const line = credit?.trim();
-  // Added unless the exact credit line is already one of the post's lines.
-  if (!line || text.split(/\r?\n/).some((l) => l.trim() === line)) return text;
-  return `${text.trimEnd()}\n\n${line}`;
+/**
+ * A video post's text with the music credit as its last line (lib/music/credit.ts): once, replacing an earlier credit
+ * (a music swap), taken off when the new music needs none, and within the app's caption limit (the body is shortened,
+ * never the credit). Pure.
+ */
+export function withMusicCredit(text: string, credit: string | null | undefined, maxText?: number): string {
+  return withCredit(text, credit, maxText);
 }
 
 // ---- Autopilot posts ----
@@ -1034,7 +1041,7 @@ async function attachVisuals(businessId: string, key: { contentId: string } | { 
     if (format === post.format && mediaPaths.join("|") === post.mediaPaths.join("|")) continue;
     const fixesDraft = post.status === "DRAFT" && post.lastError?.startsWith("This post needs a picture") && mediaPaths.length > 0;
     // A post that carries the video credits its music when the licence asks for it.
-    const text = videoFile && mediaPaths.includes(videoFile) ? withMusicCredit(post.text, videoCredit) : post.text;
+    const text = videoFile && mediaPaths.includes(videoFile) && videoCredit !== undefined ? withMusicCredit(post.text, videoCredit, rules.maxText) : post.text;
     await prisma.post.updateMany({ where: { ...postWhere, id: post.id, lockedAt: null, updatedAt: post.updatedAt }, data: { format, mediaPaths, ...(text !== post.text ? { text } : {}), ...(fixesDraft ? { lastError: null } : {}) } });
   }
 }

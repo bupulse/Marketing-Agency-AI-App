@@ -13,6 +13,7 @@ import type { CalendarPost, ComposerContext } from "@/lib/publishing/types";
 import { autoNetworksOf, visualHrefFor } from "./post-board";
 import { approvedMessage } from "@/lib/content-board/labels";
 import { PostCard } from "./post-card";
+import { useMakingByGroup } from "@/components/content-flow/use-set-progress";
 
 /**
  * "Today": the posts made today that wait for review, with Approve (scheduled at the best time), Edit and Reject on
@@ -27,6 +28,8 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editing, setEditing] = useState<CalendarPost | null>(null);
   const detail = posts.find((p) => p.id === detailId) ?? null;
+  // Daily posts, Autopilot and Create: a post whose set is still being made shows its real progress.
+  const makingOf = useMakingByGroup(posts);
 
   function run(id: string | null, action: () => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>, done: (res: Record<string, unknown>) => string | { text: string; tone: "success" | "error" }) {
     setBusyId(id);
@@ -82,6 +85,7 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
                 post={post}
                 zone={zone}
                 showSubject
+                making={post.setMaking ? makingOf(post.groupId) : null}
                 onOpen={() => setDetailId(post.id)}
                 actions={
                   rejecting === post.id ? (

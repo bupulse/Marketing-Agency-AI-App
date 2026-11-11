@@ -707,6 +707,35 @@ describe("a day's shared set (lib/content-flow/day-set.ts)", () => {
     expect(saved.items).toHaveLength(1);
   });
 
+  it("the posts that carry the reel get its music credit (CC BY), replaced on a music swap, within the app's limit", async () => {
+    const updatedAt = new Date("2026-10-12T10:00:00Z");
+    const credit = "Music: Allada, Kevin MacLeod (incompetech.com), CC BY 4.0";
+    const music = { trackId: "t1", title: "Allada", path: "t1.mp3", attribution: "Allada, Kevin MacLeod (incompetech.com), CC BY 4.0", owned: false, credit };
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "carousel", status: "ready", items: [{ path: "a.png" }, { path: "b.png" }] }, { kind: "video", status: "ready", items: [{ path: `${U}/videos/new.mp4` }], plan: { ...buildVideoPlan({ script: "One.\nTwo.", hook: "One", businessName: "B", photos: [], pack: "clean" }), music } }]);
+    mocks.prisma.post.findMany.mockResolvedValue([
+      // Had the reel with an older song and its credit.
+      { id: "ig", network: "instagram", format: "POST", mediaPaths: [`${U}/videos/old.mp4`], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Greens\n\nMusic: Old Song, Someone, CC BY 3.0" },
+      { id: "tt", network: "tiktok", format: "SCRIPT", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "x".repeat(2300) },
+      // The pictures post gets no credit.
+      { id: "li", network: "linkedin", format: "POST", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Article" },
+    ]);
+    await attachToGroup("biz1", "g1", { feed: true });
+    const data = Object.fromEntries(mocks.prisma.post.updateMany.mock.calls.map((c) => [c[0].where.id, c[0].data]));
+    expect(data.ig.text).toBe(`Greens\n\n${credit}`);
+    expect(data.tt.text.endsWith(`\n\n${credit}`)).toBe(true);
+    expect(data.tt.text.length).toBeLessThanOrEqual(2200);
+    expect(data.li.text).toBeUndefined();
+  });
+
+  it("no credit change while the reel is being made again (it still has its old song's file)", async () => {
+    const updatedAt = new Date("2026-10-12T10:00:00Z");
+    const music = { trackId: "t2", title: "Morning", path: "t2.mp3", attribution: "", owned: false, credit: null };
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "video", status: "pending", items: [{ path: `${U}/videos/old.mp4` }], plan: { ...buildVideoPlan({ script: "One.\nTwo.", hook: "One", businessName: "B", photos: [], pack: "clean" }), music } }]);
+    mocks.prisma.post.findMany.mockResolvedValue([{ id: "fb", network: "facebook", format: "SCRIPT", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Hi\n\nMusic: Allada, Kevin MacLeod" }]);
+    await attachToGroup("biz1", "g1");
+    expect(mocks.prisma.post.updateMany.mock.calls[0][0].data.text).toBeUndefined();
+  });
+
   it("a redrawn picture never replaces a post's reel; a newer reel does", async () => {
     const updatedAt = new Date("2026-10-12T10:00:00Z");
     mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "carousel", status: "ready", items: [{ path: "a.png" }, { path: "b.png" }] }, { kind: "video", status: "ready", items: [{ path: `${U}/videos/reel.mp4` }], plan: null }]);

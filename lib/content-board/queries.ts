@@ -48,7 +48,25 @@ export type ContentPost = CalendarPost & {
   plannedDay: string | null;
   /** How many times a missed day moved it (3 at most; the next miss expires it). */
   carryCount: number;
+  /**
+   * Its group's pictures or reel are still being made (a day's shared set, an Autopilot group): the card shows the
+   * loading screen with the set's real progress (components/content-flow/use-set-progress.ts) until they are ready.
+   */
+  setMaking?: boolean;
 };
+
+/** A visual pending longer than this is not "being made" any more (a render left to the browser, a stuck one). */
+const MAKING_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+/** The groups among these posts whose pictures or reel are still being made. */
+async function makingGroups(businessId: string, rows: PostRow[], now = new Date()): Promise<Set<string>> {
+  const groupIds = [...new Set(rows.flatMap((r) => (r.groupId && ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"].includes(r.status) ? [r.groupId] : [])))];
+  if (groupIds.length === 0) return new Set();
+  const pending = await prisma.contentVisual
+    .findMany({ where: { businessId, groupId: { in: groupIds }, status: "pending", createdAt: { gte: new Date(now.getTime() - MAKING_WINDOW_MS) } }, select: { groupId: true }, take: 100 })
+    .catch(() => [] as { groupId: string | null }[]);
+  return new Set(pending.flatMap((v) => (v.groupId ? [v.groupId] : [])));
+}
 
 export type SubjectCardView = Omit<SubjectCard, "lastActivity"> & { coverUrl: string | null; lastActivity: string | null };
 
@@ -120,7 +138,7 @@ export function cardExcerpt(post: { format: string; title: string | null; text: 
 
 /** Post rows as cards, with every photo and poster signed in one batch. */
 export async function toContentPosts(businessId: string, rows: PostRow[]): Promise<ContentPost[]> {
-  const [posters, captions, ideas, results] = await Promise.all([postersFor(businessId, rows), captionsFor(businessId, rows), ideasFor(businessId, rows), resultsForPosts(businessId, rows)]);
+  const [posters, captions, ideas, results, making] = await Promise.all([postersFor(businessId, rows), captionsFor(businessId, rows), ideasFor(businessId, rows), resultsForPosts(businessId, rows), makingGroups(businessId, rows)]);
   const signed = await sign([...rows.flatMap((r) => r.mediaPaths), ...posters.values()]);
   return rows.map((r) => {
     const network = r.network as Network;
@@ -160,6 +178,7 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       contest: readContest(r.contest) ? { pending: contestBlocked(r) } : null,
       plannedDay: r.plannedDay ? dateDay(r.plannedDay) : null,
       carryCount: r.carryCount,
+      ...(r.groupId && making.has(r.groupId) ? { setMaking: true } : {}),
       ...(results.has(r.id) ? { results: results.get(r.id) } : {}),
     };
   });

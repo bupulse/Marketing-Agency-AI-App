@@ -12,6 +12,7 @@ import type { ContentPost } from "@/lib/content-board/queries";
 import type { CalendarPost, ComposerContext } from "@/lib/publishing/types";
 import { dayKey } from "@/lib/publishing/time";
 import { PostCard } from "./post-card";
+import { useMakingByGroup } from "@/components/content-flow/use-set-progress";
 
 /** Where a post's picture or video is made: its Autopilot card, or the day it was made on its product's, campaign's or General's content page. */
 export function visualHrefFor(post: ContentPost, zone: string): string | null {
@@ -59,6 +60,7 @@ export function PostBoard({
 
   const all = openPost && !posts.some((p) => p.id === openPost.id) ? [openPost, ...posts] : posts;
   const detail = all.find((p) => p.id === detailId) ?? null;
+  const makingOf = useMakingByGroup(all);
 
   useEffect(() => {
     loading.current = false;
@@ -87,7 +89,7 @@ export function PostBoard({
       <ul className="grid grid-cols-1 gap-4 @xl:grid-cols-2 @4xl:grid-cols-3 @7xl:grid-cols-4">
         {all.map((post) => (
           <li key={post.id}>
-            <PostCard post={post} zone={zone} onOpen={() => setDetailId(post.id)} showSubject={showSubject} actions={post.status === "EXPIRED" ? <UseAgainButton postId={post.id} /> : undefined} />
+            <PostCard post={post} zone={zone} onOpen={() => setDetailId(post.id)} showSubject={showSubject} making={post.setMaking ? makingOf(post.groupId) : null} actions={post.status === "EXPIRED" ? <UseAgainButton postId={post.id} /> : undefined} />
           </li>
         ))}
       </ul>

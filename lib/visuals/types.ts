@@ -247,6 +247,11 @@ export interface VideoMusic {
   attribution: string;
   /** Original music BuPulse owns: never credited. */
   owned?: boolean;
+  /**
+   * The line its posts' captions end with (lib/music/credit.ts, "Music: ..."), or null when the licence needs none
+   * (owned, Pixabay, CC0). Missing on older plans: their attribution is used unless the music is owned.
+   */
+  credit?: string | null;
 }
 
 /** One stored output of a visual, in order: a design (image or slide) or a media file (the video). */

@@ -97,10 +97,14 @@ Code: `lib/ai/tts.ts`, `lib/voice/`, `lib/music/`, `components/visuals/video-ren
 - **Choice**: the art director names a mood for each post (`mood` in its answer); without one, the content pack angle
   or the brand voice decides (`moodFor`). `pickTrack` takes an active track with that mood, varied by video so the
   posts of a pack do not all share one; the owner can pick another track or "No music" in the video panel.
-- **Credit lines**: a track's credit line shows under its video in the panel, and is added once at the end of the
-  text of every post that carries that video (`withMusicCredit`: unless that exact line is already one of the post's
-  lines), so licences that require attribution are met wherever the video is published. Original, owned tracks are
-  never credited, in the panel or the post.
+- **Credit lines** (lib/music/credit.ts, owner 11 November 2026): a track whose licence asks for attribution (CC BY 4.0
+  from Incompetech, CC BY 3.0 from the Free Music Archive, any licence that is not owned, Pixabay or CC0) gives its
+  video a credit (`VideoMusic.credit`, "Music: Allada, Kevin MacLeod (incompetech.com), CC BY 4.0"), set when the music
+  is chosen (`trackForVideo`, a music swap). It becomes the last line of every post that carries the video (Instagram,
+  TikTok, YouTube, Facebook's reel post) when the video is put on the post (`withMusicCredit` in `attachVisuals`):
+  once, replacing an older credit (a music swap, once the new video is saved), taken off for music that needs none,
+  and within the app's caption limit (the body is shortened, never the credit). Original, owned, Pixabay and CC0
+  tracks are never credited.
 
 ## Mixing (browser and robot, the same code)
 
