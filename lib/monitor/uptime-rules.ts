@@ -3,13 +3,17 @@
 // imports: tests/monitor/outages.test.ts.
 //
 // The site is "down from the last good check to the next good check" when there was no good check for more than
-// GAP_MS. GitHub's schedule sometimes runs late or skips a run, so a gap alone only counts when it is long (LONG_GAP_MS)
-// or something else shows the site really was down: a failed check in it, the check after it saying the workflow's
+// GAP_MS and something shows the site really was down: a failed check in it, the check after it saying the workflow's
 // previous run found the site down (that run sent the "down" alert, so the "back up" alert must follow), or the server
-// PC going silent inside it.
+// PC going silent inside it. A gap alone never counts while the PC kept reporting: GitHub's 5-minute schedule ran only
+// every few hours on 10 November 2026 (a false "down for 4 hours 57 minutes"), and the PC's own 5-minute check
+// (scripts/monitor/pc-self-check.mjs) fills the record anyway. Outages shorter than MIN_OUTAGE_MS (a deploy restart,
+// one slow answer) are neither recorded nor alerted.
 
 export const GAP_MS = 12 * 60_000;
 export const LONG_GAP_MS = 30 * 60_000;
+/** Shorter than this is a blip (a deploy restarting the server), not an outage. */
+export const MIN_OUTAGE_MS = 2 * 60_000;
 /** The PC reports every minute; this long without a report means it (or its job loop, or the server) stopped. */
 export const PC_SILENT_MS = 3 * 60_000;
 export const UPTIME_MAX_BYTES = 4_096;
@@ -31,9 +35,10 @@ export function gapOutage(
   if (!prev) return null;
   const gap = next.checkedAt.getTime() - prev.checkedAt.getTime();
   if (gap <= 0) return null;
+  if (gap < MIN_OUTAGE_MS) return null;
   let reason: OutageReason | null = null;
   if (next.afterFailure) reason = "failed-check";
-  else if (gap > GAP_MS) reason = between.failedChecks > 0 ? "failed-check" : between.pcSilent ? "pc-silent" : gap >= LONG_GAP_MS ? "long-gap" : null;
+  else if (gap > GAP_MS) reason = between.failedChecks > 0 ? "failed-check" : between.pcSilent ? "pc-silent" : null;
   return reason ? { startedAt: prev.checkedAt, endedAt: next.checkedAt, minutes: minutesBetween(prev.checkedAt, next.checkedAt), reason } : null;
 }
 
@@ -63,7 +68,8 @@ export function siteState(
   if (!lastCheck.ok) return { kind: "down", since: lastOkAt, minutes: lastOkAt ? minutesBetween(lastOkAt, now) : null, lastCheckAt: lastCheck.checkedAt };
   const quiet = now.getTime() - lastCheck.checkedAt.getTime();
   if (quiet <= GAP_MS) return { kind: "up", lastCheckAt: lastCheck.checkedAt };
-  if (quiet >= LONG_GAP_MS || input.pcSilent) return { kind: "down", since: lastCheck.checkedAt, minutes: minutesBetween(lastCheck.checkedAt, now), lastCheckAt: lastCheck.checkedAt };
+  // No check for a while with the PC still reporting is late checks, not a down site (see the top of this file).
+  if (input.pcSilent) return { kind: "down", since: lastCheck.checkedAt, minutes: minutesBetween(lastCheck.checkedAt, now), lastCheckAt: lastCheck.checkedAt };
   return { kind: "late", lastCheckAt: lastCheck.checkedAt, minutes: minutesBetween(lastCheck.checkedAt, now) };
 }
 

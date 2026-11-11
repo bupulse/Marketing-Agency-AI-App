@@ -1,6 +1,10 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { publicSiteUrl } from "@/lib/auth/site-url";
+import { writeAudit } from "@/lib/admin/audit";
+import { prisma } from "@/lib/db";
+import { requestIp } from "@/lib/request-limits";
 import { dispatchOutsideCheck, type ManualCheckResult } from "@/lib/monitor/manual-check";
 import { RateLimitError, rateLimit } from "@/lib/rate-limit";
 import { requireSupportAgentPage } from "@/lib/support/app-auth";
@@ -28,4 +32,28 @@ export async function runCheckNow(): Promise<ManualCheckState> {
   const site = publicSiteUrl();
   const [result, outside] = await Promise.all([checkOnce(site), dispatchOutsideCheck(process.env)]);
   return { result: { ...result, checkedAt: new Date().toISOString(), site: site.replace(/^https?:\/\//, ""), outside } };
+}
+
+/**
+ * admin@bupulse.com removes an outage that was not real (for example the "down for 4 hours 57 minutes" of 10 November
+ * 2026, when GitHub's checks ran only every few hours). The uptime percentages are worked out from the stored outages,
+ * so they correct themselves. Written to the audit log with what was removed.
+ */
+export async function removeOutageAction(formData: FormData): Promise<void> {
+  const me = await requireSupportAgentPage();
+  if (!me.owner) return;
+  const id = String(formData.get("id") ?? "");
+  if (!/^[a-z0-9]{10,40}$/.test(id)) return;
+  const row = await prisma.uptimeIncident.findUnique({ where: { id } });
+  if (!row) return;
+  await prisma.$transaction(async (tx) => {
+    await tx.uptimeIncident.delete({ where: { id } });
+    await writeAudit(tx, { actor: `support:${me.email}`, ip: await requestIp(), viaApi: false }, "uptime_incident_remove", `uptime_incident:${id}`, {
+      startedAt: row.startedAt.toISOString(),
+      endedAt: row.endedAt.toISOString(),
+      minutes: row.minutes,
+      reason: row.reason,
+    }, null);
+  });
+  revalidatePath("/support/server");
 }

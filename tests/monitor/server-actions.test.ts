@@ -1,6 +1,13 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ me: vi.fn(), rateLimit: vi.fn(), checkOnce: vi.fn(), dispatch: vi.fn() }));
+const h = vi.hoisted(() => ({ me: vi.fn(), rateLimit: vi.fn(), checkOnce: vi.fn(), dispatch: vi.fn(), find: vi.fn(), del: vi.fn(), audit: vi.fn(), revalidate: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: h.revalidate }));
+vi.mock("@/lib/request-limits", () => ({ requestIp: async () => null }));
+vi.mock("@/lib/admin/audit", () => ({ writeAudit: h.audit }));
+vi.mock("@/lib/db", () => {
+  const tx = { uptimeIncident: { delete: h.del } };
+  return { prisma: { uptimeIncident: { findUnique: h.find, delete: h.del }, $transaction: async (run: (t: typeof tx) => Promise<unknown>) => run(tx) } };
+});
 vi.mock("@/lib/support/app-auth", () => ({ requireSupportAgentPage: h.me }));
 vi.mock("@/lib/rate-limit", () => {
   class RateLimitError extends Error {
@@ -13,7 +20,7 @@ vi.mock("@/lib/rate-limit", () => {
 vi.mock("@/scripts/monitor/uptime-check.mjs", () => ({ checkOnce: h.checkOnce }));
 vi.mock("@/lib/monitor/manual-check", () => ({ dispatchOutsideCheck: h.dispatch }));
 
-import { runCheckNow } from "@/app/support/(app)/server/actions";
+import { removeOutageAction, runCheckNow } from "@/app/support/(app)/server/actions";
 import { RateLimitError } from "@/lib/rate-limit";
 
 const result = { ok: true, statusCode: 200, statusMs: 180, databaseMs: 30, version: "1.4.2", pages: [{ path: "/", status: 200, ms: 600 }] };
@@ -49,5 +56,34 @@ describe("Run a check now (server action)", () => {
     h.rateLimit.mockRejectedValue(new RateLimitError(21));
     expect(await runCheckNow()).toEqual({ error: "A check just ran. Try again in 21 seconds." });
     expect(h.checkOnce).not.toHaveBeenCalled();
+  });
+});
+
+describe("Remove a false outage (server action)", () => {
+  const row = { id: "cmoutage000001", startedAt: new Date("2026-11-10T15:50:00Z"), endedAt: new Date("2026-11-10T20:47:00Z"), minutes: 297, reason: "long-gap" };
+  const form = (id: string) => {
+    const f = new FormData();
+    f.set("id", id);
+    return f;
+  };
+  beforeEach(() => {
+    for (const f of Object.values(h)) f.mockReset();
+    h.find.mockResolvedValue(row);
+  });
+
+  it("admin@bupulse.com removes it, with the removed outage in the audit log", async () => {
+    h.me.mockResolvedValue({ id: "own", role: "SUPERVISOR", owner: true, email: "admin@bupulse.com" });
+    await removeOutageAction(form(row.id));
+    expect(h.del).toHaveBeenCalledWith({ where: { id: row.id } });
+    expect(h.audit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ actor: "support:admin@bupulse.com" }), "uptime_incident_remove", `uptime_incident:${row.id}`, expect.objectContaining({ minutes: 297 }), null);
+    expect(h.revalidate).toHaveBeenCalledWith("/support/server");
+  });
+
+  it("nobody else can, and a bad id does nothing", async () => {
+    h.me.mockResolvedValue({ id: "t1", role: "TECH", owner: false, email: "tech@example.com" });
+    await removeOutageAction(form(row.id));
+    h.me.mockResolvedValue({ id: "own", role: "SUPERVISOR", owner: true, email: "admin@bupulse.com" });
+    await removeOutageAction(form("../x"));
+    expect(h.del).not.toHaveBeenCalled();
   });
 });

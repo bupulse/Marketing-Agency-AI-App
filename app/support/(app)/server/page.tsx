@@ -10,5 +10,5 @@ export const metadata = { title: "Server" };
 export default async function SupportServerPage() {
   const me = await requireSupportAgentPage();
   if (!canSeeMonitoring(me.role)) notFound();
-  return <ServerView m={await getServerMonitor()} />;
+  return <ServerView m={await getServerMonitor()} owner={!!me.owner} />;
 }
