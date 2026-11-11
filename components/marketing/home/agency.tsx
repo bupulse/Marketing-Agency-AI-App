@@ -66,9 +66,22 @@ export function AgencySection() {
             </RiseIn>
           </div>
 
-          <div aria-hidden className="ag-visual">
-            <div className="ag-orbit" />
-            <div className="ag-panel glass-strong">
+          <div className="ag-visual">
+            <div aria-hidden className="ag-orbit" />
+            {/* An AI photo (the app's image model) of the kind of team BuPulse Agency is for; the panel is a preview. */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- pre-sized WebP with srcset; next/image would add a server round trip per size */}
+            <img
+              src="/marketing/photos/agency-480.webp"
+              srcSet="/marketing/photos/agency-480.webp 480w, /marketing/photos/agency-880.webp 880w"
+              sizes="(min-width: 1024px) 440px, calc(100vw - 32px)"
+              alt="A small agency team in a bright Kigali office, gathered around a laptop"
+              width={480}
+              height={360}
+              loading="lazy"
+              decoding="async"
+              className="ag-photo"
+            />
+            <div aria-hidden className="ag-panel glass-strong">
               <div className="ag-panel-top">
                 <span className="ag-dot" />
                 <strong>Agency</strong>

@@ -713,7 +713,7 @@
 /* ---------- A week of posts, sideways (week-of-posts.tsx) ---------- */
 .wk {
   --p: 0;
-  --cw: 248px;
+  --cw: clamp(200px, calc((100svh - 300px) * 0.8), 248px);
   --gap: 16px;
   --pad: 16px;
   --row: calc(7 * var(--cw) + 6 * var(--gap) + 2 * var(--pad));
@@ -722,7 +722,7 @@
 }
 @media (min-width: 768px) {
   .wk {
-    --cw: 290px;
+    --cw: clamp(220px, calc((100svh - 300px) * 0.8), 290px);
     --gap: 22px;
     --pad: max(32px, calc((100vw - 76rem) / 2));
   }
@@ -731,8 +731,8 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 24px;
-  padding: 72px 0 40px;
+  gap: 20px;
+  padding: 24px 0 40px;
   overflow: hidden;
 }
 .wk-head {
@@ -742,11 +742,11 @@
   width: 100%;
   max-width: 76rem;
   margin: 0 auto;
-  padding: 0 16px;
+  padding: 80px 16px 0;
 }
 @media (min-width: 768px) {
   .wk-head {
-    padding: 0 32px;
+    padding: 96px 32px 0;
   }
 }
 .wk-viewport {
@@ -771,70 +771,43 @@
   border: 1px solid var(--bp-line);
   box-shadow: var(--bp-shadow);
 }
-.wk-art {
-  position: relative;
-  height: 190px;
+/* Each card is a post as it looks in the feed: the salon's logo and name, the post the design engine made, its
+   caption and where it is in the week. */
+.wk-top {
   display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 2px;
-  padding: 16px;
-  color: #fff;
-  overflow: hidden;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
 }
-@media (min-width: 768px) {
-  .wk-art {
-    height: 230px;
-  }
-}
-.wk-art::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 80% 15%, rgba(255, 255, 255, 0.28), transparent 45%),
-    radial-gradient(circle at 10% 110%, rgba(7, 7, 11, 0.35), transparent 55%);
+.wk-logo {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 8px;
 }
 .wk-day {
-  position: absolute;
-  top: 12px;
-  left: 12px;
+  flex: none;
   border-radius: 9999px;
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.2);
+  padding: 3px 9px;
+  background: var(--bp-soft);
+  color: var(--bp-muted);
   font-size: 12px;
-  font-weight: 700;
-}
-.wk-icon {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 34px;
-  height: 34px;
-  opacity: 0.9;
-}
-.wk-icon-big {
-  position: absolute;
-  right: -18px;
-  bottom: 18px;
-  width: 150px;
-  height: 150px;
-  opacity: 0.16;
-  transform: rotate(-12deg);
-}
-.wk-kind {
-  position: relative;
-  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  opacity: 0.9;
 }
-.wk-title {
-  position: relative;
-  font-size: 21px;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
+.wk-post {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  background: var(--bp-soft);
+}
+.wk-caption {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .wk-status {
   display: inline-flex;
@@ -886,20 +859,21 @@
   transform: scaleX(var(--p));
 }
 @media (prefers-reduced-motion: no-preference) {
-  .wk {
+  .wk-track {
     height: calc(100svh + var(--shift));
   }
   .wk-stage {
     position: sticky;
     top: 0;
     height: 100svh;
-    padding: 84px 0 24px;
+    padding: 76px 0 16px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .wk-viewport {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--pad);
   }
   .wk-row {
     transform: none;
@@ -965,6 +939,20 @@
   border-radius: 12px;
   background: linear-gradient(120deg, #2f6bff, #7b5cff);
   color: #fff;
+}
+.hw-logo {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+}
+.hw-thumb {
+  width: 44px;
+  height: 55px;
+  flex: none;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 .hw-ok {
   color: var(--bp-success);
@@ -1646,6 +1634,20 @@ html:not(.dark)[data-home-scene="dark"] header img[src*="logo-white"] {
     transform: rotate(360deg);
   }
 }
+.ag-photo {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+/* The preview panel overlaps the bottom of the photo. */
+.ag-photo + .ag-panel {
+  margin: -96px 0 0 8%;
+}
 .ag-panel {
   position: relative;
   display: flex;
@@ -1843,4 +1845,96 @@ html:not(.dark)[data-home-scene="dark"] header img[src*="logo-white"] {
 .sc-tail {
   height: 24vh;
   background: linear-gradient(#140d36, color-mix(in srgb, #140d36 35%, transparent) 55%, transparent);
+}
+
+/* A real still from BuPulse's own ads beside each "how an ad is made" step (avatar-videos.tsx). */
+.av-step-still {
+  width: 54px;
+  height: 96px;
+  flex: none;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+/* ---------- Feature cards with real pictures (features.tsx) ---------- */
+/* Three posts fanned out in a 16:9 tray; stories and ad posters (9:16) stand taller. */
+.ft-fan {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+.ft-fan img {
+  position: absolute;
+  left: 50%;
+  top: 12%;
+  height: 84%;
+  width: auto;
+  aspect-ratio: 4 / 5;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ft-tall img {
+  top: 8%;
+  height: 100%;
+  aspect-ratio: 9 / 16;
+}
+.ft-fan img[data-i="0"] {
+  transform: translateX(-118%) rotate(-7deg);
+}
+.ft-fan img[data-i="1"] {
+  z-index: 1;
+  transform: translateX(-50%);
+}
+.ft-fan img[data-i="2"] {
+  transform: translateX(18%) rotate(7deg);
+}
+.ft-tall img[data-i="0"] {
+  transform: translateX(-135%) rotate(-6deg);
+}
+.ft-tall img[data-i="2"] {
+  transform: translateX(35%) rotate(6deg);
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  li:hover .ft-fan img[data-i="0"] {
+    transform: translateX(-128%) rotate(-10deg);
+  }
+  li:hover .ft-fan img[data-i="2"] {
+    transform: translateX(28%) rotate(10deg);
+  }
+  li:hover .ft-tall img[data-i="0"] {
+    transform: translateX(-145%) rotate(-9deg);
+  }
+  li:hover .ft-tall img[data-i="2"] {
+    transform: translateX(45%) rotate(9deg);
+  }
+}
+/* Autopilot's whole week in one row (four days on phones). */
+.ft-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  height: 100%;
+  align-content: center;
+  padding: 14px;
+}
+.ft-strip li:nth-child(n + 5) {
+  display: none;
+}
+.ft-strip img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 5;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14);
+}
+@media (min-width: 640px) {
+  .ft-strip {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  .ft-strip li:nth-child(n + 5) {
+    display: block;
+  }
 }

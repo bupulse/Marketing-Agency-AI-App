@@ -1,4 +1,3 @@
-import { Captions, Clapperboard, Mic, PenLine } from "lucide-react";
 import { Container } from "@/components/ui";
 import { ForCta } from "@/components/marketing/quote/cta";
 import { VideoPlayer } from "@/components/marketing/video-player";
@@ -7,26 +6,28 @@ import "./motion.css";
 
 // "It was AI all along": the whole "Who's real?" ad, how an AI presenter video is made, and more examples. Every
 // clip is one of BuPulse's own ads (made 10 November 2026 with an AI presenter, to market BuPulse itself); the page
-// says so, and says what an ad for the visitor's own business would be about.
+// says so, and says what an ad for the visitor's own business would be about. Each step shows a real still from
+// BuPulse's own ads (public/marketing/avatar/step-N.webp): a sample ad’s product, the salon ad's hook, its AI presenter
+// and its end card.
 
 const steps = [
   {
-    icon: PenLine,
+    alt: "A product from one of BuPulse’s sample ads: a vertical garden tower in a greenhouse",
     title: "You tell us what to sell",
     text: "A product, a new service, this week's offer. Send a few photos if you have them.",
   },
   {
-    icon: Clapperboard,
+    alt: "The first second of BuPulse’s salon ad, with the hook “Who’s answering…” in big captions",
     title: "We write a script that stops the scroll",
     text: "Short and hook-first: the first two seconds give people a reason to keep watching.",
   },
   {
-    icon: Mic,
+    alt: "The AI presenter of the salon ad, filmed like a phone selfie in a salon",
     title: "An AI presenter films it",
     text: "A realistic person, filmed like a phone selfie in a place that suits your business.",
   },
   {
-    icon: Captions,
+    alt: "The ad’s end card: “Free quote, bupulse.com, Get a free quote”",
     title: "Captions, your name and a call to action",
     text: "Word-by-word captions and an end card that tells people how to reach you. Ready for Reels, TikTok, Facebook and YouTube Shorts.",
   },
@@ -81,11 +82,10 @@ export function AvatarVideos() {
 
           <div className="flex min-w-0 flex-col gap-6 lg:col-start-1">
             <ol className="m-0 grid list-none gap-4 p-0 sm:grid-cols-2">
-              {steps.map(({ icon: Icon, title, text }, i) => (
-                <RiseIn as="li" key={title} className="glass flex gap-4 rounded-[24px] p-5">
-                  <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-gradient text-white">
-                    <Icon aria-hidden className="size-5" />
-                  </span>
+              {steps.map(({ alt, title, text }, i) => (
+                <RiseIn as="li" key={title} className="glass flex gap-4 rounded-[24px] p-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- a 3 to 8 KB pre-sized still */}
+                  <img src={`/marketing/avatar/step-${i + 1}.webp`} alt={alt} width={144} height={256} loading="lazy" decoding="async" className="av-step-still" />
                   <div className="flex min-w-0 flex-col gap-1.5">
                     <h3 className="m-0 text-[17px] font-semibold">
                       <span className="sr-only">Step {i + 1}: </span>

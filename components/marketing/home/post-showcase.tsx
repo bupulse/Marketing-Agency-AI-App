@@ -7,23 +7,25 @@ import "./motion.css";
 // "Designs in your brand": a pinned wall of posts made by BuPulse's own design engine (lib/designs/library, rendered
 // for example businesses and saved in public/marketing/posts). As you scroll, the tilted wall settles from close up to
 // its place, its three rows drift in opposite directions, and a phone in front flips through stories.
-// Only transform and opacity change; images are small WebP files (8 to 26 KB) loaded lazily.
+// Round 3: posts that need a picture carry one (a still from BuPulse's own ad, or an AI photo made with the app's
+// image model), and every example business has a logo made by the engine instead of a letter in a circle.
+// Only transform and opacity change; images are small WebP files (8 to 32 KB) loaded lazily.
 
 type Post = { id: string; alt: string };
 
 const POSTS: Post[] = [
-  { id: "salon", alt: "Salon post: “New week, new look”, book your braids before Friday" },
-  { id: "cafe", alt: "Café post: “Weekend brunch is back”, from 6,000 RWF" },
-  { id: "hardware", alt: "Hardware store post: “In stock: 20 L paint, white or cream”" },
-  { id: "school", alt: "School post: “Open day for new parents”, Saturday at 10 am" },
-  { id: "construction", alt: "Construction post: “Project complete”, three floors handed over on time" },
-  { id: "phones", alt: "Phone shop post: “New smartphones in stock”" },
+  { id: "salon", alt: "Salon post: “New week, new look”, a smiling woman admiring her new braids in an arched frame" },
+  { id: "cafe", alt: "Café post: “Weekend brunch is back”, from 6,000 RWF, with a photo of a brunch plate" },
+  { id: "hardware", alt: "Hardware store post: “In stock: 20 L paint, white or cream”, with a photo of paint buckets" },
+  { id: "school", alt: "School post: “Open day for new parents”, Saturday at 10 am, with a photo of a classroom" },
+  { id: "construction", alt: "Construction post: “Project complete”, three floors handed over on time, with a site manager in front" },
+  { id: "phones", alt: "Phone shop post: “New smartphones in stock”, with a photo of phones in a display counter" },
   { id: "tips", alt: "Salon tip post: “Keep your braids neat for longer”" },
-  { id: "music", alt: "Restaurant post: “Live music on Friday nights”, from 7 pm" },
+  { id: "music", alt: "Restaurant post: “Live music on Friday nights”, from 7 pm, with a photo of a band playing" },
   { id: "features", alt: "Shop post: “Why customers come back”: fair prices, fast delivery, friendly staff" },
-  { id: "clinic", alt: "Clinic post: “Book your check-up this month”" },
+  { id: "clinic", alt: "Clinic post: “Book your check-up this month”, with a photo of a smiling nurse at reception" },
   { id: "sunday", alt: "Business post: “Now open on Sundays”, from 10 am" },
-  { id: "gym", alt: "Gym post: “New morning class”, first class free" },
+  { id: "gym", alt: "Gym post: “New morning class”, first class free, with a photo of a stretching class" },
 ];
 
 const ROWS = [POSTS.slice(0, 4), POSTS.slice(4, 8), POSTS.slice(8, 12)];

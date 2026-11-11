@@ -103,3 +103,33 @@ burned-in captions are left out:
   360 px (q70): 252 KB for all sixteen, in `public/marketing/posts`.
 - **Pricing page fix:** in the monthly view `PriceTag` no longer keeps the yearly "Was … / % off" line in the page (it
   was only faded out, so page text and text-only readers saw it). Test: `tests/billing/price-tag.test.ts`.
+
+## Round 3 (11 November 2026): real images everywhere
+
+The owner asked for no placeholder visuals ("use real images or create AI images"). Every gradient-with-icon card,
+letter avatar and empty box on the home page now shows a real picture. Sources, in order of preference:
+
+1. **Posts from BuPulse's own design engine** (`renderDesign`, the same renderer as client posts), made through a
+   temporary local route that was deleted afterwards (a copy is in the work notes).
+2. **Stills from BuPulse's own ads** (`~/bupulse-sample-site/site/v`): the salon ad's presenter, its hook caption and
+   end card, the construction ad's site manager, a product from a sample ad.
+3. **AI photos** from the app's image model (Gemini 2.5 Flash Image, the app's `getImageProvider`), only where no
+   still fitted: 19 images, $0.742 in all (hard cap $2.00), realistic Rwandan small-business scenes, no text, no brands,
+   no real people's likeness. These calls went straight to the provider, so they are not in the app's AI ledger.
+
+| Section | Before | Now |
+| --- | --- | --- |
+| Daily posts (week) | 7 gradient cards with outline icons, "S" letter avatar | 7 finished salon posts from the design engine (elegant pack: hero, split, polaroid, price, hero, circle, magazine), photos: AI braids, care flat lay, wash, before/after pair (the "after" made from the "before" as a reference), empty salon, mirror look; Wednesday is the salon ad's presenter. The avatar is the example salon's logo, drawn with the engine's fonts and colours (`week/salon-logo.webp`). The heading now scrolls normally and only the row pins, so the cards fit any screen height. |
+| Designs wall | 9 of 12 posts text-only, letter avatars in every brand line | Café, hardware, school, phones, restaurant, clinic and gym posts carry photos (AI); every business has an engine-made logo; salon post re-made with the mirror photo |
+| AI presenter steps | 4 icon tiles | 4 real stills from BuPulse's ads (`avatar/step-N.webp`) |
+| How it works panel | image and shop icons | the real hardware post and the shop's logo |
+| BuPulse Agency | panel only | an AI photo of a small agency team, the preview panel over it |
+| Industry cards | icon tiles; showed IT and schools under a heading about salons and restaurants | photos for salons, restaurants, shops, construction, phones (the trades the heading names); "And many more" shows three wall posts |
+| Feature cards | 7 icon tiles | salon owner still, fanned posts, stories and ad posters, an AI photo for the chat, the whole week for Autopilot |
+| Blog teaser | gradient boxes | an AI photo per article |
+
+Files: `public/marketing/week` (300 and 600 px), `public/marketing/photos` (480 and 720 px, 880 for the agency), the
+wall in `public/marketing/posts` (540 px, stories 360 px). All WebP, `loading="lazy"`, `srcset`/`sizes` where the
+card width changes with the screen, alt text that says what the picture shows. On a 2x phone (390 px) a full scroll
+loads 1.40 MB of images (first screen unchanged at 634 KB, mostly the hero frames); round 3's pictures are 765 KB of
+that, the wall included. A note under the industry cards says the pictures were made by BuPulse.

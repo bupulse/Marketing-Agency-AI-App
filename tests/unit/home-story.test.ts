@@ -84,3 +84,56 @@ describe("designs wall", () => {
     expect(bytes).toBeLessThan(400_000);
   });
 });
+
+// Round 3 (owner, 11 November 2026): no placeholder visuals. Every picture is a real image: posts from BuPulse's
+// design engine, stills from BuPulse's own ads, or AI photos made with the app's image model.
+describe("real images, no placeholders", () => {
+  const size = (rel: string) => {
+    const file = path.join(process.cwd(), "public/marketing", rel);
+    expect(existsSync(file), file).toBe(true);
+    return statSync(file).size;
+  };
+
+  it("the salon's week has a finished post for every day, in two sizes, and a logo instead of a letter", () => {
+    let phone = 0;
+    for (const d of ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]) {
+      size(`week/${d}-300.webp`);
+      phone += size(`week/${d}-600.webp`);
+    }
+    // A 2x phone loads the 600 px files: the whole week stays small.
+    expect(phone).toBeLessThan(200_000);
+    expect(size("week/salon-logo.webp")).toBeLessThan(6_000);
+  });
+
+  it("industry cards, feature cards, AI ad steps, the agency section and blog covers have their photos", () => {
+    for (const slug of ["beauty", "restaurants", "retail", "construction", "electronics"]) {
+      expect(size(`photos/industry-${slug}-480.webp`)).toBeLessThan(40_000);
+      size(`photos/industry-${slug}-720.webp`);
+    }
+    for (const f of ["feature-business", "feature-chat", "blog-photo", "blog-chat", "blog-plan"]) {
+      expect(size(`photos/${f}-480.webp`)).toBeLessThan(40_000);
+      size(`photos/${f}-720.webp`);
+    }
+    size("photos/agency-480.webp");
+    size("photos/agency-880.webp");
+    for (const n of [1, 2, 3, 4]) expect(size(`avatar/step-${n}.webp`)).toBeLessThan(12_000);
+    size("posts/hardware-thumb.webp");
+    size("posts/hardware-logo.webp");
+  });
+});
+
+describe("the week of posts", () => {
+  it("shows seven real posts with alt text and the salon's logo, not icons on gradients or a letter avatar", async () => {
+    const { WeekOfPosts } = await import("@/components/marketing/home/week-of-posts");
+    const html = renderToStaticMarkup(createElement(WeekOfPosts));
+    const posts = html.match(/<img[^>]*class="wk-post"[^>]*>/g) ?? [];
+    expect(posts).toHaveLength(7);
+    for (const img of posts) {
+      expect(img).toMatch(/srcSet="[^"]*-300\.webp 300w, [^"]*-600\.webp 600w"/);
+      expect(img).toMatch(/alt="[^"]{20,}"/);
+      expect(img).toContain('loading="lazy"');
+    }
+    expect((html.match(/salon-logo\.webp/g) ?? []).length).toBe(7);
+    expect(html).not.toMatch(/linear-gradient|wk-icon|lucide/);
+  });
+});

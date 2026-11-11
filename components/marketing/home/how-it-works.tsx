@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Image as ImageIcon, MessageCircle, Phone, Sparkles, Store } from "lucide-react";
+import { Check, MessageCircle, Phone, Sparkles } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Container } from "@/components/ui";
 import { useCtaMode } from "@/components/marketing/quote/cta";
@@ -78,9 +78,8 @@ export function HowItWorks() {
                 <Check className="hw-ok size-4" />
               </div>
               <div className="hw-card" data-n="2">
-                <span className="hw-ico">
-                  <Store className="size-4" />
-                </span>
+                {/* eslint-disable-next-line @next/next/no-img-element -- the example shop's 2 KB logo (BuPulse's design engine) */}
+                <img src="/marketing/posts/hardware-logo.webp" alt="" width={34} height={34} loading="lazy" decoding="async" className="hw-logo" />
                 <div className="min-w-0">
                   <strong>Your business</strong>
                   <span className="hw-chips">
@@ -94,9 +93,9 @@ export function HowItWorks() {
                 <Check className="hw-ok size-4" />
               </div>
               <div className="hw-card" data-n="3">
-                <span className="hw-ico">
-                  <ImageIcon className="size-4" />
-                </span>
+                {/* The real post (made by BuPulse's design engine for an example hardware shop). */}
+                {/* eslint-disable-next-line @next/next/no-img-element -- a 5 KB pre-sized WebP inside a decorative panel */}
+                <img src="/marketing/posts/hardware-thumb.webp" alt="" width={128} height={160} loading="lazy" decoding="async" className="hw-thumb" />
                 <div className="min-w-0">
                   <strong>Today’s post is ready</strong>
                   <span>Picture, caption and hashtags</span>
