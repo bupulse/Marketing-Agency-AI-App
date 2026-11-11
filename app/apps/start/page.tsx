@@ -17,7 +17,7 @@ export default async function StartPage({ searchParams }: PageProps<"/apps/start
   const listed = params.listed === "1" && pickedServices(user.user_metadata).includes("agency");
   return (
     <ServicesPage email={user.email ?? null}>
-      <ServicePicker action={pickServices} initial={["marketing"]} listed={listed} />
+      <ServicePicker action={pickServices} initial={listed ? ["marketing", "agency"] : ["marketing"]} listed={listed} />
     </ServicesPage>
   );
 }
