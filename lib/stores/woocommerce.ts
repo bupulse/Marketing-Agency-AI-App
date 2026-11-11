@@ -6,6 +6,7 @@ import { randomToken } from "@/lib/canva/pkce";
 import { storeApiFetch } from "./safe-fetch";
 import { cleanFeatures, clip, formatPrice, htmlToText } from "./text";
 import { StoreApiError, type NormalizedProduct, type ProductPage, type StoreCredentials, type StoreProvider } from "./types";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 export const WOO_CALLBACK_PATH = "/api/stores/woocommerce/callback";
 const STATE_TTL_MS = 15 * 60 * 1000;
@@ -49,7 +50,7 @@ export function buildWooAuthorizeUrl(storeUrl: string, state: string, returnBase
     app_name: "BuPulse",
     scope: "read",
     user_id: state,
-    return_url: `${returnBase}/dashboard/stores/woocommerce?connected=1`,
+    return_url: appUrl(`/dashboard/stores/woocommerce?connected=1`, returnBase),
     // The store posts the keys here server to server: the public address (WooCommerce takes any URL per request).
     callback_url: `${publicSiteUrl()}${WOO_CALLBACK_PATH}`,
   }).toString();

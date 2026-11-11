@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
-import { linkSiteUrl } from "@/lib/auth/request-site";
+import { frontLinkUrl } from "@/lib/auth/request-site";
 import { getPlanLimits } from "@/lib/plan-catalog";
 import { creatorsPerCampaignLimit, liveCampaignsLimit } from "@/lib/plans";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
@@ -540,7 +540,7 @@ async function sendJoinedEmail(to: string, name: string, campaign: string, compa
 }
 
 async function deliver(actor: CampaignActor, row: { name: string; email: string; phone: string | null; campaign: { name: string } }, token: string, expiresAt: Date) {
-  const link = `${await linkSiteUrl()}/creator/join/${token}`;
+  const link = `${await frontLinkUrl()}/creator/join/${token}`;
   const b = await company(actor.businessId);
   const sent = await sendInviteEmail(row.email, row.name, row.campaign.name, b.name, link);
   return { link, sent, expiresAt: expiresAt.toISOString(), name: row.name, phone: row.phone, companyName: b.name, campaignName: row.campaign.name };
@@ -572,7 +572,7 @@ export async function selectApplicant(actor: CampaignActor, campaignCreatorId: s
   });
   if (invite) return { joined: false as const, ...(await deliver(actor, row, invite.token, invite.expiresAt)) };
   const b = await company(actor.businessId);
-  const sent = await sendJoinedEmail(row.email, row.name, row.campaign.name, b.name, `${await linkSiteUrl()}/creator`);
+  const sent = await sendJoinedEmail(row.email, row.name, row.campaign.name, b.name, `${await frontLinkUrl()}/creator`);
   return { joined: true as const, sent, name: row.name };
 }
 

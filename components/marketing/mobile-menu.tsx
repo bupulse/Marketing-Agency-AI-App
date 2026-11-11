@@ -7,6 +7,7 @@ import { useEffect, useId, useState } from "react";
 import { buttonClasses } from "@/components/ui";
 import { QUOTE_LABEL } from "@/lib/quote/cta";
 import { accountLinks } from "./account-menu";
+import { HostLink } from "@/components/platform/hosts";
 import { useQuoteCta } from "./quote/cta";
 
 type MobileMenuProps = { links: { label: string; href: string }[]; email?: string | null };
@@ -62,14 +63,14 @@ export function MobileMenu({ links, email = null }: MobileMenuProps) {
           <div className="mt-2 flex flex-col gap-1 border-t border-line pt-3">
             <p className="truncate px-4 pb-1 text-xs text-muted">{email}</p>
             {accountLinks.map(({ label, href, icon: Icon }) => (
-              <Link
+              <HostLink
                 key={href}
                 href={href}
                 onClick={close}
                 className="flex min-h-11 items-center gap-2.5 rounded-2xl px-4 text-base font-medium text-text no-underline hover:bg-soft"
               >
                 <Icon aria-hidden className="size-4" /> {label}
-              </Link>
+              </HostLink>
             ))}
             <form action="/auth/signout" method="post">
               <button

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useAppPath, useHostHref } from "@/components/platform/hosts";
 import { usePathname } from "next/navigation";
 import { CurrencySwitch } from "./currency-switch";
 import type { DisplayCurrency } from "@/lib/money/display";
@@ -89,8 +90,9 @@ const groupBadgeKeys = (g: AdminNavGroup): BadgeKey[] => g.items.flatMap((i) => 
 
 /** The admin mark: the pulse line on a gradient tile, BuPulse and "Admin". Works on light and dark. */
 function AdminBrand({ compact }: { compact?: boolean }) {
+  const toHref = useHostHref();
   return (
-    <Link href="/admin" className="flex items-center gap-2.5 rounded-xl no-underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30">
+    <Link href={toHref("/admin")} className="flex items-center gap-2.5 rounded-xl no-underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30">
       <span aria-hidden className="inline-flex size-9 items-center justify-center rounded-[11px] bg-brand-gradient text-white shadow-[0_8px_18px_-10px_rgba(47,107,255,0.9)]">
         <svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 12h4l3-7 4 14 3-7h4" />
@@ -106,8 +108,10 @@ function AdminBrand({ compact }: { compact?: boolean }) {
 
 /** The sidebar: groups that fold (remembered in this browser); the active page's group always stays open. */
 export function Nav({ badges, permissions, onNavigate, pathname: forced }: { badges: ShellBadges; permissions: readonly Permission[]; onNavigate?: () => void; /** For the dev preview: the page to mark current. */ pathname?: string }) {
-  const current = usePathname() ?? "/admin";
+  // The app path (/admin/...) behind the address shown: on the admin host "/companies" is /admin/companies.
+  const current = useAppPath(usePathname() ?? "/admin");
   const pathname = forced ?? current;
+  const toHref = useHostHref();
   const active = findNavItem(pathname);
   const activeHub = hubFor(pathname);
   const raw = useSyncExternalStore(subscribe, readRaw, () => "[]");
@@ -140,7 +144,7 @@ export function Nav({ badges, permissions, onNavigate, pathname: forced }: { bad
                 </button>
                 {hubHref && (
                   <Link
-                    href={hubHref}
+                    href={toHref(hubHref)}
                     onClick={onNavigate}
                     aria-label={`All of ${group.title}, as cards`}
                     title={`All of ${group.title}`}
@@ -161,7 +165,7 @@ export function Nav({ badges, permissions, onNavigate, pathname: forced }: { bad
                 return (
                   <li key={href}>
                     <Link
-                      href={href}
+                      href={toHref(href)}
                       onClick={onNavigate}
                       aria-current={isActive ? "page" : undefined}
                       className={cn(
@@ -192,7 +196,8 @@ export function Nav({ badges, permissions, onNavigate, pathname: forced }: { bad
 
 /** Admin > Money > Invoices > Details, from the nav map (the group links to its hub). */
 export function Breadcrumbs({ pathname }: { pathname: string }) {
-  return <KitBreadcrumbs crumbs={breadcrumbsFor(pathname)} />;
+  const toHref = useHostHref();
+  return <KitBreadcrumbs crumbs={breadcrumbsFor(pathname).map((c) => (c.href ? { ...c, href: toHref(c.href) } : c))} />;
 }
 
 function SignOutButton({ className, children }: { className: string; children: ReactNode }) {
@@ -210,6 +215,7 @@ const initialOf = (email: string) => (email.trim()[0] ?? "A").toUpperCase();
 /** The phone tab bar: up to four main places and More. */
 function TabBar({ permissions, badges, pathname, onMore }: { permissions: readonly Permission[]; badges: ShellBadges; pathname: string; onMore: () => void }) {
   const tabs = phoneTabsFor(permissions);
+  const toHref = useHostHref();
   const isOn = (t: (typeof tabs)[number]) => (t.groupId ? inGroup(pathname, t.groupId) : t.href === "/admin" ? pathname === "/admin" : pathname === t.href || pathname.startsWith(`${t.href}/`));
   const anyOn = tabs.some(isOn);
   const tabGroups = new Set(tabs.map((t) => t.groupId));
@@ -227,7 +233,7 @@ function TabBar({ permissions, badges, pathname, onMore }: { permissions: readon
             const waiting = waitingIn(badges, t.badges);
             return (
               <li key={t.key} className="flex min-w-0 flex-1">
-                <Link href={t.href} aria-current={on ? "page" : undefined} className={cn(cell, on ? "text-pulse-blue dark:text-[#8db0ff]" : "text-muted")}>
+                <Link href={toHref(t.href)} aria-current={on ? "page" : undefined} className={cn(cell, on ? "text-pulse-blue dark:text-[#8db0ff]" : "text-muted")}>
                   <span className={cn("relative inline-flex h-8 w-14 items-center justify-center rounded-full", on && "kit-pop bg-pulse-blue/12 dark:bg-pulse-blue/25")}>
                     <t.icon aria-hidden className="size-[21px]" />
                     {waiting > 0 && (
@@ -263,6 +269,7 @@ function TabBar({ permissions, badges, pathname, onMore }: { permissions: readon
 /** The phone's More sheet: every group (to its hub, or its only page), search, the currency, theme and sign out. */
 function MoreSheet({ dialog, permissions, badges, pathname, email, roleName, currency, onSearch }: { dialog: RefObject<HTMLDialogElement | null>; permissions: readonly Permission[]; badges: ShellBadges; pathname: string; email: string; roleName?: string; currency?: DisplayCurrency; onSearch: () => void }) {
   const close = () => dialog.current?.close();
+  const toHref = useHostHref();
   const groups = navFor(permissions).filter((g) => g.title);
   return (
     <dialog
@@ -307,7 +314,7 @@ function MoreSheet({ dialog, permissions, badges, pathname, email, roleName, cur
               return (
                 <li key={g.id}>
                   <Link
-                    href={groupHref(g)}
+                    href={toHref(groupHref(g))}
                     onClick={close}
                     aria-current={on ? "true" : undefined}
                     className={cn(
@@ -340,9 +347,10 @@ function MoreSheet({ dialog, permissions, badges, pathname, email, roleName, cur
             Light or dark look
             <ThemeToggle className="size-10 border-white/20 bg-white/15 text-white shadow-none dark:bg-white/[0.06]" />
           </div>
-          <Link href="/dashboard" onClick={close} className="flex min-h-11 items-center gap-2 rounded-xl px-3 text-[13px] font-semibold text-white no-underline hover:bg-white/15">
+          {/* The Marketing dashboard, on its own host once it has one: a plain link (never a cross-host Next Link). */}
+          <a href={toHref("/dashboard")} onClick={close} className="flex min-h-11 items-center gap-2 rounded-xl px-3 text-[13px] font-semibold text-white no-underline hover:bg-white/15">
             <ArrowUpRight aria-hidden className="size-4" /> Customer view
-          </Link>
+          </a>
           <SignOutButton className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl px-3 text-[13px] font-semibold hover:bg-white/15">
             <LogOut aria-hidden className="size-4" /> Sign out
           </SignOutButton>
@@ -371,11 +379,12 @@ export function AdminShell({
   pathname?: string;
 }) {
   const [search, setSearch] = useState(false);
-  const current = usePathname() ?? "/admin";
+  const current = useAppPath(usePathname() ?? "/admin");
   const pathname = forced ?? current;
+  const toHref = useHostHref();
   const sheet = useRef<HTMLDialogElement>(null);
   const onSearch = useCallback((v: boolean) => setSearch(v), []);
-  const crumbs = breadcrumbsFor(pathname);
+  const crumbs = breadcrumbsFor(pathname).map((c) => (c.href ? { ...c, href: toHref(c.href) } : c));
   return (
     <div className="relative min-h-dvh w-full bg-bg lg:flex">
       <KitStyles />
@@ -406,9 +415,9 @@ export function AdminShell({
             <span className="truncate text-[13px] font-semibold">{email}</span>
             <span className="truncate text-[12px] text-muted">{roleName ?? "Owner"}</span>
           </span>
-          <Link href="/dashboard" aria-label="Customer view" title="Customer view" className="inline-flex size-9 items-center justify-center rounded-xl text-muted hover:bg-soft hover:text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30">
+          <a href={toHref("/dashboard")} aria-label="Customer view" title="Customer view" className="inline-flex size-9 items-center justify-center rounded-xl text-muted hover:bg-soft hover:text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30">
             <ArrowUpRight aria-hidden className="size-4" />
-          </Link>
+          </a>
         </div>
       </aside>
 

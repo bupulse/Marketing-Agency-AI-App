@@ -63,9 +63,14 @@ export async function readScreenPass(token: string | null | undefined, secret: s
   }
 }
 
-/** True for a request made on this computer itself: a local host name and none of the headers a tunnel or proxy adds. */
-export function isLocalRequest(input: { host: string | null; cfConnectingIp?: string | null; forwardedFor?: string | null; realIp?: string | null }): boolean {
-  if (input.cfConnectingIp || input.forwardedFor || input.realIp) return false;
+/**
+ * True for a request made on this computer itself: a local host name and none of the headers a tunnel or proxy adds.
+ * A self-fetch (`next start` fetching a host rewrite from localhost, lib/platform/app-hosts.ts requestHost) carries the
+ * visitor's host in X-Forwarded-Host: it is a visitor's request, never the robot's, so any forwarding header refuses.
+ */
+export type RequestOrigin = { host: string | null; cfConnectingIp?: string | null; forwardedFor?: string | null; realIp?: string | null; forwardedHost?: string | null; forwarded?: string | null };
+export function isLocalRequest(input: RequestOrigin): boolean {
+  if (input.cfConnectingIp || input.forwardedFor || input.realIp || input.forwardedHost || input.forwarded) return false;
   const host = (input.host ?? "").toLowerCase().replace(/:\d+$/, "");
   return host === "127.0.0.1" || host === "localhost" || host === "[::1]";
 }
@@ -77,6 +82,6 @@ export function isScreenPassPath(path: string): boolean {
 }
 
 /** Whether the proxy may let a request carrying a pass through (before checking the pass itself). */
-export function screenPassAllowed(input: { method: string; path: string; host: string | null; cfConnectingIp?: string | null; forwardedFor?: string | null; realIp?: string | null }): boolean {
+export function screenPassAllowed(input: RequestOrigin & { method: string; path: string }): boolean {
   return (input.method === "GET" || input.method === "HEAD") && isScreenPassPath(input.path) && isLocalRequest(input);
 }

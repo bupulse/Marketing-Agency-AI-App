@@ -3,12 +3,13 @@ import { adminEmails } from "@/lib/admin/auth";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { formatMomoAmount, GRACE_DAYS, graceEnd, mtnMomoPayDial, whatsappText, type MomoPayDetails } from "./momo-shared";
 import { linkSiteUrl } from "@/lib/auth/request-site";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Every email of the Mobile Money flow. All of them go through sendEmail (Resend, kill switch respected) and return
 // whether the mail went out; nothing here throws, so a mail problem never stops a payment being recorded.
 
 const longDate = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
-const billingUrl = async () => `${await linkSiteUrl()}/dashboard/billing`;
+const billingUrl = async () => appUrl(`/dashboard/billing`, await linkSiteUrl());
 const first = (name: string | null | undefined) => (name ? `Hi ${name.split(/\s+/)[0]}, ` : "");
 
 /** "MoMo Pay 123456 · 078 123 4567 (Aline U.) · Airtel 073 …" as one line for emails. */
@@ -37,7 +38,7 @@ export async function sendPaymentToCheckEmail(p: { reference: string; amountMino
       { label: "Transaction id", value: p.transactionId },
       { label: "Paid from", value: `${p.payerPhone} (${p.network})` },
     ],
-    button: { label: "Open Payments", url: `${(await linkSiteUrl())}/admin/payments` },
+    button: { label: "Open Payments", url: appUrl(`/admin/payments`, await linkSiteUrl()) },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `New MoMo payment to check: ${p.reference} · ${formatMomoAmount(p.amountMinor, p.currency)}`, html, text })));
   return results.some(Boolean);
@@ -59,7 +60,7 @@ export async function sendUnmappedPriceAlertEmail(p: { priceId: string; subscrip
       { label: "Event", value: p.eventId },
       ...(p.userId ? [{ label: "Client", value: p.userId }] : []),
     ],
-    button: { label: "Open errors", url: `${(await linkSiteUrl())}/admin/errors` },
+    button: { label: "Open errors", url: appUrl(`/admin/errors`, await linkSiteUrl()) },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `Paddle price not recognised: ${p.priceId}`, html, text })));
   return results.some(Boolean);
@@ -76,7 +77,7 @@ export async function sendInvoiceReviewAlertEmail(p: { number: string; company: 
       { label: "Invoice", value: p.number },
       { label: p.source === "paddle" ? "Paddle transaction" : "Payment reference", value: p.reference },
     ],
-    button: { label: "Open invoice", url: `${(await linkSiteUrl())}/admin/invoices/${encodeURIComponent(p.invoiceId)}` },
+    button: { label: "Open invoice", url: appUrl(`/admin/invoices/${encodeURIComponent(p.invoiceId)}`, await linkSiteUrl()) },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: p.second ? `Second payment received for ${p.number}: possible double payment` : `Payment received for ${p.number}: check and mark paid`, html, text })));
   return results.some(Boolean);
@@ -92,7 +93,7 @@ export async function sendPlanActiveEmail(to: ClientRecipient, p: { planName: st
       { label: "Plan", value: `${p.planName}, ${p.interval === "YEAR" ? "yearly" : "monthly"}` },
       { label: "Paid until", value: longDate(p.periodEnd) },
     ],
-    button: { label: "Open BuPulse", url: `${(await linkSiteUrl())}/dashboard` },
+    button: { label: "Open BuPulse", url: appUrl(`/dashboard`, await linkSiteUrl()) },
     footer: `We will remind you by email a few days before ${longDate(p.periodEnd)}. Nothing renews by itself and nothing is ever deleted.`,
   });
   return sendEmail({ to: to.email, subject: `Your BuPulse ${p.planName} plan is active`, html, text });
@@ -153,7 +154,7 @@ export async function sendPayDetailsChangedEmail(before: MomoPayDetails, after: 
       { label: "Before", value: payDetailsLine(before) || "Nothing set" },
       { label: "After", value: payDetailsLine(after) || "Nothing set" },
     ],
-    button: { label: "Open Payments", url: `${(await linkSiteUrl())}/admin/payments#settings` },
+    button: { label: "Open Payments", url: appUrl(`/admin/payments#settings`, await linkSiteUrl()) },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: "Mobile Money payment details changed", html, text })));
   return results.some(Boolean);
@@ -190,7 +191,7 @@ export async function sendCarryOverAlertEmail(p: { providerSubscriptionId: strin
       { label: "Client user id", value: p.userId ?? "unknown" },
       { label: "Error", value: p.error },
     ],
-    button: { label: "Open the error log", url: `${(await linkSiteUrl())}/admin/errors` },
+    button: { label: "Open the error log", url: appUrl(`/admin/errors`, await linkSiteUrl()) },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `${p.gaveUp ? "Action needed" : "Retrying"}: card renewal ${p.providerSubscriptionId}, paid days not carried over`, html, text })));
   return results.some(Boolean);

@@ -22,7 +22,7 @@ const h = vi.hoisted(() => {
 
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/plan-catalog", () => ({ getPlanLimits: vi.fn(async () => ({ text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, videoCredits: 0, seats: 1, ...h.limits })) }));
-vi.mock("@/lib/auth/request-site", () => ({ linkSiteUrl: async () => "https://bupulse.com" }));
+vi.mock("@/lib/auth/request-site", () => ({ linkSiteUrl: async () => "https://bupulse.com", frontLinkUrl: async () => "https://bupulse.com" }));
 vi.mock("@/lib/publishing/email", () => ({ renderEmail: () => ({ html: "", text: "" }), sendEmail: vi.fn(async () => true) }));
 vi.mock("@/lib/region", () => ({ companyRegion: async () => ({ currency: "RWF" }) }));
 vi.mock("@/lib/team/service", () => ({ newInviteToken: () => "t", hashToken: async (t: string) => t }));

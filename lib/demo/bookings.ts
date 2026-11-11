@@ -18,6 +18,7 @@ import { buildIcs } from "./ics";
 import { BOOKING_WINDOW_DAYS, DEMO_TIME_ZONE, formatSlot, freeSlots, MIN_LEAD_MINUTES, subtractInterval, ymdInZone, zonedToUtc, type AvailabilityWindow, type SlotOptions } from "./slots";
 import { linkSiteUrl } from "@/lib/auth/request-site";
 import { publicSiteUrl } from "@/lib/auth/site-url";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Booking calls from the owner's availability. Until 22 October 2026 every new company booked a demo before its trial
 // (section 12 of docs/RWANDA_LAUNCH_PLAN.md); since then the trial starts without one (lib/trial/start.ts) and the
@@ -283,7 +284,7 @@ export async function bookingIcs(booking: BookingView, business: { name: string;
       call ? `A ${minutes}-minute call about a custom plan for ${business.name}.` : `A ${minutes}-minute walk through BuPulse for ${business.name}.`,
       plan ? `${call ? "Current plan" : "Plan chosen"}: ${plan.name}.` : "",
       booking.meetingLink ? `Join: ${booking.meetingLink}` : "The meeting link follows by email.",
-      `Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${await linkSiteUrl()}${managePath(booking.kind)}`,
+      `Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${appUrl(managePath(booking.kind), await linkSiteUrl())}`,
     ].filter(Boolean).join("\n"),
     url: booking.meetingLink,
     organizer: { name: ORGANIZER_NAME, email: organizer },
@@ -303,7 +304,7 @@ async function requestBlocks(booking: BookingView, site: string): Promise<{ labe
   const features = readFeatureKeys(request.featureKeys).map(featureLabel);
   return [
     ...(features.length ? [{ label: "Interested in", value: features.join(", ") }] : []),
-    { label: "Request", value: `${site}/admin/requests?open=${encodeURIComponent(request.id)}#request-${encodeURIComponent(request.id)}` },
+    { label: "Request", value: appUrl(`/admin/requests?open=${encodeURIComponent(request.id)}#request-${encodeURIComponent(request.id)}`, site) },
   ];
 }
 
@@ -313,7 +314,7 @@ export async function sendBookingEmails(kind: EmailKind, booking: BookingView, b
   try {
     const call = booking.kind === "custom_plan";
     const site = await linkSiteUrl();
-    const manageUrl = `${site}${managePath(booking.kind)}`;
+    const manageUrl = appUrl(managePath(booking.kind), site);
     const plan = await getPlan(booking.planKey);
     const when = `${formatSlot(booking.startsAt)} (${DEMO_TIME_ZONE.replace("_", " ")})`;
     const minutes = Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / MINUTE);
@@ -344,7 +345,7 @@ export async function sendBookingEmails(kind: EmailKind, booking: BookingView, b
       heading: headingByKind[kind],
       intro,
       blocks: kind === "cancelled" ? blocks : [...blocks, calendarBlock],
-      button: kind === "cancelled" ? { label: "Book a new time", url: call ? manageUrl : `${site}/book-demo?step=time` } : booking.meetingLink ? { label: "Join the meeting", url: booking.meetingLink } : { label: "Add to Google Calendar", url: google },
+      button: kind === "cancelled" ? { label: "Book a new time", url: call ? manageUrl : appUrl(`/book-demo?step=time`, site) } : booking.meetingLink ? { label: "Join the meeting", url: booking.meetingLink } : { label: "Add to Google Calendar", url: google },
       footer: kind === "cancelled" ? undefined : `Need another time? Reschedule or cancel ${call ? "" : "from your dashboard "}up to ${MIN_LEAD_MINUTES / 60} hours before the call: ${manageUrl}`,
     });
     const clientSent = await sendEmail({ to: business.email, subject: `${headingByKind[kind]}: ${when}`, html: client.html, text: client.text, attachments: [attachment] });
@@ -356,7 +357,7 @@ export async function sendBookingEmails(kind: EmailKind, booking: BookingView, b
     const admin = renderEmail({
       heading: `${kind === "booked" && !call ? "New demo booked" : adminTitle}: ${business.name}`,
       intro: `${business.contact ?? business.email} (${business.email}) ${did} ${when}.`,
-      blocks: [...blocks, ...(await requestBlocks(booking, site)), { label: "Company page", value: `${site}/admin/companies/${booking.businessId}` }],
+      blocks: [...blocks, ...(await requestBlocks(booking, site)), { label: "Company page", value: appUrl(`/admin/companies/${booking.businessId}`, site) }],
       button: kind === "cancelled" ? undefined : { label: "Add to your calendar", url: icsUrl(booking.icsToken) },
     });
     let admins = 0;

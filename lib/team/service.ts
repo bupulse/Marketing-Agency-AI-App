@@ -9,7 +9,7 @@ import { eraseTeammateLogin } from "@/lib/account-deletion";
 import { writeAudit } from "@/lib/admin/audit";
 import type { AdminContext } from "@/lib/admin/types";
 import { assignableRoles, atLeast, isRole, type Role } from "./roles";
-import { linkSiteUrl } from "@/lib/auth/request-site";
+import { frontLinkUrl } from "@/lib/auth/request-site";
 
 // Team management for one company: seats, invites, roles, removal and ownership transfer.
 // Every function takes the acting person's company (from requireActiveUser) and checks the rule itself, so the same rules
@@ -120,7 +120,7 @@ function roleOf(value: unknown): Role {
 }
 
 async function sendInviteEmail(args: { to: string; token: string; businessName: string; inviterName: string; role: Role }): Promise<boolean> {
-  const url = `${(await linkSiteUrl())}/invite/${args.token}`;
+  const url = `${await frontLinkUrl()}/invite/${args.token}`;
   const { html, text } = renderEmail({
     heading: `Join ${args.businessName} on BuPulse`,
     intro: `${args.inviterName} invited you to work with ${args.businessName} on BuPulse as ${args.role === "ADMIN" ? "an Admin" : "a Member"}. You will share the company's content, designs and leads.`,

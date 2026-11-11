@@ -8,6 +8,7 @@ import { DisconnectButton } from "./disconnect-button";
 import { InboxSwitch } from "./inbox-switch";
 import { NetworkIcon } from "./network-icon";
 import { canConnect, connectHref, primaryVariant, SOON_CHANNELS, type AccountInfo, type ChannelInfo } from "./types";
+import { useHostHref } from "@/components/platform/hosts";
 
 const TYPE_LABEL: Record<string, string> = { business: "Business", creator: "Creator", personal: "Personal", page: "Page", member: "Profile", profile: "Profile", organization: "Company Page", channel: "Channel" };
 
@@ -33,6 +34,8 @@ function AccountAvatar({ account, name }: { account: AccountInfo; name: string }
 function AccountRow({ account, variant }: { account: AccountInfo; variant?: string }) {
   const name = account.displayName ?? account.externalAccountId;
   const s = status(account);
+  // Connections start on bupulse.com, where their callbacks are (docs/HOSTS.md): an absolute link from the Marketing host.
+  const toHref = useHostHref();
   return (
     <li className="flex animate-pop flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-3">
       <AccountAvatar account={account} name={name} />
@@ -43,7 +46,7 @@ function AccountRow({ account, variant }: { account: AccountInfo; variant?: stri
       <Badge tone={s.tone}>{s.label}</Badge>
       <div className="flex items-center gap-2">
         {s.reconnect && (
-          <Button href={connectHref(account.network, account.network === "instagram" ? variant : undefined)} size="sm">
+          <Button href={toHref(connectHref(account.network, account.network === "instagram" ? variant : undefined))} size="sm">
             Reconnect
           </Button>
         )}

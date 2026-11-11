@@ -12,7 +12,7 @@ const enabled = Boolean(process.env.RUN_DB_TESTS && process.env.DATABASE_URL && 
 const admin = enabled ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL as string, process.env.SUPABASE_SECRET_KEY as string, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
 const h = vi.hoisted(() => ({ sendEmail: vi.fn(async () => true), places: 2 }));
 vi.mock("@/lib/publishing/email", async () => ({ ...(await vi.importActual<typeof import("@/lib/publishing/email")>("@/lib/publishing/email")), sendEmail: h.sendEmail }));
-vi.mock("@/lib/auth/request-site", () => ({ linkSiteUrl: async () => "https://bupulse.test" }));
+vi.mock("@/lib/auth/request-site", () => ({ linkSiteUrl: async () => "https://bupulse.test", frontLinkUrl: async () => "https://bupulse.test" }));
 vi.mock("@/lib/plan-catalog", async () => {
   const real = await vi.importActual<typeof import("@/lib/plan-catalog")>("@/lib/plan-catalog");
   return { ...real, getPlanLimits: async (plan: string) => ({ ...(await real.getPlanLimits(plan)), creatorsPerCampaign: h.places }) };

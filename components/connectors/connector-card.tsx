@@ -6,6 +6,7 @@ import { disconnectConnector } from "@/app/dashboard/connectors/actions";
 import { Badge, Button, Dialog, GlassCard, useToast, type BadgeTone } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/button";
 import type { CatalogItem } from "@/lib/connectors/catalog";
+import { useHostHref } from "@/components/platform/hosts";
 
 const ICONS: Record<string, LucideIcon> = { box: Box, cloud: Cloud, folder: Folder, globe: Globe, harddrive: HardDrive, palette: Palette, plug: Plug, shoppingbag: ShoppingBag, shoppingcart: ShoppingCart, store: Store };
 // Entries name icons in any style ("hard-drive", "HardDrive"); compare without dashes and case.
@@ -25,7 +26,9 @@ const BADGE: Record<CatalogItem["status"]["state"], { tone: BadgeTone; label: st
 /** OAuth start routes under /api must be real page loads: a client-side Link would prefetch them. */
 function ConnectLink({ href, children, variant }: { href: string; children: string; variant: "primary" | "outline" }) {
   const className = buttonClasses({ variant, size: "sm" });
-  if (href.startsWith("/api/")) return <a href={href} className={className}>{children}</a>;
+  // A connection's start route is on bupulse.com, where its callback is (docs/HOSTS.md).
+  const toHref = useHostHref();
+  if (href.startsWith("/api/")) return <a href={toHref(href)} className={className}>{children}</a>;
   return <Button href={href} variant={variant} size="sm">{children}</Button>;
 }
 

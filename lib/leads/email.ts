@@ -3,6 +3,7 @@ import { renderEmail } from "@/lib/publishing/email";
 import { sourceLabel } from "./filters";
 import { whatsappLink } from "./normalize";
 import { publicSiteUrl } from "@/lib/auth/site-url";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 export type EmailLead = {
   id: string;
@@ -26,7 +27,7 @@ export function leadLabel(lead: Pick<EmailLead, "name" | "email" | "phone">): st
 }
 
 export function leadsUrl(leadId?: string): string {
-  return `${publicSiteUrl()}/dashboard/leads${leadId ? `?lead=${encodeURIComponent(leadId)}` : ""}`;
+  return appUrl(`/dashboard/leads${leadId ? `?lead=${encodeURIComponent(leadId)}` : ""}`, publicSiteUrl());
 }
 
 function contactLines(lead: EmailLead): string {

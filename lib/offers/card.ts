@@ -17,6 +17,7 @@ import type { CheckoutConfig } from "@/lib/billing/types";
 import { clearPlanCache, getPlan, getPlans } from "@/lib/plan-catalog";
 import { markOfferPaidInTx, withdrawStaleAddition } from "./activate";
 import { additionFits, offerCardQuote, readAddition, type OfferCardQuote } from "./shared";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Card payment of a custom plan offer or of added features (docs/OFFERS.md, "Card"). The offer's price (RWF in Rwanda)
 // is converted with the card rule of RWF plans (Settings rate + card margin, whole dollars up), the server opens a
@@ -124,7 +125,7 @@ export async function startOfferCardCheckout(input: { userId: string; email: str
     customerEmail: input.email,
     customerId: sub.provider === "PADDLE" ? sub.providerCustomerId : null,
     customData,
-    successUrl: `${siteUrl()}/dashboard/billing?checkout=success&since=${now.getTime()}`,
+    successUrl: appUrl(`/dashboard/billing?checkout=success&since=${now.getTime()}`, siteUrl()),
     transactionId,
     quote,
   };

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, useToast } from "@/components/ui";
+import { useHostHref } from "@/components/platform/hosts";
 
 type Props = {
   /** Id of the BuPulse design to edit. Must belong to the signed-in user. */
@@ -21,6 +22,7 @@ type OpenResponse = { url?: string; error?: string; code?: string };
  * If Canva is not linked yet (or access was removed) it sends the user through the connect flow first.
  */
 export function EditInCanva({ designId, enabled, connectNext = "/dashboard/designs", className }: Props) {
+  const toHref = useHostHref();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   if (!enabled) return null;
@@ -48,8 +50,7 @@ export function EditInCanva({ designId, enabled, connectNext = "/dashboard/desig
       tab?.close();
       if (data.code === "not_connected" || data.code === "reconnect") {
         // A full navigation: /api/canva/connect is a route handler that redirects to Canva, not a Next page.
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-        window.location.assign(`/api/canva/connect?next=${encodeURIComponent(connectNext)}`);
+        window.location.assign(toHref(`/api/canva/connect?next=${encodeURIComponent(connectNext)}`));
         return;
       }
       toast(data.error ?? "We could not open Canva. Please try again.", "error");

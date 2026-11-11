@@ -50,6 +50,22 @@ describe("support host routing", () => {
     expect(res.status).not.toBe(307);
     expect(res.headers.get("x-middleware-rewrite")).toBe("https://support.bupulse.com/support/dashboard");
   });
+  it("stays exactly as it is with the Marketing and admin hosts on (docs/HOSTS.md)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://bupulse.com");
+    vi.stubEnv("MARKETING_APP_URL", "https://marketing.bupulse.com");
+    vi.stubEnv("ADMIN_APP_URL", "https://admin.bupulse.com");
+    vi.stubEnv("CLIENT_COOKIE_DOMAIN", ".bupulse.com");
+    try {
+      const res = await proxy(request("https://support.bupulse.com/visitors?x=1", "support.bupulse.com"));
+      expect(res.headers.get("x-middleware-rewrite")).toBe("https://support.bupulse.com/support/visitors?x=1");
+      expect(res.headers.get("location")).toBeNull();
+      expect(res.headers.get("set-cookie") ?? "").not.toContain("bp-auth-scope");
+      const dash = await proxy(request("https://support.bupulse.com/dashboard", "support.bupulse.com"));
+      expect(dash.headers.get("x-middleware-rewrite")).toBe("https://support.bupulse.com/support/dashboard");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it("the main site is unchanged, except /support is noindex", async () => {
     const home = await proxy(request("https://bupulse.com/pricing", "bupulse.com"));
     expect(home.headers.get("x-middleware-rewrite")).toBeNull();

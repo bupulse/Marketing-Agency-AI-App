@@ -5,6 +5,7 @@ import { signCheckoutUser } from "./signing";
 import type { BillingAdapter, BillingWebhook, Invoice, ProviderSubscription } from "./types";
 import { getPaddleConfig, paddleApiBase, paddleCredentialsComplete, SECRET_LABEL, type PaddleEnvironment } from "./paddle-config";
 import { linkSiteUrl } from "@/lib/auth/request-site";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Credentials: Admin -> Settings -> Card payments (Paddle), else the PADDLE_* environment variables (lib/billing/paddle-config.ts).
 async function required(name: "apiKey" | "clientToken" | "webhookSecret"): Promise<string> {
@@ -88,7 +89,7 @@ export const paddle: BillingAdapter = {
       customerId: providerCustomerId ?? null,
       customData: { userId, sig: await signCheckoutUser(userId), plan, interval },
       // `since` lets the billing page wait for this purchase, not an older plan change.
-      successUrl: `${await linkSiteUrl()}/dashboard/billing?checkout=success&since=${Date.now()}`,
+      successUrl: appUrl(`/dashboard/billing?checkout=success&since=${Date.now()}`, await linkSiteUrl()),
     };
   },
 

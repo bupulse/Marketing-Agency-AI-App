@@ -3,13 +3,14 @@ import { publicSiteUrl } from "@/lib/auth/site-url";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { pushToLeadWatchers } from "@/lib/push/service";
 import { alertRecipients } from "@/lib/team/recipients";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Tells the team about a conversation that needs a person (an automation's "Hand over to the team" or "Notify the
 // team" step): an email to the owner and the admins who get lead alerts, and a phone/browser alert on their devices.
 // Never throws: the conversation is in the inbox either way.
 
 export function conversationUrl(conversationId: string): string {
-  return `${publicSiteUrl()}/dashboard/inbox?c=${encodeURIComponent(conversationId)}`;
+  return appUrl(`/dashboard/inbox?c=${encodeURIComponent(conversationId)}`, publicSiteUrl());
 }
 
 export async function notifyTeam(businessId: string, alert: { title: string; body: string; conversationId: string }): Promise<{ emailed: number; pushed: number }> {

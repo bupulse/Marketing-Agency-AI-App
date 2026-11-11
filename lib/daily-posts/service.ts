@@ -31,6 +31,7 @@ import { VOICE_FEATURE } from "@/lib/voice/service";
 import { dayBudget, daysLeft, SKIP_NOTE, type SkipReason } from "./budget";
 import { appRoom, chooseSubject, dueDay, noticeDue, type Subject } from "./plan";
 import { dailyApps, readDailySettings } from "./settings";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 /** A RUNNING run quiet for this long died (the AI calls take a minute or two); it is closed or retaken. */
 export const STALE_RUN_MS = 15 * 60 * 1000;
@@ -240,7 +241,7 @@ export async function sendReadyNotice(runId: string, now = new Date()): Promise<
   const title = "Your posts for today are ready: approve them";
   const posts = waiting === 1 ? "1 post" : `${waiting} posts`;
   const body = `BuPulse made ${posts} for ${run.business.name} for today. Have a look, change anything you like, and approve them. Nothing is posted until you approve.`;
-  const url = `${publicSiteUrl()}/dashboard/content`;
+  const url = appUrl(`/dashboard/content`, publicSiteUrl());
   const { html, text } = renderEmail({
     heading: title,
     intro: body,

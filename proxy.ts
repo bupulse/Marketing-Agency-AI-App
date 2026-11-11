@@ -3,31 +3,59 @@ import { NextResponse, type NextRequest } from "next/server";
 import { REF_COOKIE, refCookieFor } from "@/lib/sales/ref-cookie";
 import { screenPassGate } from "@/lib/ad-brain/screen-pass-gate";
 import { isSupportPath, supportRewriteUrl, supportRoute } from "@/lib/support/app-host";
+import { AUTH_SCOPE_COOKIE, authCookieFor, authScopeValue, frontOrigin, hostKind, hostRewriteUrl, hostRoute, isSelfFetch, marketingOrigin, requestHost, sameHostRedirect, sessionCookieOptions } from "@/lib/platform/app-hosts";
 
-const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/start-trial", "/book-demo", "/custom-plan", "/account"];
+const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/start-trial", "/book-demo", "/custom-plan", "/account", "/apps"];
 
 /** Local development only (REGION_OVERRIDE=1): ?region=RW is kept in a cookie lib/region.ts reads. Otherwise nothing sets it. */
 const REGION_COOKIE = "bp-region";
 const REGION_KEY = /^[A-Z][A-Z0-9_]{1,15}$/;
 
-// Refreshes the Supabase session cookie on every request and keeps
-// signed-out visitors out of the dashboard.
-export async function proxy(request: NextRequest) {
-  // support.bupulse.com serves only the support app: its paths are rewritten under /support (lib/support/app-host.ts).
-  const support = supportRoute(request.nextUrl.pathname, request.headers.get("host"));
-  const pass = () =>
-    support?.action === "rewrite" ? NextResponse.rewrite(supportRewriteUrl(support.path, request.nextUrl.search, request.url), { request }) : NextResponse.next({ request });
-  let response = pass();
+/**
+ * Host redirects are 307 (never 308): browsers keep a 308 for ever, so switching MARKETING_APP_URL or ADMIN_APP_URL
+ * off would not reach people who had been redirected once (docs/HOSTS.md).
+ */
+const HOST_REDIRECT = 307;
 
-  // The Ad Brain's screen robot: local + read-only + company account only (lib/ad-brain/screen-pass-gate.ts). Null when
-  // the request carries no screen pass. Keep this line when proxy.ts is rewritten.
+// Routes each host (lib/platform/app-hosts.ts, lib/support/app-host.ts), refreshes the Supabase session cookie on
+// every request and keeps signed-out visitors out of the dashboard.
+export async function proxy(request: NextRequest) {
+  // The Ad Brain's screen robot, first and before any host routing: local (never a self-fetch) + read-only app paths +
+  // company account only (lib/ad-brain/screen-pass-gate.ts). Null when the request carries no screen pass. Keep this
+  // line at the top when proxy.ts is rewritten.
   const robot = await screenPassGate(request);
   if (robot) return robot;
+  const path = request.nextUrl.pathname;
+  // support.bupulse.com serves only the support app: its paths are rewritten under /support (lib/support/app-host.ts).
+  const support = supportRoute(path, request.headers.get("host"));
+  // bupulse.com, marketing.bupulse.com and admin.bupulse.com (switched off until their addresses are set). Next.js's own
+  // fetch of a server action's redirect target comes from localhost: its host is in X-Forwarded-Host (requestHost).
+  const host = requestHost(request.headers);
+  const selfFetch = isSelfFetch(request.headers);
+  const route = support ? null : hostRoute(request.method, path, request.nextUrl.search, host);
+  // On the self-hosted PC (`next start` behind the tunnel) a host rewrite (admin.bupulse.com/ → /admin) is fetched by the
+  // server itself from localhost, with the visitor's host in X-Forwarded-Host, and comes back through this proxy as a
+  // self-fetch of the app path. Its "clean the address" redirect (/admin → /) must not answer it: that gave every admin
+  // page, and every Marketing page for a signed-in client, an empty 204 (11 November 2026). A same-host clean-path
+  // redirect on a self-fetch is served as it is (the path is already the app's own); any other host redirect is left to
+  // the browser.
+  if (route?.action === "redirect") {
+    if (!selfFetch) return noindexOnApp(NextResponse.redirect(route.url, HOST_REDIRECT), host);
+    if (!sameHostRedirect(route.url, host)) return leaveToBrowser();
+  }
+  const rewrite = support?.action === "rewrite" ? supportRewriteUrl(support.path, request.nextUrl.search, request.url) : route?.action === "rewrite" ? hostRewriteUrl(route.path, request.nextUrl.search, request.url) : null;
+  const pass = () => (rewrite ? NextResponse.rewrite(rewrite, { request }) : NextResponse.next({ request }));
+  let response = pass();
 
+  // The session cookie this host uses: one client cookie shared by bupulse.com and the service hosts, the admin host's
+  // own, or Supabase's default (the support host, and everything while CLIENT_COOKIE_DOMAIN is unset).
+  const cookie = authCookieFor(host);
+  const cookieOptions = sessionCookieOptions(host);
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      ...(cookieOptions ? { cookieOptions } : {}),
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -51,10 +79,21 @@ export async function proxy(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const signedIn = Boolean(data?.claims?.sub);
 
-  const path = request.nextUrl.pathname;
-  // The support app is never indexed, on its own host or at /support.
-  if (support || isSupportPath(path)) response.headers.set("X-Robots-Tag", "noindex, nofollow");
-  if (!support && !signedIn && PROTECTED.some((p) => path === p || path.startsWith(`${p}/`))) {
+  const kind = support ? "support" : hostKind(host);
+  // The support app is never indexed, on its own host or at /support; nor are the Marketing and admin hosts.
+  if (support || isSupportPath(path) || kind === "marketing" || kind === "admin") response.headers.set("X-Robots-Tag", "noindex, nofollow");
+
+  if (kind === "marketing" && !signedIn) {
+    // Signed out on the Marketing host: the one client sign-in on bupulse.com, back to this clean address afterwards
+    // (lib/auth/safe-next.ts turns it back into the app path). Assets, APIs and auth routes are not gated.
+    const appPath = route?.action === "rewrite" ? route.path : path;
+    if (PROTECTED.some((p) => appPath === p || appPath.startsWith(`${p}/`))) {
+      if (selfFetch) return leaveToBrowser();
+      const url = new URL("/login", frontOrigin());
+      url.searchParams.set("next", `${marketingOrigin()}${path}${request.nextUrl.search}`);
+      return noindexOnApp(NextResponse.redirect(url, HOST_REDIRECT), host);
+    }
+  } else if (kind === "front" && !signedIn && PROTECTED.some((p) => path === p || path.startsWith(`${p}/`))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     // Keep the query too: a Shopify install arrives as /dashboard/stores/shopify?shop=…&hmac=… and must survive sign-in.
@@ -63,6 +102,16 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // The browser's Supabase client (lib/supabase/client.ts) cannot read the server's environment: this small cookie says
+  // which session cookie this host uses. Removed again when the split is switched off.
+  const scope = authScopeValue(cookie);
+  if (scope && request.cookies.get(AUTH_SCOPE_COOKIE)?.value !== scope) response.cookies.set(AUTH_SCOPE_COOKIE, scope, { path: "/", sameSite: "lax", maxAge: 365 * 24 * 60 * 60 });
+  else if (!scope && request.cookies.has(AUTH_SCOPE_COOKIE)) response.cookies.delete(AUTH_SCOPE_COOKIE);
+
+  // Once the client hosts share bp-client-auth, the old default-named session cookies (sb-<project>-auth-token, host-only)
+  // are dead weight sent with every request: removed. Everyone signs in again once after the switch (docs/HOSTS.md).
+  if (cookie?.domain) for (const { name } of request.cookies.getAll()) if (/^sb-[a-z0-9]+-auth-token(\.\d+)?$/.test(name)) response.cookies.delete(name);
+
   const region = request.nextUrl.searchParams.get("region")?.toUpperCase();
   if (process.env.REGION_OVERRIDE === "1" && region && REGION_KEY.test(region)) response.cookies.set(REGION_COOKIE, region, { path: "/", maxAge: 30 * 24 * 60 * 60, sameSite: "lax" });
 
@@ -70,6 +119,21 @@ export async function proxy(request: NextRequest) {
   const ref = refCookieFor(request.nextUrl.searchParams.get("ref"), request.cookies.get(REF_COOKIE)?.value);
   if (ref) response.cookies.set(ref.name, ref.value, ref.options);
 
+  return response;
+}
+
+/**
+ * A host redirect asked for by Next.js's own fetch of a server action's redirect target: answered with an empty, non-RSC
+ * response, so Next.js does not stream that fetch's result (its server-side fetch would follow the redirect to another
+ * host without the visitor's cookies) and lets the browser follow the action's redirect itself, through this proxy.
+ */
+function leaveToBrowser() {
+  return new NextResponse(null, { status: 204 });
+}
+
+function noindexOnApp(response: NextResponse, host: string | null) {
+  const kind = hostKind(host);
+  if (kind === "marketing" || kind === "admin") response.headers.set("X-Robots-Tag", "noindex, nofollow");
   return response;
 }
 

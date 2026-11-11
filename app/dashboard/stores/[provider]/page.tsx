@@ -14,6 +14,7 @@ import { getConnection, getPending } from "@/lib/stores/connection";
 import { relativeSync } from "@/lib/stores/labels";
 import { installRedirect, isShopifyEnabled, shopifyConfig } from "@/lib/stores/shopify";
 import { isStoreProvider, STORE_NAMES } from "@/lib/stores/types";
+import { frontOrigin, marketingOrigin } from "@/lib/platform/app-hosts";
 
 export const metadata = { title: "Products from your store" };
 
@@ -93,7 +94,7 @@ export default async function StorePage({ params, searchParams }: { params: Prom
           <GlassCard className="flex flex-col gap-4">
             <h2 className="text-lg font-semibold">Connect your Shopify store</h2>
             <p className="text-[14px] text-muted">BuPulse asks for read-only access to your products. Nothing in your store is changed.</p>
-            <form action="/api/stores/shopify/connect" method="post" className="flex flex-col gap-3 sm:flex-row">
+            <form action={`${marketingOrigin() ? frontOrigin() : ""}/api/stores/shopify/connect`} method="post" className="flex flex-col gap-3 sm:flex-row">
               <Input name="shop" placeholder="your-shop.myshopify.com" aria-label="Your Shopify address" autoCapitalize="none" autoCorrect="off" spellCheck={false} required className="flex-1" />
               <Button type="submit">Connect</Button>
             </form>

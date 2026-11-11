@@ -8,13 +8,16 @@ import { cn } from "@/lib/cn";
 import { PLAN_PICK_COOKIE, PLAN_PICK_MAX_AGE, QUIZ_QUESTIONS, parseAnswers, recommendPlan, type QuizAnswers } from "@/lib/plan-quiz";
 import type { RegionalPlan } from "@/lib/region-prices";
 import { CtaButton, useCtaMode } from "@/components/marketing/quote/cta";
+import { browserClientCookieDomain } from "@/lib/platform/app-hosts";
 
 const CUSTOM_PLAN_SIGNUP = `/signup?next=${encodeURIComponent("/custom-plan?from=quiz")}`;
 
 /** Keeps the pick for /start-trial, which preselects it (lib/plan-quiz.ts). Only a plan key. */
 function rememberPick(planKey: string) {
   try {
-    document.cookie = `${PLAN_PICK_COOKIE}=${encodeURIComponent(planKey)}; path=/; max-age=${PLAN_PICK_MAX_AGE}; samesite=lax${location.protocol === "https:" ? "; secure" : ""}`;
+    // Shared with the Marketing host, where /start-trial reads it, once it has its own address (docs/HOSTS.md).
+    const domain = browserClientCookieDomain(document.cookie);
+    document.cookie = `${PLAN_PICK_COOKIE}=${encodeURIComponent(planKey)}; path=/; max-age=${PLAN_PICK_MAX_AGE}; samesite=lax${domain ? `; domain=${domain}` : ""}${location.protocol === "https:" ? "; secure" : ""}`;
   } catch {
     /* cookies blocked: the plan step simply starts on the most popular plan */
   }

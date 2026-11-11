@@ -11,6 +11,7 @@ import { dayKey, zonedParts } from "@/lib/publishing/time";
 import { alertRecipients } from "@/lib/team/recipients";
 import { subjectHref } from "./grouping";
 import { networkLabel } from "./labels";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 /** Local hour from which the day's email may go. */
 export const SUMMARY_HOUR = 8;
@@ -75,7 +76,7 @@ export function summaryEmail(args: { businessName: string; zone: string; posts: 
       blocks: [{ label: "Scheduled", value: [...lines, ...(more > 0 ? [`and ${more} more`] : [])].join("\n") }],
       links,
       linksLabel: "Open a post",
-      button: { label: "Review scheduled posts", url: `${base}/dashboard/content?auto=1&status=scheduled` },
+      button: { label: "Review scheduled posts", url: appUrl(`/dashboard/content?auto=1&status=scheduled`, base) },
       footer: `Choose which apps need your approval in Content, Settings: ${base}/dashboard/content/settings`,
     }),
   };

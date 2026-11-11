@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
-import { linkSiteUrl } from "@/lib/auth/request-site";
+import { frontLinkUrl } from "@/lib/auth/request-site";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { askMessage, can } from "@/lib/team/roles";
 import { campaignPlaces, creatorOf, CreatorCampaignError, lock, placesTaken, readHandles, type CampaignActor } from "./campaigns";
@@ -94,7 +94,7 @@ export async function offerCreator(actor: CampaignActor, input: { profileId: str
   });
 
   const expiresAt = offerExpiresAt(now);
-  const sent = await sendOfferEmail(email, profile.name, campaign.name, campaign.business.name, `${await linkSiteUrl()}/creator`, expiresAt);
+  const sent = await sendOfferEmail(email, profile.name, campaign.name, campaign.business.name, `${await frontLinkUrl()}/creator`, expiresAt);
   return { id: row.id, name: profile.name, campaignName: campaign.name, expiresAt: expiresAt.toISOString(), sent };
 }
 

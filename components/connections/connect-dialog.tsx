@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { buttonClasses, Dialog } from "@/components/ui";
 import { NetworkIcon } from "./network-icon";
 import { connectHref, primaryVariant, showFacebookLink, type ChannelInfo } from "./types";
+import { useHostHref } from "@/components/platform/hosts";
 
 // BuPulse-Socials: the sign-in page is Composio's, so say who that is before the person sees its name.
 const COMPOSIO_NOTE = "You sign in on a secure page from Composio, the partner BuPulse uses to connect social accounts. We never see your password.";
@@ -36,6 +37,8 @@ function Checklist({ items }: { items: string[] }) {
 
 /** Instagram: professional (Business or Creator) accounts only, which BuPulse posts to automatically. */
 function InstagramBody({ channel }: { channel: ChannelInfo }) {
+  // Connections start on bupulse.com, where their callbacks are (docs/HOSTS.md): an absolute link from the Marketing host.
+  const toHref = useHostHref();
   const viaFacebookOnly = !channel.viaComposio && !channel.configured;
   return (
     <div className="flex flex-col gap-5">
@@ -49,13 +52,13 @@ function InstagramBody({ channel }: { channel: ChannelInfo }) {
         )}
       </div>
       <div className="flex flex-col items-stretch gap-3">
-        <a href={connectHref("instagram", primaryVariant(channel))} className={buttonClasses({ size: "lg", className: "w-full" })}>
+        <a href={toHref(connectHref("instagram", primaryVariant(channel)))} className={buttonClasses({ size: "lg", className: "w-full" })}>
           {viaFacebookOnly ? "Continue with Facebook" : "Connect Instagram"}
         </a>
         {channel.viaComposio ? (
           <p className="text-center text-xs text-muted">{COMPOSIO_NOTE}</p>
         ) : showFacebookLink(channel) ? (
-          <a href={connectHref("instagram", "facebook")} className="min-h-11 py-3 text-center text-sm font-semibold text-pulse-blue underline-offset-4 hover:underline">
+          <a href={toHref(connectHref("instagram", "facebook"))} className="min-h-11 py-3 text-center text-sm font-semibold text-pulse-blue underline-offset-4 hover:underline">
             Connect Instagram through Facebook
           </a>
         ) : null}
@@ -69,6 +72,7 @@ function InstagramBody({ channel }: { channel: ChannelInfo }) {
 
 /** The Connect modal. Instagram explains professional accounts; other networks get one simple card. */
 export function ConnectDialog({ channel, onClose }: { channel: ChannelInfo; onClose: () => void }) {
+  const toHref = useHostHref();
   const close = (open: boolean) => {
     if (!open) onClose();
   };
@@ -89,7 +93,7 @@ export function ConnectDialog({ channel, onClose }: { channel: ChannelInfo; onCl
                 : `You will sign in on ${channel.label} and choose what BuPulse may post to. We never see your password.`}
           </p>
           {channel.detail && <p className="max-w-sm text-sm text-muted">{channel.detail}</p>}
-          <a href={connectHref(channel.network)} className={buttonClasses({ size: "lg", className: "w-full" })}>
+          <a href={toHref(connectHref(channel.network))} className={buttonClasses({ size: "lg", className: "w-full" })}>
             Connect {channel.label}
           </a>
         </div>

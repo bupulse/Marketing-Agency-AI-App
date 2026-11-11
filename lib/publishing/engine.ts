@@ -23,6 +23,7 @@ import { CONTEST_NOTE, contestBlocked } from "@/lib/content-flow/contest";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { recordStudioOutcome } from "@/lib/video-studio/outcomes";
 import { dayKey, isValidTimeZone, parseDayKey, zonedTimeToUtc } from "./time";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 /** A claimed post whose lock is older than this was abandoned by a crashed run and is taken again. */
 export const STALE_LOCK_MINUTES = 10;
@@ -264,7 +265,7 @@ async function emailOwner(post: ClaimedPost, kind: "failed" | "uncertain", messa
         { label: uncertain ? "What happened" : "What went wrong", value: message },
         { label: "The post", value: composeText(post.text, post.hashtags).slice(0, 500) },
       ],
-      button: { label: reconnect ? "Reconnect your account" : "Open your calendar", url: `${publicSiteUrl()}/dashboard/${reconnect ? "connections" : "calendar"}` },
+      button: { label: reconnect ? "Reconnect your account" : "Open your calendar", url: appUrl(`/dashboard/${reconnect ? "connections" : "calendar"}`, publicSiteUrl()) },
     }),
   };
   for (const to of recipients) await sendEmail({ to, ...email });

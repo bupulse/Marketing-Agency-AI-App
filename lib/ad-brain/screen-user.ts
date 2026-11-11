@@ -14,7 +14,7 @@ export async function screenPassUser(): Promise<User | null> {
     const [jar, h] = await Promise.all([cookies(), headers()]);
     token = jar.get(SCREEN_PASS_COOKIE)?.value;
     if (!token) return null;
-    local = isLocalRequest({ host: h.get("host"), cfConnectingIp: h.get("cf-connecting-ip"), forwardedFor: h.get("x-forwarded-for"), realIp: h.get("x-real-ip") });
+    local = isLocalRequest({ host: h.get("host"), cfConnectingIp: h.get("cf-connecting-ip"), forwardedFor: h.get("x-forwarded-for"), realIp: h.get("x-real-ip"), forwardedHost: h.get("x-forwarded-host"), forwarded: h.get("forwarded") });
   } catch {
     // Outside a request (a cron job, a script): there is no pass.
     return null;

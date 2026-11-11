@@ -47,6 +47,7 @@ import {
 } from "./shared";
 import { getInvoiceObject, invoicePdfPath, putInvoiceObject } from "./storage";
 import { publicSiteUrl } from "@/lib/auth/site-url";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Invoices (docs/INVOICES.md). The admin side (create on activation, edit a draft, send, mark paid, void) runs in the
 // console only and is audited; every change is one conditional write on the status, so a double click or two admins
@@ -77,7 +78,7 @@ export async function nextInvoiceNumber(db: Db = prisma): Promise<string> {
 }
 
 /** On the invoice PDF and in emails, opened later from any device: the public address. */
-export const payUrlOf = (number: string) => `${publicSiteUrl()}/dashboard/billing?invoice=${encodeURIComponent(number)}`;
+export const payUrlOf = (number: string) => appUrl(`/dashboard/billing?invoice=${encodeURIComponent(number)}`, publicSiteUrl());
 
 async function planLabelOf(row: Pick<Row, "planKey" | "interval">): Promise<string | null> {
   if (!row.planKey) return null;

@@ -1,5 +1,6 @@
 // Where the visitor chat shows (docs/SUPPORT_CHAT.md "1. Where the chat shows"). Pure, so the rules are tested.
 import type { Surface } from "../contract";
+import { marketingAppPath } from "@/lib/platform/app-hosts";
 
 /**
  * Never the floating chat: Admin, the support app, the full-page chat (it is the chat), link-in-bio pages (they get
@@ -12,7 +13,10 @@ const under = (path: string, prefix: string) => path === prefix || path.startsWi
 /** The surface for a page, or null when the chat must not show there. */
 export function chatSurface(pathname: string, host = ""): Surface | null {
   if (/^support\./i.test(host)) return null;
-  const path = pathname || "/";
+  // The admin console's own host never shows the chat; on the Marketing host every address is the dashboard (clean
+  // paths: "/posts" is /dashboard/posts) or its set-up pages (docs/HOSTS.md).
+  if (/^admin\./i.test(host)) return null;
+  const path = /^marketing\./i.test(host) ? marketingAppPath(pathname || "/") : pathname || "/";
   if (EXCLUDED_PREFIXES.some((p) => under(path, p))) return null;
   if (under(path, "/dashboard")) return "dashboard";
   if (under(path, "/creator")) return "creator";

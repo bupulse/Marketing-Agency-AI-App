@@ -1,0 +1,302 @@
+/* BuPulse inline video player (video-player.tsx). Dark controls over the picture, brand blue-to-violet progress. */
+.vp {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  color: #f5f5f7;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  outline: none;
+  isolation: isolate;
+}
+.vp:focus-visible {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 5px #7b5cff;
+}
+.vp-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+.vp-full .vp-video {
+  object-fit: contain;
+}
+.vp-idle {
+  cursor: none;
+}
+
+/* Big centred play button. */
+.vp-big {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  width: 68px;
+  height: 68px;
+  margin: -34px 0 0 -34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: linear-gradient(135deg, rgba(47, 107, 255, 0.92), rgba(123, 92, 255, 0.92));
+  box-shadow: 0 14px 34px -10px rgba(47, 107, 255, 0.8);
+  color: #fff;
+  cursor: pointer;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+.vp-big:hover {
+  transform: scale(1.06);
+}
+.vp-playing .vp-big {
+  opacity: 0;
+  transform: scale(0.9);
+  pointer-events: none;
+}
+/* Touch screens: while the controls are showing, the big button pauses. */
+@media (hover: none) {
+  .vp-playing:not(.vp-idle) .vp-big {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.45);
+    box-shadow: none;
+  }
+}
+
+.vp-unmute {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Bottom bar: scrub + buttons, on a dark fade. */
+.vp-bar {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 36px 10px 6px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.82), transparent);
+  transition: opacity 0.3s ease;
+}
+.vp-bar-pre {
+  opacity: 0;
+  pointer-events: none;
+}
+.vp:hover .vp-bar-pre,
+.vp:focus-within .vp-bar-pre {
+  opacity: 1;
+  pointer-events: auto;
+}
+.vp-idle .vp-bar,
+.vp-idle .vp-unmute {
+  opacity: 0;
+  pointer-events: none;
+}
+.vp-scrub {
+  position: relative;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+.vp-rail {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+  transition: height 0.15s ease;
+}
+.vp-scrub:hover .vp-rail,
+.vp-scrub[data-drag] .vp-rail,
+.vp-scrub:focus-visible .vp-rail {
+  height: 6px;
+}
+.vp-rail i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+.vp-buf {
+  background: rgba(255, 255, 255, 0.35);
+}
+.vp-hov {
+  background: rgba(255, 255, 255, 0.25);
+}
+.vp-played {
+  background: linear-gradient(90deg, #2f6bff, #7b5cff);
+}
+.vp-knob {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow:
+    0 0 0 3px #7b5cff,
+    0 2px 8px rgba(0, 0, 0, 0.5);
+  transform: scale(0);
+  transition: transform 0.15s ease;
+  pointer-events: none;
+}
+.vp-scrub:hover .vp-knob,
+.vp-scrub[data-drag] .vp-knob,
+.vp-scrub:focus-visible .vp-knob {
+  transform: scale(1);
+}
+@media (hover: none) {
+  .vp-knob {
+    transform: scale(0.85);
+  }
+}
+.vp-tip {
+  position: absolute;
+  bottom: 22px;
+  transform: translateX(-50%);
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.85);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.vp-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.vp-btn {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.vp-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.vp-btn:focus-visible,
+.vp-big:focus-visible,
+.vp-unmute:focus-visible,
+.vp-scrub:focus-visible {
+  outline: 2px solid #b7a6ff;
+  outline-offset: 2px;
+}
+.vp-time {
+  margin-left: 6px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0.92;
+}
+@media (max-width: 420px) {
+  .vp-hide-xs {
+    display: none;
+  }
+}
+/* Narrow frames (the example ads in a row) keep only what fits. */
+@container (max-width: 240px) {
+  .vp-hide-xs {
+    display: none;
+  }
+}
+
+.vp-spin {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 9999px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  opacity: 0;
+  animation: vp-spin 0.9s linear infinite;
+  pointer-events: none;
+}
+.vp-waiting .vp-spin {
+  opacity: 1;
+}
+@keyframes vp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.vp-flash {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+  animation: vp-flash 0.8s ease forwards;
+}
+@keyframes vp-flash {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-big,
+  .vp-bar,
+  .vp-rail,
+  .vp-knob {
+    transition: none;
+  }
+  .vp-flash {
+    animation: none;
+    opacity: 0;
+  }
+  .vp-spin {
+    animation-duration: 2.4s;
+  }
+}

@@ -4,7 +4,9 @@
 $tunnelId = "cf9eb6ae-8290-4e87-8c8e-fc6e0c3375d0"
 $credFile = Join-Path $env:USERPROFILE ".cloudflared\$tunnelId.json"
 $config = Join-Path $env:USERPROFILE ".cloudflared\bupulse-prod.yml"
-$hosts = @("bupulse.com", "www.bupulse.com", "support.bupulse.com")
+# marketing. and admin. (docs/HOSTS.md) are served only once MARKETING_APP_URL / ADMIN_APP_URL are set; until then
+# they show the main site, and nothing links to them. agency. is phase 2: not here yet.
+$hosts = @("bupulse.com", "www.bupulse.com", "support.bupulse.com", "marketing.bupulse.com", "admin.bupulse.com")
 $lines = @("tunnel: $tunnelId", "credentials-file: $credFile", "ingress:")
 foreach ($h in $hosts) { $lines += "  - hostname: $h"; $lines += "    service: http://localhost:3002" }
 $lines += "  - service: http_status:404"

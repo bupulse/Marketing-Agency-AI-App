@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Menu, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useHostHref } from "@/components/platform/hosts";
 import { isActive, type NavItem } from "./nav";
 
 /** "9+" past nine: the badge stays small. */
@@ -34,13 +35,14 @@ export function BottomBar({
   onMenu: (button: HTMLButtonElement) => void;
 }) {
   const slot = "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-1 text-[11px] font-semibold no-underline";
+  const toHref = useHostHref();
   const link = ({ href, label, icon: Icon }: NavItem) => {
     const active = isActive(pathname, href);
     const badge = href === "/dashboard/inbox" && unread > 0;
     return (
       <Link
         key={href}
-        href={href}
+        href={toHref(href)}
         aria-current={active ? "page" : undefined}
         aria-label={badge ? `${label}, ${unread} unread` : undefined}
         className={cn(slot, active ? "text-pulse-blue" : "text-muted hover:text-text")}

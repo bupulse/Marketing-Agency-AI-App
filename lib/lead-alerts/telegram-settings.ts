@@ -7,6 +7,7 @@ import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { telegramText, type LeadAlert } from "./format";
 import { getTelegramUpdates, latestPrivateChat, sendTelegramMessage, telegramToken, TELEGRAM_TOKEN_ENV, type TelegramChat } from "./telegram";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Admin -> Settings, "Lead alerts -> Telegram": which Telegram chat the instant lead alerts go to. The owner makes a bot
 // with @BotFather, pastes its token in Admin -> Services (TELEGRAM_BOT_TOKEN), sends /start to the bot, then presses
@@ -92,7 +93,7 @@ export function sampleAlert(now = new Date()): LeadAlert {
     source: "instagram",
     page: `${publicSiteUrl()}/quote?src=instagram`,
     at: now,
-    openUrl: `${publicSiteUrl()}/admin/quotes`,
+    openUrl: appUrl(`/admin/quotes`, publicSiteUrl()),
   };
 }
 
