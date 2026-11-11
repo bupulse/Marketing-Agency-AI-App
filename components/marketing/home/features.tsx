@@ -10,7 +10,7 @@ export function Features() {
         <Reveal>
           <SectionHeading
             align="left"
-            eyebrow="Features"
+            eyebrow="Everything in one app"
             title="A whole marketing team, without the payroll."
             className="mb-9 max-w-3xl"
           />

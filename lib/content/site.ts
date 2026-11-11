@@ -53,8 +53,6 @@ export const footerLinks = [
   { label: "Data deletion", href: "/data-deletion" },
 ];
 
-export const heroWords = ["shop.", "school.", "construction company.", "IT business.", "restaurant.", "salon."];
-
 export interface Industry {
   slug: string;
   name: string;
@@ -94,17 +92,13 @@ export const features: Feature[] = [
   { title: "Knows your business", icon: Brain, text: "Teach it once: products, prices, hours, service area and tone. Everything it writes uses that knowledge." },
   { title: "Content generator", icon: PenLine, text: "Social captions with hashtags, short video scripts and ad headlines in your brand voice." },
   { title: "Post everywhere", icon: ChartLine, text: "Connect Instagram, Facebook, TikTok, LinkedIn and YouTube. Plan, schedule and publish from one calendar." },
-  { title: "Lead-capturing chat", icon: MessageCircle, text: "One line of code on your website. It answers visitors and saves their name, email and what they need." },
+  { title: "Lead-capturing chat", icon: MessageCircle, text: "One line of code on your website. It answers visitors and saves their name, phone or email and what they need." },
   { title: "Brand designs", icon: Image, text: "Ready-to-post graphics with your logo and colors. Or just describe the image you want." },
-  { title: "Video and voiceover", icon: Video, text: "Turn your photos and scripts into short videos with a natural voice.", soon: true },
+  // Slideshow videos and voice-overs are built (lib/features.ts "video", "voice") in the plans that include them; AI
+  // presenter ads are made on request (the home page's AI videos section says how).
+  { title: "Videos for Reels and TikTok", icon: Video, text: "Short vertical videos made from your posts and photos, with captions and music. AI presenter ads on request.", note: "Not in every plan" },
   // Not in the standard plans: it comes with a custom plan or as an add-on (lib/offers/shared.ts ADDONS), so the card says so.
   { title: "Autopilot", icon: Sparkles, text: "AI plans your week of posts: new arrivals, offers and tips, each written for every network with a design. You approve them all with one tap and they go out on schedule. Comes with a custom plan, or as an add-on to yours.", note: "Custom plan or add-on", wide: true },
-];
-
-export const steps = [
-  { title: "Tell us about your business", text: "What you sell, who you serve, your logo, colors and voice. A short guided setup." },
-  { title: "Add what you want to promote", text: "A product, a service, an event, an offer or a finished project." },
-  { title: "Post and win customers", text: "Publish to your socials while the chat widget turns website visitors into leads." },
 ];
 
 /** Answers may contain {trialDays}; fill it with fillFaq() where they are shown (the trial length is an admin setting). */
@@ -112,8 +106,12 @@ export const faqs = [
   { q: "Does BuPulse work for my type of business?", a: "Yes. Shops, schools, construction, IT, restaurants, salons, clinics and more. You tell BuPulse what you do, and it writes for your customers." },
   { q: "How do I get started?", a: "Sign up, tell BuPulse about your business, then choose the plan you want to try: your {trialDays}-day free trial starts right away, with a limited number of generations, so you can see real results before you pay. No card needed for the trial." },
   { q: "Do I need marketing experience?", a: "No. If you can describe what you sell, BuPulse does the rest. You review and post." },
+  { q: "Are the people in your videos real?", a: "In our AI presenter videos, no. The presenter is made with AI: they look and sound like a real person, but nobody was filmed. That is what makes a fresh video ad quick to make, with no camera, studio or actor to book." },
+  { q: "Can the videos speak Kinyarwanda?", a: "AI voices are not good enough in Kinyarwanda yet, so we don’t use them. Kinyarwanda videos use a real Rwandan voice that you record as a voice note, or music with Kinyarwanda captions. AI presenters speak English." },
   { q: "Which social networks can I post to?", a: "Instagram, Facebook, TikTok, LinkedIn and YouTube. You connect your own accounts with a normal login." },
-  { q: "How does the chat widget get on my website?", a: "You paste one line of code into your site. It answers visitors from the information you gave BuPulse and saves their details in your Leads list." },
+  { q: "Do I have to approve every post?", a: "At first, yes: every daily post waits for your OK, and one tap approves it. When you trust it, switch on automatic approval in Post settings and BuPulse posts on its own at the best time of day." },
+  { q: "How does the chat widget get on my website?", a: "You paste one line of code into your site. It answers visitors from the information you gave BuPulse, saves their name and phone number or email in your Leads list and emails you about each new lead." },
+  { q: "How do I pay?", a: "Monthly, or yearly with a discount. In Rwanda you pay by MTN MoMo, Airtel Money or card; elsewhere by card. You can cancel any time, and your plan stays active until the end of the period you paid for." },
   { q: "Will it sound like my brand?", a: "Yes. You set your brand voice once during setup, and everything is written in it." },
   { q: "What is done-for-you?", a: "If you would rather not do it yourself, our team runs your social content and lead capture with BuPulse for a monthly fee." },
 ];

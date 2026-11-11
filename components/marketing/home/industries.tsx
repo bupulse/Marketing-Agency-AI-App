@@ -40,7 +40,7 @@ export function IndustryCards() {
           <SectionHeading
             align="left"
             eyebrow="Whatever you sell"
-            title="BuPulse learns your business and speaks your customers’ language."
+            title="Salons, restaurants, shops, hardware stores: BuPulse learns your trade and speaks to your customers."
             className="mb-9 max-w-3xl"
           />
         </Reveal>
