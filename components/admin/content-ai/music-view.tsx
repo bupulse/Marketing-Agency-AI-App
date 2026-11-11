@@ -3,7 +3,8 @@ import { MusicUpload } from "@/components/admin/music-upload";
 import { Button, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { isMood, MOOD_LABEL, MOODS } from "@/lib/music/tracks";
-import { deleteTrackAction, generateTrackAction, setTrackActiveAction } from "@/app/admin/(console)/(content)/music/actions";
+import { deleteTrackAction, generateMusicBatchAction, generateTrackAction, setTrackActiveAction } from "@/app/admin/(console)/(content)/music/actions";
+import { BATCH_MAX, batchCostUsd, MUSIC_BATCH } from "@/lib/music/batch";
 import { CARD, DataList, EmptyState, ExpandCard, FilterChips, PageHeader, StatGrid, StatTile, StatusPill, type SearchParamsLike } from "../kit";
 import { FormChips } from "../kit/form-chips";
 import { notice } from "../ui";
@@ -42,6 +43,20 @@ export function MusicView({ tracks, urlOf, maxBytes, show, params, message }: { 
             <Field label="Describe the music" required><Input name="prompt" minLength={10} maxLength={400} required placeholder="Warm afrobeats groove with light percussion and guitar" /></Field>
             <Field label="Length (seconds, at most 60)" required><Input name="seconds" type="number" min={10} max={60} defaultValue={30} required className="max-w-32" /></Field>
             <Button type="submit" className="self-start">Generate a track</Button>
+          </form>
+        </ExpandCard>
+        <ExpandCard icon={Wand2} tone="pink" title="Generate a batch" summary={`The next ${BATCH_MAX} of ${MUSIC_BATCH.length} planned tracks (Afrobeat, calm, inspiring, corporate, celebration, chill). $${batchCostUsd(BATCH_MAX, 30).toFixed(3)} a click.`}>
+          <form action={generateMusicBatchAction} className="flex flex-col gap-4">
+            <input type="hidden" name="count" value={BATCH_MAX} />
+            <input type="hidden" name="seconds" value={30} />
+            <input type="hidden" name="confirmUsd" value={batchCostUsd(BATCH_MAX, 30)} />
+            <p className="text-[13px] text-muted">
+              {BATCH_MAX} tracks of 30 seconds at ElevenLabs Music&apos;s $0.15 a minute: ${batchCostUsd(BATCH_MAX, 30).toFixed(3)}. All {MUSIC_BATCH.length}: ${batchCostUsd(MUSIC_BATCH.length, 30).toFixed(2)} (at most 20 a day). Tracks already in the library are skipped.
+            </p>
+            <label className="flex min-h-11 items-center gap-3 text-[14px]">
+              <input type="checkbox" name="confirm" className="size-5" required /> I accept the cost of ${batchCostUsd(BATCH_MAX, 30).toFixed(3)}
+            </label>
+            <Button type="submit" className="self-start">Generate {BATCH_MAX} tracks</Button>
           </form>
         </ExpandCard>
       </div>

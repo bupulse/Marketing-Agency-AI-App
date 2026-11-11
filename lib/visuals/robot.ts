@@ -67,6 +67,15 @@ export function robotWaitingWhere(now: Date) {
   };
 }
 
+/**
+ * Whether this server has the PC's render worker beside it (docs/SELF_HOST.md, "Videos made on the PC"): set by
+ * scripts/self-host/windows/server.mjs. Pending videos are then made within a minute or two, not at GitHub's next
+ * 15-minute run, and the screens say so.
+ */
+export function serverRenderOn(): boolean {
+  return robotEnabled() && process.env.BUPULSE_SERVER_RENDER === "1";
+}
+
 /** How the owner's screen describes a pending video while the robot is on. */
 export type RobotState = "queued" | "making" | "browser" | null;
 
@@ -279,7 +288,7 @@ export async function failRobotVideo(job: string, reason: RobotFailure, now = ne
 }
 
 /** The robot's end-of-run heartbeat: counts only, for the admin Services card and the Health page. */
-export async function recordRobotRun(counts: { claimed: number; made: number; failed: number; waiting?: number }) {
+export async function recordRobotRun(counts: { claimed: number; made: number; failed: number; waiting?: number; runner?: "github" | "pc" }) {
   return recordCron(ROBOT_JOB, async () => ({ ...counts, ok: !(counts.failed > 0 && counts.made === 0) }));
 }
 

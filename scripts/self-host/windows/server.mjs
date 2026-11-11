@@ -3,19 +3,21 @@
 //
 //   node scripts/self-host/windows/server.mjs build   prisma generate + next build with the production settings
 //   node scripts/self-host/windows/server.mjs start   next start (stays in the foreground; Task Scheduler runs it)
+//   node scripts/self-host/windows/server.mjs videos  the render worker (scripts/video-robot/pc-worker.mjs), started by
+//                                                      the job loop: makes pending videos right away (docs/SELF_HOST.md)
 //
 // Production settings are read from Netlify at each run (the folder is linked with `netlify link`) and passed to the
 // child only in memory, never written to disk. CRON_SECRET is this PC's own, kept in %USERPROFILE%\bupulse-prod\
 // cron-secret.txt (readable by this Windows user only, written by install.ps1), so Netlify's old scheduled functions
 // and the Mac's loop are refused here.
 import { execSync, spawnSync } from "node:child_process";
-import { readFileSync, mkdirSync, openSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, openSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 
 const mode = process.argv[2];
-if (mode !== "build" && mode !== "start" && mode !== "tool") {
-  console.error("usage: node scripts/self-host/windows/server.mjs build|start|tool <name> [args]");
+if (mode !== "build" && mode !== "start" && mode !== "tool" && mode !== "videos") {
+  console.error("usage: node scripts/self-host/windows/server.mjs build|start|videos|tool <name> [args]");
   process.exit(1);
 }
 // `tool <name>`: one of scripts/self-host/tools/<name>.mjs, run with the same production settings (in memory).
@@ -38,6 +40,13 @@ if (!/gknlsmvrzsyxinwmodtk/.test(env.DATABASE_URL || "")) {
   process.exit(1);
 }
 
+// The PC's render worker sits beside this server: the screens say a pending video is made within minutes (not at the
+// GitHub robot's next 15-minute run). lib/visuals/robot.ts serverRenderOn.
+env.BUPULSE_SERVER_RENDER = "1";
+// The robot secret: Netlify's VIDEO_ROBOT_SECRET (shared with the GitHub robot, the fallback), else this PC's own
+// %USERPROFILE%\bupulse-prod\robot-secret.txt (then only the PC makes videos automatically).
+if (!env.VIDEO_ROBOT_SECRET && existsSync(join(logs, "robot-secret.txt"))) env.VIDEO_ROBOT_SECRET = readFileSync(join(logs, "robot-secret.txt"), "utf8").trim();
+
 // The build and tools print to the window they run in; the server (run by Task Scheduler, no window) writes server.log.
 const run = (command) => {
   const stdio = mode !== "start" ? "inherit" : ["ignore", ...Array(2).fill(openSync(join(logs, "server.log"), "a"))];
@@ -50,6 +59,18 @@ if (mode === "build") {
   const heapMb = Math.max(3072, Math.min(8192, Math.floor((totalmem() / 1048576) * 0.6)));
   env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --max-old-space-size=${heapMb}`.trim();
   env.BUPULSE_SKIP_TYPECHECK = "1";
+}
+
+if (mode === "videos") {
+  // The render worker gets this PC's own environment plus only what it needs: the local server's address and the
+  // robot secret (in memory). Not the database or any other production key. Its lines go to the job loop's videos.log.
+  if (!env.VIDEO_ROBOT_SECRET) {
+    console.error("VIDEO_ROBOT_SECRET is not in the production settings: the render worker cannot start (docs/SELF_HOST.md)");
+    process.exit(3);
+  }
+  const workerEnv = { ...process.env, ROBOT_APP_URL: "http://127.0.0.1:3002", VIDEO_ROBOT_SECRET: env.VIDEO_ROBOT_SECRET, NODE_ENV: "production" };
+  const result = spawnSync("node scripts/video-robot/pc-worker.mjs", { cwd: dir, env: workerEnv, shell: true, stdio: "inherit" });
+  process.exit(result.status ?? 1);
 }
 
 if (mode === "tool") {

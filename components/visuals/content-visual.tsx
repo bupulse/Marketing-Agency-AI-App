@@ -24,13 +24,15 @@ import { Badge, Button, Field, Input, Select, Textarea, useToast } from "@/compo
 import { MediaPicker } from "@/components/media/media-picker";
 import { changeVideoMusic, changeVideoVoice, loadSoundOptions } from "@/app/dashboard/visuals/actions";
 import { isMood, MOOD_LABEL } from "@/lib/music/tracks";
-import { DEFAULT_VOICE_ID, VOICES } from "@/lib/voice/voices";
+import { ALL_VOICES, DEFAULT_VOICE_ID, voicesOf } from "@/lib/voice/voices";
 import { changeVideo, changeVisual, deleteVisual, remakeVisual, renderVisual } from "@/app/dashboard/visuals/actions";
 import { cn } from "@/lib/cn";
 import { PACKS } from "@/lib/designs/packs";
 import { checkScript, SCRIPT_RULES } from "@/lib/visuals/script";
 import { VISUAL_LIMITS, VIDEO_LIMITS, VIDEO_REMOVED_NOTE, VIDEO_RETENTION_MESSAGE, type VisualView } from "@/lib/visuals/types";
 import { useVideoRender } from "./use-video-render";
+import { FadeImage, MakingScreen, useReducedMotion } from "./making-screen";
+import { progressFromVisuals } from "./making-progress";
 
 type Props = { contentId?: string; image: VisualView | null; video: VisualView | null; videoInPlan: boolean; album?: string; autoVideo?: boolean; hasScript?: boolean };
 
@@ -61,6 +63,7 @@ function useRun() {
 
 function ImagePart({ contentId, visual, album }: { contentId?: string; visual: VisualView | null; album?: string }) {
   const { run, pending, router, toast } = useRun();
+  const reduced = useReducedMotion();
   const [index, setIndex] = useState(0);
   const [drawing, setDrawing] = useState<{ drawn: number; total: number } | null>(null);
   const [editing, setEditing] = useState(false);
@@ -144,13 +147,15 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
       <div className="flex flex-col gap-3 @xl:flex-row">
         <div className="relative aspect-[4/5] w-full max-w-xs self-center overflow-hidden @xl:self-start rounded-2xl bg-soft">
           {items[current] ? (
-            // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL
-            <img src={items[current].url} alt={slide?.headline ?? "Picture"} className="size-full object-cover" />
-          ) : (
+            <FadeImage key={items[current].url} src={items[current].url} alt={slide?.headline ?? "Picture"} reduced={reduced} className="size-full object-cover" />
+          ) : visual.status === "failed" ? (
             <span role="status" className="flex size-full flex-col items-center justify-center gap-2 p-4 text-center text-[14px] text-muted">
-              <RefreshCw aria-hidden className={cn("size-6", busy && "animate-spin")} />
-              {drawing ? `Drawing slide ${Math.min(drawing.drawn + 1, drawing.total)} of ${drawing.total}…` : visual.status === "failed" ? (visual.error ?? "The picture could not be drawn.") : "Drawing your picture…"}
+              <RefreshCw aria-hidden className="size-6" />
+              {visual.error ?? "The picture could not be drawn."}
             </span>
+          ) : (
+            // The loading screen: the ring climbs while the picture is designed (slides drawn, when this page draws them).
+            <MakingScreen size="sm" progress={progressFromVisuals({ images: [visual], videos: [], drawing })} />
           )}
           {items.length > 1 && (
             <div className="absolute inset-x-0 bottom-2 flex items-center justify-center gap-2">
@@ -354,16 +359,18 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage, hasScr
   const { run: startRender } = render;
 
   // While the video robot is on, a pending video is made automatically (docs/VIDEO_ROBOT.md); the owner may still
-  // make it now. The screen looks again every minute so the finished video appears.
+  // make it now. The screen looks again every minute so the finished video appears (every 15 seconds while the PC's
+  // render worker makes it: docs/SELF_HOST.md, "Videos made on the PC").
   // AI clips being made for it (lib/visuals/ai-clips.ts): the video waits for them, here too.
   const clipsBusy = visual?.status === "pending" && visual.clips === "making";
   const robotBusy = visual?.status === "pending" && (clipsBusy || visual.robot === "queued" || visual.robot === "making");
   const { refresh } = router;
+  const soon = !!visual?.robotSoon && !clipsBusy;
   useEffect(() => {
     if (!robotBusy || render.busy) return;
-    const timer = setInterval(() => refresh(), 60_000);
+    const timer = setInterval(() => refresh(), soon ? 15_000 : 60_000);
     return () => clearInterval(timer);
-  }, [robotBusy, render.busy, refresh]);
+  }, [robotBusy, render.busy, refresh, soon]);
 
   // A pending video is made when it is opened: right away on the content page, on "Make the video" on Autopilot cards.
   useEffect(() => {
@@ -423,24 +430,22 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage, hasScr
           {ready && !render.busy ? (
             <video src={visual.items[0].url} controls playsInline preload="metadata" className="size-full object-cover" aria-label="Your video" />
           ) : (
+            // The loading screen while the reel is made here or on the server: the ring follows this browser's render, else
+            // the eased clock while the server (or the robot) makes it; plain text for every other state.
+            render.busy || (visual.status === "pending" && (visual.robot === "making" || (visual.robot === "queued" && visual.robotSoon))) ? (
+              <MakingScreen size="sm" progress={progressFromVisuals({ images: [], videos: [visual], render: render.phase === "uploading" ? 0.99 : render.busy ? render.progress : null })} />
+            ) : (
             <div role="status" className="flex size-full flex-col items-center justify-center gap-3 p-4 text-center text-[13px] text-muted">
-              <Clapperboard aria-hidden className={cn("size-6", render.busy && "animate-pulse")} />
-              {render.phase === "rendering" && `Making your video… ${Math.round(render.progress * 100)}%`}
-              {render.phase === "loading" && "Getting ready…"}
-              {render.phase === "uploading" && "Saving your video…"}
+              <Clapperboard aria-hidden className="size-6" />
               {!render.busy && clipsBusy && "AI clips are being made for this video (usually within half an hour). It will be ready soon."}
-              {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "queued" && "Being made automatically (usually within 30 min)."}
+              {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "queued" && (visual.robotSoon ? "Being made on our server, usually within 2 minutes." : "Being made automatically (usually within 30 min).")}
               {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "making" && "Being made automatically right now…"}
               {!render.busy && !clipsBusy && visual.status === "pending" && visual.robot === "browser" && "We could not make it automatically. Make it here in your browser."}
               {!render.busy && !clipsBusy && visual.status === "pending" && !visual.robot && "Your video plan is ready."}
               {!render.busy && visual.status === "failed" && (visual.error ?? "The video could not be made here.")}
               {!render.busy && removed && `${VIDEO_REMOVED_NOTE}. It is still on your social accounts.`}
-              {render.busy && (
-                <div className="h-2 w-full overflow-hidden rounded-full bg-line" aria-hidden>
-                  <div className="h-full bg-pulse-blue transition-[width]" style={{ width: `${Math.round((render.phase === "uploading" ? 1 : render.progress) * 100)}%` }} />
-                </div>
-              )}
             </div>
+            )
           )}
         </div>
 
@@ -552,7 +557,7 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage, hasScr
 
 // ---- voiceover and music (docs/VOICE_AND_MUSIC.md) ----
 
-type SoundOptions = { tracks: { id: string; title: string; moods: string[] }[]; voiceInPlan: boolean; used: number; limit: number };
+type SoundOptions = { tracks: { id: string; title: string; moods: string[] }[]; voiceInPlan: boolean; used: number; limit: number; provider: "elevenlabs" | "gemini"; defaultVoiceId: string };
 
 /** Voice on or off, which voice, "Regenerate voiceover", and the music track, with the month's voiceover characters. */
 function SoundChoices({ visual, disabled, onChanged }: { visual: VisualView; disabled: boolean; onChanged: () => void }) {
@@ -568,7 +573,11 @@ function SoundChoices({ visual, disabled, onChanged }: { visual: VisualView; dis
   }, []);
   if (!plan) return null;
   const voiceOn = plan.voice?.enabled !== false;
-  const voiceId = plan.voice?.voiceId ?? DEFAULT_VOICE_ID;
+  // The active provider's voices (Admin -> Settings -> Voices); a video still on another provider's voice shows it too.
+  const offered = voicesOf(options?.provider ?? "elevenlabs");
+  const raw = plan.voice?.voiceId ?? options?.defaultVoiceId ?? DEFAULT_VOICE_ID;
+  const voiceId = options && raw === DEFAULT_VOICE_ID && options.defaultVoiceId !== DEFAULT_VOICE_ID ? options.defaultVoiceId : raw;
+  const voices = offered.some((v) => v.id === voiceId) ? offered : [...offered, ...ALL_VOICES.filter((v) => v.id === voiceId)];
   const busy = disabled || pending;
   const change = (action: () => Promise<{ ok: boolean; error?: string }>) =>
     run(async () => {
@@ -590,7 +599,7 @@ function SoundChoices({ visual, disabled, onChanged }: { visual: VisualView; dis
           </label>
           <Field label="Voice">
             <Select value={voiceId} disabled={busy || !voiceOn} onChange={(e) => change(() => changeVideoVoice(visual.id, { enabled: true, voiceId: e.target.value }))}>
-              {VOICES.map((v) => (
+              {voices.map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.name} ({v.gender === "female" ? "female" : "male"})
                 </option>

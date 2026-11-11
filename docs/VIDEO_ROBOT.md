@@ -1,5 +1,10 @@
 # Video robot
 
+**Since 11 November 2026 the same robot also runs on the production PC** as a render worker that looks every 10
+seconds, so videos are ready a minute or two after they are planned (`scripts/video-robot/pc-worker.mjs`,
+docs/SELF_HOST.md "Videos made on the PC"). The GitHub job below stays on as the fallback; the render lease keeps the
+two from making the same video.
+
 Content videos are normally made in the owner's browser when they open the post (`docs/CONTENT_VISUALS.md`). The
 video robot makes them automatically instead: a free GitHub Actions job (`.github/workflows/video-robot.yml`) runs
 every 15 minutes, opens headless Google Chrome on the runner, draws each pending video with the app's own browser

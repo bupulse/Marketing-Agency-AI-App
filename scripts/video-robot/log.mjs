@@ -18,6 +18,10 @@ export const EVENTS = {
   network_error: "Could not reach the app.",
   time_up: "Time is nearly up; no more videos this run.",
   fatal: "The robot stopped early.",
+  worker_started: "Render worker started",
+  worker_stopping: "Render worker stopping after its hour; the job loop starts a fresh one",
+  worker_waiting_app: "The app does not answer yet; trying again",
+  worker_run_failed: "A render run stopped early; trying again",
 };
 
 /** Words that may follow an event (failure reasons, encoder names); nothing else is printed as text. */

@@ -21,6 +21,13 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "gemini-2.5-pro": { input: 1.25, output: 10 },
   // 1,290 output tokens per image at $30 per 1M.
   "gemini-2.5-flash-image": { input: 0.3, output: 30, perImage: 0.039 },
+  // Gemini text to speech (aistudio.google.com/docs/pricing, 11 November 2026): text in, audio out at 25 tokens a
+  // second. The 3.8 models double on 2027-01-01 (Flash 1 / 18, Flash-Lite 1 / 12).
+  "gemini-3.8-flash-tts": { input: 0.5, output: 9 },
+  "gemini-3.8-flash-lite-tts": { input: 0.5, output: 6 },
+  "gemini-3.1-flash-tts": { input: 1, output: 20 },
+  "gemini-2.5-flash-tts": { input: 0.5, output: 10 },
+  "gemini-2.5-pro-tts": { input: 1, output: 20 },
   "claude-opus-5-5": { input: 5, output: 25 },
   "claude-sonnet-5-5": { input: 3, output: 15 },
   "claude-haiku-5-5": { input: 1, output: 5 },
@@ -72,6 +79,7 @@ export function normalizeModel(model: string): string {
 /** The dearest known model of each family, for a name not in the table (checked in this order). */
 const FAMILIES: [RegExp, string][] = [
   [/pro.*image|image.*pro/, "gemini-3-pro-image"],
+  [/gemini.*tts/, "gemini-2.5-pro-tts"],
   [/gemini.*image|imagen/, "gemini-3.1-flash-image"],
   [/gemini-omni/, "gemini-omni-1.1-flash"],
   [/gemini.*flash-lite/, "gemini-3.1-flash-lite"],

@@ -6,11 +6,16 @@
 //   node scripts/video-robot/self-test.mjs
 //
 // SELF_TEST_CLIP=<an MP4> plays it as an AI clip in the opening scene (lib/visuals/ai-clips.ts, VideoScene.clipPath);
-// SELF_TEST_OUT=<file> keeps the video made.
+// SELF_TEST_VOICE=<a WAV or MP3> and SELF_TEST_MUSIC=<an MP3> mix a voice-over and library music in, as for a daily
+// slideshow (lib/voice/mix.ts); the file must then carry an audio track. SELF_TEST_OUT=<file> keeps the video made. `--worker` runs the PC's render worker (pc-worker.mjs) for 40 seconds
+// instead of one robot run: it must notice the waiting video on its own, make it and report as the PC.
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { videoDurationMs } from "../../lib/visuals/duration.ts";
 import { run, settings } from "./robot.mjs";
+import { workerLoop, workerSettings } from "./pc-worker.mjs";
+
+const WORKER = process.argv.includes("--worker");
 
 const SECRET = "self-test-secret";
 const JOB = "00000000-0000-4000-8000-000000000001";
@@ -32,6 +37,9 @@ const plan = {
 };
 
 const clip = process.env.SELF_TEST_CLIP ? readFileSync(process.env.SELF_TEST_CLIP) : null;
+const voice = process.env.SELF_TEST_VOICE ? readFileSync(process.env.SELF_TEST_VOICE) : null;
+const music = process.env.SELF_TEST_MUSIC ? readFileSync(process.env.SELF_TEST_MUSIC) : null;
+if (voice) plan.voice = { enabled: true, voiceId: "self-test", take: 0, path: "voice/b/x.wav", hash: "h", durationMs: 9000, timings: plan.scenes.map((_, i) => ({ startMs: i * 3500 + 200, endMs: i * 3500 + 3000 })), note: null };
 if (clip) plan.scenes[0].clipPath = "u/aiclips/v-0.mp4";
 
 const state = { claimed: false, uploaded: null, contentType: null, completed: false, failed: null, report: null };
@@ -48,6 +56,8 @@ const server = createServer(async (req, res) => {
   const base = `http://127.0.0.1:${server.address().port}`;
   if (req.url === "/photo.png") return send(200, photo, "image/png");
   if (req.url === "/clip.mp4" && clip) return send(200, clip, "video/mp4");
+  if (req.url === "/voice" && voice) return send(200, voice, voice.subarray(0, 4).toString() === "RIFF" ? "audio/wav" : "audio/mpeg");
+  if (req.url === "/music.mp3" && music) return send(200, music, "audio/mpeg");
   if (req.method === "PUT" && req.url.startsWith("/upload")) {
     state.uploaded = body;
     state.contentType = req.headers["content-type"];
@@ -60,7 +70,7 @@ const server = createServer(async (req, res) => {
       if (state.claimed) return send(200, { jobs: [] });
       state.claimed = true;
       const ext = input.format === "webm" ? "webm" : "mp4";
-      return send(200, { jobs: [{ job: JOB, plan, photoUrls: { "u/gallery/photo.png": `${base}/photo.png` }, clipUrls: clip ? { "u/aiclips/v-0.mp4": `${base}/clip.mp4` } : {}, upload: { url: `${base}/upload/x.${ext}?token=t`, contentType: `video/${ext}` }, leaseUntil: new Date(Date.now() + 15 * 60_000).toISOString() }] });
+      return send(200, { jobs: [{ job: JOB, plan, photoUrls: { "u/gallery/photo.png": `${base}/photo.png` }, clipUrls: clip ? { "u/aiclips/v-0.mp4": `${base}/clip.mp4` } : {}, audioUrls: { ...(voice ? { voice: `${base}/voice` } : {}), ...(music ? { music: `${base}/music.mp3` } : {}) }, upload: { url: `${base}/upload/x.${ext}?token=t`, contentType: `video/${ext}` }, leaseUntil: new Date(Date.now() + 15 * 60_000).toISOString() }] });
     }
     case "/api/robot/videos/complete":
       state.completed = input.job === JOB && !!state.uploaded;
@@ -68,6 +78,8 @@ const server = createServer(async (req, res) => {
     case "/api/robot/videos/fail":
       state.failed = input.reason;
       return send(200, { ok: true });
+    case "/api/robot/videos/peek":
+      return send(200, { waiting: state.claimed ? 0 : 1 });
     case "/api/robot/videos/report":
       state.report = input;
       return send(200, { ok: true });
@@ -79,8 +91,9 @@ const server = createServer(async (req, res) => {
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const started = Date.now();
 try {
-  const config = { ...settings({ ...process.env, ROBOT_APP_URL: `http://127.0.0.1:${server.address().port}`, VIDEO_ROBOT_SECRET: SECRET }) };
-  await run(config);
+  const env = { ...process.env, ROBOT_APP_URL: `http://127.0.0.1:${server.address().port}`, VIDEO_ROBOT_SECRET: SECRET };
+  if (WORKER) await workerLoop({ ...workerSettings({ ROBOT_POLL_SECONDS: "3", ...env }), lifetimeMs: 40_000 });
+  else await run({ ...settings(env) });
 } finally {
   server.close();
 }
@@ -88,8 +101,10 @@ try {
 const type = state.contentType === "video/webm" ? "video/webm" : "video/mp4";
 const durationMs = state.uploaded ? videoDurationMs(new Uint8Array(state.uploaded), type) : null;
 if (state.uploaded && process.env.SELF_TEST_OUT) writeFileSync(process.env.SELF_TEST_OUT, state.uploaded);
-const result = { type, bytes: state.uploaded?.length ?? 0, durationMs, completed: state.completed, failed: state.failed, report: state.report, seconds: Math.round((Date.now() - started) / 1000) };
+// With sound asked for, the MP4 must hold an audio track (an "mp4a" sample entry) or the WebM an Opus one.
+const hasAudio = !!state.uploaded && (state.uploaded.includes(Buffer.from("mp4a")) || state.uploaded.includes(Buffer.from("A_OPUS")));
+const result = { audio: hasAudio, type, bytes: state.uploaded?.length ?? 0, durationMs, completed: state.completed, failed: state.failed, report: state.report, seconds: Math.round((Date.now() - started) / 1000) };
 console.log(JSON.stringify(result));
-const ok = state.completed && durationMs !== null && Math.abs(durationMs - plan.totalMs) < 600;
+const ok = (!(voice || music) || hasAudio) && state.completed && durationMs !== null && Math.abs(durationMs - plan.totalMs) < 600 && (!WORKER || state.report?.runner === "pc");
 console.log(ok ? "Self-test passed." : "Self-test FAILED.");
 process.exitCode = ok ? 0 : 1;

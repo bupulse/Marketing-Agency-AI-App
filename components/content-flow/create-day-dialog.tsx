@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ImagePlus, PenLine, Sparkles, Upload, Wand2, X } from "lucide-react";
 import { createDayContentAction } from "@/app/dashboard/content/day-actions";
 import { MediaPicker, type PickedPhoto } from "@/components/media/media-picker";
+import { MakingScreen } from "@/components/visuals/making-screen";
 import { Button, Chip, Dialog, Field, Select, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { ContentScope } from "@/lib/content-board/filters";
@@ -164,7 +165,10 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
         {label}
       </Button>
       <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)} title="Create today's content" description={`Posts for ${subjectName}, for today. They wait for your OK on this page (or go out on their own where your settings say so).`}>
-        <div className="@container flex flex-col gap-5">
+        {/* While the run writes the captions and plans the set: the loading screen, not the form. The pictures and the
+            reel are then made on the server and fill in on the page (DaySetProgress). */}
+        {pending && <MakingScreen progress={{ step: "captions", reel: videos > 0, music: videos > 0, images: [] }} title={`Making ${posts === 1 ? "1 post" : `${posts} posts`}`} className="mb-5" />}
+        <div className={cn("@container flex flex-col gap-5", pending && "hidden")}>
           <div role="radiogroup" aria-label="How to make it" className="grid gap-3 @md:grid-cols-2">
             <Option selected={!manual} onSelect={() => { setManual(false); setMode("ai"); }} icon={<Wand2 className="size-5" />} title="AI makes it for me" text="A caption, a 30-second video script and 3 ad headlines for each app, from your Business info; then pictures and videos, your own Photos first." />
             <Option selected={manual} onSelect={() => { setManual(true); setMode("describe"); }} icon={<PenLine className="size-5" />} title="I'll create it" text="Describe what to post today, or bring your own photos and caption." />
@@ -283,7 +287,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
               Cancel
             </Button>
             <Button onClick={submit} disabled={pending || !cost.enoughText || missing !== null} title={missing ?? undefined}>
-              {pending ? "Writing captions, then pictures…" : `Create ${posts === 1 ? "1 post" : `${posts} posts`}`}
+              {`Create ${posts === 1 ? "1 post" : `${posts} posts`}`}
             </Button>
           </div>
         </div>

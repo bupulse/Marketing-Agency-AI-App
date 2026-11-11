@@ -26,7 +26,8 @@ import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import type { VideoPlan } from "@/lib/visuals/types";
 import { readVideoPlan, withSceneTexts } from "@/lib/visuals/video-plan";
 import { estimateSpeechMs, fitPlanToVoice, lineTimings, MAX_SPEECH_MS, speechText, spokenLines, type Timing } from "./speech";
-import { DEFAULT_VOICE_ID, isVoiceId } from "./voices";
+import { DEFAULT_VOICE_ID, isVoiceId, providerOfVoice, providerVoiceName } from "./voices";
+import { getEnglishVoice, pickVoice } from "./provider-setting";
 import { approvedVoices } from "@/lib/content-languages/service";
 import { languageVoice, needsApprovedVoice } from "@/lib/content-languages/voice";
 import { looksKinyarwanda } from "@/lib/video-engine/voice-language";
@@ -44,8 +45,13 @@ export function voiceHash(voiceId: string, model: string, text: string, take = 0
 }
 
 /** Where a voiceover lives: the company's folder in the media bucket (voice/<businessId>/), named by its hash. */
-export function voicePath(businessId: string, hash: string): string {
-  return `voice/${businessId}/${hash.slice(0, 40)}.mp3`;
+export function voicePath(businessId: string, hash: string, mimeType: string = "audio/mpeg"): string {
+  return `voice/${businessId}/${hash.slice(0, 40)}.${mimeType === "audio/wav" ? "wav" : "mp3"}`;
+}
+
+/** What a voiceover file is: WAV (Gemini, "RIFF" header) or MP3 (ElevenLabs). */
+export function audioMime(audio: Uint8Array): "audio/wav" | "audio/mpeg" {
+  return audio[0] === 0x52 && audio[1] === 0x49 && audio[2] === 0x46 && audio[3] === 0x46 ? "audio/wav" : "audio/mpeg";
 }
 
 /** At most this many characters in one voiceover (about 30 seconds of speech), whatever the captions say. */
@@ -101,15 +107,16 @@ async function shortenLines(owner: Owner, lines: string[], targetChars: number):
  * audio is still returned, so its characters stay counted and are never refunded.
  */
 async function speak(owner: Owner, text: string, voiceId: string): Promise<TtsResult> {
-  const tts = getTtsProvider();
-  if (!tts) throw new AIProviderError("Voiceover is not set up", "elevenlabs");
+  const tts = getTtsProvider(providerOfVoice(voiceId));
+  if (!tts) throw new AIProviderError("Voiceover is not set up", providerOfVoice(voiceId));
   let spoken: TtsResult | null = null;
   try {
     return await withLedger(
       { ...owner, feature: VOICE_FEATURE },
       { provider: tts.name, model: tts.model },
-      async () => (spoken = await tts.speak({ text, voiceId })),
-      (r) => ({ provider: r.provider, model: r.model, usage: { inputTokens: r.characters, outputTokens: 0 } }),
+      async () => (spoken = await tts.speak({ text, voiceId: providerVoiceName(voiceId) })),
+      // ElevenLabs bills characters (recorded as input tokens); Gemini bills text and audio tokens (its own counts).
+      (r) => ({ provider: r.provider, model: r.model, usage: r.usage ?? { inputTokens: r.characters, outputTokens: 0 } }),
     );
   } catch (error) {
     if (!spoken) throw error;
@@ -135,8 +142,9 @@ export async function storeAudio(owner: Owner, hash: string, audio: Uint8Array):
   const problem = quotaProblem(await mediaUsage(owner.businessId), { count: 1, bytes: audio.length });
   if (problem) throw new MediaError(problem);
   await assertPlatformRoom(audio.length);
-  const path = voicePath(owner.businessId, hash);
-  const { error } = await createAdminClient().storage.from("media").upload(path, audio, { contentType: "audio/mpeg", upsert: true });
+  const mimeType = audioMime(audio);
+  const path = voicePath(owner.businessId, hash, mimeType);
+  const { error } = await createAdminClient().storage.from("media").upload(path, audio, { contentType: mimeType, upsert: true });
   if (error) throw new Error(`Could not store the voiceover: ${error.message}`);
   await prisma.voiceClip.updateMany({ where: { businessId: owner.businessId, hash }, data: { status: "ready", path, pendingAudio: null, bytes: audio.length } });
   return path;
@@ -172,7 +180,7 @@ export async function claimClip(owner: Owner, hash: string, voiceId: string, cha
 const TOO_LONG = "The voiceover would be longer than 30 seconds. Shorten the captions and make the video again.";
 
 function dataUrl(audio: Uint8Array): string {
-  return `data:audio/mpeg;base64,${Buffer.from(audio).toString("base64")}`;
+  return `data:${audioMime(audio)};base64,${Buffer.from(audio).toString("base64")}`;
 }
 
 export type Voiced = { plan: VideoPlan; voiceDataUrl?: string };
@@ -194,12 +202,12 @@ export async function ensureVoiceover(owner: Owner, visualId: string): Promise<V
     return { plan: next, ...(voiceDataUrl ? { voiceDataUrl } : {}) };
   };
   const settings = await getContentSettings(owner.businessId).catch(() => null);
-  let voiceId = isVoiceId(plan.voice?.voiceId) ? plan.voice!.voiceId : (settings?.voiceId ?? DEFAULT_VOICE_ID);
+  // The admin's provider and voice (Admin -> Settings -> Voices), unless this video or the business chose another
+  // voice of that provider (lib/voice/provider-setting.ts pickVoice).
+  let voiceId = pickVoice(await getEnglishVoice(), plan.voice?.voiceId, settings?.voiceId);
   const take = plan.voice?.take ?? 0;
   if (plan.voice && plan.voice.enabled === false) return { plan };
   if ((await featureStatus(owner.businessId, "voice").catch(() => "plan_unknown")) !== "ok") return save(withoutVoice(plan, voiceId, null));
-  const tts = getTtsProvider();
-  if (!tts) return save(withoutVoice(plan, voiceId, null));
 
   let lines = spokenLines(plan);
   let { text, ranges } = speechText(lines);
@@ -209,6 +217,9 @@ export async function ensureVoiceover(owner: Owner, visualId: string): Promise<V
   const spoken = languageVoice(language, needsApprovedVoice(language) ? await approvedVoices() : {});
   if (spoken.speak === "none") return save(withoutVoice(plan, voiceId, spoken.note));
   if (spoken.speak === "approved") voiceId = spoken.voiceId;
+  // The provider of the voice that speaks (an approved Kinyarwanda or Swahili voice is an ElevenLabs voice).
+  const tts = getTtsProvider(providerOfVoice(voiceId));
+  if (!tts) return save(withoutVoice(plan, voiceId, null));
   const fits = () => estimateSpeechMs(text) <= MAX_SPEECH_MS && text.length <= MAX_VOICE_CHARS;
   if (!fits()) {
     const shorter = await shortenLines(owner, lines, Math.min(MAX_VOICE_CHARS - 40, Math.floor(MAX_SPEECH_MS / 70)));
