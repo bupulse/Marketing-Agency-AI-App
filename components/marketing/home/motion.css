@@ -1818,3 +1818,25 @@ html:not(.dark)[data-home-scene="dark"] header img[src*="logo-white"] {
 .av-tile {
   container-type: inline-size;
 }
+
+/* Neighbouring dark scenes flow straight into each other (night -> deep blue -> violet) with no light gap; only the
+   first and last edges fade into the light page. */
+.sw.scene-dark {
+  background: linear-gradient(to bottom, transparent, #07070b 14vh, #07070b);
+}
+.av.scene-dark {
+  background: linear-gradient(to bottom, #07070b, #061230 18vh, #061230 calc(100% - 18vh), #140d36);
+}
+.sc.scene-dark {
+  background: linear-gradient(to bottom, #140d36, #140d36 calc(100% - 14vh), transparent);
+}
+.sc-stage::after {
+  /* The wall fades out at the bottom, so the violet scene hands over softly to the light page below. */
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: auto 0 0;
+  height: 16%;
+  background: linear-gradient(rgba(20, 13, 54, 0), #140d36);
+  pointer-events: none;
+}
