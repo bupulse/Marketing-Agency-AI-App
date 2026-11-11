@@ -373,7 +373,12 @@ are signed in one batched request per bucket (`signPaths`) and lazy-loaded.
 - When the content's picture finishes drawing or its video is uploaded, the drafts take it (`attachToContent` in
   `lib/visuals/service.ts`, as `attachToGroup` does for Autopilot) and get another auto-approval check. Only drafts
   still waiting (DRAFT, PENDING_APPROVAL) that the owner did not edit; never a SCHEDULED post. The write is guarded by
-  the `updatedAt` it read, so an edit made meanwhile wins.
+  the `updatedAt` it read, so an edit made meanwhile wins. Studio and Daily posts alike (`DRAFTED_SOURCES`; until
+  12 November 2026 only Studio's, so the Daily posts' per-post pictures never reached them). Safety net
+  (`lib/visuals/reattach.ts`): every 10 minutes the job loop (`/api/cron/publish`) gives the last 3 days' waiting,
+  untouched, picture-less Studio / Daily / Autopilot posts their ready pictures if an attach missed them; on the PC,
+  `node scripts/self-host/windows/server.mjs tool attach-ready-visuals [--apply] [--business <id>]` does it for any
+  age (dry run by default).
 
 ## Apps that are not connected yet
 

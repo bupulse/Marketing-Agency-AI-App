@@ -562,7 +562,7 @@ describe("attachToGroup (pictures)", () => {
     expect(mocks.prisma.post.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: "ig" }, data: { mediaPaths: ["ai.png"] } });
   });
 
-  it("Studio drafts take a finished picture only while waiting and untouched by the owner", async () => {
+  it("Studio and Daily drafts take a finished picture only while waiting and untouched by the owner", async () => {
     const { attachToContent } = await import("@/lib/visuals/service");
     mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "image", status: "ready", items: [{ path: "a.png" }] }]);
     mocks.prisma.post.findMany.mockResolvedValue([]);
@@ -570,11 +570,37 @@ describe("attachToGroup (pictures)", () => {
     expect(mocks.prisma.post.findMany.mock.calls[0][0].where).toEqual({
       businessId: "biz1",
       contentId: "content-1",
-      source: "STUDIO",
+      source: { in: ["STUDIO", "DAILY"] },
       status: { in: ["DRAFT", "PENDING_APPROVAL"] },
       ownerEditedAt: null,
       lockedAt: null,
     });
+  });
+
+  // Owner report, 11 November 2026: the nightly Daily posts (before the day's shared sets) drew one picture per post
+  // (ContentVisual by contentId, Post.source DAILY); the attach took STUDIO posts only, so they said "No picture yet".
+  it("an old Daily post's own picture reaches its post when drawn", async () => {
+    const updatedAt = new Date("2026-11-11T05:00:00Z");
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide()]) });
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "image", status: "ready", items: [{ path: `${U}/designs/d1.jpg` }] }]);
+    mocks.prisma.post.findMany.mockResolvedValue([{ id: "daily-fb", network: "facebook", format: "POST", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Fresh today" }]);
+    mocks.prisma.post.updateMany.mockResolvedValue({ count: 1 });
+    expect((await renderImageStep(owner, "v1")).status).toBe("ready");
+    const where = mocks.prisma.post.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ contentId: "c1", source: { in: ["STUDIO", "DAILY"] } });
+    expect(mocks.prisma.post.updateMany).toHaveBeenCalledWith({ where: expect.objectContaining({ id: "daily-fb", updatedAt }), data: { format: "POST", mediaPaths: [`${U}/designs/d1.jpg`] } });
+  });
+
+  it("onlyPosts limits an attach to those posts; nothing ready never empties a post", async () => {
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "image", status: "ready", items: [{ path: "a.png" }] }]);
+    mocks.prisma.post.findMany.mockResolvedValue([]);
+    await attachToGroup("biz1", "g1", { onlyPosts: ["p1", "p2"] });
+    expect(mocks.prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ groupId: "g1", id: { in: ["p1", "p2"] } });
+    mocks.prisma.post.findMany.mockClear();
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([]);
+    await attachToGroup("biz1", "g1");
+    expect(mocks.prisma.post.findMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.post.updateMany).not.toHaveBeenCalled();
   });
 });
 

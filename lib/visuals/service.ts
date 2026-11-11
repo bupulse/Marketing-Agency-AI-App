@@ -517,7 +517,7 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
   });
   // An Autopilot group's posts take the redrawn picture (a picture made later only replaces the photo it stood in for).
   if (done && row.groupId) await attachToGroup(owner.businessId, row.groupId, { feed: true, ...(plan.deferredFrom ? { onlyFrom: plan.deferredFrom } : {}) }).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
-  // Studio's drafted posts of this content take it too (docs/CONTENT.md).
+  // The posts drafted from this content (Studio and Daily posts) take it too (docs/CONTENT.md).
   if (done && row.contentId) await attachToContent(owner.businessId, row.contentId, { feed: true }).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
   // A video planned without photos shows the AI photo once there is one.
   const aiPhoto = plan.slides.find((s) => s.aiPhotoPath)?.aiPhotoPath;
@@ -983,10 +983,23 @@ export function withMusicCredit(text: string, credit: string | null | undefined,
 // ---- Autopilot posts ----
 
 /**
+ * Posts BuPulse drafted from content: Studio (Create today's content) and the nightly Daily posts. Both wait as drafts
+ * and take their content's pictures and video when ready. (Until 12 November 2026 attachToContent took STUDIO only, so
+ * a Daily post's own picture, made per post before the day's shared sets, never reached its post.)
+ */
+export const DRAFTED_SOURCES = ["STUDIO", "DAILY"] as const;
+
+/**
+ * `feed`: a redrawn picture replaces the feed posts' pictures. `onlyFrom`: see attachChange. `onlyPosts`: only these
+ * post ids may change (the repair, lib/visuals/reattach.ts).
+ */
+export type AttachOptions = { feed?: boolean; onlyFrom?: string[]; onlyPosts?: string[] };
+
+/**
  * Puts a group's ready visuals on its posts that have not gone out: carousels and images on feed posts, the video on
  * video ideas (a real video post on Instagram and Facebook, the script reminder's attachment on TikTok and YouTube).
  */
-export async function attachToGroup(businessId: string, groupId: string, options: { feed?: boolean; onlyFrom?: string[] } = {}) {
+export async function attachToGroup(businessId: string, groupId: string, options: AttachOptions = {}) {
   // A day's shared set (Create today's content, Daily posts: Post.groupId is the set) reaches only the drafts still
   // waiting that the owner did not edit, like attachToContent; Autopilot's group posts also take it once scheduled.
   await attachVisuals(
@@ -995,53 +1008,72 @@ export async function attachToGroup(businessId: string, groupId: string, options
     {
       groupId,
       status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] },
-      OR: [{ source: { notIn: ["STUDIO", "DAILY"] } }, { status: { in: ["DRAFT", "PENDING_APPROVAL"] }, ownerEditedAt: null }],
+      OR: [{ source: { notIn: [...DRAFTED_SOURCES] } }, { status: { in: ["DRAFT", "PENDING_APPROVAL"] }, ownerEditedAt: null }],
     },
     options,
   );
   // Posts of a day's set that waited only for these pictures or this reel are auto-approved where their app needs no
   // approval (Autopilot keeps its own approval).
-  if ((await prisma.post.count({ where: { businessId, groupId, source: { in: ["STUDIO", "DAILY"] } } })) > 0) {
+  if ((await prisma.post.count({ where: { businessId, groupId, source: { in: [...DRAFTED_SOURCES] } } })) > 0) {
     const { retryAutoSchedule } = await import("@/lib/content-board/auto");
     await retryAutoSchedule(businessId, { groupId });
   }
 }
 
 /**
- * The same for the posts Studio drafted from a content version (source STUDIO, docs/CONTENT.md); posts the owner made
- * in the composer keep the media they chose. Posts that waited only for this picture or video are then auto-approved
- * when their app needs no approval.
+ * The same for the posts drafted from a content version (Studio and Daily posts, DRAFTED_SOURCES, docs/CONTENT.md);
+ * posts the owner made in the composer keep the media they chose. Posts that waited only for this picture or video are
+ * then auto-approved when their app needs no approval.
  */
-export async function attachToContent(businessId: string, contentId: string, options: { feed?: boolean } = {}) {
+export async function attachToContent(businessId: string, contentId: string, options: AttachOptions = {}) {
   // Only drafts still waiting and untouched: a scheduled post or one the owner edited keeps what it has.
-  await attachVisuals(businessId, { contentId }, { contentId, source: "STUDIO", status: { in: ["DRAFT", "PENDING_APPROVAL"] }, ownerEditedAt: null }, options);
+  await attachVisuals(businessId, { contentId }, { contentId, source: { in: [...DRAFTED_SOURCES] }, status: { in: ["DRAFT", "PENDING_APPROVAL"] }, ownerEditedAt: null }, options);
   const { retryAutoSchedule } = await import("@/lib/content-board/auto");
   await retryAutoSchedule(businessId, { contentId });
 }
 
+export type AttachPost = { network: string; format: string; mediaPaths: string[]; status: string; lastError: string | null; text: string };
+export type ReadyMedia = Awaited<ReturnType<typeof readyMedia>>;
+export type AttachChange = { format: "POST" | "CAROUSEL" | "ARTICLE" | "SCRIPT"; mediaPaths: string[]; text: string; fixesDraft: boolean };
+
 /**
+ * What a post becomes with these ready visuals, or null when it stays as it is. Pure: the repair's selection
+ * (lib/visuals/reattach.ts) uses the very same decision.
  * `onlyFrom`: only posts whose pictures are all among these paths (the ones Autopilot gave them) change, so a picture
  * the owner picked by hand after planning is never replaced.
  */
-async function attachVisuals(businessId: string, key: { contentId: string } | { groupId: string }, postWhere: Prisma.PostWhereInput, options: { feed?: boolean; onlyFrom?: string[] }) {
-  const { images, video: videoFile, videoCredit } = await readyMedia(businessId, key);
-  const posts = await prisma.post.findMany({ where: { businessId, ...postWhere, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true, updatedAt: true, text: true } });
+export function attachChange(post: AttachPost, media: ReadyMedia, options: Pick<AttachOptions, "feed" | "onlyFrom"> = {}): AttachChange | null {
+  const { images, video: videoFile, videoCredit } = media;
+  if (!isNetwork(post.network)) return null;
+  // Nothing ready: a post is never emptied of what it has.
+  if (images.length === 0 && !videoFile) return null;
+  if (options.onlyFrom && !post.mediaPaths.every((m) => options.onlyFrom!.includes(m))) return null;
+  const rules = getProvider(post.network).rules;
+  // A post that already carries a video stays a video post (a redrawn picture never replaces a reel): it changes
+  // only for a newer video of its group or content.
+  const ownVideo = post.mediaPaths.find(isVideoPath);
+  if (ownVideo && (!videoFile || ownVideo === videoFile)) return null;
+  const planned = ownVideo ? "SCRIPT" : post.format;
+  if (planned !== "POST" && planned !== "CAROUSEL" && planned !== "ARTICLE" && planned !== "SCRIPT") return null;
+  // Feed posts change when their picture was redrawn (options.feed), or when they had none.
+  if (planned !== "SCRIPT" && !(images.length && (options.feed || post.mediaPaths.length === 0))) return null;
+  const { format, mediaPaths } = mediaForPost({ network: post.network, format: planned, rules, images, video: videoFile });
+  if (format === post.format && mediaPaths.join("|") === post.mediaPaths.join("|")) return null;
+  const fixesDraft = post.status === "DRAFT" && !!post.lastError?.startsWith("This post needs a picture") && mediaPaths.length > 0;
+  // A post that carries the video credits its music when the licence asks for it.
+  const text = videoFile && mediaPaths.includes(videoFile) && videoCredit !== undefined ? withMusicCredit(post.text, videoCredit, rules.maxText) : post.text;
+  return { format, mediaPaths, text, fixesDraft };
+}
+
+async function attachVisuals(businessId: string, key: { contentId: string } | { groupId: string }, postWhere: Prisma.PostWhereInput, options: AttachOptions) {
+  const media = await readyMedia(businessId, key);
+  if (media.images.length === 0 && !media.video) return;
+  const where: Prisma.PostWhereInput = { ...postWhere, ...(options.onlyPosts ? { id: { in: options.onlyPosts } } : {}) };
+  const posts = await prisma.post.findMany({ where: { businessId, ...where, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true, updatedAt: true, text: true } });
   for (const post of posts) {
-    if (!isNetwork(post.network)) continue;
-    if (options.onlyFrom && !post.mediaPaths.every((m) => options.onlyFrom!.includes(m))) continue;
-    const rules = getProvider(post.network).rules;
-    // A post that already carries a video stays a video post (a redrawn picture never replaces a reel): it changes
-    // only for a newer video of its group or content.
-    const ownVideo = post.mediaPaths.find(isVideoPath);
-    if (ownVideo && (!videoFile || ownVideo === videoFile)) continue;
-    const planned = ownVideo ? "SCRIPT" : post.format;
-    // Feed posts change when their picture was redrawn (options.feed), or when they had none.
-    if (planned === "THREAD" || (planned !== "SCRIPT" && !(images.length && (options.feed || post.mediaPaths.length === 0)))) continue;
-    const { format, mediaPaths } = mediaForPost({ network: post.network, format: planned, rules, images, video: videoFile });
-    if (format === post.format && mediaPaths.join("|") === post.mediaPaths.join("|")) continue;
-    const fixesDraft = post.status === "DRAFT" && post.lastError?.startsWith("This post needs a picture") && mediaPaths.length > 0;
-    // A post that carries the video credits its music when the licence asks for it.
-    const text = videoFile && mediaPaths.includes(videoFile) && videoCredit !== undefined ? withMusicCredit(post.text, videoCredit, rules.maxText) : post.text;
+    const change = attachChange(post, media, options);
+    if (!change) continue;
+    const { format, mediaPaths, text, fixesDraft } = change;
     await prisma.post.updateMany({ where: { ...postWhere, id: post.id, lockedAt: null, updatedAt: post.updatedAt }, data: { format, mediaPaths, ...(text !== post.text ? { text } : {}), ...(fixesDraft ? { lastError: null } : {}) } });
   }
 }
