@@ -61,7 +61,7 @@ export async function loadFacts(businessId: string): Promise<Facts> {
 /** The 10 Nov prototype's captures may stand in for robot captures only in tests and development (never in production). */
 export const allowFixtureScreens = (env: Record<string, string | undefined> = process.env) => env.NODE_ENV !== "production" || env.AD_BRAIN_FIXTURE_SCREENS === "1";
 
-type ScreenMeta = { key?: string; page?: string; pageId?: string; viewport?: string; label?: string; capturedAt?: string; crop?: [number, number, number, number]; tap?: [number, number]; items?: number; empty?: boolean };
+type ScreenMeta = { key?: string; page?: string; pageId?: string; viewport?: string; label?: string; capturedAt?: string; crop?: [number, number, number, number]; tap?: [number, number]; items?: number; empty?: boolean; address?: string };
 
 /**
  * The real screen captures an ad may show: the robot's newest capture of each page and size, never a page that was
@@ -81,6 +81,7 @@ export async function listScreens(): Promise<ScreenCapture[]> {
     ref: `ad:${row.id}`,
     ...(m.crop ? { crop: m.crop } : {}),
     ...(m.tap ? { tap: m.tap } : {}),
+    ...(m.address ? { address: m.address } : {}),
   }));
 }
 

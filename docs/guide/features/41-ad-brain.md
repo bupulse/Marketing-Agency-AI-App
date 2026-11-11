@@ -7,8 +7,8 @@ It reads BuPulse's real features and plans, picks an ad format (for example the 
 makes the actors, clips and music with AI, edits everything with effects, judges the result, fixes one weak part if
 needed, and delivers the finished ad. **Nothing is published by itself**: the ad waits on the Posts page for your OK.
 
-**Where:** Admin → AI and usage → **Ad Brain** (`/admin/ad-brain`). Limits: Admin → Settings → **Ad Brain limits**
-(`/admin/settings/ad-brain`), with the spend limits and BuPulse's own Gallery video space.
+**Where:** Admin → AI and usage → **Ad Brain** (admin.bupulse.com/ad-brain; `/admin/ad-brain` while the hosts are not split). Limits: Admin → Settings → **Ad Brain limits**
+(admin.bupulse.com/settings/ad-brain), with the spend limits and BuPulse's own Gallery video space.
 
 ## Make an ad
 

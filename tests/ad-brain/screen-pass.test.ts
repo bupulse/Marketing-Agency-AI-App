@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { adBrainCompanyEmail, isLocalRequest, isScreenPassPath, readScreenPass, SCREEN_PASS_COOKIE, SCREEN_PASS_TTL_MS, screenPassAllowed, screenPassSecret, signScreenPass } from "@/lib/ad-brain/screen-pass";
-import { currentCaptures, isEmptyPage, pagesToCapture, screensStale, SCREENS_FRESH_MS, type PageCounts } from "@/lib/ad-brain/screen-plan";
+import { currentCaptures, isEmptyPage, pagesToCapture, robotPath, SCREEN_PAGES, screensStale, SCREENS_FRESH_MS, shownAddress, type PageCounts } from "@/lib/ad-brain/screen-plan";
 
 const SECRET = "test-secret";
 const NOW = 1_800_000_000_000;
@@ -62,6 +62,7 @@ vi.mock("@supabase/ssr", () => ({ createServerClient: () => ({ auth }) }));
 import { proxy } from "@/proxy";
 
 describe("the proxy with a screen pass", () => {
+  afterEach(() => vi.unstubAllEnvs());
   const withPass = async (url: string, init: { method?: string; headers?: Record<string, string> } = {}, token?: string) => {
     vi.stubEnv("SCREEN_PASS_SECRET", SECRET);
     const pass = token ?? (await signScreenPass({ userId: "u1", businessId: "b1" }, SECRET));
@@ -82,6 +83,37 @@ describe("the proxy with a screen pass", () => {
     expect((await withPass("https://bupulse.com/dashboard")).status).toBe(403);
     expect((await withPass("http://127.0.0.1:3002/dashboard", { headers: { "cf-connecting-ip": "1.2.3.4" } })).status).toBe(403);
   });
+
+  // The self-hosted PC behind the tunnel: `next start` fetches a host rewrite from localhost with the real visitor's host
+  // in X-Forwarded-Host (lib/platform/app-hosts.ts isSelfFetch). Loopback host, GET, a dashboard path and even a genuine
+  // pass: it is still a visitor's request, never the robot's.
+  it("refuses a localhost self-fetch that carries a visitor's host, even with a genuine pass", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://bupulse.com");
+    vi.stubEnv("CLIENT_COOKIE_DOMAIN", ".bupulse.com");
+    vi.stubEnv("MARKETING_APP_URL", "https://marketing.bupulse.com");
+    vi.stubEnv("ADMIN_APP_URL", "https://admin.bupulse.com");
+    for (const host of ["marketing.bupulse.com", "admin.bupulse.com", "bupulse.com"]) {
+      const res = await withPass("http://127.0.0.1:3002/dashboard/content", { headers: { "x-forwarded-host": host } });
+      expect(res.status, host).toBe(403);
+    }
+    expect((await withPass("http://localhost:3002/dashboard", { headers: { forwarded: "host=marketing.bupulse.com;proto=https" } })).status).toBe(403);
+    // A loopback X-Forwarded-Host is not a visitor's: the robot itself may still read.
+    expect((await withPass("http://127.0.0.1:3002/dashboard/content")).status).toBe(200);
+    expect(screenPassAllowed({ method: "GET", path: "/dashboard", host: "127.0.0.1:3002", forwardedHost: "marketing.bupulse.com" })).toBe(false);
+  });
+
+  it("never opens an admin page under any address with the host split on", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://bupulse.com");
+    vi.stubEnv("CLIENT_COOKIE_DOMAIN", ".bupulse.com");
+    vi.stubEnv("MARKETING_APP_URL", "https://marketing.bupulse.com");
+    vi.stubEnv("ADMIN_APP_URL", "https://admin.bupulse.com");
+    // Clean admin addresses (admin.bupulse.com/companies is /admin/companies) and the app paths behind them.
+    for (const path of ["/companies", "/ad-brain", "/settings/ad-brain", "/admin", "/admin/companies", "/api/admin/v1/companies"]) {
+      expect((await withPass(`http://127.0.0.1:3002${path}`)).status, path).toBe(403);
+    }
+    // Sent with the admin host's name, it is not local at all.
+    expect((await withPass("http://admin.bupulse.com/companies")).status).toBe(403);
+  });
 });
 
 describe("what the robot captures and what ads may use", () => {
@@ -92,6 +124,19 @@ describe("what the robot captures and what ads may use", () => {
     expect(pagesToCapture(counts({ leads: 4 })).map((p) => p.id)).toContain("leads");
     expect(isEmptyPage("calendar", counts({ calendar: 0 }))).toBe(true);
     expect(isEmptyPage("home", counts())).toBe(false);
+  });
+
+  it("lists pages by their clean Marketing address, opens their app path on loopback, shows the real address", () => {
+    expect(SCREEN_PAGES.find((p) => p.id === "posts")?.path).toBe("/content");
+    // Every page the robot opens is a dashboard app path the pass allows.
+    for (const p of SCREEN_PAGES) expect(isScreenPassPath(robotPath(p.path)), p.path).toBe(true);
+    expect(robotPath("/")).toBe("/dashboard");
+    expect(robotPath("/autopilot")).toBe("/dashboard/autopilot");
+    const split = { NEXT_PUBLIC_SITE_URL: "https://bupulse.com", CLIENT_COOKIE_DOMAIN: ".bupulse.com", MARKETING_APP_URL: "https://marketing.bupulse.com", ADMIN_APP_URL: "https://admin.bupulse.com" };
+    expect(shownAddress("/content", split)).toBe("marketing.bupulse.com/content");
+    expect(shownAddress("/", split)).toBe("marketing.bupulse.com");
+    // Before the split (or locally): the front host and the app path.
+    expect(shownAddress("/calendar", { NEXT_PUBLIC_SITE_URL: "https://bupulse.com" })).toBe("bupulse.com/dashboard/calendar");
   });
 
   it("captures again when the newest is a day old", () => {

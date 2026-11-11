@@ -139,7 +139,9 @@ class Ad:
         names = [e["id"] for e in seg.get("effects", []) if e["id"] in ("browser_window", "filmed_monitor")]
         name = names[0] if names else "browser_window"
         params = (self.effect(seg, name) or {}).get("params", {})
-        SCREEN[name](c, im, k, t, params, self.screen_index.get(seg["id"], 0), tap, self.host)
+        # The browser bar shows the page's real address (marketing.bupulse.com/content) when the capture has one.
+        address = (self.assets[seg["asset"]].get("capture") or {}).get("address") or self.host
+        SCREEN[name](c, im, k, t, params, self.screen_index.get(seg["id"], 0), tap, address)
         punch_fx = self.effect(seg, "punch_in")
         out = c.convert("RGB")
         if punch_fx:

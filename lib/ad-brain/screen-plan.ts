@@ -4,18 +4,37 @@
 //   - A page whose data is empty would mislead ("0 leads", an empty calendar): it is not shown in ads.
 //   - Captures older than 24 hours are taken again before the next ad (or at once from Admin -> Ad Brain).
 
+import { appUrl, frontOrigin, marketingAppPath } from "@/lib/platform/app-hosts";
+
 export type ScreenPageId = "home" | "posts" | "calendar" | "autopilot" | "designs" | "photos" | "leads";
 export type ScreenViewport = "phone" | "desktop";
 
+/**
+ * The pages by the address clients see on the Marketing host (marketing.bupulse.com/content, docs/HOSTS.md). The robot
+ * opens the same page by its app path on this server's own loopback address (robotPath: /content -> /dashboard/content),
+ * because the pass only works there; the ad's browser bar shows the real address (shownAddress).
+ */
 export const SCREEN_PAGES: readonly { id: ScreenPageId; path: string; label: string }[] = [
-  { id: "home", path: "/dashboard", label: "Home" },
-  { id: "posts", path: "/dashboard/content", label: "Posts" },
-  { id: "calendar", path: "/dashboard/calendar", label: "Calendar" },
-  { id: "autopilot", path: "/dashboard/autopilot", label: "Autopilot" },
-  { id: "designs", path: "/dashboard/designs", label: "Designs" },
-  { id: "photos", path: "/dashboard/gallery", label: "Photos" },
-  { id: "leads", path: "/dashboard/leads", label: "Leads" },
+  { id: "home", path: "/", label: "Home" },
+  { id: "posts", path: "/content", label: "Posts" },
+  { id: "calendar", path: "/calendar", label: "Calendar" },
+  { id: "autopilot", path: "/autopilot", label: "Autopilot" },
+  { id: "designs", path: "/designs", label: "Designs" },
+  { id: "photos", path: "/gallery", label: "Photos" },
+  { id: "leads", path: "/leads", label: "Leads" },
 ];
+
+/** The app path the robot opens on loopback for a clean Marketing address (always under /dashboard). */
+export const robotPath = (clean: string) => marketingAppPath(clean);
+
+/**
+ * The page's address as clients see it, for the browser bar in an ad: "marketing.bupulse.com/content" once the
+ * Marketing host is set, else the front host and the app path ("bupulse.com/dashboard/content").
+ */
+export function shownAddress(clean: string, env: Record<string, string | undefined> = process.env): string {
+  const url = appUrl(robotPath(clean), frontOrigin(env), env);
+  return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
 export const SCREEN_VIEWPORTS: readonly ScreenViewport[] = ["phone", "desktop"];
 
 /** Captures are taken again when the newest is older than this. */

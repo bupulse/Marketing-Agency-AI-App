@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { HostLink } from "@/components/platform/hosts";
 import { Clapperboard, Coins, HardDrive } from "lucide-react";
 import { ExpandCard } from "@/components/admin/kit";
 import { Panel } from "@/components/admin/ui";
@@ -19,7 +19,7 @@ export function AdBrainArea({ adBrainPerAdUsd, adBrainMonthlyUsd, adBrainGallery
       title={SETTINGS_TITLE["ad-brain"]}
       description={
         <>
-          BuPulse&apos;s own self-made video ads. An ad stops before passing either limit and says why. Make ads in <Link href="/admin/ad-brain">Admin → Ad Brain</Link>.
+          BuPulse&apos;s own self-made video ads. An ad stops before passing either limit and says why. Make ads in <HostLink href="/admin/ad-brain">Admin → Ad Brain</HostLink>.
         </>
       }
       ok={ok}

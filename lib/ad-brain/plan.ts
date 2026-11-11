@@ -14,7 +14,8 @@ export type Concept = { recipe: string; effects: string[]; captionStyle: string;
 export type BrandInfo = { name: string; url: string; primary: string; accent: string; logoRef?: string | null };
 
 /** A real screen capture the ad may show (hard rule 1), from the screen robot or an upload, with its useful crop. */
-export type ScreenCapture = { id: string; page: string; label: string; capturedAt: string; ref: string; crop?: [number, number, number, number]; tap?: [number, number] };
+/** `address`: the page as clients see it (marketing.bupulse.com/content), drawn in the ad's browser bar. */
+export type ScreenCapture = { id: string; page: string; label: string; capturedAt: string; ref: string; crop?: [number, number, number, number]; tap?: [number, number]; address?: string };
 
 /** A real product photo (Business info) used as a reference when a real product is shown, so it looks exactly right. */
 export type ProductPhoto = { id: string; name: string; path: string };
@@ -184,7 +185,7 @@ export function buildEdl(input: BuildInput): Edl {
     addAsset(key, { kind: m.kind === "image" ? "image" : m.kind === "video" ? "video" : "audio", ref: m.ref, ...(m.seconds !== undefined ? { seconds: r2(m.seconds) } : {}), ...(m.words ? { words: m.words } : {}), ...(m.bpm ? { bpm: m.bpm } : {}) });
     return key;
   };
-  const screenAsset = (s: ScreenCapture) => addAsset(`screen:${s.id}`, { kind: "screen", ref: s.ref, capture: { page: s.page, capturedAt: s.capturedAt }, ...(s.crop ? { crop: s.crop } : {}), ...(s.tap ? { tap: s.tap } : {}) }) && `screen:${s.id}`;
+  const screenAsset = (s: ScreenCapture) => addAsset(`screen:${s.id}`, { kind: "screen", ref: s.ref, capture: { page: s.page, capturedAt: s.capturedAt, ...(s.address ? { address: s.address } : {}) }, ...(s.crop ? { crop: s.crop } : {}), ...(s.tap ? { tap: s.tap } : {}) }) && `screen:${s.id}`;
 
   // Pass 1: each non-screen beat's length (and its heard line).
   /** `screens`/`span`: a screens beat's number of screens and how many seconds each one holds (whole bars). */

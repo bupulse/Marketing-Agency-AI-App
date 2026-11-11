@@ -343,7 +343,15 @@ def browser_window(c, im, k, t, params, idx, tap, host):
     for i, col in enumerate([(255, 95, 87), (255, 189, 46), (40, 200, 64)]):
         dw.ellipse((16 + i * 22, 14, 30 + i * 22, 28), fill=col + (255,))
     dw.rounded_rectangle((90, 10, w - 60, 32), 11, fill=(232, 233, 240, 255))
-    dw.text((106, 12), host, font=font("bold", 15), fill=(110, 112, 125, 255))
+    # The address shrinks to fit the bar (a phone capture's window is narrow), then is cut at the end.
+    room = max(40, w - 60 - 106 - 8)
+    size = 15
+    while size > 10 and dw.textlength(host, font=font("bold", size)) > room:
+        size -= 1
+    text = host
+    while len(text) > 4 and dw.textlength(text, font=font("bold", size)) > room:
+        text = text[:-1]
+    dw.text((106, 12 + (15 - size) // 2), text, font=font("bold", size), fill=(110, 112, 125, 255))
     zend = float(params.get("zoom", 1.15))
     fx, fy = float(params.get("fx", 0.5)), float(params.get("fy", 0.4))
     z = 1 + (zend - 1) * ease(min(1, k * 1.1))

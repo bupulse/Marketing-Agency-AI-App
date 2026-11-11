@@ -35,8 +35,8 @@ const assetSchema = z.object({
   seconds: num.min(0).optional(),
   /** Spoken words in the file, its own timeline (seconds). */
   words: z.array(wordSchema).max(200).optional(),
-  /** A real screen capture: its page and the date it was captured (hard rule 1). */
-  capture: z.object({ page: z.string().max(60), capturedAt: z.string().max(40) }).optional(),
+  /** A real screen capture: its page, the date it was captured (hard rule 1) and its address as clients see it. */
+  capture: z.object({ page: z.string().max(60), capturedAt: z.string().max(40), address: z.string().max(120).optional() }).optional(),
   /** Which part of a screen capture to show, as fractions [x0, y0, x1, y1]. */
   crop: z.tuple([fraction, fraction, fraction, fraction]).optional(),
   /** Where a real button is on the (cropped) screen, as fractions, for the tap ripple. */

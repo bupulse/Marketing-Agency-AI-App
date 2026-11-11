@@ -10,7 +10,7 @@ import path from "node:path";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { AdBrainSetupError, companyAccount } from "./facts";
-import { isEmptyPage, pagesToCapture, screensStale, type PageCounts, type ScreenPageId } from "./screen-plan";
+import { isEmptyPage, pagesToCapture, robotPath, screensStale, shownAddress, type PageCounts, type ScreenPageId } from "./screen-plan";
 import { SCREEN_PASS_COOKIE, screenPassSecret, signScreenPass } from "./screen-pass";
 import { jobDir } from "./render";
 import { assetHash, saveAsset } from "./store";
@@ -76,7 +76,7 @@ export async function captureScreens(opts: { force?: boolean; now?: Date } = {})
   await fs.mkdir(dir, { recursive: true });
   const jobPath = path.join(/*turbopackIgnore: true*/ dir, "job.json");
   const chromePath = process.env.AD_BRAIN_CHROME_PATH?.trim();
-  await fs.writeFile(jobPath, JSON.stringify({ baseUrl: selfUrl(), cookie: { name: SCREEN_PASS_COOKIE, value: token }, pages: pages.map((p) => ({ id: p.id, path: p.path })), outDir: dir, ...(chromePath ? { chromePath } : { channel: "chrome" }) }));
+  await fs.writeFile(jobPath, JSON.stringify({ baseUrl: selfUrl(), cookie: { name: SCREEN_PASS_COOKIE, value: token }, pages: pages.map((p) => ({ id: p.id, path: robotPath(p.path) })), outDir: dir, ...(chromePath ? { chromePath } : { channel: "chrome" }) }));
   try {
     const run = await runCapture(jobPath, 4 * 60_000);
     const manifest = JSON.parse(await fs.readFile(path.join(/*turbopackIgnore: true*/ dir, "manifest.json"), "utf8").catch(() => "[]")) as ManifestRow[];
@@ -91,14 +91,15 @@ export async function captureScreens(opts: { force?: boolean; now?: Date } = {})
       }
       const empty = isEmptyPage(row.page, counts);
       if (empty) result.skippedEmpty += 1;
-      const label = pages.find((p) => p.id === row.page)?.label ?? row.page;
+      const shown = pages.find((p) => p.id === row.page);
+      const label = shown?.label ?? row.page;
       await saveAsset({
         hash: assetHash({ kind: "screen", page: row.page, viewport: row.viewport, capturedAt }),
         kind: "screen",
         provider: "robot",
         bytes: await fs.readFile(row.file),
         mimeType: "image/jpeg",
-        meta: { key: `${row.page}-${row.viewport}`, page: label, pageId: row.page, viewport: row.viewport, label: `${label} (${row.viewport})`, capturedAt, crop: row.crop ?? undefined, tap: row.tap ?? undefined, items: counts[row.page], empty, width: row.width, height: row.height },
+        meta: { key: `${row.page}-${row.viewport}`, page: label, pageId: row.page, address: shown ? shownAddress(shown.path) : undefined, viewport: row.viewport, label: `${label} (${row.viewport})`, capturedAt, crop: row.crop ?? undefined, tap: row.tap ?? undefined, items: counts[row.page], empty, width: row.width, height: row.height },
       });
       result.captured += 1;
     }

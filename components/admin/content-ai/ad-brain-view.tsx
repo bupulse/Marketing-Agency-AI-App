@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { HostLink } from "@/components/platform/hosts";
 import { Clapperboard, Coins, Film, MonitorSmartphone, Play, Sparkles } from "lucide-react";
 import { cancelAdAction, captureScreensAction, loadCapturesAction, makeVariantsAction, runAdJobsNowAction, startAdAction } from "@/app/admin/(console)/(ai)/ad-brain/actions";
 import { dateTime } from "@/lib/admin/format";
@@ -107,7 +107,7 @@ export function AdBrainView({ overview, jobs, message }: { overview: AdBrainOver
               </form>
             )}
             <p className="text-[13px] text-muted">
-              Limits: <Link href="/admin/settings/ad-brain">Settings, Ad Brain limits</Link>. Costs: <Link href="/admin/ai">AI calls and spend</Link> (feature “adBrain”).
+              Limits: <HostLink href="/admin/settings/ad-brain">Settings, Ad Brain limits</HostLink>. Costs: <HostLink href="/admin/ai">AI calls and spend</HostLink> (feature “adBrain”).
             </p>
           </div>
         </ExpandCard>
@@ -183,7 +183,7 @@ function JobCard({ job }: { job: AdJobView }) {
               ))}
             </ol>
           </ExpandCard>
-          {job.postGroupId && <Link href="/dashboard/content" className="text-[13px]">Open the Posts page (signed in as the BuPulse company account) to approve it.</Link>}
+          {job.postGroupId && <HostLink href="/dashboard/content" className="text-[13px]">Open the Posts page (signed in as the BuPulse company account) to approve it.</HostLink>}
         </div>
       </div>
     </article>

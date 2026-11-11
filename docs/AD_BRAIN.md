@@ -202,10 +202,18 @@ The owner decided to build the screen robot before going live, then ship one rel
 **The pass.** `lib/ad-brain/screen-pass.ts` makes a signed (HMAC-SHA256), 5-minute pass naming the BuPulse company
 account. The key is derived from `SCREEN_PASS_SECRET`, else from `SUPABASE_SECRET_KEY`. The pass is never stored, and
 two places check it:
-- `proxy.ts` accepts it only when the request comes from this computer (host `127.0.0.1` or `localhost`, and no
-  `cf-connecting-ip`, `x-forwarded-for` or `x-real-ip`), only for GET and HEAD, and only on `/dashboard/**` and the read
-  API (never `/admin`, `/api/admin`, `/api/cron` or `/api/auth`). Anything else carrying a pass gets a 403, and a pass
+- `proxy.ts` checks it first, before any host routing (`lib/ad-brain/screen-pass-gate.ts`). It accepts it only when the
+  request comes from this computer: host `127.0.0.1` or `localhost`, and none of `cf-connecting-ip`, `x-forwarded-for`,
+  `x-real-ip`, `x-forwarded-host` or `forwarded`. A self-fetch (`next start` fetching a host rewrite from localhost with
+  the visitor's host in `X-Forwarded-Host`, `lib/platform/app-hosts.ts` `isSelfFetch`) is a visitor's request and is
+  refused. Only GET and HEAD, only on the app paths `/dashboard/**` and the read API (never `/admin`, a clean admin path
+  such as `/companies`, `/api/admin`, `/api/cron` or `/api/auth`). Anything else carrying a pass gets a 403, and a pass
   never falls back to a normal session.
+- **Hosts (11 Nov 2026).** The robot's pages are listed by the address clients see on marketing.bupulse.com
+  (`/content`, `/calendar`, `/autopilot`...; `lib/ad-brain/screen-plan.ts`). It opens each by its app path on loopback
+  (`robotPath`: `/content` → `/dashboard/content`, the same page the Marketing host rewrites to), and each capture keeps
+  its real address (`shownAddress`, e.g. `marketing.bupulse.com/content`), which the renderer draws in the ad's
+  browser bar.
 - `getCurrentUser` (`lib/supabase/server.ts`, through `lib/ad-brain/screen-user.ts`) checks the pass again, checks that
   the request is local, and checks that the user's email is the company account (`AD_BRAIN_COMPANY_EMAIL`, else
   office@bupulse.com).
