@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { REF_COOKIE, refCookieFor } from "@/lib/sales/ref-cookie";
 import { isSupportPath, supportRewriteUrl, supportRoute } from "@/lib/support/app-host";
-import { AUTH_SCOPE_COOKIE, authCookieFor, authScopeValue, frontOrigin, hostKind, hostRewriteUrl, hostRoute, isSelfFetch, marketingOrigin, requestHost, sessionCookieOptions } from "@/lib/platform/app-hosts";
+import { AUTH_SCOPE_COOKIE, authCookieFor, authScopeValue, frontOrigin, hostKind, hostRewriteUrl, hostRoute, isSelfFetch, marketingOrigin, requestHost, sameHostRedirect, sessionCookieOptions } from "@/lib/platform/app-hosts";
 
 const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/start-trial", "/book-demo", "/custom-plan", "/account", "/apps"];
 
@@ -27,7 +27,16 @@ export async function proxy(request: NextRequest) {
   const host = requestHost(request.headers);
   const selfFetch = isSelfFetch(request.headers);
   const route = support ? null : hostRoute(request.method, path, request.nextUrl.search, host);
-  if (route?.action === "redirect") return selfFetch ? leaveToBrowser() : noindexOnApp(NextResponse.redirect(route.url, HOST_REDIRECT), host);
+  // On the self-hosted PC (`next start` behind the tunnel) a host rewrite (admin.bupulse.com/ → /admin) is fetched by the
+  // server itself from localhost, with the visitor's host in X-Forwarded-Host, and comes back through this proxy as a
+  // self-fetch of the app path. Its "clean the address" redirect (/admin → /) must not answer it: that gave every admin
+  // page, and every Marketing page for a signed-in client, an empty 204 (11 November 2026). A same-host clean-path
+  // redirect on a self-fetch is served as it is (the path is already the app's own); any other host redirect is left to
+  // the browser.
+  if (route?.action === "redirect") {
+    if (!selfFetch) return noindexOnApp(NextResponse.redirect(route.url, HOST_REDIRECT), host);
+    if (!sameHostRedirect(route.url, host)) return leaveToBrowser();
+  }
   const rewrite = support?.action === "rewrite" ? supportRewriteUrl(support.path, request.nextUrl.search, request.url) : route?.action === "rewrite" ? hostRewriteUrl(route.path, request.nextUrl.search, request.url) : null;
   const pass = () => (rewrite ? NextResponse.rewrite(rewrite, { request }) : NextResponse.next({ request }));
   let response = pass();

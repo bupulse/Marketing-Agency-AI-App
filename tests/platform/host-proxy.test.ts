@@ -169,13 +169,27 @@ describe("with the split on", () => {
     const page = await proxy(self("/settings"));
     expect(page.headers.get("x-middleware-rewrite")).toBe("http://localhost:3002/dashboard/settings");
     expect(lastCookieOptions()).toMatchObject({ name: "bp-client-auth", domain: ".bupulse.com" });
-    // A redirect is left to the browser (an empty non-RSC answer), never followed by the server without cookies.
+    // The server fetching a host rewrite from itself (the PC behind the tunnel) arrives with the app path: served as it
+    // is, never the empty 204 that blanked every admin and signed-in Marketing page on 11 November 2026.
     const old = await proxy(self("/dashboard/settings"));
-    expect(old.status).toBe(204);
+    expect(old.status).toBe(200);
     expect(old.headers.get("location")).toBeNull();
+    expect(old.headers.get("x-middleware-rewrite")).toBeNull();
     auth.signedIn = false;
     const gate = await proxy(self("/settings"));
     expect(gate.status).toBe(204);
+  });
+
+  it("the PC's self-fetch of an admin rewrite (/admin) is served, not answered with an empty 204", async () => {
+    const self = (path: string) => new NextRequest(`http://localhost:3002${path}`, { headers: { host: "localhost:3002", "x-forwarded-host": "admin.bupulse.com" } });
+    for (const path of ["/admin", "/admin/login", "/admin/companies"]) {
+      const res = await proxy(self(path));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    }
+    // A redirect to another host is still left to the browser.
+    const other = await proxy(self("/dashboard"));
+    expect(other.status).toBe(204);
   });
 
   it("a forged Host header is just the front host: no redirect anywhere else", async () => {

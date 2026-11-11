@@ -386,3 +386,16 @@ export function requestHost(headers: Pick<Headers, "get">): string | null {
 export function isSelfFetch(headers: Pick<Headers, "get">): boolean {
   return requestHost(headers) !== headers.get("host");
 }
+
+/**
+ * True when a host redirect stays on the visitor's own host (only the path changes: /admin/x → /x, /dashboard/x → /x).
+ * proxy.ts serves such a redirect as it is when the server fetches a host rewrite from itself (see requestHost).
+ */
+export function sameHostRedirect(url: string, host: string | null): boolean {
+  try {
+    const name = (host ?? "").split(",")[0].trim().toLowerCase();
+    return !!name && new URL(url).host.toLowerCase() === name;
+  } catch {
+    return false;
+  }
+}
