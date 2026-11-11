@@ -5,6 +5,7 @@ import { cancelJob, registerJobHandler, scheduleJob } from "@/lib/jobs/due";
 import { calledUrl } from "./called-link";
 import { telegramChannel } from "./channels";
 import type { LeadAlert } from "./format";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Speed to lead (owner, 31 October 2026): a quote request keeps buzzing the owner's phone on Telegram every 2 minutes,
 // up to 5 times, until "✅ Called" is pressed under an alert (or the request is marked called in Admin). Each reminder is
@@ -41,7 +42,7 @@ export function reminderAlert(row: Row, n: number, site = publicSiteUrl()): Lead
     source: row.source,
     page: row.pageUrl ? `${site}${row.pageUrl}` : null,
     at: row.createdAt,
-    openUrl: `${site}/admin/quotes`,
+    openUrl: appUrl(`/admin/quotes`, site),
     calledUrl: calledUrl(site, row.id),
     reminder: { n, of: REMINDERS },
   };

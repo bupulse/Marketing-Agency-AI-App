@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const jar = vi.hoisted(() => ({ values: new Map<string, string>(), sets: [] as { name: string; value: string; options: Record<string, unknown> }[] }));
 const mocks = vi.hoisted(() => ({
@@ -122,5 +122,28 @@ describe("the install URL survives sign-up for brand-new users", () => {
     expect(await readReturn()).toBe("/dashboard");
     jar.values.set(RETURN_COOKIE, "https://evil.example.org");
     expect(await takeReturn()).toBe("/dashboard");
+  });
+});
+
+describe("the install URL survives the host split (docs/HOSTS.md)", () => {
+  const SPLIT = { NEXT_PUBLIC_SITE_URL: "https://app.bupulse.test", MARKETING_APP_URL: "https://marketing.app.bupulse.test", CLIENT_COOKIE_DOMAIN: ".app.bupulse.test" };
+  beforeEach(() => Object.entries(SPLIT).forEach(([k, v]) => vi.stubEnv(k, v)));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("Shopify's App URL on the main site goes to the Marketing host with the whole query", async () => {
+    const res = await proxy(new NextRequest(`https://app.bupulse.test${INSTALL}`));
+    expect(res.headers.get("location")).toBe(`https://marketing.app.bupulse.test${INSTALL.replace("/dashboard", "")}`);
+  });
+
+  it("signed out there: the one sign-in, and back to the install URL after it", async () => {
+    const clean = `https://marketing.app.bupulse.test${INSTALL.replace("/dashboard", "")}`;
+    const res = await proxy(new NextRequest(clean, { headers: { host: "marketing.app.bupulse.test" } }));
+    const location = new URL(res.headers.get("location")!);
+    expect(location.origin + location.pathname).toBe("https://app.bupulse.test/login");
+    expect(location.searchParams.get("next")).toBe(clean);
+    // The login turns it back into the app path; the main site then sends it to the Marketing host again.
+    expect(await login(clean)).toBe(`REDIRECT:${INSTALL}`);
+    expect(jar.values.get(RETURN_COOKIE)).toBe(INSTALL);
+    expect(jar.sets[0].options).toMatchObject({ domain: ".app.bupulse.test" });
   });
 });

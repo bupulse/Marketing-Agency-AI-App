@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import { buttonClasses } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
+import { HostLink } from "@/components/platform/hosts";
 
 export const accountLinks = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -74,7 +75,7 @@ export function AccountMenu({ email }: { email: string | null }) {
         <div className="animate-pop flex flex-col gap-0.5 rounded-2xl border border-line bg-surface p-2 shadow-xl">
           <p className="truncate px-3 pt-1 pb-2 text-xs text-muted">{email}</p>
           {accountLinks.map(({ label, href, icon: Icon }) => (
-            <Link
+            <HostLink
               key={href}
               href={href}
               role="menuitem"
@@ -82,7 +83,7 @@ export function AccountMenu({ email }: { email: string | null }) {
               className="flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-sm font-medium text-text no-underline hover:bg-soft"
             >
               <Icon aria-hidden className="size-4" /> {label}
-            </Link>
+            </HostLink>
           ))}
           <form action="/auth/signout" method="post" className="border-t border-line pt-1">
             <button

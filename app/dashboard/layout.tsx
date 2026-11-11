@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { HostsProvider } from "@/components/platform/hosts";
+import { frontOrigin, hostKind, hostsConfig, marketingOrigin } from "@/lib/platform/app-hosts";
+import { pickedServices } from "@/lib/platform/services-shared";
 import { BackgroundBlobs } from "@/components/motion";
 import { AppShell, type ShellNotice } from "@/components/app/app-shell";
 import { networkLabel } from "@/lib/content-board/labels";
@@ -37,8 +41,12 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const { business, role, displayName, firstName, email, businessName, usage, entitlements, isTrial, trialDaysLeft, logoUrl, brandColors, pendingDemo, pendingInvoice } =
+  const { user, business, role, displayName, firstName, email, businessName, usage, entitlements, isTrial, trialDaysLeft, logoUrl, brandColors, pendingDemo, pendingInvoice } =
     await getAppContext();
+  // The host the dashboard is shown on (docs/HOSTS.md): links in the browser use its clean addresses.
+  const hosts = { kind: hostKind((await headers()).get("host")), hosts: hostsConfig() };
+  // The service switcher in the top bar, once Marketing has its own host: Marketing, Agency (coming soon) and All services.
+  const switcher = marketingOrigin() ? { chooser: `${frontOrigin()}/apps?all=1`, agencyPicked: pickedServices(user.user_metadata).includes("agency") } : null;
 
   // Not started yet with an invoice to pay instead of a trial (docs/INVOICES.md; without one getAppContext sent the
   // company to /start-trial): every dashboard route shows the invoice and nothing else (the server refuses the rest
@@ -46,11 +54,11 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   if (pendingDemo) {
     if (!pendingInvoice) redirect("/start-trial");
     return (
-      <>
+      <HostsProvider {...hosts}>
         <BackgroundBlobs />
         <PhoneAppSetup />
         <InvoiceLock invoice={pendingInvoice} businessId={business.id} role={role} firstName={firstName} email={email} businessName={businessName} />
-      </>
+      </HostsProvider>
     );
   }
 
@@ -119,10 +127,11 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const studio = studioOn ? ((usage.limits.videoCredits ?? 0) > 0 ? "open" : "upgrade") : null;
 
   return (
-    <>
+    <HostsProvider {...hosts}>
       <BackgroundBlobs />
       <PhoneAppSetup />
       <AppShell
+        switcher={switcher}
         brand={{ logoUrl, colors: brandPalette(brandColors), hasColors: brandColors.some(isHexColor) }}
         displayName={displayName}
         firstName={firstName}
@@ -162,7 +171,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         {children}
         {can(role, "settings") && <AutoTimezone current={business.timezone} />}
       </AppShell>
-    </>
+    </HostsProvider>
   );
 }
 

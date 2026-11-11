@@ -13,6 +13,7 @@ import { writeAudit } from "@/lib/admin/audit";
 import { isAdminEmail, type AdminIdentity } from "@/lib/admin/auth";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { BUILT_IN_ROLES, OWNER_ROLE, builtInRole, isPermission, isSalesRole, permissionsOf, type Permission } from "./permissions";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -89,7 +90,7 @@ async function ensureSignIn(email: string, name: string | null): Promise<"existi
 /** The invitation: where to sign in (email, then an emailed code, then an authenticator app). No password is set. */
 async function sendInvite(email: string, name: string | null, roleName: string): Promise<boolean> {
   try {
-    const url = `${publicSiteUrl()}/admin/login`;
+    const url = appUrl(`/admin/login`, publicSiteUrl());
     const { html, text } = renderEmail({
       heading: "You were added to the BuPulse team",
       intro: `${name ? `Hi ${name}, ` : ""}you can now use the BuPulse admin console as ${roleName}. Open the console, enter this email address and the code we email you. The first time, you also add an authenticator app (Microsoft Authenticator, Google Authenticator or 1Password): the console asks for its 6-digit code at every sign-in.`,

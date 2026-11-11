@@ -1,6 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import { inBackgroundJob } from "@/lib/platform/background-job";
+import { adminOrigin, marketingOrigin } from "@/lib/platform/app-hosts";
 import { publicSiteUrl, servedOriginOf, siteUrl } from "./site-url";
 
 // Which address a link or a redirect uses (docs/RELEASE_2.0.md, "Links follow the host"). Three kinds:
@@ -36,4 +37,13 @@ export async function linkSiteUrl(): Promise<string> {
 /** Cookies are Secure when the address the visitor is on is https. */
 export async function secureCookies(): Promise<boolean> {
   return (await requestSiteUrl()).startsWith("https://");
+}
+
+/**
+ * linkSiteUrl() for pages that live on bupulse.com (sign-in, password reset, invitations, the creator portal, the public
+ * API): on the Marketing or admin host (lib/platform/app-hosts.ts) it is publicSiteUrl() instead of that host.
+ */
+export async function frontLinkUrl(): Promise<string> {
+  const origin = await linkSiteUrl();
+  return origin === marketingOrigin() || origin === adminOrigin() ? publicSiteUrl() : origin;
 }

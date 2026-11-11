@@ -4,6 +4,7 @@ import { isServiceEnabled } from "@/lib/admin/switch";
 import { siteUrl } from "@/lib/auth/site-url";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { alertRecipients } from "@/lib/team/recipients";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // "Your video is ready" (docs/VIDEO_STUDIO_SPLIT.md): run by the video-jobs cron. Each studio video that became ready
 // gets one email to the company (the Owner, and Admins with alerts on), with a button to it in the Videos library.
@@ -37,7 +38,7 @@ export async function sendReadyNotices(now = new Date()): Promise<NoticeResult> 
     if (!business) continue;
     const to = await alertRecipients(businessId, business.user.email);
     const first = ids.length === 1 ? await prisma.videoJob.findUnique({ where: { id: ids[0] }, select: { product: { select: { name: true } } } }) : null;
-    const email = readyEmail({ count, businessName: business.name, productName: first?.product?.name ?? null, href: `${siteUrl()}/dashboard/video${count === 1 ? `?v=${ids[0]}` : ""}` });
+    const email = readyEmail({ count, businessName: business.name, productName: first?.product?.name ?? null, href: appUrl(`/dashboard/video${count === 1 ? `?v=${ids[0]}` : ""}`, siteUrl()) });
     let sent = 0;
     for (const address of to) if (await sendEmail({ to: address, ...email })) sent += 1;
     result.companies += 1;

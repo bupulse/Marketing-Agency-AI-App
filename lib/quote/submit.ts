@@ -9,6 +9,7 @@ import type { LeadAlert } from "@/lib/lead-alerts/format";
 import { currentTrackedLinkId, linkTagFor } from "@/lib/links/service";
 import { publicLimited } from "@/lib/request-limits";
 import { QUOTE_FIELDS, QUOTE_KIND, quoteSchema, type QuoteFields, type QuoteFormState, type QuoteRequest } from "./schema";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Stores a "Get a free quote" request (the pop-up and /quote) and alerts the owner at once (lib/lead-alerts), with the
 // same protections as the contact form (lib/contact.ts): a honeypot field, a per-address limit, and the same person
@@ -30,7 +31,7 @@ export function quoteAlert(q: QuoteRequest, at: Date, id?: string, link?: string
     page: q.pageUrl ? `${site}${q.pageUrl}` : null,
     link: link ?? null,
     at,
-    openUrl: `${site}/admin/quotes`,
+    openUrl: appUrl(`/admin/quotes`, site),
     calledUrl: id ? calledUrl(site, id) : null,
   };
 }

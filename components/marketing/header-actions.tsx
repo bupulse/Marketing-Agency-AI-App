@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui";
+import { useHosts } from "@/components/platform/hosts";
 import { AccountMenu, useSignedInEmail } from "./account-menu";
 import { MobileMenu } from "./mobile-menu";
 import { CtaButton } from "./quote/cta";
@@ -12,11 +13,13 @@ import { CtaButton } from "./quote/cta";
  */
 export function HeaderActions({ links }: { links: { label: string; href: string }[] }) {
   const email = useSignedInEmail();
+  // Once Marketing has its own host, "Go to dashboard" opens the service chooser here on bupulse.com (docs/HOSTS.md).
+  const { hosts } = useHosts();
   return (
     <>
       <AccountMenu email={email} />
       {email ? (
-        <Button href="/dashboard" size="sm" className="hidden whitespace-nowrap sm:inline-flex">
+        <Button href={hosts.marketing ? "/apps" : "/dashboard"} size="sm" className="hidden whitespace-nowrap sm:inline-flex">
           Go to dashboard
         </Button>
       ) : (

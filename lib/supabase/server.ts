@@ -1,17 +1,22 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { loadServiceKeys } from "@/lib/admin/service-keys";
+import { sessionCookieOptions } from "@/lib/platform/app-hosts";
 
 // Create a new client per request (never share one across requests).
 export async function createClient() {
   // Every page and action that reads the session also gets the keys saved in Admin -> Services (cached, 30 s).
-  const [cookieStore] = await Promise.all([cookies(), loadServiceKeys()]);
+  const [cookieStore, headerStore] = await Promise.all([cookies(), headers(), loadServiceKeys()]);
+  // The session cookie of this host (docs/HOSTS.md): the shared client cookie, the admin host's own, or the default.
+  // The proxy and the browser client (lib/supabase/client.ts) pick the same one.
+  const cookieOptions = sessionCookieOptions(headerStore.get("host"));
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      ...(cookieOptions ? { cookieOptions } : {}),
       cookies: {
         getAll() {
           return cookieStore.getAll();

@@ -11,6 +11,7 @@ import { persistDemoSync, syncDemoEvent } from "@/lib/google-calendar/events";
 import { getPlan, getTrialPlan } from "@/lib/plan-catalog";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { companyPlans } from "@/lib/region-prices";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Starting a company's free trial (docs/REGIONS.md, "Trial first"). A new company waits in PENDING_DEMO until it picks
 // the plan it wants to try on /start-trial: one tap moves it onto its trial (startOwnTrial). An admin's "Start trial"
@@ -123,7 +124,7 @@ export async function beginTrial(ctx: AdminContext, input: BeginTrialInput, now 
         { label: "During the trial", value: `${trialPlan.limits.text} AI texts and ${trialPlan.limits.image} designs to try on your own business.` },
         ...(demo === "cancelled" ? [{ label: "Your demo call", value: "No longer needed, so we cancelled it. Reply to this email if you still want a call." }] : []),
       ],
-      button: { label: "Open BuPulse", url: `${await linkSiteUrl()}/dashboard` },
+      button: { label: "Open BuPulse", url: appUrl(`/dashboard`, await linkSiteUrl()) },
       footer: "Nothing is charged automatically. If you do nothing, the trial simply stops and your work stays saved.",
     });
     await sendEmail({ to: business.user.email, subject: `Your BuPulse trial has started: ${chosen.name} until ${formatSlot(trialEndsAt)}`, html, text });

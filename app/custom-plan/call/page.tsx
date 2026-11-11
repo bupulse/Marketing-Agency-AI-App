@@ -16,6 +16,7 @@ import { demoGoogleCalendarUrl, managePath } from "@/lib/demo/calendar-links";
 import { callRequestId, currentPlanCall } from "@/lib/demo/plan-calls";
 import { DEMO_TIME_ZONE, formatSlot, groupSlotsByDay, MIN_LEAD_MINUTES } from "@/lib/demo/slots";
 import { askMessage, can } from "@/lib/team/roles";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 export const metadata: Metadata = {
   title: "Your custom plan call",
@@ -61,7 +62,7 @@ export default async function PlanCallPage({ searchParams }: { searchParams: Pro
   if (call && one(sp.step) !== "time") {
     const settings = await getSettings();
     const meetingLink = call.meetingLink || settings.meetingLink || null;
-    const googleUrl = demoGoogleCalendarUrl({ ...call, meetingLink }, business.name, `${await linkSiteUrl()}${managePath(call.kind)}`);
+    const googleUrl = demoGoogleCalendarUrl({ ...call, meetingLink }, business.name, appUrl(managePath(call.kind), await linkSiteUrl()));
     const minutes = Math.round((call.endsAt.getTime() - call.startsAt.getTime()) / 60_000);
     const movable = canMoveBooking(call, new Date());
     return (

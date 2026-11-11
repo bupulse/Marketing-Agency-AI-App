@@ -1,3 +1,5 @@
+import { adminOrigin, marketingOrigin } from "@/lib/platform/app-hosts";
+
 export function siteUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
@@ -11,13 +13,17 @@ export function publicSiteUrl() {
   return (process.env.PUBLIC_LINK_URL || siteUrl()).replace(/\/$/, "");
 }
 
-/** Addresses the site may send people back to: siteUrl() plus AUTH_EXTRA_ORIGINS (comma-separated, e.g. a test tunnel). */
+/**
+ * Addresses the site may send people back to: siteUrl() plus AUTH_EXTRA_ORIGINS (comma-separated, e.g. a test tunnel),
+ * plus the Marketing and admin hosts once they are set (lib/platform/app-hosts.ts).
+ */
 function servedOrigins(): string[] {
   const extra = (process.env.AUTH_EXTRA_ORIGINS ?? "")
     .split(",")
     .map((o) => o.trim().replace(/\/$/, ""))
     .filter(Boolean);
-  return [siteUrl(), ...extra];
+  const hosts = [marketingOrigin(), adminOrigin()].filter((o): o is string => Boolean(o));
+  return [siteUrl(), ...extra, ...hosts];
 }
 
 /**
@@ -27,7 +33,7 @@ function servedOrigins(): string[] {
 export function servedOriginOf(headers: Headers): string | null {
   const host = (headers.get("x-forwarded-host") ?? headers.get("host") ?? "").split(",")[0].trim();
   if (!host) return null;
-  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+  const local = /^(localhost|[a-z0-9-]+(\.[a-z0-9-]+)*\.localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host);
   const proto = (headers.get("x-forwarded-proto") ?? (local ? "http" : "https")).split(",")[0].trim();
   const origin = `${proto}://${host}`;
   return servedOrigins().includes(origin) ? origin : null;

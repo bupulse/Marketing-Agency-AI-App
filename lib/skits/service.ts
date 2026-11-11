@@ -43,6 +43,7 @@ import { skitVideoPrompt } from "./prompt";
 import { isSkitDay } from "./schedule";
 import { checkVoice, MAX_OPEN_EXTRAS, missingVoices, readLines, readSpeakers, SKIT_SECONDS, type SkitStatus } from "./shared";
 import { writeSkit, type SkitRequest } from "./writer";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 const BUCKET = "media";
 /** A failed write is tried this many times in all. */
@@ -206,7 +207,7 @@ export async function sendSkitNotice(skitId: string, now = new Date()): Promise<
   if (count === 0) return false;
   const title = "Record your skit for today";
   const body = `BuPulse wrote today's short skit for ${skit.business.name}. Open Posts, read the lines and record them with your voice (or send a WhatsApp voice note). BuPulse makes the video from it.`;
-  const { html, text } = renderEmail({ heading: title, intro: body, button: { label: "Record your skit", url: `${publicSiteUrl()}/dashboard/content#skits` } });
+  const { html, text } = renderEmail({ heading: title, intro: body, button: { label: "Record your skit", url: appUrl(`/dashboard/content#skits`, publicSiteUrl()) } });
   let any = false;
   for (const to of await alertRecipients(skit.businessId, skit.business.user.email)) {
     if (await sendEmail({ to, subject: title, html, text }).catch(() => false)) any = true;
@@ -397,7 +398,7 @@ export async function orderExtraSkit(owner: { userId: string; businessId: string
 
 async function notifyAdminsOfOrder(businessName: string) {
   const title = `Extra skit ordered: ${businessName}`;
-  const { html, text } = renderEmail({ heading: title, intro: `${businessName} asked for an extra talking skit (5,000 RWF). Call them to confirm and take the payment.`, button: { label: "Open Admin", url: `${publicSiteUrl()}/admin` } });
+  const { html, text } = renderEmail({ heading: title, intro: `${businessName} asked for an extra talking skit (5,000 RWF). Call them to confirm and take the payment.`, button: { label: "Open Admin", url: appUrl(`/admin`, publicSiteUrl()) } });
   for (const to of adminEmails()) await sendEmail({ to, subject: title, html, text }).catch(() => false);
 }
 

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { alertRecipients } from "@/lib/team/recipients";
 import { amount, networkLabel } from "../describe";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // What the job tells people (docs/CREATOR_CAMPAIGNS.md): a post that stopped earning (the creator and the company), a
 // connection that needs signing in again (the creator), and a closed period's payouts (the creator and the company).
@@ -53,7 +54,7 @@ export async function notifyRemoved(removed: Removed[]): Promise<number> {
       heading: `${list.length === 1 ? "A creator post was" : `${list.length} creator posts were`} removed`,
       intro: `In ${c.name}, these posts are gone from the creators' accounts, so they stop earning. BuPulse took their pay out of payouts not paid yet.`,
       blocks: list.map((p) => ({ label: `${p.campaignCreator.name} · ${networkLabel(p.network)}`, value: p.url })),
-      button: { label: "Open the campaign", url: `${site}/dashboard/creators` },
+      button: { label: "Open the campaign", url: appUrl(`/dashboard/creators`, site) },
     });
     const recipients = await alertRecipients(c.businessId, c.business.user.email);
     for (const to of recipients) if (await sendEmail({ to, subject: `Creator posts removed: ${c.name}`, ...mail })) sent++;
@@ -103,7 +104,7 @@ export async function notifyPayouts(periodId: string): Promise<number> {
   const mail = renderEmail({
     heading: "Creator payouts are ready",
     intro: `Month ${period.index} of ${c.name} is over: ${period.payouts.length} creator${period.payouts.length === 1 ? "" : "s"}, ${amount(total, c.currency)} in all. Pay each one by Mobile Money, then mark it paid with the reference.`,
-    button: { label: "Open payouts", url: `${site}/dashboard/creators` },
+    button: { label: "Open payouts", url: appUrl(`/dashboard/creators`, site) },
   });
   for (const to of await alertRecipients(c.businessId, c.business.user.email)) if (await sendEmail({ to, subject: `Creator payouts ready: ${c.name}`, ...mail })) sent++;
   return sent;

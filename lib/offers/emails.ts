@@ -3,6 +3,7 @@ import { adminEmails } from "@/lib/admin/auth";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { formatMinor } from "@/lib/region-format";
 import { linkSiteUrl } from "@/lib/auth/request-site";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 // Emails of the custom plan flow (docs/OFFERS.md). All go through sendEmail (Resend, kill switch respected) and return
 // whether the mail went out; nothing here throws. The "plan is active" email after payment is the Mobile Money one.
@@ -17,7 +18,7 @@ const paidOnce = (totalMinor: number, currency: string, a: NonNullable<AdditionN
 
 /** The company owner's email when an offer is sent: what is in it, the price, until when, and the Billing link. */
 export async function sendOfferEmail(to: { email: string; name: string | null }, p: { company: string; totalMinor: number; currency: string; interval: string; features: string[]; validUntil: Date; note: string | null; addition?: AdditionNote }): Promise<boolean> {
-  const url = `${(await linkSiteUrl())}/dashboard/billing#offer`;
+  const url = appUrl(`/dashboard/billing#offer`, await linkSiteUrl());
   if (p.addition) {
     const price = paidOnce(p.totalMinor, p.currency, p.addition);
     const added = renderEmail({
@@ -62,7 +63,7 @@ export async function sendRequestAlertEmail(p: { id: string; company: string; em
       ...(p.phone ? [{ label: "Phone", value: p.phone }] : []),
       ...(p.demo ? [{ label: "Demo", value: p.demo }] : []),
     ],
-    button: { label: "Open the request", url: `${(await linkSiteUrl())}/admin/requests?open=${encodeURIComponent(p.id)}` },
+    button: { label: "Open the request", url: appUrl(`/admin/requests?open=${encodeURIComponent(p.id)}`, await linkSiteUrl()) },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `Custom plan request: ${p.company}`, html, text })));
   return results.some(Boolean);
@@ -70,7 +71,7 @@ export async function sendRequestAlertEmail(p: { id: string; company: string; em
 
 /** The client's reminder that an accepted offer is not paid yet (day 3 and day 7 after accepting). */
 export async function sendOfferReminderEmail(to: { email: string; name: string | null }, p: { day: 3 | 7; totalMinor: number; currency: string; interval: string; method: string | null; addition?: AdditionNote }): Promise<boolean> {
-  const url = `${(await linkSiteUrl())}/dashboard/billing#offer`;
+  const url = appUrl(`/dashboard/billing#offer`, await linkSiteUrl());
   const how = p.method === "invoice" ? "Pay the invoice by Mobile Money with its number, or as it says." : "Pay by Mobile Money from Billing and tap I've paid.";
   if (p.addition) {
     const added = renderEmail({

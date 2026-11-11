@@ -10,6 +10,7 @@ import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, RateLimitError } from "@/lib/rate-limit";
 import { buildAuthorizeUrl, isShopifyEnabled, normalizeShopDomain, shopifyConfig, verifyOAuthHmac } from "@/lib/stores/shopify";
 import { SHOPIFY_COOKIE, sealShopifyState } from "@/lib/stores/state";
+import { marketingOrigin } from "@/lib/platform/app-hosts";
 
 const back = async (error: string) => NextResponse.redirect(new URL(`/dashboard/stores/shopify?error=${error}`, await requestSiteUrl()), 303);
 const INSTALL_MAX_AGE_S = 15 * 60;
@@ -70,8 +71,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!isShopifyEnabled()) return new Response("Not found", { status: 404 });
   if (!(await isServiceEnabled("shopify"))) return new Response(UNAVAILABLE_MESSAGE, { status: 503 });
+  // The form is on the Marketing host once it has one (docs/HOSTS.md) and posts here on bupulse.com, where the callback is.
   const origin = request.headers.get("origin");
-  if (!origin || origin !== new URL(await requestSiteUrl()).origin) return back("invalid_request");
+  if (!origin || (origin !== new URL(await requestSiteUrl()).origin && origin !== marketingOrigin())) return back("invalid_request");
   const form = await request.formData().catch(() => null);
   const shop = form?.get("shop");
   return start(typeof shop === "string" ? shop : null);

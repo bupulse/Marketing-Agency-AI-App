@@ -8,6 +8,7 @@ import { leadLabel, renderInstantLeadEmail } from "./email";
 import { sendWhatsappLeadAlert, whatsappConfig } from "./whatsapp";
 import { emitWebhookEvent } from "@/lib/webhooks/emit";
 import { leadData } from "@/lib/webhooks/events";
+import { appUrl } from "@/lib/platform/app-hosts";
 
 export type NotifyResult = { emailed: boolean; webhook: boolean; /** Devices that accepted the push alert. */ pushed: number; whatsapp: boolean };
 
@@ -61,7 +62,7 @@ export async function notifyNewLead(leadId: string): Promise<NotifyResult> {
       if (!accountLive) return;
       try {
         const text = pushText(lead, transcript);
-        result.pushed = await pushToLeadWatchers(business.id, { ...text, url: `${await linkSiteUrl()}/dashboard/leads/${encodeURIComponent(lead.id)}`, tag: `lead-${lead.id}` });
+        result.pushed = await pushToLeadWatchers(business.id, { ...text, url: appUrl(`/dashboard/leads/${encodeURIComponent(lead.id)}`, await linkSiteUrl()), tag: `lead-${lead.id}` });
       } catch (error) {
         console.error("[leads] push alert failed:", error instanceof Error ? error.message : error);
       }

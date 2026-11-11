@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAppPath, useHostHref } from "@/components/platform/hosts";
+import { ServiceSwitcher, type SwitcherProps } from "@/components/platform/service-switcher";
 import { Bell, ChevronDown, Clapperboard, ExternalLink, LogOut, Menu, Plus, Search, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { Logo } from "@/components/brand";
@@ -55,6 +57,8 @@ type ShellProps = {
   studio?: StudioLink;
   /** Open inbox conversations with unread messages: the badge on Inbox (0 without the inbox feature). */
   inboxUnread?: number;
+  /** The service switcher (Marketing, Agency, All services), once Marketing has its own host; null hides it. */
+  switcher?: SwitcherProps | null;
   children: ReactNode;
 };
 
@@ -63,6 +67,7 @@ export type ShellNotice = { id: string; title: string; text: string; href: strin
 /** The bell: a short list of notices, or "all caught up". Esc and a click outside close it. */
 function NoticesBell({ notices }: { notices: ShellNotice[] }) {
   const { toast } = useToast();
+  const toHref = useHostHref();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -91,7 +96,7 @@ function NoticesBell({ notices }: { notices: ShellNotice[] }) {
       {open && (
         <div role="region" aria-label="Notifications" className="glass-strong absolute right-0 z-40 mt-2 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-1 rounded-card p-2 shadow-glass">
           {notices.map((n) => (
-            <Link key={n.id} href={n.href} onClick={() => setOpen(false)} className="flex flex-col gap-0.5 rounded-2xl p-3 hover:bg-soft">
+            <Link key={n.id} href={toHref(n.href)} onClick={() => setOpen(false)} className="flex flex-col gap-0.5 rounded-2xl p-3 hover:bg-soft">
               <span className="text-[15px] font-semibold">{n.title}</span>
               <span className="text-[14px] text-muted">{n.text}</span>
               <span className="text-[14px] font-semibold text-pulse-blue">{n.action}</span>
@@ -146,9 +151,10 @@ const shortcutHint = () => (/Mac|iPhone|iPad/.test(navigator.platform || navigat
 
 function NavLink({ href, label, icon: Icon, pathname, badge, onNavigate }: { href: string; label: string; icon: NavGroup["items"][number]["icon"]; pathname: string; badge?: number; onNavigate?: () => void }) {
   const active = isActive(pathname, href);
+  const toHref = useHostHref();
   return (
     <Link
-      href={href}
+      href={toHref(href)}
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
@@ -279,6 +285,7 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
   const groups = useMemo(() => navFor(role, features), [role, features]);
   const hint = useSyncExternalStore(noSubscribe, shortcutHint, () => null);
   const uid = useId();
+  const toHref = useHostHref();
   const brandRow = (
     <>
       <BrandMark name={businessName} brand={brand} size={36} />
@@ -289,14 +296,14 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
   const studioLink =
     studio === "open" ? (
       // A plain link, not next/link: it must never be prefetched (each visit writes a sign-in ticket).
-      <a href="/dashboard/video/open" target="_blank" rel="noopener" onClick={onNavigate} className={quiet}>
+      <a href={toHref("/dashboard/video/open")} target="_blank" rel="noopener" onClick={onNavigate} className={quiet}>
         <Clapperboard aria-hidden className="size-[18px] shrink-0" />
         Video Studio
         <ExternalLink aria-hidden className="ml-auto size-4 shrink-0" />
         <span className="sr-only">(opens in a new tab)</span>
       </a>
     ) : studio === "upgrade" ? (
-      <Link href="/dashboard/video?studio=plan" onClick={onNavigate} className={quiet}>
+      <Link href={toHref("/dashboard/video?studio=plan")} onClick={onNavigate} className={quiet}>
         <Clapperboard aria-hidden className="size-[18px] shrink-0" />
         Video Studio
       </Link>
@@ -313,7 +320,7 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
       <div className="px-2 pt-1">
-        <Link href="/dashboard" onClick={onNavigate} aria-label="BuPulse home" className="inline-flex min-h-11 items-center">
+        <Link href={toHref("/dashboard")} onClick={onNavigate} aria-label="BuPulse home" className="inline-flex min-h-11 items-center">
           <Logo height={28} />
         </Link>
       </div>
@@ -334,7 +341,7 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
       </button>
       {can(role, "settings") ? (
         <Link
-          href="/dashboard/brand"
+          href={toHref("/dashboard/brand")}
           onClick={onNavigate}
           className="flex min-h-12 items-center gap-2.5 rounded-2xl bg-soft px-2.5 py-1.5 no-underline"
         >
@@ -379,7 +386,7 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
           <p className="px-3.5 pb-1 text-xs font-semibold uppercase tracking-wide text-muted">Add to your plan</p>
           {missing.map(({ key, label }) => {
             const Icon = FEATURE_ICONS[key];
-            const href = `/dashboard/upgrade?feature=${key}`;
+            const href = toHref(`/dashboard/upgrade?feature=${key}`);
             return (
               <Link
                 key={key}
@@ -412,6 +419,7 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
 
 function UserMenu({ displayName, email }: { displayName: string; email: string }) {
   const [open, setOpen] = useState(false);
+  const toHref = useHostHref();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -454,7 +462,7 @@ function UserMenu({ displayName, email }: { displayName: string; email: string }
             <p className="truncate text-xs text-muted">{email}</p>
           </div>
           <Link
-            href="/dashboard/settings"
+            href={toHref("/dashboard/settings")}
             role="menuitem"
             onClick={() => setOpen(false)}
             className="flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-sm font-medium no-underline hover:bg-soft"
@@ -531,8 +539,10 @@ function Drawer({ onClose, ...sidebar }: Omit<SidebarProps, "onNavigate"> & { on
   );
 }
 
-export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, notOffered = [], notices = [], studio = null, inboxUnread = 0, children }: ShellProps) {
-  const pathname = usePathname();
+export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, notOffered = [], notices = [], studio = null, inboxUnread = 0, switcher = null, children }: ShellProps) {
+  // The app path (/dashboard/...) behind the address shown: on the Marketing host "/posts" is /dashboard/posts.
+  const pathname = useAppPath(usePathname());
+  const toHref = useHostHref();
   const [drawerOpen, setDrawerOpen] = useState(false);
   // The + Create menu: open with the button's place (the computer menu opens under it), or closed (null).
   const [create, setCreate] = useState<{ anchor: DOMRect | null } | null>(null);
@@ -541,8 +551,8 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
   // Where focus goes back when the drawer, the Create menu or the search closes: the button that opened it.
   const returnFocus = useRef<HTMLElement | null>(null);
 
-  const actions = useMemo(() => createActions(role, features, studio), [role, features, studio]);
-  const entries = useMemo(() => finderEntries(role, features, studio), [role, features, studio]);
+  const actions = useMemo(() => createActions(role, features, studio).map((a) => ({ ...a, href: toHref(a.href) })), [role, features, studio, toHref]);
+  const entries = useMemo(() => finderEntries(role, features, studio).map((e) => ({ ...e, href: toHref(e.href) })), [role, features, studio, toHref]);
   const barItems = useMemo(() => bottomBarItems(role, features), [role, features]);
 
   const refocus = useCallback(() => {
@@ -640,9 +650,10 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
             </div>
           </div>
           <div className="flex items-center gap-2.5">
+            {switcher && <ServiceSwitcher {...switcher} />}
             <ThemeToggle />
             <NoticesBell notices={notices} />
-            <Button href="/dashboard/knowledge/products/new" size="sm" leading={<Plus aria-hidden className="size-[18px]" />}>
+            <Button href={toHref("/dashboard/knowledge/products/new")} size="sm" leading={<Plus aria-hidden className="size-[18px]" />}>
               Add product
             </Button>
             <UserMenu displayName={displayName} email={email} />

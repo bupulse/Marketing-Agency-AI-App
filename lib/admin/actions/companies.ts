@@ -10,7 +10,7 @@ import { isRole, ROLE_LABEL, type Role } from "@/lib/team/roles";
 import { lockSeats, normalizeEmail, seatLimit, seatsUsed } from "@/lib/team/service";
 import { writeAudit } from "../audit";
 import { AdminError, type AdminContext, type Page } from "../types";
-import { linkSiteUrl } from "@/lib/auth/request-site";
+import { frontLinkUrl } from "@/lib/auth/request-site";
 
 // Actions on companies and their users. The super admin never sets or sees a password: people get links and choose their own.
 // Each action is one database transaction with its audit row (before and after), refuses a missing target, is rate limited,
@@ -48,7 +48,7 @@ function publicAuth() {
 }
 
 /** Where the reset link lands: the admin's own address (one Supabase allows), never localhost from the tunnel. */
-const RECOVERY_REDIRECT = async () => `${await linkSiteUrl()}/auth/confirm?type=recovery&next=/reset-password`;
+const RECOVERY_REDIRECT = async () => `${await frontLinkUrl()}/auth/confirm?type=recovery&next=/reset-password`;
 
 // ---- reads ----------------------------------------------------------------------------------------------------------
 
@@ -215,7 +215,7 @@ async function sendSetPasswordEmail(args: { userId: string; email: string; name:
     const { data, error } = await createAdminClient().auth.admin.generateLink({ type: "recovery", email: args.email });
     const hash = data?.properties?.hashed_token;
     if (error || !hash) throw error ?? new Error("generateLink returned no token");
-    const url = `${(await linkSiteUrl())}/auth/confirm?token_hash=${encodeURIComponent(hash)}&type=recovery&next=/reset-password`;
+    const url = `${await frontLinkUrl()}/auth/confirm?token_hash=${encodeURIComponent(hash)}&type=recovery&next=/reset-password`;
     const { html, text } = renderEmail({
       heading: `You were added to ${args.company} on BuPulse`,
       intro: `${args.name ? `Hi ${args.name}, ` : ""}BuPulse support added you to ${args.company} as ${args.role === "ADMIN" ? "an Admin" : "a Member"}. Choose your password to sign in. We never set or see passwords for you.`,

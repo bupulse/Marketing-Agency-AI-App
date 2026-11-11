@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Building2, CornerDownLeft, Search, X, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { useHostHref } from "@/components/platform/hosts";
 import { searchPages } from "./nav";
 import { IconBadge } from "./kit/icon-badge";
 import type { KitTone } from "./kit/tones";
@@ -20,6 +21,7 @@ export function CommandPalette({ open, onOpenChange, permissions }: { open: bool
   const allowed = (p: Permission | readonly Permission[]) => (typeof p === "string" ? [p] : p).some((x) => permissions.includes(x));
   const companies_ = permissions.includes("clients.view");
   const router = useRouter();
+  const toHref = useHostHref();
   const [q, setQ] = useState("");
   const [companies, setCompanies] = useState<Company[]>([]);
   const [active, setActive] = useState(0);
@@ -71,7 +73,7 @@ export function CommandPalette({ open, onOpenChange, permissions }: { open: bool
   const go = (r: Result | undefined) => {
     if (!r) return;
     close();
-    router.push(r.href);
+    router.push(toHref(r.href));
   };
   const current = Math.min(active, Math.max(0, results.length - 1));
 

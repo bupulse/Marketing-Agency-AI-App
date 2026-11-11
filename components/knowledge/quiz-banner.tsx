@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { ArrowRight, X } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 import { QuizRing } from "@/components/knowledge/quiz-ring";
+import { useAppPath, useHostHref } from "@/components/platform/hosts";
 import { Button } from "@/components/ui";
 import { localDay, quizBannerHere, quizBannerText } from "@/lib/knowledge/quiz-banner";
 
@@ -30,7 +31,9 @@ function subscribe(cb: () => void) {
  * (the layout leaves it out at 100% or when the person can play no round). "Not now" hides it until tomorrow.
  */
 export function QuizBanner({ overall, href, label, nextRound }: { overall: number; href: string; label: string; nextRound: { emoji: string; title: string } | null }) {
-  const pathname = usePathname();
+  // The app path behind the address shown ("/knowledge" on the Marketing host is /dashboard/knowledge).
+  const pathname = useAppPath(usePathname() ?? "/");
+  const toHref = useHostHref();
   const hiddenToday = useSyncExternalStore(subscribe, readHiddenToday, () => false);
   const [closed, setClosed] = useState(false);
   if (closed || hiddenToday || !quizBannerHere(pathname)) return null;
@@ -57,7 +60,7 @@ export function QuizBanner({ overall, href, label, nextRound }: { overall: numbe
         <p className="text-[15px] font-semibold leading-snug">{title}</p>
         <p className="text-[13px] text-muted">{quizBannerText(overall, nextRound)} Better info means better posts and chat replies.</p>
       </div>
-      <Button href={href} className="w-full shrink-0 sm:w-auto" trailing={<ArrowRight aria-hidden className="size-4" />}>
+      <Button href={toHref(href)} className="w-full shrink-0 sm:w-auto" trailing={<ArrowRight aria-hidden className="size-4" />}>
         {label}
       </Button>
       <button

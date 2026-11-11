@@ -28,3 +28,19 @@ describe("originFor", () => {
     expect(originFor(h({ host: "test.bupulse.com", "x-forwarded-proto": "https" }))).toBe("https://bupulse.com");
   });
 });
+
+describe("originFor with the host split (docs/HOSTS.md)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("accepts the Marketing and admin hosts once they are set, and *.localhost on http for local tests", () => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "http://bupulse.localhost:3041");
+    vi.stubEnv("AUTH_EXTRA_ORIGINS", "");
+    vi.stubEnv("MARKETING_APP_URL", "http://marketing.bupulse.localhost:3041");
+    vi.stubEnv("ADMIN_APP_URL", "http://admin.bupulse.localhost:3041");
+    vi.stubEnv("CLIENT_COOKIE_DOMAIN", ".bupulse.localhost");
+    expect(originFor(h({ host: "marketing.bupulse.localhost:3041" }))).toBe("http://marketing.bupulse.localhost:3041");
+    expect(originFor(h({ host: "admin.bupulse.localhost:3041" }))).toBe("http://admin.bupulse.localhost:3041");
+    expect(originFor(h({ host: "other.bupulse.localhost:3041" }))).toBe("http://bupulse.localhost:3041");
+    vi.stubEnv("MARKETING_APP_URL", "");
+    expect(originFor(h({ host: "marketing.bupulse.localhost:3041" }))).toBe("http://bupulse.localhost:3041");
+  });
+});
