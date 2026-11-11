@@ -137,7 +137,7 @@ export function AvatarHero() {
   }, [animate]);
 
   return (
-    <section ref={sectionRef} aria-labelledby="hero-title" className="ah" data-beat="1">
+    <section ref={sectionRef} aria-labelledby="hero-title" className="ah" data-beat="1" data-scene="light">
       <div className="ah-stage">
         <div aria-hidden className="ah-screen">
           <div className="ah-glow ah-glow-a" />

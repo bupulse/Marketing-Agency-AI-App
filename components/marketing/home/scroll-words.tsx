@@ -15,7 +15,7 @@ export function ScrollWords({ text, id }: { text: string; id?: string }) {
   useScrollProgress(ref, onProgress);
   const words = text.split(" ");
   return (
-    <section ref={ref} aria-label="What BuPulse means" className="sw" style={{ ["--n" as string]: words.length }} id={id}>
+    <section ref={ref} aria-label="What BuPulse means" data-scene="night" className="sw scene-dark" style={{ ["--n" as string]: words.length }} id={id}>
       <div className="sw-sticky">
         <p className="sw-text">
           {words.map((w, i) => (

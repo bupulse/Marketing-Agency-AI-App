@@ -42,13 +42,15 @@ No new packages. Files are in `components/marketing/home/`.
 | --- | --- | --- |
 | Scroll engine | `scroll-scene.ts` | Like AnimSystem, tiny: one passive scroll listener, one `requestAnimationFrame` for all scenes, positions measured on resize (`ResizeObserver` on `body`) never during scroll, an `IntersectionObserver` turns far scenes off. A scene gets progress 0..1 and writes `--p`. |
 | Hero: presenter turns into an android | `avatar-hero.tsx` | Pinned (`position: sticky`, 280svh phones, 330svh desktop). 36 frames on a `<canvas>`, scrubbed by scroll with a small lerp so wheel steps still play every frame. |
-| Big statement | `scroll-words.tsx` | Pinned sentence; each word's opacity is `clamp(0.16, p*(n+4) - i, 1)` in CSS from `--p`. Real text, selectable. |
-| AI presenter ad | `avatar-videos.tsx`, `inline-video.tsx` | `preload="none"` + poster, loads and plays (muted) only while on screen, pauses when off; sharper file on wide screens; sound button. Other ads load only on tap. |
+| Big statement | `scroll-words.tsx` | Pinned sentence; each word's opacity is `clamp(0.5, p*(n+4) - i, 1)` in CSS from `--p` (never below 0.5, for contrast). Real text, selectable. |
+| AI presenter ads | `avatar-videos.tsx`, `../video-player.tsx` | BuPulse's inline player (the sample site's player as one React component): poster and big play button, blue-to-violet scrub bar with time tip, play/pause, ±10 s, time, sound, optional full screen (never forced), controls that fade while playing, keyboard. `preload="none"`; the 30 s ad plays muted while on screen; the examples load only on play. |
+| Designs wall | `post-showcase.tsx` | Pinned (300svh). Twelve posts from BuPulse's own design engine (`lib/designs/library`) on a tilted wall that settles from close up (`--a`, the first 30 % of the scroll), three rows drifting in opposite directions, a phone in front flipping through four stories. |
+| BuPulse Agency, coming soon | `agency.tsx` | Rise-ins, a slowly turning conic ring, department progress bars; "Tell me when it's ready" goes to `/signup?next=/apps/start?want=agency`. |
 | A week of posts sliding sideways | `week-of-posts.tsx` | Pinned; the row moves `translate3d(-shift * p)`; the track height is `100svh + shift`, all in CSS. |
 | How it works, building up | `how-it-works.tsx` | Sticky panel; an `IntersectionObserver` on the steps sets `data-step`; the panel gains one card per step (one card at a time on phones). |
 | Chat that types itself | `chat-demo.tsx` | Plays once when visible. Every letter is in the HTML from the start and only becomes visible, so the box never changes size (no layout shift). |
 | Rise-in cards and numbers | `rise-in.tsx` | CSS `animation-timeline: view()` where supported (off the main thread); `IntersectionObserver` fallback elsewhere. |
-| Colour change between sections | `scene-tint.tsx` | One fixed layer; sections with `data-tint` set its colour through an `IntersectionObserver`; CSS transition. |
+| Scenes: colour that morphs between sections | `scene-controller.tsx` | Sections carry `data-scene` (`light`, `night`, `deep` blue, `violet`). One fixed layer takes the colour of the section on the middle line of the screen and eases to it (background colour and two soft lights drawn with `currentColor`, no blur filter). Dark scenes (`.scene-dark`) keep BuPulse's dark tokens inside them in both themes and paint their own colour with soft edges. Over a dark scene the header (light mode) switches to light-on-dark glass and the white logo, by CSS only: links and buttons are untouched. |
 | Parallax | `motion.css` | Hero glows move with `--p`; example ad tiles drift at two speeds on a `view()` timeline. |
 
 All styles are in `motion.css`. Only `transform` and `opacity` are animated during scroll (box-shadow and colours
@@ -87,3 +89,17 @@ burned-in captions are left out:
 - Scene lengths: `.ah`, `.sw` heights in `motion.css`; the week row's length follows `--cw`, `--gap`, `--pad`.
 - Prices, chat allowances, skits a week and the cheapest plan on the page come from the live plans of the visitor's
   region (`getRegionPlans`), so Admin -> Plans changes show up without code changes.
+
+## Round 2 (11 November 2026, owner's notes)
+
+- **No prices on the home page.** The pricing preview and the cheapest-price number are gone; a "See plans and prices"
+  card links to /pricing. The page is a story: hero, statement, AI presenter ads, designs, daily posts, how it works,
+  website chat, BuPulse Agency (coming soon), industries, features, a few numbers, plans card, FAQ.
+- **AI presenter ads** are in the Business plans: "Business and Business Pro include 2 AI presenter ads a month" (shown
+  to Rwanda visitors, where those plans are sold). **Talking skits** are "coming soon" until they are switched on.
+- **Designs wall images:** made with the app's own renderer (`renderDesign`, the same engine as client posts) through a
+  temporary local route that was deleted afterwards. Example businesses are named "Your salon", "Your café"... The two
+  photo posts use stills from BuPulse's own salon and construction ads. 4:5 posts at 540 px (q72) and 9:16 stories at
+  360 px (q70): 252 KB for all sixteen, in `public/marketing/posts`.
+- **Pricing page fix:** in the monthly view `PriceTag` no longer keeps the yearly "Was … / % off" line in the page (it
+  was only faded out, so page text and text-only readers saw it). Test: `tests/billing/price-tag.test.ts`.

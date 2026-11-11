@@ -1,7 +1,7 @@
 import { Captions, Clapperboard, Mic, PenLine } from "lucide-react";
 import { Container } from "@/components/ui";
 import { ForCta } from "@/components/marketing/quote/cta";
-import { AutoVideo, TapVideo } from "./inline-video";
+import { VideoPlayer } from "@/components/marketing/video-player";
 import { RiseIn } from "./rise-in";
 import "./motion.css";
 
@@ -41,7 +41,7 @@ const examples = [
 
 export function AvatarVideos() {
   return (
-    <section id="ai-videos" aria-labelledby="ai-videos-title" data-tint="violet" className="scroll-mt-24 py-20 sm:py-28">
+    <section id="ai-videos" aria-labelledby="ai-videos-title" data-scene="deep" className="av scene-dark scroll-mt-24 py-24 sm:py-32">
       <Container>
         {/* Phones: heading, then the ad, then the steps. Wide screens: the ad stays pinned beside the text. */}
         <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)] lg:grid-rows-[auto_1fr] lg:gap-x-16 lg:gap-y-6">
@@ -66,11 +66,13 @@ export function AvatarVideos() {
 
           <div className="av-phone-wrap lg:sticky lg:top-28 lg:col-start-2 lg:row-span-2 lg:row-start-1">
             <div className="av-phone">
-              <AutoVideo
-                small="/marketing/avatar/whos-real-360.mp4"
-                large="/marketing/avatar/whos-real-540.mp4"
+              <VideoPlayer
+                src="/marketing/avatar/whos-real-360.mp4"
+                srcLarge="/marketing/avatar/whos-real-540.mp4"
                 poster="/marketing/avatar/whos-real-poster.webp"
-                label="BuPulse ad “Who’s real?”: a presenter asks which post was made by AI, turns into an android, then shows BuPulse’s posts screens. 30 seconds, with captions."
+                title="BuPulse ad “Who’s real?”: a presenter asks which post was made by AI, turns into an android, then shows BuPulse’s posts screens. 30 seconds, with captions."
+                seconds={30}
+                autoPlayInView
                 className="size-full rounded-[30px]"
               />
             </div>
@@ -97,12 +99,12 @@ export function AvatarVideos() {
             <RiseIn className="rounded-[24px] border border-line bg-soft p-5 text-[15px] leading-relaxed">
               <strong className="block text-base">Good to know</strong>
               <span className="text-muted">
-                AI presenters speak English. AI voices are not good enough in Kinyarwanda yet, so we don’t use them:
-                Kinyarwanda videos use a real Rwandan voice, recorded as a voice note.{" "}
                 <ForCta
-                  quote="The Business Pro plan includes talking skits in Kinyarwanda every week. AI presenter ads are made on request: ask for them in your free quote."
-                  trial="AI presenter ads are made on request: ask for them in a custom plan."
+                  quote="The Business and Business Pro plans include 2 AI presenter ads a month. "
+                  trial="Ask for AI presenter ads in a custom plan. "
                 />
+                AI presenters speak English: AI voices are not good enough in Kinyarwanda yet, so we don’t use them. Talking
+                skits in Kinyarwanda, voiced by a real Rwandan voice, are coming soon.
               </span>
             </RiseIn>
           </div>
@@ -112,18 +114,20 @@ export function AvatarVideos() {
           <RiseIn className="mb-6 flex flex-col gap-2">
             <h3 className="m-0 text-2xl font-bold tracking-[-0.02em]">More AI presenters we made</h3>
             <p className="m-0 max-w-2xl text-muted">
-              Each of these is an ad BuPulse made to market itself. Yours would be about your business, your products and
-              your prices. Press play for sound.
+              Each of these is an ad BuPulse made to market itself, with an AI presenter. Yours would be about your business,
+              your products and your prices. Press play for sound.
             </p>
           </RiseIn>
           <ul className="av-row m-0 list-none p-0">
             {examples.map((e) => (
               <li key={e.id} className="av-tile">
-                <TapVideo
+                <VideoPlayer
                   src={`/marketing/avatar/${e.id}-360.mp4`}
                   poster={`/marketing/avatar/${e.id}-poster.webp`}
-                  label={`${e.title}: ${e.text}`}
-                  className="aspect-[9/16] rounded-[22px] bg-black"
+                  title={`${e.title}: ${e.text} (an ad BuPulse made to market itself)`}
+                  seconds={12}
+                  allowFullscreen={false}
+                  className="aspect-[9/16] rounded-[22px]"
                 />
                 <p className="m-0 mt-3 font-semibold">{e.title}</p>
                 <p className="m-0 text-sm text-muted">{e.text}</p>

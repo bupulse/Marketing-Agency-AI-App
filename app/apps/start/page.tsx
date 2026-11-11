@@ -15,9 +15,11 @@ export default async function StartPage({ searchParams }: PageProps<"/apps/start
   if (!user) redirect("/login?next=/apps/start");
   if (!(await ensureAccount(user))) redirect("/login?error=confirm");
   const listed = params.listed === "1" && pickedServices(user.user_metadata).includes("agency");
+  // ?want=agency: the home page's "Tell me when it's ready" (BuPulse Agency, coming soon) arrives with Agency ticked.
+  const wantsAgency = params.want === "agency";
   return (
     <ServicesPage email={user.email ?? null}>
-      <ServicePicker action={pickServices} initial={listed ? ["marketing", "agency"] : ["marketing"]} listed={listed} />
+      <ServicePicker action={pickServices} initial={listed || wantsAgency ? ["marketing", "agency"] : ["marketing"]} listed={listed} />
     </ServicesPage>
   );
 }

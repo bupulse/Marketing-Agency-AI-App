@@ -56,7 +56,7 @@ export function HowItWorks() {
   }, []);
 
   return (
-    <section ref={ref} id="how" aria-labelledby="how-title" className="hw scroll-mt-24 py-20 sm:py-28">
+    <section ref={ref} id="how" aria-labelledby="how-title" data-scene="light" className="hw scroll-mt-24 py-20 sm:py-28">
       <Container>
         <div className="mb-10 flex max-w-3xl flex-col gap-3 sm:mb-14">
           <p className="m-0 text-sm font-semibold tracking-[0.14em] text-ok uppercase">How it works</p>

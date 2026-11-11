@@ -96,7 +96,7 @@ export const features: Feature[] = [
   { title: "Brand designs", icon: Image, text: "Ready-to-post graphics with your logo and colors. Or just describe the image you want." },
   // Slideshow videos and voice-overs are built (lib/features.ts "video", "voice") in the plans that include them; AI
   // presenter ads are made on request (the home page's AI videos section says how).
-  { title: "Videos for Reels and TikTok", icon: Video, text: "Short vertical videos made from your posts and photos, with captions and music. AI presenter ads on request.", note: "Not in every plan" },
+  { title: "Videos for Reels and TikTok", icon: Video, text: "Short vertical videos made from your posts and photos, with captions and music, and AI presenter ads in the Business plans.", note: "Not in every plan" },
   // Not in the standard plans: it comes with a custom plan or as an add-on (lib/offers/shared.ts ADDONS), so the card says so.
   { title: "Autopilot", icon: Sparkles, text: "AI plans your week of posts: new arrivals, offers and tips, each written for every network with a design. You approve them all with one tap and they go out on schedule. Comes with a custom plan, or as an add-on to yours.", note: "Custom plan or add-on", wide: true },
 ];
@@ -107,7 +107,7 @@ export const faqs = [
   { q: "How do I get started?", a: "Sign up, tell BuPulse about your business, then choose the plan you want to try: your {trialDays}-day free trial starts right away, with a limited number of generations, so you can see real results before you pay. No card needed for the trial." },
   { q: "Do I need marketing experience?", a: "No. If you can describe what you sell, BuPulse does the rest. You review and post." },
   { q: "Are the people in your videos real?", a: "In our AI presenter videos, no. The presenter is made with AI: they look and sound like a real person, but nobody was filmed. That is what makes a fresh video ad quick to make, with no camera, studio or actor to book." },
-  { q: "Can the videos speak Kinyarwanda?", a: "AI voices are not good enough in Kinyarwanda yet, so we don’t use them. Kinyarwanda videos use a real Rwandan voice that you record as a voice note, or music with Kinyarwanda captions. AI presenters speak English." },
+  { q: "Can the videos speak Kinyarwanda?", a: "AI voices are not good enough in Kinyarwanda yet, so we don’t use them. Kinyarwanda videos use music with Kinyarwanda captions, and talking skits voiced by a real Rwandan voice are coming soon. AI presenters speak English." },
   { q: "Which social networks can I post to?", a: "Instagram, Facebook, TikTok, LinkedIn and YouTube. You connect your own accounts with a normal login." },
   { q: "Do I have to approve every post?", a: "At first, yes: every daily post waits for your OK, and one tap approves it. When you trust it, switch on automatic approval in Post settings and BuPulse posts on its own at the best time of day." },
   { q: "How does the chat widget get on my website?", a: "You paste one line of code into your site. It answers visitors from the information you gave BuPulse, saves their name and phone number or email in your Leads list and emails you about each new lead." },

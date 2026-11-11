@@ -28,7 +28,7 @@ export function WeekOfPosts() {
   useScrollProgress(ref, onProgress);
 
   return (
-    <section ref={ref} id="daily-posts" aria-labelledby="week-title" data-tint="blue" className="wk scroll-mt-24">
+    <section ref={ref} id="daily-posts" aria-labelledby="week-title" data-scene="light" className="wk scroll-mt-24">
       <div className="wk-stage">
         <div className="wk-head">
           <p className="m-0 text-sm font-semibold tracking-[0.14em] text-ok uppercase">Daily posts</p>
