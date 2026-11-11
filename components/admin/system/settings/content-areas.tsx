@@ -19,12 +19,16 @@ export function ContentArea({
   skitVideos,
   firstPostPreview,
   previewCost,
+  adBrainPerAdUsd,
+  adBrainMonthlyUsd,
   ok,
   bad,
 }: Msg & {
   dailyPosts: boolean;
   dailyLine: string;
   skitVideos: boolean;
+  adBrainPerAdUsd: number;
+  adBrainMonthlyUsd: number;
   firstPostPreview: boolean;
   previewCost: { model: string; estimateUsd: number | null; made: number; averageUsd: number | null };
 }) {
@@ -57,6 +61,22 @@ export function ContentArea({
             ]}
           />
         </ExpandCard>
+      </Panel>
+
+      <Panel id="ad-brain" icon={Clapperboard} tone="pink" title="Ad Brain spend limits" description="BuPulse's own self-made video ads (Admin -> Ad Brain). An ad stops before passing either limit and says why.">
+        <form action={saveSettingsAction} className="flex flex-col gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Limit per ad (USD)" hint="The owner's decision: $3.">
+              <Input name="adBrainPerAdUsd" type="number" min={0.5} max={50} step={0.1} defaultValue={adBrainPerAdUsd} required />
+            </Field>
+            <Field label="Limit per month (USD)" hint="The owner's decision: $30.">
+              <Input name="adBrainMonthlyUsd" type="number" min={1} max={500} step={1} defaultValue={adBrainMonthlyUsd} required />
+            </Field>
+          </div>
+          <div>
+            <Button type="submit">Save</Button>
+          </div>
+        </form>
       </Panel>
 
       <Panel id="first-post-preview" icon={Eye} tone="pink" title="Free first-post preview" description="On hold: no screen shows it since the free trial starts directly (22 October 2026). The switch is kept for when it gets a new place." action={onOff(firstPostPreview)}>

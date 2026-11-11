@@ -61,6 +61,19 @@ Order (the owner, with remote control):
 6. On the Mac, stop the job loop, tunnel and server by their PIDs (`~/bupulse-prod/pids.txt`), then on the PC
    `Enable-ScheduledTask "BuPulse jobs"; Start-ScheduledTask "BuPulse jobs"`. Never run the jobs on both.
 
+**The Ad Brain's renderer (11 November 2026, branch `ad-brain`).** BuPulse's own video ads (docs/AD_BRAIN.md) are
+edited on this PC by a Python process the server starts (`tools/ad-render/`). Once the branch is merged, install these
+before the first ad, as the user the "BuPulse server" task runs as, then open a new PowerShell:
+1. `winget install Python.Python.3.12`
+2. `winget install Gyan.FFmpeg`
+3. `python -m pip install -r D:\BuPulse\tools\ad-render\requirements.txt`
+4. Check with `python D:\BuPulse\tools\ad-render\render.py selftest`.
+
+Then restart the "BuPulse server" task, so the server sees the new PATH. If Python or ffmpeg is not on that task's
+PATH, set `AD_RENDER_PYTHON`, `AD_RENDER_FFMPEG` and `AD_RENDER_FFPROBE` to their full paths in the production settings.
+The fonts (Arial Black, Arial Bold, Courier New Bold, Impact) are already in Windows. Each ad uses about 100 MB in
+`%TEMP%\bupulse-ad-brain` while it is made (`AD_BRAIN_WORK_DIR` to move it).
+
 Updating the PC later (the repo is D:\BuPulse on the PC), in an administrator PowerShell:
 `powershell -ExecutionPolicy Bypass -File D:\BuPulse\scripts\self-host\windows\update.ps1`. It pulls, stops the
 server task AND the `next start` still listening on port 3002 (Stop-ScheduledTask alone leaves it running, so the old

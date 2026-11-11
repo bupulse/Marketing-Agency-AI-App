@@ -107,7 +107,8 @@ export async function listLibraryVideos(businessId: string, opts: { source?: Lib
           key: `studio:${j.id}`,
           id: j.id,
           source: "studio",
-          title: j.product?.name ?? "Studio video",
+          // Ad Brain videos (lib/ad-brain) are BuPulse's own ads, not about a product.
+          title: j.product?.name ?? (j.engine === "adbrain" ? "BuPulse ad (Ad Brain)" : "Studio video"),
           engine: j.engine,
           ratio: j.ratio,
           durationMs: j.durationMs,

@@ -143,6 +143,7 @@ model Business {
   imageConcepts    ImageConcept[]
   reelPresenter    ReelPresenter?
   reelJobs         ReelJob[]
+  adJobs           AdJob[]
   creatorCampaigns CreatorCampaign[]
   chatWidgets      ChatWidget[]
   chatSessions     ChatSession[]
@@ -3667,4 +3668,67 @@ model SupportEvent {
   at             DateTime @default(now())
 
   @@index([name, at])
+}
+
+// The Ad Brain (docs/AD_BRAIN.md): a self-driving 30 s UGC video ad. One row per ad: the brief, the brain's work
+// (brand brief, concept, script), the EDL plan the renderer and the dashboard read, cost and judge scores. It moves one
+// step at a time (lib/ad-brain/pipeline.ts, from the video-jobs cron and Admin -> Ad Brain), never past its spend limits.
+model AdJob {
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy   String? // the admin's email who pressed "Make an ad"
+  // queued | understanding | concept | script | planning | assets | rendering | judging | delivering | ready | failed
+  // | stopped (a spend limit) | cancelled
+  status      String    @default("queued")
+  // "real": the brain and paid assets; "fixture:<name>": a cached plan and cached assets (no paid assets).
+  mode        String    @default("real")
+  brief       Json // { goal, subject, notes }
+  brandBrief  Json?
+  concept     Json? // { recipe, effects, captionStyle, musicMood, line }
+  script      Json?
+  plan        Json? // the EDL (lib/ad-brain/edl.ts): the single source of truth for the renderer and the dashboard
+  planVersion Int       @default(0)
+  // Paid work in flight, e.g. Omni clips being made: { "<asset key>": { operation, submittedAt, tries, speech } }.
+  pending     Json      @default("{}")
+  costUsd     Decimal   @default(0) @db.Decimal(12, 6) // what its AiCall rows cost (kept here for the limits)
+  scores      Json? // the judge's answers, oldest first: [{ at, overall, scores, checks, weakest, fix }]
+  fixedOnce   Boolean   @default(false) // one re-roll at most, never a loop
+  videoPath   String? // the finished MP4 in the Gallery (gallery-videos bucket)
+  videoJobId  String? // the VideoJob row that shows it in the Videos library
+  postGroupId String? // its posts "waiting for your OK"
+  caption     String    @default("")
+  hashtags    String[]  @default([])
+  log         Json      @default("[]") // [{ at, step, note }]: plain-English progress for Admin
+  error       String? // why it failed or stopped, in plain English
+  attempts    Int       @default(0) // tries of the current step
+  leaseUntil  DateTime? // a sweep or the renderer holding it
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  assets      AdAsset[]
+
+  @@index([businessId, createdAt])
+  @@index([status, leaseUntil])
+}
+
+// One file the Ad Brain made or reused (a frame, a clip, music, a voice line, a real screen capture), cached by the
+// SHA-256 of what was asked (kind, model, prompt, inputs): asking again reuses the file instead of paying again.
+// Files live in the private "ad-brain" bucket (assets/<hash>.<ext>).
+model AdAsset {
+  id        String   @id @default(cuid())
+  hash      String   @unique
+  jobId     String? // the ad that first made it
+  job       AdJob?   @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  kind      String // frame | clip | music | voice | screen | render
+  provider  String // gemini | veo | cache | upload
+  model     String?
+  path      String // object path in the "ad-brain" bucket
+  mimeType  String
+  bytes     Int      @default(0)
+  seconds   Float?
+  costUsd   Decimal  @default(0) @db.Decimal(12, 6)
+  meta      Json     @default("{}") // { prompt, words: [{ w, s, e }], bpm, ... }
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
 }

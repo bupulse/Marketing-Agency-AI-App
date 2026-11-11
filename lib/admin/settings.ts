@@ -62,6 +62,10 @@ export type Settings = {
   dailyPosts: boolean;
   /** Talking skit videos made with Seedance 2.0 on Higgsfield (lib/skits). Off by default until the owner's lip-sync test: skits then wait as "Voice received". */
   skitVideos: boolean;
+  /** The Ad Brain's spend limit per ad, in USD (docs/AD_BRAIN.md: $3). It stops before passing it and says why. */
+  adBrainPerAdUsd: number;
+  /** The Ad Brain's spend limit per calendar month (UTC), in USD (docs/AD_BRAIN.md: $30). */
+  adBrainMonthlyUsd: number;
 };
 export type SettingName = keyof Settings;
 
@@ -84,6 +88,8 @@ const KEYS: Record<SettingName, string> = {
   firstPostPreview: "sales.firstPostPreview",
   dailyPosts: "content.dailyPosts",
   skitVideos: "content.skitVideos",
+  adBrainPerAdUsd: "adBrain.perAdUsd",
+  adBrainMonthlyUsd: "adBrain.monthlyUsd",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -105,6 +111,8 @@ export const DEFAULT_SETTINGS: Settings = {
   firstPostPreview: false,
   dailyPosts: true,
   skitVideos: false,
+  adBrainPerAdUsd: 3,
+  adBrainMonthlyUsd: 30,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -160,6 +168,8 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   firstPostPreview: (value) => value === true || value === "on" || value === "true" || value === "1",
   dailyPosts: (value) => value === true || value === "on" || value === "true" || value === "1",
   skitVideos: (value) => value === true || value === "on" || value === "true" || value === "1",
+  adBrainPerAdUsd: number("The Ad Brain limit per ad (USD)", 0.5, 50, false),
+  adBrainMonthlyUsd: number("The Ad Brain monthly limit (USD)", 1, 500, false),
   goalStartMonth: (value) => {
     const v = String(value ?? "").trim();
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new AdminError("invalid", "The launch month must look like 2026-11 (year and month).");

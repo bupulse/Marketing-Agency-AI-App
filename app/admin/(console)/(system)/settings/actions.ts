@@ -15,7 +15,7 @@ import { settingsBackFor, settingsHref } from "@/components/admin/system/setting
 // Settings is a hub of small pages (components/admin/system/settings-areas.ts): each action returns to the page its
 // form is on, so the notice shows there.
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates", "demoDailyCap", "pageLoader", "displayCurrency", "usdToEur", "revenueGoalRwf", "goalStartMonth"];
+const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates", "demoDailyCap", "pageLoader", "displayCurrency", "usdToEur", "revenueGoalRwf", "goalStartMonth", "adBrainPerAdUsd", "adBrainMonthlyUsd"];
 
 // Each action re-checks the admin (adminAction: allow-listed email, AAL2). Every saved setting is audited.
 
