@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { REF_COOKIE, refCookieFor } from "@/lib/sales/ref-cookie";
-import { readScreenPass, SCREEN_PASS_COOKIE, screenPassAllowed, screenPassSecret } from "@/lib/ad-brain/screen-pass";
+import { screenPassGate } from "@/lib/ad-brain/screen-pass-gate";
 import { isSupportPath, supportRewriteUrl, supportRoute } from "@/lib/support/app-host";
 
 const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/start-trial", "/book-demo", "/custom-plan", "/account"];
@@ -19,17 +19,10 @@ export async function proxy(request: NextRequest) {
     support?.action === "rewrite" ? NextResponse.rewrite(supportRewriteUrl(support.path, request.nextUrl.search, request.url), { request }) : NextResponse.next({ request });
   let response = pass();
 
-  // The Ad Brain's screen robot (lib/ad-brain/screen-pass.ts): the server's own headless Chrome with a 5-minute signed
-  // pass for the BuPulse company account. Only from this computer, only GET/HEAD, only dashboard pages and the read
-  // API; anything else carrying a pass is refused, so it can never write, reach admin pages or another account.
-  const screenToken = request.cookies.get(SCREEN_PASS_COOKIE)?.value;
-  if (screenToken) {
-    const allowed =
-      screenPassAllowed({ method: request.method, path: request.nextUrl.pathname, host: request.headers.get("host"), cfConnectingIp: request.headers.get("cf-connecting-ip"), forwardedFor: request.headers.get("x-forwarded-for"), realIp: request.headers.get("x-real-ip") }) &&
-      (await readScreenPass(screenToken, screenPassSecret()));
-    if (!allowed) return new NextResponse("Read-only screen pass: refused.", { status: 403, headers: { "X-Robots-Tag": "noindex, nofollow" } });
-    return NextResponse.next({ request });
-  }
+  // The Ad Brain's screen robot: local + read-only + company account only (lib/ad-brain/screen-pass-gate.ts). Null when
+  // the request carries no screen pass. Keep this line when proxy.ts is rewritten.
+  const robot = await screenPassGate(request);
+  if (robot) return robot;
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

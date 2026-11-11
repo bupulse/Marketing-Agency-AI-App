@@ -170,7 +170,7 @@ Python process started by the Node server. It needs Python 3.9+ with Pillow and 
 `tools/ad-render/README.md` and `docs/SELF_HOST.md`). It cannot run on Netlify or Cloudflare. A 30 s ad renders in
 about 25 s on the M-series Mac.
 
-**Limits:** Admin -> Settings -> Daily posts and videos -> "Ad Brain spend limits" ($3 / $30 by default). They are
+**Limits:** Admin -> Settings -> "Ad Brain limits", its own settings page ($3 / $30 by default). They are
 checked before every paid call, the whole plan is checked before the first asset, and the feature `adBrain` is kept out
 of the company's AI allowance. The site-wide AI cap (`AI_MONTHLY_BUDGET_USD`, $20 by default) still applies on top.
 
@@ -275,6 +275,19 @@ $0.14 in all.
 
 ### Merging into main (for the coordinator)
 
+- **Merged with `origin/main` (98f2414a) on 11 Nov**: the Ad Brain page sits in the grouped admin nav (AI and usage);
+  its limits are their own Settings area "Ad Brain limits" (`/admin/settings/ad-brain`, a card in a "BuPulse's own
+  marketing" section of the Settings hub); both have dev-only previews (`/admin/preview/ad-brain`,
+  `/admin/preview/settings-area?area=ad-brain`).
+- **Carrying the screen robot over a proxy rewrite (the pending "host-split" branch).** The whole change is:
+  - **`proxy.ts`:** one import and these lines, before the Supabase client is made:
+    `const robot = await screenPassGate(request); if (robot) return robot;` (`lib/ad-brain/screen-pass-gate.ts`)
+  - **`lib/supabase/server.ts`:** `getCurrentUser` returns `screenPassUser()` (`lib/ad-brain/screen-user.ts`) when
+    there is no Supabase user.
+
+  Both helpers are self-contained and gated local + read-only + company account only. Re-add those lines in the new
+  files, then run `tests/ad-brain/screen-pass.test.ts`.
+
 - `ad-brain` merges into the current `main` (98f2414a) with **no conflicts** (`git merge-tree` dry run, 11 Nov). It
   touches files `main` changed since (`.env.example`, `components/admin/nav.ts`, `docs/AI_COSTS.md`), but on different
   lines.
@@ -308,7 +321,7 @@ $0.14 in all.
    server" task so it sees the new PATH (Python, ffmpeg, Chrome).
 5. **Admin settings** on bupulse.com:
    - AI → monthly AI cap **$60**
-   - Settings → Daily posts and videos → Ad Brain spend limits: **$3 per ad, $30 per month**, and BuPulse's own
+   - Settings → Ad Brain limits: **$3 per ad, $30 per month**, and BuPulse's own
      gallery videos **1,024 MB**
    - Services: Google Gemini and Google Veo AI clips (Omni) **on**
 6. **Company account**: check that office@bupulse.com is BuPulse's own business on production (Business info, logo, a

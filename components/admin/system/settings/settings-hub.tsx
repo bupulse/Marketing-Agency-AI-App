@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BellRing, CalendarDays, Clock3, CloudDownload, CreditCard, Gift, Globe, LoaderCircle, Mic, PhoneCall, Settings, Smartphone, Sparkles, Target } from "lucide-react";
+import { ArrowLeftRight, BellRing, CalendarDays, Clapperboard, Clock3, CloudDownload, CreditCard, Gift, Globe, LoaderCircle, Mic, PhoneCall, Settings, Smartphone, Sparkles, Target } from "lucide-react";
 import { PageHeader, SectionCard, SectionGrid } from "@/components/admin/kit";
 import { Section } from "@/components/admin/ui";
 import { HashRedirect } from "../hash-redirect";
@@ -22,6 +22,9 @@ export type SettingsHubData = {
   windows: number;
   trialDays: number;
   pageLoader: string;
+  /** The Ad Brain limits (BuPulse own ads). */
+  adBrainPerAdUsd: number;
+  adBrainMonthlyUsd: number;
   /** Regions and prices needs plans.manage. */
   canRegions: boolean;
 };
@@ -51,6 +54,12 @@ export function SettingsHub({ d, ok, bad }: { d: SettingsHubData; ok?: string; b
         <SectionGrid>
           <SectionCard row href={settingsHref("content")} icon={Sparkles} tone="pink" title={SETTINGS_TITLE.content} hint="Switch the nightly posts, skit videos and the free preview on or off." value={d.dailyPosts ? "On" : "Paused"} valueLabel={`daily posts · skit videos ${d.skitVideos ? "on" : "off"}`} />
           <SectionCard row href={settingsHref("voices")} icon={Mic} tone="pink" title={SETTINGS_TITLE.voices} hint="The approved voice for videos in Kinyarwanda and Swahili." value={`${d.voicesApproved} of ${d.voicesTotal}`} valueLabel="languages have a voice" />
+        </SectionGrid>
+      </Section>
+
+      <Section title="BuPulse's own marketing" description="The Ad Brain, which makes BuPulse's own video ads.">
+        <SectionGrid>
+          <SectionCard row href={settingsHref("ad-brain")} icon={Clapperboard} tone="violet" title={SETTINGS_TITLE["ad-brain"]} hint="What the Ad Brain may spend, and the Gallery space for BuPulse's own ads." value={`$${d.adBrainPerAdUsd} an ad`} valueLabel={`$${d.adBrainMonthlyUsd} a month`} />
         </SectionGrid>
       </Section>
 

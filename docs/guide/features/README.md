@@ -49,7 +49,7 @@ trial and Inzu Fashion, which has not started its trial yet. All names and numbe
 | 38 | For creators: applying to a campaign, the creator login, handing in posts, views and pay | /c/&lt;campaign&gt;, /creator (Campaigns, Earnings, Connections) | [38-for-creators.md](38-for-creators.md) |
 | 39 | Help chat: asking BuPulse for help (AI first, a person on request, photos, voice notes, WhatsApp) | the chat button on every page except Admin; /help-chat from bio pages | [39-help-chat.md](39-help-chat.md) |
 | 40 | The support team: agents, roles, team hours, greetings, AI rules, and the support app on phone and PC | Admin → Live chat; support.bupulse.com | [40-support-team.md](40-support-team.md) |
-| 41 | Ad Brain: BuPulse's own video ads, made by AI (owner and admins only) | Admin → Ad Brain; Admin → Settings → Daily posts and videos | [41-ad-brain.md](41-ad-brain.md) |
+| 41 | Ad Brain: BuPulse's own video ads, made by AI (owner and admins only) | Admin → Ad Brain; Admin → Settings → Ad Brain limits | [41-ad-brain.md](41-ad-brain.md) |
 
 ## Which plan has what
 

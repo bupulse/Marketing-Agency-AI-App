@@ -19,6 +19,8 @@ import type { ChatLead } from "@/lib/support/admin-leads";
 import { AiUsageView, type AiUsage } from "@/components/admin/content-ai/ai-usage-view";
 import { APPROVAL_VIEWS, ApprovalsView } from "@/components/admin/content-ai/approvals-view";
 import { JarvisView } from "@/components/admin/content-ai/jarvis-view";
+import { AdBrainView, type AdBrainOverview } from "@/components/admin/content-ai/ad-brain-view";
+import type { AdJobView } from "@/lib/ad-brain/service";
 import { chosen } from "@/components/admin/kit";
 import type { ApprovalView } from "@/lib/admin/service";
 import { BookOpen, Plus, Sparkles } from "lucide-react";
@@ -210,6 +212,30 @@ const TRACKS = [
 ];
 
 /** Screen name (the first part after /admin/preview/) -> the console path it pretends to be, and what it renders. */
+// Ad Brain: one ad delivered, one being made (made-up figures; the plan lines follow the real twist ad's shape).
+const AD_OVERVIEW: AdBrainOverview = { limits: { perAdUsd: 3, monthlyUsd: 30 }, monthSpentUsd: 2.71, screens: 11, capturedAt: ago(5), fixtures: false, account: { email: "office@bupulse.com", name: "BuPulse" } };
+const AD_JOBS: AdJobView[] = [
+  {
+    id: "ad2", status: "assets", mode: "real", createdAt: ago(0.3), createdBy: "owner@example.com", costUsd: 0.47, recipe: "loop_story", effects: ["freeze_frame", "tape_rewind", "white_flash", "typewriter"],
+    line: "A boutique owner freezes mid-celebration, rewinds to the night she wrote posts by hand, then finds BuPulse.", overall: null, scores: null, checks: null, error: null,
+    log: [{ at: ago(0.3), step: "understanding", note: "Real screens captured again: 12 pictures, 2 of empty pages kept out of ads." }, { at: ago(0.25), step: "script", note: "Script written. Call to action: “Check out BuPulse dot com and get a free quote.”" }, { at: ago(0.2), step: "assets", note: "Plan: 6 assets, about $2.05 to make (6 paid)." }],
+    seconds: null, segments: [], voice: [], caption: "", hashtags: [], videoUrl: null, postGroupId: null,
+  },
+  {
+    id: "ad1", status: "ready", mode: "real", createdAt: ago(26), createdBy: "owner@example.com", costUsd: 2.24, recipe: "twist", effects: ["scan_wipe", "robot_voice", "browser_window", "slam", "beat_cut"],
+    line: "A creator asks which of two posts was made by AI, then reveals he is the AI.", overall: 9, scores: { thumbStop: 9, retention: 9, productClarity: 9, wow: 9, humour: 7, sound: 8.5 }, checks: { fakeScreen: false, watermark: false, spokenCta: true, musicTooLoud: false, kinyarwandaAiVoice: false }, error: null,
+    log: [{ at: ago(26), step: "judging", note: "Judge: 9/10 (hook 9, retention 9, clarity 9, sound 8.5). Passed: 9/10." }, { at: ago(26), step: "delivering", note: "In the Videos library and 4 posts waiting for your OK." }],
+    seconds: 30,
+    segments: [
+      { id: "hook", start: 0, end: 6.2, source: "ai_clip", tags: { act: "presents two cards, leans in for the twist", audio: "“One of these was made by AI. Which one? Neither. I'm the one who's not real.”", title: "WHICH ONE IS AI?" } },
+      { id: "transform", start: 6.2, end: 8.5, source: "ai_clip", tags: { fx: "scan wipe, scan-lines, robot voice" } },
+      { id: "montage-1", start: 11.8, end: 13.5, source: "real_screen", tags: { title: "A WEEK OF POSTS" } },
+      { id: "end", start: 25.5, end: 30, source: "end_card", tags: { audio: "spoken call to action" } },
+    ],
+    voice: [], caption: "One of these was made by AI. Plot twist: so was he. Get a free quote at bupulse.com.", hashtags: ["BuPulse", "Kigali", "SmallBusiness"], videoUrl: null, postGroupId: "ad-ad1",
+  },
+];
+
 export const CONTENT_SCREENS: Record<string, Screen> = {
   inbox: { path: "/admin/inbox", render: (sp) => <InboxScreen sp={sp} /> },
   livechat: { path: "/admin/live-chat", render: (sp) => <LiveChatScreen sp={sp} /> },
@@ -222,4 +248,5 @@ export const CONTENT_SCREENS: Record<string, Screen> = {
   industries: { path: "/admin/industries", render: (sp) => <IndustriesView industries={INDUSTRIES} suggestions={SUGGESTIONS} dismissed={[{ key: "x", label: "crypto" }]} show={chosen(sp, "show", INDUSTRY_FILTERS, "") as "" | (typeof INDUSTRY_FILTERS)[number]} params={sp} message={{}} /> },
   music: { path: "/admin/music", render: (sp) => <MusicView tracks={TRACKS} urlOf={(path) => `/preview-audio/${path}`} maxBytes={200 * 1024 * 1024} show={chosen(sp, "show", TRACK_FILTERS, "") as "" | (typeof TRACK_FILTERS)[number]} params={sp} message={{}} /> },
   jarvis: { path: "/admin/jarvis", render: () => <JarvisView keys={KEYS} base="https://bupulse.example" message={{}} /> },
+  "ad-brain": { path: "/admin/ad-brain", render: (sp) => <AdBrainView overview={AD_OVERVIEW} jobs={str(sp, "empty") ? [] : AD_JOBS} message={{ notice: str(sp, "notice") || undefined }} /> },
 };

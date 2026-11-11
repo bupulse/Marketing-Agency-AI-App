@@ -20,6 +20,8 @@ import { PADDLE_WEBHOOK_PATH, paddleStatus } from "@/lib/billing/paddle-setup";
 import { isSettingsSlug, SETTINGS_TITLE } from "@/components/admin/system/settings-areas";
 import { CurrencyArea, GoalArea, MomoArea, PaddleArea } from "@/components/admin/system/settings/money-areas";
 import { ContentArea, VoicesArea } from "@/components/admin/system/settings/content-areas";
+import { AdBrainArea } from "@/components/admin/system/settings/ad-brain-area";
+import { monthSpentUsd } from "@/lib/ad-brain/pipeline";
 import { AvailabilityArea, CallsArea, GoogleCalendarArea, LeadAlertsArea } from "@/components/admin/system/settings/calls-areas";
 import { LoadingArea, TrialArea } from "@/components/admin/system/settings/site-areas";
 
@@ -60,7 +62,11 @@ export default async function SettingsAreaPage({ params, searchParams }: PagePro
     }
     case "content": {
       const [s, daily, previewCost] = await Promise.all([getSettings(), dailyPostsToday(), previewCostSummary()]);
-      return <ContentArea {...msg} dailyPosts={s.dailyPosts} dailyLine={dailyTodayLine(daily)} skitVideos={s.skitVideos} firstPostPreview={s.firstPostPreview} previewCost={previewCost} adBrainPerAdUsd={s.adBrainPerAdUsd} adBrainMonthlyUsd={s.adBrainMonthlyUsd} adBrainGalleryVideoMb={s.adBrainGalleryVideoMb} />;
+      return <ContentArea {...msg} dailyPosts={s.dailyPosts} dailyLine={dailyTodayLine(daily)} skitVideos={s.skitVideos} firstPostPreview={s.firstPostPreview} previewCost={previewCost} />;
+    }
+    case "ad-brain": {
+      const [s, spent] = await Promise.all([getSettings(), monthSpentUsd().catch(() => 0)]);
+      return <AdBrainArea {...msg} adBrainPerAdUsd={s.adBrainPerAdUsd} adBrainMonthlyUsd={s.adBrainMonthlyUsd} adBrainGalleryVideoMb={s.adBrainGalleryVideoMb} monthSpentUsd={spent} />;
     }
     case "voices":
       return <VoicesArea {...msg} languages={APPROVAL_LANGUAGES} voices={await approvedVoices()} />;

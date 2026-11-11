@@ -236,6 +236,7 @@ const SUB_PAGE_LABELS: Record<string, string> = {
   goal: "Revenue goal",
   content: "Posts and videos",
   voices: "Language voices",
+  "ad-brain": "Ad Brain limits",
   "lead-alerts": "Lead alerts",
   "google-calendar": "Google Calendar",
   calls: "Demo calls",

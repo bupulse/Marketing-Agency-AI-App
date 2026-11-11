@@ -7,8 +7,8 @@ It reads BuPulse's real features and plans, picks an ad format (for example the 
 makes the actors, clips and music with AI, edits everything with effects, judges the result, fixes one weak part if
 needed, and delivers the finished ad. **Nothing is published by itself**: the ad waits on the Posts page for your OK.
 
-**Where:** Admin → AI and usage → **Ad Brain** (`/admin/ad-brain`). Limits: Admin → Settings → **Daily posts and
-videos** → "Ad Brain spend limits".
+**Where:** Admin → AI and usage → **Ad Brain** (`/admin/ad-brain`). Limits: Admin → Settings → **Ad Brain limits**
+(`/admin/settings/ad-brain`), with the spend limits and BuPulse's own Gallery video space.
 
 ## Make an ad
 
@@ -30,7 +30,7 @@ renderer, judges it (about 2 cents) and delivers it. Use it to check that everyt
 
 ## Spend limits
 
-- **$3 per ad** and **$30 per month** (your decision). Change them in Admin → Settings → Daily posts and videos.
+- **$3 per ad** and **$30 per month** (your decision). Change them in Admin → Settings → Ad Brain limits.
 - Before every paid step, the Ad Brain checks both limits. If the next step would pass one, the ad **stops** and says
   why (for example "Stopped before passing this ad's $3.00 limit…"). Nothing more is paid for it.
 - Before making any picture or clip, it checks that the whole plan fits; if not, it stops before paying for anything.
@@ -98,9 +98,10 @@ cut off at the end and it has the old "AI-generated" badge.
   - `service.ts`: Admin
 - **Renderer:** `tools/ad-render/` (Python 3.9+, Pillow, numpy, ffmpeg). See its README.
 - **Admin:**
-  - page: `app/admin/(console)/(ai)/ad-brain/`
-  - limits: `lib/admin/settings.ts` (`adBrainPerAdUsd`, `adBrainMonthlyUsd`), panel in
-    `components/admin/system/settings/content-areas.tsx`
+  - page: `app/admin/(console)/(ai)/ad-brain/` (data), drawn by `components/admin/content-ai/ad-brain-view.tsx`
+  - limits: `lib/admin/settings.ts` (`adBrainPerAdUsd`, `adBrainMonthlyUsd`, `adBrainGalleryVideoMb`), their own
+    settings area "ad-brain" (`components/admin/system/settings/ad-brain-area.tsx`, a card on the Settings hub)
+  - previews without sign-in (development only): `/admin/preview/ad-brain`, `/admin/preview/settings-area?area=ad-brain`
 - **Cron:** `/api/cron/video-jobs` (every 4 minutes) calls `sweepAdJobs({ budgetMs: 80_000 })`.
 - **Database:**
   - migrations `20261110230000_ad_brain` and `20261110233000_ad_brain_video_engine`

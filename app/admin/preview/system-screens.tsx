@@ -7,6 +7,7 @@ import { chosen } from "@/components/admin/kit";
 import { SettingsHub } from "@/components/admin/system/settings/settings-hub";
 import { CurrencyArea, GoalArea, MomoArea, PaddleArea } from "@/components/admin/system/settings/money-areas";
 import { ContentArea, VoicesArea } from "@/components/admin/system/settings/content-areas";
+import { AdBrainArea } from "@/components/admin/system/settings/ad-brain-area";
 import { AvailabilityArea, CallsArea, GoogleCalendarArea, LeadAlertsArea } from "@/components/admin/system/settings/calls-areas";
 import { LoadingArea, TrialArea } from "@/components/admin/system/settings/site-areas";
 import { isSettingsSlug, type SettingsSlug } from "@/components/admin/system/settings-areas";
@@ -82,7 +83,9 @@ function SettingsAreaPreview({ slug, ok }: { slug: SettingsSlug; ok?: string }) 
     case "goal":
       return <GoalArea ok={ok} revenueGoalRwf={9_000_000} goalStartMonth="2026-11" />;
     case "content":
-      return <ContentArea ok={ok} dailyPosts dailyLine="Today (10 Nov): 12 companies, 31 posts made, 2 skipped (AI allowance used up), none failed." skitVideos={false} firstPostPreview={false} previewCost={{ model: "gemini-2.5-flash", estimateUsd: 0.0021, made: 0, averageUsd: null }} adBrainPerAdUsd={3} adBrainMonthlyUsd={30} adBrainGalleryVideoMb={1024} />;
+      return <ContentArea ok={ok} dailyPosts dailyLine="Today (10 Nov): 12 companies, 31 posts made, 2 skipped (AI allowance used up), none failed." skitVideos={false} firstPostPreview={false} previewCost={{ model: "gemini-2.5-flash", estimateUsd: 0.0021, made: 0, averageUsd: null }} />;
+    case "ad-brain":
+      return <AdBrainArea ok={ok} adBrainPerAdUsd={3} adBrainMonthlyUsd={30} adBrainGalleryVideoMb={1024} monthSpentUsd={2.24} />;
     case "voices":
       return <VoicesArea ok={ok} languages={["Kinyarwanda", "Swahili"]} voices={{ Kinyarwanda: "pNInz6obpgDQGcFmaJgB", Swahili: null }} />;
     case "lead-alerts":
@@ -115,7 +118,7 @@ function SettingsAreaPreview({ slug, ok }: { slug: SettingsSlug; ok?: string }) 
 export function SystemPreview({ which, sp }: { which: SystemScreen; sp: SearchParamsLike }) {
   const ok = first(sp.notice) || undefined;
   if (which === "settings") {
-    return <SettingsHub ok={ok} d={{ momoReady: true, paddleReady: false, paddleLive: false, usdToRwf: 1450, displayCurrency: "RWF", revenueGoalRwf: 9_000_000, dailyPosts: true, skitVideos: false, voicesApproved: 1, voicesTotal: 2, telegram: "not_connected", google: "reconnect", slotMinutes: 30, windows: 3, trialDays: 14, pageLoader: "bar", canRegions: true }} />;
+    return <SettingsHub ok={ok} d={{ momoReady: true, paddleReady: false, paddleLive: false, usdToRwf: 1450, displayCurrency: "RWF", revenueGoalRwf: 9_000_000, dailyPosts: true, skitVideos: false, voicesApproved: 1, voicesTotal: 2, telegram: "not_connected", google: "reconnect", slotMinutes: 30, windows: 3, trialDays: 14, pageLoader: "bar", adBrainPerAdUsd: 3, adBrainMonthlyUsd: 30, canRegions: true }} />;
   }
   if (which === "settings-area") {
     const area = first(sp.area) || "momo";

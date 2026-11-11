@@ -29,10 +29,11 @@ import { askAboutMedia, makeImage, makeMusic, makeSpeech, MODELS, ProviderError,
 import { pickRecipe, recipeById, recipeEffects } from "./recipes";
 import { analyzeMusic, jobDir, judgeCopy, probeSeconds, readRenderResult, startRender } from "./render";
 import { refreshScreensIfStale } from "./screens";
+import { TERMINAL } from "./status";
 import { checkScript, type Script } from "./script-rules";
 import { assetHash, downloadFile, findAsset, localFile, saveAsset, uploadFile } from "./store";
 
-export const TERMINAL = ["ready", "failed", "stopped", "cancelled"] as const;
+export { TERMINAL };
 /** How long one sweep holds a job. */
 export const LEASE_MS = 4 * 60_000;
 /** A step that fails this many times stops the ad. */
