@@ -125,3 +125,46 @@ The video plan's scenes use the content's people photo (the AI cover) for the op
 `tests/voice/service.test.ts` (claims, paying once, storing after payment, too long remembered, reuse, waiting renders, shortening re-check, limits, regenerate throttle, shared clips),
 `tests/voice/providers-and-music.test.ts` (ElevenLabs request and errors, previews, pricing, plans and add-on, music
 uploads and choice, robot sound URLs and downloads).
+
+## Voice providers (11 November 2026)
+
+The owner wants a new voice actor and asked to consider Gemini text-to-speech. Two providers now sit behind
+`lib/ai/tts.ts` (`getTtsProvider("elevenlabs" | "gemini")`):
+
+- **ElevenLabs** (`ELEVENLABS_API_KEY`, Multilingual v2): MP3 with exact character timings. API price $0.08 per 1,000
+  characters (elevenlabs.io/pricing/api; the ledger still records the $0.30 plan-overage rate as an upper bound).
+- **Gemini TTS** (`GEMINI_API_KEY`, `lib/ai/tts-gemini.ts`, model `gemini-3.8-flash-tts`, `GEMINI_TTS_MODEL` overrides):
+  prebuilt voices (`gemini:Kore`, `gemini:Sulafat`, ...). It answers 24 kHz PCM or WAV and no timings: the file is stored
+  as WAV and the caption timings are estimated from the text and the pauses heard (`lib/voice/pcm.ts`). Price $0.50 per
+  1M text tokens and $9 per 1M audio tokens at 25 tokens a second (about $0.0034 for 15 seconds, $0.007 for 30) until
+  31 December 2026, then double. Billed by its real token counts in the ledger.
+- **The choice:** Admin → Settings → Voices → "English voice-over" (AdminSetting `voice.english` = `{ provider, voiceId }`,
+  audited, `lib/voice/provider-setting.ts`). Default: ElevenLabs JB Pro, unchanged until the owner picks. A video or
+  business voice of the active provider is kept; JB Pro (everyone's old default) and voices of the other provider give
+  way to the admin's voice. The video's voice picker lists the active provider's voices.
+- **Never AI Kinyarwanda:** Kinyarwanda and Swahili still speak only with an approved voice (an ElevenLabs id) or not
+  at all (`lib/content-languages/voice.ts`); Gemini is never used for them.
+- **Samples for the owner:** `scripts/voice/make-samples.mjs` (5 Gemini voices: Sulafat, Achird, Sadachbia, Puck, Aoede; 3 ElevenLabs:
+  Alimata, Moussa, Liam; one 15-second BuPulse script; under $0.25 in all). Not run yet on 11 November: both TEST keys
+  were out of credit (Gemini 402 "prepayment credits are depleted", ElevenLabs 401 "payment_issue").
+
+## Growing the library (11 November 2026)
+
+- **Generated tracks:** Admin → Music → "Generate a batch" (`lib/music/batch.ts`): the next 5 of 30 planned tracks
+  (Afrobeat, calm, inspiring, corporate, celebration, chill), 30 seconds each, after ticking the cost box. ElevenLabs
+  Music costs $0.15 a minute on the API (900 credits a minute from a subscription): **$0.075 a track, $2.25 for all
+  30**. At most 20 a day. Not run.
+  - **Licence warning (elevenlabs.io/music-terms, 9 October 2026):** self-serve plans up to Pro are "for individual use
+    only" (Scale, $299/month, for organisations under 10 people), and §4.2 forbids using the output "to compile, create,
+    or contribute to a Music Library ... made available to third parties". A shared library mixed into clients' videos
+    may fall under that; check with ElevenLabs before generating 30.
+  - `music_v1` (the API's older model) is deprecated and removed on 31 January 2027; `music_v2_5` is current.
+- **Free libraries** (checked 11 November 2026; add tracks by hand in Admin → Music → "Add a track" with the source page,
+  licence and credit line; downloading needs the owner's OK per batch):
+  - Incompetech (Kevin MacLeod), CC BY 4.0: commercial use, redistribution allowed, credit "Title Kevin MacLeod
+    (incompetech.com)" plus the licence line, which goes in the post caption.
+  - Free Music Archive: only CC0 and CC BY tracks (never NC); FMA does not license the tracks itself.
+  - Pixabay Music (Content License, 20 October 2026): commercial use, no credit, allowed inside a larger work; skip
+    tracks with the Content ID shield (claims and muting on Instagram and Facebook).
+  - Avoid without legal review: Mixkit (no sublicensing or stock use), Bensound free (bans use in software that makes
+    videos), YouTube Audio Library (for your own YouTube videos), Uppbeat free (no client work).

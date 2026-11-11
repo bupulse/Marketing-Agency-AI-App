@@ -5,7 +5,8 @@
 //                                             browser renderer, uploads it to its reserved URL and confirms it.
 //
 // Settings (environment): ROBOT_APP_URL (the site), VIDEO_ROBOT_SECRET (bearer), optional ROBOT_CHROME_CHANNEL
-// (default "chrome"), ROBOT_CHROME_PATH, ROBOT_FORMAT (auto, mp4 or webm; default auto), ROBOT_CONCURRENCY (1 or 2), ROBOT_MAX_VIDEOS (default 12),
+// (default "chrome"; a comma list such as "msedge,chrome" tries each in turn), ROBOT_CHROME_PATH, ROBOT_RUNNER
+// ("github" or "pc": which machine made the videos, kept with the run's counts), ROBOT_FORMAT (auto, mp4 or webm; default auto), ROBOT_CONCURRENCY (1 or 2), ROBOT_MAX_VIDEOS (default 12),
 // ROBOT_BUDGET_MS (default 17 minutes), ROBOT_VIDEO_TIMEOUT_MS (default 5 minutes).
 // It prints only through log.mjs: event names and counts (the repository and its Actions logs are public).
 import { appendFileSync, readFileSync } from "node:fs";
@@ -44,6 +45,12 @@ export function settings(env = process.env) {
     secret,
     configured: allowedUrl(app) && secret.length > 0,
     channel: env.ROBOT_CHROME_CHANNEL || "chrome",
+    /** Browser channels to try in order (Edge ships with Windows 10, so the PC needs nothing installed). */
+    channels: (env.ROBOT_CHROME_CHANNEL || "chrome")
+      .split(",")
+      .map((c) => c.trim())
+      .filter((c) => /^(chrome|chrome-beta|msedge|msedge-beta|chromium)$/.test(c)),
+    runner: env.ROBOT_RUNNER === "pc" ? "pc" : "github",
     chromePath: env.ROBOT_CHROME_PATH || undefined,
     format: ["mp4", "webm"].includes(env.ROBOT_FORMAT) ? env.ROBOT_FORMAT : "auto",
     concurrency: int(env.ROBOT_CONCURRENCY, 1, 1, 2),
@@ -207,14 +214,32 @@ async function makeOne(config, browser, page, job, format) {
   return { outcome: "made" };
 }
 
-export async function run(config) {
+/** Starts headless Chrome: ROBOT_CHROME_PATH, else each channel in turn (the first one installed wins). */
+export async function launchBrowser(config) {
+  const { chromium } = await import("playwright-core");
+  if (config.chromePath) return chromium.launch({ headless: true, executablePath: config.chromePath });
+  const channels = config.channels?.length ? config.channels : [config.channel];
+  let last;
+  for (const channel of channels) {
+    try {
+      return await chromium.launch({ headless: true, channel });
+    } catch (error) {
+      last = error;
+    }
+  }
+  throw last ?? new Error("no browser");
+}
+
+/**
+ * Claims and makes videos until none wait, the run's video cap or its time budget. `prepared` is the page bundle
+ * (build-page.mjs) when the caller already built it: the PC's render worker builds it once and runs many times.
+ */
+export async function run(config, prepared) {
   const started = Date.now();
   const counts = { claimed: 0, made: 0, failed: 0 };
   // Loaded only for a real run, so "peek" needs nothing installed.
-  const { chromium } = await import("playwright-core");
-  const { buildPage } = await import("./build-page.mjs");
-  const { html, script } = await buildPage();
-  const browser = await chromium.launch({ headless: true, ...(config.chromePath ? { executablePath: config.chromePath } : { channel: config.channel }) });
+  const { html, script } = prepared ?? (await (await import("./build-page.mjs")).buildPage());
+  const browser = await launchBrowser(config);
   try {
     log("chrome_ready");
     const probe = await openPage(browser, html, script);
@@ -256,15 +281,20 @@ export async function run(config) {
     }
   } finally {
     await browser.close().catch(() => {});
-    await api(config, "report", counts).catch(() => {});
+    await api(config, "report", { ...counts, runner: config.runner ?? "github" }).catch(() => {});
     log("summary", counts);
   }
   return counts;
 }
 
-export async function peek(config) {
-  const { waiting = 0 } = await api(config, "peek");
+/**
+ * How many videos wait. `quiet` (the PC's render worker, which asks every few seconds) neither prints nor leaves the
+ * app's idle heartbeat each time.
+ */
+export async function peek(config, { quiet = false } = {}) {
+  const { waiting = 0 } = await api(config, "peek", quiet ? { quiet: true } : {});
   const n = Number.isInteger(waiting) && waiting >= 0 ? waiting : 0;
+  if (quiet) return n;
   log(n > 0 ? "waiting" : "nothing_to_do", n > 0 ? { videos: n } : {});
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `waiting=${n}\n`);
   return n;

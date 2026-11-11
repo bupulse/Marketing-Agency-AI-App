@@ -1,5 +1,6 @@
 "use server";
 
+import { getEnglishVoice } from "@/lib/voice/provider-setting";
 import { z } from "zod";
 import { knowledgeAction, type Result } from "@/lib/knowledge/guard";
 import { remakeContentVisuals } from "@/lib/visuals/content";
@@ -141,9 +142,10 @@ export async function reportVideoFailure(visualId: string, message: string): Pro
 }
 
 /** What the video panel's sound choices need: the library's tracks, the voices, and the voiceover characters used. */
-export async function loadSoundOptions(): Promise<Result<{ tracks: { id: string; title: string; moods: string[] }[]; voiceInPlan: boolean; used: number; limit: number }>> {
+export async function loadSoundOptions(): Promise<Result<{ tracks: { id: string; title: string; moods: string[] }[]; voiceInPlan: boolean; used: number; limit: number; provider: "elevenlabs" | "gemini"; defaultVoiceId: string }>> {
   return knowledgeAction({ permission: "content", feature: "content", source: "visuals.sound.options" }, async ({ userId, businessId }) => {
-    const [tracks, voice, usage] = await Promise.all([activeTracks().catch(() => []), featureStatus(businessId, "voice").catch(() => "plan_unknown"), getUsageSummary(userId).catch(() => null)]);
-    return { tracks: tracks.map((t) => ({ id: t.id, title: t.title, moods: t.moods })), voiceInPlan: voice === "ok", used: usage?.used.voiceCharacters ?? 0, limit: usage?.limits.voiceCharacters ?? 0 };
+    const [tracks, voice, usage, english] = await Promise.all([activeTracks().catch(() => []), featureStatus(businessId, "voice").catch(() => "plan_unknown"), getUsageSummary(userId).catch(() => null), getEnglishVoice()]);
+    // The voices offered are the active provider's (Admin -> Settings -> Voices, lib/voice/provider-setting.ts).
+    return { tracks: tracks.map((t) => ({ id: t.id, title: t.title, moods: t.moods })), voiceInPlan: voice === "ok", used: usage?.used.voiceCharacters ?? 0, limit: usage?.limits.voiceCharacters ?? 0, provider: english.provider, defaultVoiceId: english.voiceId };
   });
 }

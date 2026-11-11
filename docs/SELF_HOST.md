@@ -97,3 +97,55 @@ they change.
 
 Remote control: Chrome Remote Desktop (free, works from outside the home network without opening a port).
 Windows 11 Pro's own Remote Desktop needs the PC reachable, so it suits the home network only.
+
+## Videos made on the PC (render worker, 11 November 2026)
+
+Owner decision: pictures and reels are made on the server right away, even when nobody has the page open. Images are
+drawn by the server itself; videos (the daily slideshow reel with voice-over and library music, Instagram and TikTok
+reels, every pending content video) need a browser engine, so the PC runs a **render worker** beside the server:
+
+- **What it is:** `scripts/video-robot/pc-worker.mjs`, the GitHub video robot (`scripts/video-robot/robot.mjs`,
+  docs/VIDEO_ROBOT.md) run as a loop on the PC. Every 10 seconds it asks `http://127.0.0.1:3002/api/robot/videos/peek`
+  (quietly, no heartbeat row each time) and, when videos wait, claims them, renders each in **headless Microsoft
+  Edge** (Google Chrome if Edge is missing) with the same renderer as the owner's browser (WebCodecs H.264 MP4, voice-over
+  and music mixed by `lib/voice/mix.ts`), uploads the file to its reserved URL and confirms it. A video planned at 09:00
+  is ready around 09:01. The worker leaves the idle heartbeat every 15 minutes and reports each run with `runner: "pc"`
+  (Admin → Services, video robot card).
+- **How it runs:** a fourth thread in `cron-loop.ps1` (the "BuPulse jobs" task) runs
+  `node scripts\self-host\windows\server.mjs videos` in a loop. `server.mjs videos` reads the production settings like
+  the other modes, then starts the worker with this PC's own environment plus only `ROBOT_APP_URL=http://127.0.0.1:3002`
+  and `VIDEO_ROBOT_SECRET` (in memory; no database URL or other key reaches it). The worker exits after an hour and the
+  thread starts a fresh one 15 seconds later (new code after an update, no slow memory leak). If it fails, it waits
+  30 s, 1, 2, then up to 5 minutes and tries again. It never stops the tick, the heartbeat or the self-check: each has
+  its own thread and its own try/catch.
+- **Log:** `%USERPROFILE%\bupulse-prod\videos.log` (counts and fixed event names only, trimmed to its last 2,000 lines
+  past 5 MB).
+- **The screens:** `server.mjs` sets `BUPULSE_SERVER_RENDER=1` for the server, so a pending video says "Being made on
+  our server, usually within 2 minutes" and the page looks again every 15 seconds (lib/visuals/robot.ts
+  `serverRenderOn`). The loading ring shows while it is made (components/visuals/making-screen.tsx).
+- **Fallback:** the GitHub video robot keeps running every 15 minutes against https://bupulse.com. The render lease means
+  the PC and GitHub never make the same video; if the PC is off, GitHub makes them (slower), and after 3 failed robot
+  renders the owner's browser can still make it.
+
+### What the owner must install or change on the PC
+
+1. **Nothing to install for the browser:** Microsoft Edge comes with Windows 10 and the worker uses it. (If Edge was
+   removed: `winget install Google.Chrome`. Playwright's own browser download is not needed: `playwright-core` drives
+   the installed Edge or Chrome.)
+2. **The robot secret.** The server and the worker need the same `VIDEO_ROBOT_SECRET`:
+   - if Netlify's production settings have `VIDEO_ROBOT_SECRET` (the GitHub robot's secret), nothing to do;
+   - otherwise, in PowerShell on the PC (makes a random secret readable by this user only):
+     `$s = -join ((48..57)+(97..122) | Get-Random -Count 40 | % {[char]$_}); Set-Content "$env:USERPROFILE\bupulse-prod\robot-secret.txt" $s; icacls "$env:USERPROFILE\bupulse-prod\robot-secret.txt" /inheritance:r /grant:r "$($env:USERNAME):(R,W)"`
+     `server.mjs` uses it when Netlify has none. Then only the PC makes videos automatically (GitHub's robot keeps its
+     own secret and is refused until the two match: set the same value as the GitHub secret VIDEO_ROBOT_SECRET and the
+     variable ROBOT_APP_URL=https://bupulse.com to keep it as the fallback).
+3. **Update and restart:** `update.ps1` (it rebuilds, restarts the server, and restarts the "BuPulse jobs" task, which
+   starts the worker thread). After updating by hand: `Stop-ScheduledTask "BuPulse jobs"; Start-ScheduledTask "BuPulse jobs"`.
+   Stopping the jobs task can leave a running worker for up to an hour; that is safe (the lease), or end it in Task
+   Manager (`node.exe` running `pc-worker.mjs`).
+4. **Check it:** after a Create post with a video, `Get-Content "$env:USERPROFILE\bupulse-prod\videos.log" -Tail 20`
+   should show "Claimed: videos 1" and "Run finished: claimed 1, made 1, failed 0" within a minute or two.
+   Self-test on the PC, no database: `node scripts\video-robot\self-test.mjs --worker` with `$env:ROBOT_CHROME_CHANNEL="msedge,chrome"`.
+
+Cost: none (the PC's own CPU; a 15-second 1080x1920 reel takes about 20 to 40 seconds to render). The Mac's
+`cron-loop.sh` has no render worker (the Mac copy is off).

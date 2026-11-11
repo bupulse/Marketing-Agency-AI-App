@@ -277,4 +277,6 @@ export interface VisualView {
    * Null when the robot is off or the video is not pending.
    */
   robot?: "queued" | "making" | "browser" | null;
+  /** The PC's render worker makes pending videos within a minute or two (docs/SELF_HOST.md), not at the robot's next 15-minute run. */
+  robotSoon?: boolean;
 }

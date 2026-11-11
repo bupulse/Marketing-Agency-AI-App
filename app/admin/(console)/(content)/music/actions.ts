@@ -3,6 +3,7 @@
 import { adminAction, actionMessage, finish } from "@/lib/admin/console";
 import { deleteTrack, finishTrackUpload, generateTrack, setTrackActive, startTrackUpload } from "@/lib/music/service";
 import { isMood, type TrackInput } from "@/lib/music/tracks";
+import { generateMusicBatch } from "@/lib/music/batch";
 
 // The music library (docs/VOICE_AND_MUSIC.md). adminAction("content") re-checks the admin (allow-listed email, AAL2) on every
 // call: server actions are public POST endpoints. Uploads go straight to Storage with a signed URL, then are checked.
@@ -44,5 +45,17 @@ export async function generateTrackAction(f: FormData) {
   const ctx = await adminAction("content");
   await finish("/admin/music", () => "Track generated and added.", () =>
     generateTrack(ctx, { title: String(f.get("title") ?? ""), prompt: String(f.get("prompt") ?? ""), mood: String(f.get("mood") ?? "") as never, seconds: Number(f.get("seconds") ?? 30) }),
+  );
+}
+
+/**
+ * "Generate a batch" (lib/music/batch.ts): the next few of the 30 planned tracks, after the admin confirmed the cost
+ * shown on the form. Paid, audited per track, within the 20 a day.
+ */
+export async function generateMusicBatchAction(f: FormData) {
+  const ctx = await adminAction("content");
+  if (f.get("confirm") !== "on") return finish("/admin/music", "", async () => Promise.reject(new Error("Tick the box to confirm the cost first.")));
+  await finish("/admin/music", (r: { made: number; left: number; stopped: string | null }) => `${r.made === 1 ? "1 track" : `${r.made} tracks`} generated and added; ${r.left} of the planned tracks left.${r.stopped ? ` Stopped: ${r.stopped}` : ""}`, () =>
+    generateMusicBatch(ctx, { count: Number(f.get("count") ?? 5), seconds: Number(f.get("seconds") ?? 30), confirmUsd: Number(f.get("confirmUsd") ?? -1) }),
   );
 }
