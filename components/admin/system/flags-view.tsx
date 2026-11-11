@@ -31,7 +31,7 @@ export function FlagsView({ flags, ok, bad }: { flags: FlagRow[]; ok?: string; b
               <ExpandCard
                 key={f.key}
                 icon={Flag}
-                tone={f.enabled ? "green" : "slate"}
+                tone={f.enabled ? "good" : "slate"}
                 title={<code className="font-mono text-[14px]">{f.key}</code>}
                 summary={f.description ?? "No description."}
                 aside={f.enabled ? <StatusPill tone="good" dot>On, {f.rolloutPercent}%</StatusPill> : <StatusPill tone="muted" dot>Off</StatusPill>}

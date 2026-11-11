@@ -45,9 +45,9 @@ export function previewServerMonitor(state: PreviewServerState = "good", nowDate
     uptime: { today: down ? 97.9 : 99.6, week: down ? 99.4 : 99.93, month: 99.87, since: at(27 * DAY) },
     timeline: { hours, days },
     outages: [
-      { startedAt: at(6 * HOUR + 12 * MIN), endedAt: at(6 * HOUR + 10 * MIN), minutes: 2, reason: "failed-check" },
-      { startedAt: at(14 * HOUR + 25 * MIN), endedAt: at(14 * HOUR + 2 * MIN), minutes: 23, reason: "failed-check" },
-      { startedAt: at(18 * DAY + 3 * HOUR), endedAt: at(18 * DAY + 2 * HOUR + 37 * MIN), minutes: 23, reason: "pc-silent" },
+      { id: "cmpreview0001xx", startedAt: at(6 * HOUR + 12 * MIN), endedAt: at(6 * HOUR + 10 * MIN), minutes: 2, reason: "failed-check" },
+      { id: "cmpreview0002xx", startedAt: at(14 * HOUR + 25 * MIN), endedAt: at(14 * HOUR + 2 * MIN), minutes: 23, reason: "failed-check" },
+      { id: "cmpreview0003xx", startedAt: at(18 * DAY + 3 * HOUR), endedAt: at(18 * DAY + 2 * HOUR + 37 * MIN), minutes: 23, reason: "pc-silent" },
     ],
     pc: {
       state: "ok",
@@ -102,7 +102,7 @@ export function previewServerMonitor(state: PreviewServerState = "good", nowDate
       ...base,
       issues: [{ level: "down", text: "bupulse.com looks down from outside: no good check for 14 minutes (since 10 Nov, 13:46, Kigali time)." }],
       site: { kind: "down", since: at(14 * MIN), minutes: 14, lastCheckAt: at(MIN) },
-      outages: [{ startedAt: at(14 * MIN), endedAt: null, minutes: 14, reason: "ongoing" }, ...base.outages],
+      outages: [{ id: "cmpreview0004xx", startedAt: at(14 * MIN), endedAt: null, minutes: 14, reason: "ongoing" }, ...base.outages],
       checks: { ...base.checks, last: { ...base.checks.last!, checkedAt: at(MIN), ok: false, statusMs: null, databaseMs: null, pages: base.checks.last!.pages.map((p) => ({ ...p, status: 502, ms: 90 })) } },
     };
   }

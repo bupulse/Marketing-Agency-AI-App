@@ -16,6 +16,9 @@ import { adminEmails, can, isAdminEmail, type AdminIdentity } from "@/lib/admin/
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { DEPARTMENT_KEYS, type DepartmentKey } from "./contract";
 import { forceLogout } from "./realtime";
+import { SETUP_GRANT_KEY, setupGrantUntil } from "./setup-grant";
+import { isSupportOwnerEmail } from "./owner";
+import { passwordSchema } from "@/lib/auth/schemas";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -84,7 +87,7 @@ async function departmentIds(keys: DepartmentKey[]): Promise<string[]> {
 }
 
 /** Who has a verified authenticator app, read from Supabase Auth's own table (one query for the whole list). */
-async function verifiedTotpUsers(userIds: string[]): Promise<Set<string> | null> {
+export async function verifiedTotpUsers(userIds: string[]): Promise<Set<string> | null> {
   if (!userIds.length) return new Set();
   try {
     const rows = await prisma.$queryRaw<{ user_id: string }[]>`SELECT DISTINCT user_id::text AS user_id FROM auth.mfa_factors WHERE factor_type = 'totp' AND status = 'verified' AND user_id = ANY(${userIds}::uuid[])`;
@@ -407,4 +410,118 @@ export async function declineJoinRequest(ctx: AdminContext, id: string): Promise
 export async function answerJoinRequest(ctx: AdminContext, actor: AdminIdentity, id: string, approve: boolean): Promise<{ id: string; emailed?: boolean }> {
   assertLiveChat(actor);
   return approve ? approveJoinRequest(ctx, id) : declineJoinRequest(ctx, id);
+}
+
+// --- Accounts the admin makes with a password (support app Team page, admin@bupulse.com only) -----------------------
+// The owner, 10 November 2026: "create a user and give them a password, and request them to add an authentication
+// app". No email is sent: the admin hands the address and password over (WhatsApp, in person). The account is ready at
+// once; at their first sign-in the support app sends them to add an authenticator, which this account may do without an
+// emailed code for 7 days (lib/support/setup-grant.ts). Nothing opens before the authenticator is added.
+
+export const AGENT_PASSWORD_MIN = 10;
+
+/** The rules for a password the admin types for someone: the app's rules plus at least 10 characters. */
+export function checkAgentPassword(password: string): string {
+  const parsed = passwordSchema.safeParse(password);
+  if (!parsed.success) throw new AdminError("invalid", parsed.error.issues[0].message);
+  if (password.length < AGENT_PASSWORD_MIN) throw new AdminError("invalid", `Use at least ${AGENT_PASSWORD_MIN} characters for the support app.`);
+  return password;
+}
+
+const passwordRefused = (code?: string) =>
+  code === "weak_password" ? "That password is too easy to guess. Try a longer one, or press Make one." : "The sign-in could not be created. Nothing was changed; try again in a minute.";
+
+/** A new team member with a password, active at once; they add an authenticator at their first sign-in. */
+export async function createAgentWithPassword(ctx: AdminContext, input: AgentInput & { password: string }): Promise<{ id: string; email: string }> {
+  const email = normalizeAgentEmail(input.email ?? "");
+  const clean = cleanAgent({ ...input, departments: input.departments.length ? input.departments : [...DEPARTMENT_KEYS] });
+  const password = checkAgentPassword(input.password);
+  if (isAdminEmail(email) || (await prisma.staffMember.findUnique({ where: { email }, select: { id: true } }))) {
+    throw new AdminError("conflict", "That address signs in to the admin console. Give them a separate work address.");
+  }
+  const already = await prisma.supportAgent.findUnique({ where: { email }, select: { id: true, status: true } });
+  if (already && already.status !== "pending") throw new AdminError("conflict", "That address is already in the support team. Use Set a new password on their card.");
+  const [existing] = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM auth.users WHERE lower(email) = ${email} LIMIT 1`;
+  if (existing) throw new AdminError("conflict", "That address already signs in to BuPulse (a client or creator account). Use a separate work address for support.");
+  const ids = await departmentIds(clean.departments);
+  const created = await createAdminClient().auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: clean.name, support_agent: true },
+    app_metadata: { [SETUP_GRANT_KEY]: setupGrantUntil() },
+  });
+  if (created.error || !created.data.user) {
+    await logError(created.error ?? new Error("createUser returned no user"), { source: "support.agents.create", code: created.error?.code, level: "warn" });
+    throw new AdminError("invalid", passwordRefused(created.error?.code));
+  }
+  const userId = created.data.user.id;
+  try {
+    const id = await prisma.$transaction(async (tx) => {
+      // Someone who asked to join keeps their one row (it becomes this account); anyone else gets a new row.
+      const row = already
+        ? await tx.supportAgent.update({ where: { id: already.id }, data: { name: clean.name, role: clean.role, maxChats: clean.maxChats, status: "invited", userId, invitedBy: ctx.actor } })
+        : await tx.supportAgent.create({ data: { email, name: clean.name, role: clean.role, maxChats: clean.maxChats, status: "invited", userId, invitedBy: ctx.actor } });
+      await tx.supportAgentDepartment.deleteMany({ where: { agentId: row.id } });
+      await tx.supportAgentDepartment.createMany({ data: ids.map((departmentId) => ({ agentId: row.id, departmentId })) });
+      await writeAudit(tx, ctx, "support_agent_create_with_password", `support_agent:${row.id}`, already ? { status: "pending" } : null, {
+        email,
+        name: clean.name,
+        role: clean.role,
+        departments: clean.departments,
+        authenticatorRequired: true,
+      });
+      return row.id;
+    });
+    return { id, email };
+  } catch (error) {
+    await createAdminClient().auth.admin.deleteUser(userId).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function agentWithSignIn(id: string) {
+  const agent = await agentById(id);
+  if (!agent.userId) throw new AdminError("conflict", "This person has no sign-in yet. Use their invite, or add them again with a password.");
+  if (isSupportOwnerEmail(agent.email)) throw new AdminError("conflict", "admin@bupulse.com signs in with the admin console's login.");
+  return { ...agent, userId: agent.userId };
+}
+
+/** The admin sets a new password for a team member: signed out everywhere, they sign in again with it. */
+export async function adminSetAgentPassword(ctx: AdminContext, id: string, rawPassword: string): Promise<{ id: string }> {
+  const agent = await agentWithSignIn(id);
+  const password = checkAgentPassword(rawPassword);
+  const { error } = await createAdminClient().auth.admin.updateUserById(agent.userId, { password });
+  if (error) throw new AdminError("invalid", passwordRefused(error.code));
+  await writeAudit(prisma, ctx, "support_agent_set_password", `support_agent:${id}`, null, { email: agent.email });
+  await signOutEverywhere(agent.userId);
+  return { id };
+}
+
+/**
+ * Asks a team member for a new authenticator app (a lost phone, or a first one): their current one is removed, they
+ * are signed out, and at the next sign-in they add one, without an emailed code for 7 days.
+ */
+export async function requireNewAgentAuthenticator(ctx: AdminContext, id: string): Promise<{ id: string; removed: number }> {
+  const agent = await agentWithSignIn(id);
+  const admin = createAdminClient().auth.admin;
+  const { data, error } = await admin.mfa.listFactors({ userId: agent.userId });
+  if (error) throw new AdminError("unavailable", "The authenticator could not be read. Nothing was changed.");
+  let removed = 0;
+  for (const f of data?.factors ?? []) {
+    const { error: e } = await admin.mfa.deleteFactor({ userId: agent.userId, id: f.id });
+    if (!e) removed++;
+  }
+  const { error: grantError } = await admin.updateUserById(agent.userId, { app_metadata: { [SETUP_GRANT_KEY]: setupGrantUntil() } });
+  if (grantError) throw new AdminError("unavailable", "The old authenticator was removed, but the setup permission could not be saved. Press it again.");
+  await writeAudit(prisma, ctx, "support_agent_require_new_2fa", `support_agent:${id}`, null, { removed });
+  await signOutEverywhere(agent.userId);
+  return { id, removed };
+}
+
+/** After they add their authenticator: the one-time setup permission is used up. Never throws. */
+export async function clearSetupGrant(userId: string): Promise<void> {
+  await createAdminClient()
+    .auth.admin.updateUserById(userId, { app_metadata: { [SETUP_GRANT_KEY]: null } })
+    .catch(() => undefined);
 }

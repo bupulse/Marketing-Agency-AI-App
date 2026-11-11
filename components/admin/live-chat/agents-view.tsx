@@ -63,7 +63,7 @@ function AgentCard({ agent, departments, actions }: { agent: AgentAdminView; dep
   return (
     <li data-agent={agent.id} className={cn("flex min-w-0 flex-col gap-3 p-4 sm:p-5", CARD, agent.status === "pending" && "ring-1 ring-[#f59e0b]/40")}>
       <div className="flex min-w-0 items-start gap-3">
-        <span aria-hidden className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#0e7490,#22d3ee)] text-[16px] font-bold text-white">{agent.name.trim().charAt(0).toUpperCase() || "?"}</span>
+        <span aria-hidden className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#1f7bff,#5fa8ff)] text-[16px] font-bold text-white">{agent.name.trim().charAt(0).toUpperCase() || "?"}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold">{agent.name}</p>
           <p className="truncate text-[13px] text-muted">{agent.email}</p>

@@ -32,8 +32,13 @@ describe("gapOutage: outages from the gaps between good checks", () => {
     expect(gapOutage({ checkedAt: at(0) }, { checkedAt: at(29), afterFailure: false }, quiet)).toBeNull();
   });
 
-  it("30 minutes or more without a good check counts on its own", () => {
-    expect(gapOutage({ checkedAt: at(0) }, { checkedAt: at(45), afterFailure: false }, quiet)).toEqual({ startedAt: at(0), endedAt: at(45), minutes: 45, reason: "long-gap" });
+  it("a long gap alone, with the PC reporting all along, is late checks, not an outage (GitHub ran every few hours on 10 Nov)", () => {
+    expect(gapOutage({ checkedAt: at(0) }, { checkedAt: at(45), afterFailure: false }, quiet)).toBeNull();
+    expect(gapOutage({ checkedAt: at(0) }, { checkedAt: at(297), afterFailure: false }, quiet)).toBeNull();
+  });
+
+  it("a blip under 2 minutes (a deploy restarting) is never an outage, even after a failed check", () => {
+    expect(gapOutage({ checkedAt: at(0) }, { checkedAt: at(1), afterFailure: true }, { failedChecks: 1, pcSilent: false })).toBeNull();
   });
 });
 
@@ -54,7 +59,8 @@ describe("siteState", () => {
     expect(siteState({ lastCheck: { checkedAt: at(57), ok: true }, lastOkAt: at(57), pcSilent: false }, now).kind).toBe("up");
     expect(siteState({ lastCheck: { checkedAt: at(40), ok: true }, lastOkAt: at(40), pcSilent: false }, now)).toEqual({ kind: "late", lastCheckAt: at(40), minutes: 20 });
     expect(siteState({ lastCheck: { checkedAt: at(40), ok: true }, lastOkAt: at(40), pcSilent: true }, now)).toMatchObject({ kind: "down", since: at(40), minutes: 20 });
-    expect(siteState({ lastCheck: { checkedAt: at(20), ok: true }, lastOkAt: at(20), pcSilent: false }, now)).toMatchObject({ kind: "down", minutes: 40 });
+    // A long quiet with the PC reporting is late checks, not a down site.
+    expect(siteState({ lastCheck: { checkedAt: at(20), ok: true }, lastOkAt: at(20), pcSilent: false }, now)).toMatchObject({ kind: "late", minutes: 40 });
   });
 
   it("a failed last check is down from the last good one", () => {

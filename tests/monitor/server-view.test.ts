@@ -17,7 +17,7 @@ const base: ServerMonitor = {
     hours: [{ start: "2026-11-09T11:00:00.000Z", checks: 12, failed: 1, avgMs: 640, uptime: 96.6 }, { start: "2026-11-09T12:00:00.000Z", checks: 0, failed: 0, avgMs: null, uptime: 100 }],
     days: [{ day: "2026-11-08T22:00:00.000Z", uptime: 99.2 }],
   },
-  outages: [{ startedAt: "2026-11-09T09:30:00.000Z", endedAt: "2026-11-09T09:53:00.000Z", minutes: 23, reason: "failed-check" }],
+  outages: [{ id: "cmpreview0001xx", startedAt: "2026-11-09T09:30:00.000Z", endedAt: "2026-11-09T09:53:00.000Z", minutes: 23, reason: "failed-check" }],
   pc: {
     state: "ok",
     lastAt: "2026-11-09T11:59:40.000Z",

@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, CircleDashed, Clock, Cloud, Cpu, Database,
 import { cn } from "@/lib/cn";
 import type { ServerMonitor } from "@/lib/monitor/dashboard";
 import { durationWords, kigaliMidnight, kigaliTime } from "@/lib/monitor/uptime-rules";
+import { removeOutageAction } from "@/app/support/(app)/server/actions";
 import { AutoRefresh } from "./auto-refresh";
 import { Bar, LevelPill, Ring } from "./gauges";
 import { RunCheck } from "./run-check";
@@ -215,7 +216,7 @@ function Timeline({ m }: { m: ServerMonitor }) {
   );
 }
 
-function Outages({ m }: { m: ServerMonitor }) {
+function Outages({ m, owner }: { m: ServerMonitor; owner: boolean }) {
   return (
     <Card id="outages" title="Recent outages" icon={<AlertTriangle className="size-5" />} note="Last 30 days" what="Times bupulse.com could not be reached, newest first, in Kigali time.">
       {m.outages.length === 0 ? (
@@ -237,6 +238,18 @@ function Outages({ m }: { m: ServerMonitor }) {
                 </span>
               </span>
               <span className="text-muted">{REASONS[o.reason] ?? o.reason}</span>
+              {owner && o.id && o.endedAt && (
+                <details className="mt-1 text-[12.5px]">
+                  <summary className="cursor-pointer font-semibold text-pulse-blue">Not a real outage?</summary>
+                  <form action={removeOutageAction} className="mt-2 flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="id" value={o.id} />
+                    <span className="text-muted">Remove it from the record; the uptime figures correct themselves.</span>
+                    <button type="submit" className="inline-flex min-h-9 cursor-pointer items-center rounded-xl border border-danger/40 px-3 font-semibold text-danger hover:bg-danger-bg">
+                      Remove this outage
+                    </button>
+                  </form>
+                </details>
+              )}
             </li>
           ))}
         </ul>
@@ -485,7 +498,7 @@ function Backup() {
   );
 }
 
-export function ServerView({ m, preview = false }: { m: ServerMonitor; preview?: boolean }) {
+export function ServerView({ m, preview = false, owner = false }: { m: ServerMonitor; preview?: boolean; owner?: boolean }) {
   const now = new Date(m.generatedAt).getTime();
   return (
     <main className="flex flex-1 flex-col gap-5 p-4 sm:p-6">
@@ -516,7 +529,7 @@ export function ServerView({ m, preview = false }: { m: ServerMonitor; preview?:
         <div className="srv-stagger flex min-w-0 flex-col gap-5">
           <Uptime m={m} now={now} />
           <Timeline m={m} />
-          <Outages m={m} />
+          <Outages m={m} owner={owner && !preview} />
         </div>
         <div className="srv-stagger flex min-w-0 flex-col gap-5">
           <Pc m={m} now={now} />

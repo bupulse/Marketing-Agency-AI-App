@@ -28,7 +28,8 @@ export type ServerMonitor = {
   uptime: { today: number | null; week: number | null; month: number | null; since: string | null };
   /** The uptime timeline: the last 24 hours, one bar per hour, and the last 30 days, one bar per Kigali day. */
   timeline: { hours: HourBar[]; days: DayBar[] };
-  outages: { startedAt: string; endedAt: string | null; minutes: number; reason: OutageReason | "ongoing" }[];
+  /** id: the stored outage (null for the one going on now), so the admin can remove a false alarm. */
+  outages: { id: string | null; startedAt: string; endedAt: string | null; minutes: number; reason: OutageReason | "ongoing" }[];
   pc: {
     state: "never" | "ok" | "silent";
     lastAt: string | null;
@@ -160,8 +161,8 @@ export async function getServerMonitor(now = new Date()): Promise<ServerMonitor>
     uptime: { today: pct(kigaliMidnight(now)), week: pct(new Date(now.getTime() - 7 * DAY)), month: pct(monthAgo), since: iso(since) },
     timeline: { hours: hourlyBars(recent.map((c) => ({ checkedAt: c.checkedAt, ok: c.ok, pages: pagesOf(c.pages) })), spans, since, now), days: dailyBars(spans, since, now) },
     outages: [
-      ...(ongoing ? [{ startedAt: ongoing.startedAt.toISOString(), endedAt: null, minutes: minutesBetween(ongoing.startedAt, now), reason: "ongoing" as const }] : []),
-      ...incidents.slice(0, 10).map((i) => ({ startedAt: i.startedAt.toISOString(), endedAt: i.endedAt.toISOString(), minutes: i.minutes, reason: i.reason as OutageReason })),
+      ...(ongoing ? [{ id: null, startedAt: ongoing.startedAt.toISOString(), endedAt: null, minutes: minutesBetween(ongoing.startedAt, now), reason: "ongoing" as const }] : []),
+      ...incidents.slice(0, 10).map((i) => ({ id: i.id, startedAt: i.startedAt.toISOString(), endedAt: i.endedAt.toISOString(), minutes: i.minutes, reason: i.reason as OutageReason })),
     ],
     pc: {
       state: pcState,

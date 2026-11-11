@@ -299,7 +299,7 @@ export function LeaderboardView({ rows, month, months, me, fx = BOOKS_FMT, base 
         <ol aria-label={`Top agents, ${monthName(month)}`} className="kit-rise grid grid-cols-1 gap-3 sm:grid-cols-3">
           {top.map((r, i) => (
             <li key={r.staffId} className={cn("flex items-center gap-3 p-4 sm:flex-col sm:items-start sm:p-5", CARD, PODIUM[i].ring)}>
-              <IconBadge icon={PODIUM[i].icon} tone={i === 0 ? "orange" : "slate"} size="lg" />
+              <IconBadge icon={PODIUM[i].icon} tone={i === 0 ? "warn" : "slate"} size="lg" />
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="text-[12px] font-bold uppercase tracking-[0.08em] text-muted">{PODIUM[i].label}</span>
                 <span className="truncate text-[16px] font-bold">{r.name}{r.staffId === me ? " (you)" : ""}</span>

@@ -8,12 +8,12 @@ export function previewTeam(now = new Date()) {
       { id: "rq2", name: "Olivier Niyonzima", email: "olivier@example.com", role: "TECH", createdAt: at(26 * 60) },
     ],
     team: [
-      { id: "m1", name: "Jean Mugisha", email: "jean@example.com", role: "SUPERVISOR", status: "active", availability: "online", lastSeenAt: at(1) },
-      { id: "m2", name: "Aline Uwase", email: "aline@example.com", role: "AGENT", status: "active", availability: "online", lastSeenAt: at(3) },
-      { id: "m3", name: "Eric Habimana", email: "eric@example.com", role: "TECH", status: "active", availability: "away", lastSeenAt: at(42) },
-      { id: "m4", name: "Diane Keza", email: "diane@example.com", role: "AGENT", status: "active", availability: "offline", lastSeenAt: at(20 * 60) },
-      { id: "m5", name: "Patrick Hakizimana", email: "patrick@example.com", role: "AGENT", status: "invited", availability: "offline", lastSeenAt: null },
-      { id: "m6", name: "Samuel Bizimana", email: "samuel@example.com", role: "AGENT", status: "locked", availability: "offline", lastSeenAt: at(9 * 24 * 60) },
+      { id: "m1", name: "Jean Mugisha", email: "jean@example.com", role: "SUPERVISOR", status: "active", availability: "online", lastSeenAt: at(1), hasSignIn: true, authenticator: true, manageable: true },
+      { id: "m2", name: "Aline Uwase", email: "aline@example.com", role: "AGENT", status: "active", availability: "online", lastSeenAt: at(3), hasSignIn: true, authenticator: true, manageable: true },
+      { id: "m3", name: "Eric Habimana", email: "eric@example.com", role: "TECH", status: "active", availability: "away", lastSeenAt: at(42), hasSignIn: true, authenticator: true, manageable: true },
+      { id: "m4", name: "Diane Keza", email: "diane@example.com", role: "AGENT", status: "active", availability: "offline", lastSeenAt: at(20 * 60), hasSignIn: true, authenticator: true, manageable: true },
+      { id: "m5", name: "Patrick Hakizimana", email: "patrick@example.com", role: "AGENT", status: "invited", availability: "offline", lastSeenAt: null, hasSignIn: true, authenticator: false, manageable: true },
+      { id: "m6", name: "Samuel Bizimana", email: "samuel@example.com", role: "AGENT", status: "locked", availability: "offline", lastSeenAt: at(9 * 24 * 60), hasSignIn: true, authenticator: true, manageable: true },
     ],
   };
 }

@@ -129,6 +129,26 @@ tells the server when the site is back after a down run so it sends the "back up
   the usual invite email; every department until narrowed in Admin. Decline removes the row. Inviting a pending
   address from Admin approves it with the form's role and departments (one row per address).
 
+## Adding a team member with a password (built 10 November 2026)
+
+The owner, 10 November 2026: create a user, give them a password, and make them add an authenticator app (email was
+down, so invite emails could not arrive).
+
+- Team page (admin@bupulse.com only) → **Add a team member**: name, work email, role (tiles) and a password (typed, or
+  **Make one**: 14 characters without look-alike letters). The sign-in is created confirmed with that password and the
+  agent row is linked to it (status "invited" until the first full sign-in; every department until narrowed in
+  Admin → Live chat). No email is sent: the success card gives the details to copy or send on WhatsApp. Addresses of
+  the admin console, existing agents and any other BuPulse sign-in are refused; someone who asked to join keeps their
+  one row.
+- **Authenticator required:** at their first sign-in the support app sends them to add an authenticator app. Normally
+  that needs an emailed code (so a password alone cannot add one); these accounts carry a one-time permission in
+  Supabase `app_metadata.support_setup_until` (written only with the server's secret key), valid 7 days and only while
+  no authenticator is set up. Adding one clears it (`lib/support/setup-grant.ts`, `startAgentEnrollment`,
+  `confirmAgentEnrollment`).
+- On each member's card: **Set a new password** (signed out everywhere) and **Ask for a new authenticator** (removes
+  the current one, signs them out, and grants the 7-day setup permission again). Cards show "Authenticator added" or
+  "Needs an authenticator". Never for admin@bupulse.com itself. Passwords are never written to the audit log.
+
 ## support.bupulse.com (one-time setup)
 
 1. The tunnel serves support.bupulse.com from the PC: `scripts/self-host/windows/tunnel-config.ps1` (used by
