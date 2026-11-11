@@ -6,7 +6,7 @@ import { useAppPath, useHostHref } from "@/components/platform/hosts";
 import { ServiceSwitcher, type SwitcherProps } from "@/components/platform/service-switcher";
 import { Bell, ChevronDown, Clapperboard, ExternalLink, LogOut, Menu, Plus, Search, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { Logo } from "@/components/brand";
+import { MarketingLogo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme";
 import { Avatar, Button, Meter, useToast } from "@/components/ui";
 import { readableTextColor } from "@/lib/color-contrast";
@@ -320,8 +320,8 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
       <div className="px-2 pt-1">
-        <Link href={toHref("/dashboard")} onClick={onNavigate} aria-label="BuPulse home" className="inline-flex min-h-11 items-center">
-          <Logo height={28} />
+        <Link href={toHref("/dashboard")} onClick={onNavigate} aria-label="BuPulse Marketing home" className="inline-flex min-h-11 items-center">
+          <MarketingLogo height={36} />
         </Link>
       </div>
       {/* At the top, so any page is one search away (owner's request). */}
