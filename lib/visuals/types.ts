@@ -19,6 +19,8 @@ export const VISUAL_LIMITS = {
   autopilotMaxSlides: 3,
   /** AI photos in one visual. */
   maxAiPhotosPerVisual: 1,
+  /** Pictures in a day's shared set (lib/content-flow/day-set.ts): the AI picks 1 to 4 by the idea. */
+  maxDaySetImages: 4,
   /** Calls one AI picture takes at most when drawn step by step: plan, paint, check, fix, check the fix. */
   aiPictureCalls: 5,
   /** AI photos in one Autopilot run (on top of the plan's image credits and the company's AI allowance). */
@@ -119,6 +121,35 @@ export interface ImagePlan {
   deferredFrom?: string[];
   /** The post's language (Posts -> Settings, "Languages"), for the words of an AI picture made later. */
   language?: string | null;
+  /**
+   * The day's shared set (lib/content-flow/day-set.ts, owner decision 11 November 2026): one set of 1 to 4 pictures
+   * used by every post of the day (Post.groupId = groupId), drawn on the server right away; on reel days the reel is
+   * made from these pictures once they are ready (lib/content-flow/set-reel.ts).
+   */
+  daySet?: DaySetInfo;
+}
+
+/** A day's shared set, as its picture visual keeps it. */
+export interface DaySetInfo {
+  groupId: string;
+  /** AI pictures this set may make (1 to maxDaySetImages; the plan's AI images decide). */
+  maxAi: number;
+  /** The reel made from the pictures once they are ready, or null (no reel today, or it is the owner's own video). */
+  reel: ReelDraft | null;
+  /** The reel's visual once it was made from the pictures. */
+  reelVisualId?: string | null;
+}
+
+/** The reel's words, written with the captions (lib/ai/pack.ts), waiting for the day's pictures. */
+export interface ReelDraft {
+  /** What the studio chose (lib/content-flow/video-kind.ts); only the kinds BuPulse makes here are drafts. */
+  kind: "slideshow" | "ai-clips";
+  hook: string;
+  cta: string;
+  /** One scene each: the words on screen and the spoken voice-over line. */
+  scenes: { onScreen: string; voice: string }[];
+  language?: string | null;
+  mood?: string | null;
 }
 
 export type Motion = "zoom-in" | "zoom-out" | "pan-left" | "pan-right";
@@ -180,6 +211,15 @@ export interface VideoPlan {
    * plans made before the setting: read from the text.
    */
   language?: string | null;
+  /**
+   * The voice-over script, one spoken line per scene (same order and count as `scenes`), written with the day's
+   * captions. The voice provider (part B) reads it when present; without it the scene captions are spoken.
+   */
+  voiceScript?: string[];
+  /** What kind of video the studio chose for the day (lib/content-flow/video-kind.ts). */
+  videoKind?: string;
+  /** The day's shared set this reel was made from (Post.groupId). */
+  daySetId?: string;
 }
 
 export interface VideoVoice {

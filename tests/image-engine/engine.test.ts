@@ -100,16 +100,17 @@ describe("painting a batch", () => {
     expect(first.prompt).toContain('Headline, large and bold: "Headline 0"');
     expect(h.design.mock.calls[1][0].model).toBe("gemini-3.1-flash-image");
   });
-  it("lets the Editor fix a picture that fails the check once, keeping the better one", async () => {
+  it("lets the Editor fix a picture that fails the one quick check, and keeps the fix without checking again", async () => {
     const { batchId } = await planBatch(owner, { source: "designs", subjectId: "p1", count: 4, quality: "lite", aspectRatio: "4:5" });
     h.check.mockResolvedValueOnce({ ok: false, problems: ["The headline is not written correctly."], fix: 'Write the headline exactly as: "Headline 0". Keep everything else exactly the same.', ran: true });
-    // One AI call per step: paint, check, fix, check the fix.
+    // One AI call per step (fast path): paint, check, fix.
     const steps: string[] = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       await paintNext(owner, batchId);
       steps.push(h.rows[0].status);
     }
-    expect(steps).toEqual(["painted", "fixing", "edited", "done"]);
+    expect(steps).toEqual(["painted", "fixing", "done"]);
+    expect(h.check).toHaveBeenCalledTimes(1);
     expect(h.design).toHaveBeenCalledTimes(2);
     expect(h.design.mock.calls[1][0]).toMatchObject({ editOf: "u1/designs/d1.png" });
     expect(h.del).toHaveBeenCalledWith("u1", "d1");
@@ -127,11 +128,18 @@ describe("painting a batch", () => {
     expect(h.design).toHaveBeenCalledTimes(1);
     expect(h.rows[0]).toMatchObject({ status: "done", path: "u1/designs/d1.png", check: { ok: true, problems: [], ran: true } });
   });
-  it("keeps the first picture when the Editor's fix is worse", async () => {
+  it("runs no fix when the quick check passes (plan, paint, check: three steps)", async () => {
     const { batchId } = await planBatch(owner, { source: "designs", subjectId: "p1", count: 1, quality: "lite", aspectRatio: "4:5" });
-    h.check.mockResolvedValueOnce({ ok: false, problems: ["A typo."], fix: "Fix the typo.", ran: true }).mockResolvedValueOnce({ ok: false, problems: ["A typo.", "A warped hand."], fix: null, ran: true });
     while (await paintNext(owner, batchId));
-    expect(h.del).toHaveBeenCalledWith("u1", "d2");
+    expect(h.design).toHaveBeenCalledTimes(1);
+    expect(h.check).toHaveBeenCalledTimes(1);
+    expect(h.rows[0]).toMatchObject({ status: "done", path: "u1/designs/d1.png", fixed: false });
+  });
+  it("keeps the first picture when the Editor fails", async () => {
+    const { batchId } = await planBatch(owner, { source: "designs", subjectId: "p1", count: 1, quality: "lite", aspectRatio: "4:5" });
+    h.check.mockResolvedValueOnce({ ok: false, problems: ["A typo."], fix: "Fix the typo.", ran: true });
+    h.design.mockImplementationOnce(h.design.getMockImplementation()!).mockRejectedValueOnce(new Error("Editor down"));
+    while (await paintNext(owner, batchId));
     expect(h.rows[0]).toMatchObject({ status: "done", path: "u1/designs/d1.png", fixed: false });
   });
   it("gives a failed picture's credits back", async () => {
@@ -160,6 +168,6 @@ describe("a post's picture", () => {
     h.check.mockResolvedValueOnce({ ok: false, problems: ["A typo."], fix: "Fix the typo.", ran: true });
     const made = await paintOne(owner, { source: "autopilot", subjectId: "p1", aspectRatio: "4:5" });
     expect(made).toMatchObject({ designId: "d2", path: "u1/designs/d2.png" });
-    expect(h.check).toHaveBeenCalledTimes(2);
+    expect(h.check).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,7 +10,7 @@ import { NETWORK_STYLE, type Shape } from "./networks";
 export type GalleryItem = { path: string; name: string; mimeType: string; recentUses?: number; description?: string | null };
 
 export const isVideoItem = (m: Pick<GalleryItem, "mimeType" | "path">) => m.mimeType.startsWith("video/") || /\.(mp4|webm)$/i.test(m.path);
-const isMp4 = (m: GalleryItem) => m.mimeType === "video/mp4" || /\.mp4$/i.test(m.path);
+export const isMp4 = (m: GalleryItem) => m.mimeType === "video/mp4" || /\.mp4$/i.test(m.path);
 /** Satori (the template renderer) draws JPG and PNG only. */
 export const isDrawable = (m: GalleryItem) => !isVideoItem(m) && /^image\/(jpeg|png)$/.test(m.mimeType);
 

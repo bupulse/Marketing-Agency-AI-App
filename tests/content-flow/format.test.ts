@@ -143,18 +143,20 @@ describe("media follows the decided formats", () => {
 });
 
 describe("the dialog's cost line with videos", () => {
-  it("counts the videos BuPulse is likely to make, within the videos left and the run's limit", () => {
+  it("counts one reel per day's set (shared by Instagram, TikTok and Facebook), within the videos left and the run's limit", () => {
     const networks: Network[] = ["instagram", "facebook", "tiktok"];
-    expect(expectedVideos({ networks, perApp: 1, videoInPlan: true, videosLeft: 20 })).toBe(2);
-    expect(expectedVideos({ networks, perApp: 1, preference: "video", videoInPlan: true, videosLeft: 20 })).toBe(3);
-    expect(expectedVideos({ networks, perApp: 1, preference: "image", videoInPlan: true, videosLeft: 20 })).toBe(1);
-    expect(expectedVideos({ networks, perApp: 3, preference: "video", videoInPlan: true, videosLeft: 200 })).toBe(MAX_RUN_VIDEOS);
-    expect(expectedVideos({ networks, perApp: 1, videoInPlan: true, videosLeft: 1 })).toBe(1);
+    expect(expectedVideos({ networks, perApp: 1, videoInPlan: true, videosLeft: 20 })).toBe(1);
+    expect(expectedVideos({ networks, perApp: 1, preference: "video", videoInPlan: true, videosLeft: 20 })).toBe(1);
+    expect(expectedVideos({ networks, perApp: 3, preference: "video", videoInPlan: true, videosLeft: 200 })).toBe(3);
+    expect(expectedVideos({ networks, perApp: 9, videoInPlan: true, videosLeft: 200 })).toBe(MAX_RUN_VIDEOS);
+    expect(expectedVideos({ networks, perApp: 2, videoInPlan: true, videosLeft: 1 })).toBe(1);
     expect(expectedVideos({ networks, perApp: 1, videoInPlan: false, videosLeft: 20 })).toBe(0);
+    expect(expectedVideos({ networks: ["linkedin", "twitter"], perApp: 1, videoInPlan: true, videosLeft: 20 })).toBe(0);
+    expect(expectedVideos({ networks: ["facebook"], perApp: 1, preference: "image", videoInPlan: true, videosLeft: 20 })).toBe(0);
 
     const videos = expectedVideos({ networks, perApp: 1, videoInPlan: true, videosLeft: 20 });
     const cost = runCost({ mode: "ai", design: "free", posts: 3, designed: 2, aiPhotos: false, textLeft: 10, imagesLeft: 0, videos, videosLeft: 20 });
-    expect(cost.videos).toBe(2);
-    expect(cost.message).toBe("Uses 3 text generations, no AI images and up to 2 videos; you have 10 text generations and 20 videos left this month.");
+    expect(cost.videos).toBe(1);
+    expect(cost.message).toBe("Uses 3 text generations, no AI images and up to 1 video; you have 10 text generations and 20 videos left this month.");
   });
 });

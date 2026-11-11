@@ -125,12 +125,14 @@ describe("connected accounts first, every picture post with a picture, a mix of 
     buildWeekPlan(input({ businessId: seed, connections: NOVA, config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 2, connectionIds: NOVA.map((c) => c.id) }, ...over }));
   const SEEDS = Array.from({ length: 12 }, (_, i) => `nova-${i}`);
 
-  it("gives the connected account the posts when the week is short, as designed pictures (video in the plan or not)", () => {
+  it("gives the connected account the posts when the week is short: designed pictures, or the day's reel when the plan has video", () => {
     for (const seed of SEEDS) {
-      for (const video of [undefined, { inPlan: true, videosLeft: 100 }]) {
+      for (const [video, kind] of [[undefined, "picture"], [{ inPlan: true, videosLeft: 100 }, "video"]] as const) {
         const plan = nova(seed, { video });
         expect(plan.groups.length, seed).toBe(2);
-        for (const g of plan.groups) expect(g.posts.map((p) => [p.connectionId, p.format === "SCRIPT" ? "video" : "picture"]), seed).toEqual([["c-ig", "picture"]]);
+        for (const g of plan.groups) expect(g.posts.map((p) => [p.connectionId, p.format === "SCRIPT" ? "video" : "picture"]), seed).toEqual([["c-ig", kind]]);
+        // The reel is made from the group's pictures.
+        for (const g of plan.groups) expect(g.photos.length, seed).toBeGreaterThan(0);
       }
     }
   });
@@ -354,21 +356,21 @@ describe("picture or video per post (lib/content-flow/format.ts)", () => {
     Array.from({ length: 40 }, (_, i) => buildWeekPlan(input({ businessId: `video-${i}`, connections: feed, config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 6, connectionIds: feed.map((c) => c.id) }, ...over }))).flatMap((p) => p.groups);
   const isMix = (g: { idea: { id: string } }) => POST_MIX.some((ids) => ids.includes(g.idea.id));
 
-  it("makes feed posts videos by their app's share when the plan has video; the week's mix stays designed pictures", () => {
+  it("gives Instagram a reel every day while videos last, and Facebook and LinkedIn the pictures (one shared set per day)", () => {
     const all = groups({ video: { inPlan: true, videosLeft: 1000 } });
     const share = (network: string) => {
-      const list = all.filter((g) => !isMix(g)).flatMap((g) => g.posts).filter((p) => p.network === network && p.format !== "ARTICLE");
+      const list = all.flatMap((g) => g.posts).filter((p) => p.network === network && p.format !== "ARTICLE");
       return list.filter((p) => p.format === "SCRIPT").length / list.length;
     };
-    expect(share("instagram")).toBeGreaterThan(0.35);
-    expect(share("instagram")).toBeGreaterThan(share("facebook"));
-    expect(share("facebook")).toBeGreaterThan(share("linkedin"));
-    expect(share("linkedin")).toBeLessThan(0.35);
-    // Every week has its new arrival, tip and offer as pictures (the products allow all three).
+    expect(share("instagram")).toBe(1);
+    expect(share("facebook")).toBe(0);
+    expect(share("linkedin")).toBe(0);
+    // Every week still has its new arrival, tip and offer (as pictures on Facebook and LinkedIn).
     for (let i = 0; i < 40; i++) {
       const week = buildWeekPlan(input({ businessId: `video-${i}`, connections: feed, config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 6, connectionIds: feed.map((c) => c.id) }, video: { inPlan: true, videosLeft: 1000 } }));
-      for (const ids of POST_MIX) expect(week.groups.some((g) => ids.includes(g.idea.id) && g.posts.every((p) => p.format !== "SCRIPT")), `video-${i} ${ids[0]}`).toBe(true);
+      for (const ids of POST_MIX) expect(week.groups.some((g) => ids.includes(g.idea.id)), `video-${i} ${ids[0]}`).toBe(true);
     }
+    expect(all.some(isMix)).toBe(true);
   });
 
   it("keeps within the video seconds left, and changes nothing without video in the plan", () => {
@@ -378,7 +380,7 @@ describe("picture or video per post (lib/content-flow/format.ts)", () => {
     expect(plain({ video: { inPlan: false, videosLeft: 0 } })).toEqual(plain({}));
   });
 
-  it("never puts the same format on an app three days running", () => {
+  it("keeps Instagram on its daily reel even after two video days (the reel is every day while videos last)", () => {
     const before = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
     let checked = 0;
     for (let i = 0; i < 30; i++) {
@@ -387,9 +389,7 @@ describe("picture or video per post (lib/content-flow/format.ts)", () => {
       if (!day) continue;
       const recentFormats = { instagram: [{ day: before(day, 1), format: "video" as const }, { day: before(day, 2), format: "video" as const }] };
       const group = buildWeekPlan(input({ ...over, recentFormats })).groups[0];
-      // Autopilot's own Reel ideas are videos by nature; every other idea follows the rule.
-      if (group.idea.formats.instagram === "SCRIPT") continue;
-      expect(group.posts[0].format).not.toBe("SCRIPT");
+      expect(group.posts[0].format).toBe("SCRIPT");
       checked++;
     }
     expect(checked).toBeGreaterThan(10);

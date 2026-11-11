@@ -24,7 +24,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { consumeDailyVideo, consumeUsage, getUsageSummary, refundUsage, UsageLimitError } from "@/lib/usage";
 import { directVisual } from "./art-director";
 import { chooseSources, fallbackPlan, listItems, PHOTO_TEMPLATES, readImagePlan, slideText, type DirectionContext } from "./direction";
-import { mediaForPost } from "./post-media";
+import { isVideoPath, mediaForPost } from "./post-media";
 import { billableSeconds } from "./timeline";
 import { VIDEO_LIMITS, VISUAL_LIMITS, type ImagePlan, type VideoPlan, type VisualItem, type VisualKind, type VisualSlide } from "./types";
 import { videoDurationMs } from "./duration";
@@ -33,6 +33,7 @@ import { moodFor } from "@/lib/music/tracks";
 import { trackForVideo } from "@/lib/music/service";
 import type { Audience } from "./people";
 import { buildVideoPlan, readVideoPlan, withSceneTexts } from "./video-plan";
+import { createSetReel } from "@/lib/content-flow/set-reel";
 import { videoGetsAiClips, type VideoQuality } from "./video-quality";
 import { CLIPS_IN_PROGRESS, clipsInProgress, releaseClips } from "./ai-clips";
 
@@ -182,8 +183,14 @@ function kindOf(plan: ImagePlan): VisualKind {
 }
 
 /** The brief and caption of the content (or the Autopilot post) a visual belongs to. Never fails: none on error. */
-async function drawContextOf(row: { businessId: string; contentId: string | null; groupId: string | null }): Promise<DrawContext> {
+async function drawContextOf(row: { businessId: string; contentId: string | null; groupId: string | null }, daySet = false): Promise<DrawContext> {
   try {
+    if (daySet && row.groupId) {
+      // A day's shared set: the brief and caption of its first post's content (a feed post's when there is one).
+      const posts = await prisma.post.findMany({ where: { businessId: row.businessId, groupId: row.groupId, contentId: { not: null } }, orderBy: { createdAt: "asc" }, take: 8, select: { contentId: true, format: true } });
+      const first = posts.find((p) => p.format !== "SCRIPT") ?? posts[0];
+      if (first?.contentId) return drawContextOf({ businessId: row.businessId, contentId: first.contentId, groupId: null });
+    }
     if (row.contentId) {
       const c = await prisma.generatedContent.findFirst({ where: { id: row.contentId, businessId: row.businessId }, select: { brief: true, caption: true, language: true } });
       return { source: "content", brief: c?.brief ?? null, caption: c?.caption ?? null, language: c?.language ?? null };
@@ -350,11 +357,13 @@ export async function drawSlide(
       }
       next.note = "The AI picture could not be made this time (its credits were given back), so your own photo is used.";
     } else if (state.aiAllowed && state.aiMade < state.maxAi) {
+      // Counted before the AI call, so slides started at the same time (a day's set) stay within maxAi; given back
+      // below when the call throws (as before: a failed start never counted).
+      state.aiMade += 1;
       try {
         if (context?.stepwise) {
           // Planned and paid now, painted in the next calls; saved at once so it is never paid for twice.
           const { id } = await startPicture({ ...owner, service: owner.service }, { source: context.source, subjectId, aspectRatio: plan.aspectRatio, photoPath: slide.photoPath, brief: context.brief ?? null, caption: context.caption ?? slide.headline, language: context.language ?? null });
-          state.aiMade += 1;
           const started: VisualSlide = { ...next, source: "ai", conceptId: id };
           await onAiPhoto?.(started);
           return started;
@@ -363,7 +372,6 @@ export async function drawSlide(
           { ...owner, service: owner.service },
           { source: context?.source ?? "content", subjectId, aspectRatio: plan.aspectRatio, photoPath: slide.photoPath, brief: context?.brief ?? null, caption: context?.caption ?? slide.headline, language: context?.language ?? null },
         );
-        state.aiMade += 1;
         if (made) {
           const done: VisualSlide = { ...next, source: "ai", conceptId: made.id, aiPhotoPath: made.path, designId: made.designId, path: made.path };
           await onAiPhoto?.(done);
@@ -371,6 +379,7 @@ export async function drawSlide(
         }
         next.note = "The AI picture could not be made this time (its credits were given back), so your own photo is used.";
       } catch (error) {
+        state.aiMade -= 1;
         if (error instanceof EngineError || error instanceof UsageLimitError || error instanceof RateLimitError || error instanceof AIProviderError) state.aiAllowed = false;
         else await logError(error, { source: "visuals.ai-picture", level: "warn", businessId: owner.businessId });
         next.note = error instanceof EngineError ? `${error.message} Your own photo is used instead.` : aiNote(error);
@@ -398,7 +407,7 @@ export function itemsOf(plan: ImagePlan): VisualItem[] {
  * Draws the slides that are not drawn yet, until done or the time budget is used (Netlify stops a function at 60 s);
  * the screen calls it again while the visual is pending. Ready when every slide is drawn.
  */
-export async function renderImageStep(owner: Owner, visualId: string, options: { budgetMs?: number; state?: DrawState } = {}) {
+export async function renderImageStep(owner: Owner, visualId: string, options: { budgetMs?: number; state?: DrawState; parallel?: boolean } = {}) {
   const first = await ownVisual(owner.businessId, visualId);
   if (first.kind === "video") throw new VisualError("That is a video. Open it to make it.");
   if (!readImagePlan(first.plan)) {
@@ -415,7 +424,7 @@ export async function renderImageStep(owner: Owner, visualId: string, options: {
   });
   if (claimed === 0) return { status: "rendering" as const, plan: readImagePlan(first.plan), items: [], error: "This picture is already being drawn." };
   try {
-    return await drawClaimed(owner, visualId, started, budget, options.state);
+    return await drawClaimed(owner, visualId, started, budget, options.state, options.parallel ?? false);
   } finally {
     // Normally released by the final save; this frees it after an unexpected error too.
     await prisma.contentVisual.updateMany({ where: { id: first.id, renderingUntil: leaseUntil }, data: { renderingUntil: null } }).catch(() => {});
@@ -423,7 +432,7 @@ export async function renderImageStep(owner: Owner, visualId: string, options: {
 }
 
 /** The drawing itself, once the lease is held. The plan is read again: it may have changed while waiting. */
-async function drawClaimed(owner: Owner, visualId: string, started: number, budget: number, given?: DrawState) {
+async function drawClaimed(owner: Owner, visualId: string, started: number, budget: number, given?: DrawState, parallel = false) {
   const row = await ownVisual(owner.businessId, visualId);
   const plan = readImagePlan(row.plan);
   if (!plan) {
@@ -431,35 +440,59 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
     return { status: "failed" as const, plan: null };
   }
   const needsAi = plan.slides.some((s) => s.source === "ai" && !s.aiPhotoPath && !s.path);
-  const state = given ?? { aiAllowed: needsAi ? await aiPhotosAvailable(owner) : false, aiMade: 0, maxAi: VISUAL_LIMITS.maxAiPhotosPerVisual };
+  // A day's shared set may have up to 4 AI pictures (lib/content-flow/day-set.ts); other visuals keep one.
+  const maxAi = plan.daySet ? Math.max(0, Math.min(VISUAL_LIMITS.maxDaySetImages, plan.daySet.maxAi)) : VISUAL_LIMITS.maxAiPhotosPerVisual;
+  // AI pictures already started or made count, so a later call never starts more than the set may have.
+  const counted = plan.daySet ? plan.slides.filter((s) => s.source === "ai" && (s.conceptId || s.aiPhotoPath)).length : 0;
+  const state = given ?? { aiAllowed: needsAi ? await aiPhotosAvailable(owner) : false, aiMade: counted, maxAi };
   const subjectId = await subjectOf(row);
   let error: string | null = null;
 
-  // The post's brief and caption guide the AI picture's idea.
-  const found = await drawContextOf(row);
+  // The post's brief and caption guide the AI picture's idea; a set's picture also gets its own idea (slide.scene).
+  const found = await drawContextOf(row, !!plan.daySet);
   const context: DrawContext = { ...found, language: plan.language ?? found.language ?? null };
-  for (let i = 0; i < plan.slides.length; i++) {
-    if (plan.slides[i].path || plan.slides[i].skipped) continue;
-    if (Date.now() - started > budget) break;
-    const index = i;
+  const slideContext = (slide: VisualSlide): DrawContext => (plan.daySet && slide.scene ? { ...context, brief: [`This picture: ${slide.scene}`, context.brief].filter(Boolean).join("\n"), stepwise: true } : { ...context, stepwise: true });
+  let saving = Promise.resolve();
+  const drawOne = async (index: number): Promise<"drawn" | "working" | "error"> => {
+    // Saves one at a time, so pictures finishing together never write over each other's plan.
     const keepPhoto = async (slide: VisualSlide) => {
       plan.slides[index] = slide;
-      await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(plan) } });
+      saving = saving.then(() => prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(plan) } }).then(() => undefined));
+      await saving;
     };
     try {
-      plan.slides[i] = await drawSlide(owner, subjectId, plan, plan.slides[i], state, keepPhoto, { ...context, stepwise: true });
-      // An AI picture still being made: one AI call per call, the screen asks again while the visual is pending.
-      if (!plan.slides[i].path && !plan.slides[i].skipped) break;
+      plan.slides[index] = await drawSlide(owner, subjectId, plan, plan.slides[index], state, keepPhoto, slideContext(plan.slides[index]));
+      return plan.slides[index].path || plan.slides[index].skipped ? "drawn" : "working";
     } catch (e) {
-      if (e instanceof RateLimitError) error = "You made a lot of designs this hour. Try again in a little while.";
-      else if (e instanceof DesignError) error = e.message;
+      let message: string;
+      if (e instanceof RateLimitError) message = "You made a lot of designs this hour. Try again in a little while.";
+      else if (e instanceof DesignError) message = e.message;
       else {
         await logError(e, { source: "visuals.render", businessId: owner.businessId });
-        error = "We could not draw this picture. Please try again.";
+        message = "We could not draw this picture. Please try again.";
       }
-      break;
+      // A set's picture that fails is left out; the set goes on with the others (it fails only with none left).
+      if (parallel) {
+        plan.slides[index] = { ...plan.slides[index], skipped: true, designId: null, path: null, note: message };
+        if (plan.slides.every((s) => s.skipped)) error = message;
+      } else error = message;
+      return "error";
+    }
+  };
+  if (parallel) {
+    // The server's drawer (lib/content-flow/set-worker.ts): one step of every slide at the same time, so the day's
+    // 1 to 4 pictures are made side by side.
+    const open = plan.slides.flatMap((s, i) => (s.path || s.skipped ? [] : [i]));
+    await Promise.all(open.map(drawOne));
+  } else {
+    for (let i = 0; i < plan.slides.length; i++) {
+      if (plan.slides[i].path || plan.slides[i].skipped) continue;
+      if (Date.now() - started > budget) break;
+      // An AI picture still being made: one AI call per call, the screen asks again while the visual is pending.
+      if ((await drawOne(i)) !== "drawn") break;
     }
   }
+  await saving.catch(() => undefined);
 
   const drawn = plan.slides.every((s) => s.path || s.skipped);
   const items = itemsOf(plan);
@@ -467,6 +500,15 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
   if (drawn && items.length === 0) error = error ?? "No picture could be made: add a photo of the product, or AI image credits.";
   const done = drawn && items.length > 0;
   const status = done ? "ready" : error ? "failed" : "pending";
+  // A finished day's set makes its reel from the pictures before the posts take them, so a reel post never goes out
+  // while its video is still to be made (auto-approval waits for a pending video).
+  if (done && plan.daySet?.reel && !plan.daySet.reelVisualId) {
+    const reelId = await createSetReel(row, plan, items.map((i) => i.path)).catch(async (e) => {
+      await logError(e, { source: "visuals.set-reel", level: "warn", businessId: owner.businessId });
+      return null;
+    });
+    if (reelId) plan.daySet = { ...plan.daySet, reelVisualId: reelId };
+  }
   await prisma.contentVisual.update({
     where: { id: row.id },
     data: { plan: json(plan), items: json(items), kind: kindOf(plan), status, error, renderingUntil: null, ...(done ? { renderedAt: new Date() } : {}) },
@@ -477,7 +519,8 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
   if (done && row.contentId) await attachToContent(owner.businessId, row.contentId, { feed: true }).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
   // A video planned without photos shows the AI photo once there is one.
   const aiPhoto = plan.slides.find((s) => s.aiPhotoPath)?.aiPhotoPath;
-  if (aiPhoto) await lendPhotoToVideo(row, aiPhoto).catch(() => {});
+  // (A day's reel is made from all its set's pictures instead: lib/content-flow/set-reel.ts.)
+  if (aiPhoto && !plan.daySet) await lendPhotoToVideo(row, aiPhoto).catch(() => {});
   return { status, plan, items, error };
 }
 
@@ -937,7 +980,24 @@ export function withMusicCredit(text: string, credit: string | null | undefined)
  * video ideas (a real video post on Instagram and Facebook, the script reminder's attachment on TikTok and YouTube).
  */
 export async function attachToGroup(businessId: string, groupId: string, options: { feed?: boolean; onlyFrom?: string[] } = {}) {
-  await attachVisuals(businessId, { groupId }, { groupId, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] } }, options);
+  // A day's shared set (Create today's content, Daily posts: Post.groupId is the set) reaches only the drafts still
+  // waiting that the owner did not edit, like attachToContent; Autopilot's group posts also take it once scheduled.
+  await attachVisuals(
+    businessId,
+    { groupId },
+    {
+      groupId,
+      status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] },
+      OR: [{ source: { notIn: ["STUDIO", "DAILY"] } }, { status: { in: ["DRAFT", "PENDING_APPROVAL"] }, ownerEditedAt: null }],
+    },
+    options,
+  );
+  // Posts of a day's set that waited only for these pictures or this reel are auto-approved where their app needs no
+  // approval (Autopilot keeps its own approval).
+  if ((await prisma.post.count({ where: { businessId, groupId, source: { in: ["STUDIO", "DAILY"] } } })) > 0) {
+    const { retryAutoSchedule } = await import("@/lib/content-board/auto");
+    await retryAutoSchedule(businessId, { groupId });
+  }
 }
 
 /**
@@ -963,7 +1023,11 @@ async function attachVisuals(businessId: string, key: { contentId: string } | { 
     if (!isNetwork(post.network)) continue;
     if (options.onlyFrom && !post.mediaPaths.every((m) => options.onlyFrom!.includes(m))) continue;
     const rules = getProvider(post.network).rules;
-    const planned = post.format;
+    // A post that already carries a video stays a video post (a redrawn picture never replaces a reel): it changes
+    // only for a newer video of its group or content.
+    const ownVideo = post.mediaPaths.find(isVideoPath);
+    if (ownVideo && (!videoFile || ownVideo === videoFile)) continue;
+    const planned = ownVideo ? "SCRIPT" : post.format;
     // Feed posts change when their picture was redrawn (options.feed), or when they had none.
     if (planned === "THREAD" || (planned !== "SCRIPT" && !(images.length && (options.feed || post.mediaPaths.length === 0)))) continue;
     const { format, mediaPaths } = mediaForPost({ network: post.network, format: planned, rules, images, video: videoFile });

@@ -135,10 +135,14 @@ export function decideFormats(input: FormatInput): FormatDecision {
 /** How many videos a run is likely to make, for the dialog's cost line (the decision itself is made when it runs). */
 export function expectedVideos(input: { networks: readonly Network[]; perApp: number; preference?: FormatPreference; videoInPlan: boolean; videosLeft: number; maxVideos?: number }): number {
   if (!input.videoInPlan) return 0;
-  const pref = input.preference ?? "auto";
-  const expected = input.networks.reduce((n, network) => n + VIDEO_SHARE[pref][network] * Math.max(1, input.perApp), 0);
+  // One shared set per round of posts (lib/content-flow/day-set.ts): at most one reel each, shared by Instagram,
+  // TikTok, YouTube and (on a video day) Facebook. A run of only LinkedIn and X makes none.
+  const reelApps: readonly Network[] = ["instagram", "tiktok", "youtube", "facebook"];
+  if (!input.networks.some((n) => reelApps.includes(n))) return 0;
+  // Facebook alone takes the reel only on a video day.
+  if (input.networks.every((n) => n === "facebook" || n === "linkedin" || n === "twitter") && (input.preference ?? "auto") === "image") return 0;
   const budget = Math.min(Math.floor(Math.max(0, input.videosLeft)), input.maxVideos ?? MAX_RUN_VIDEOS);
-  return Math.min(budget, Math.ceil(expected - 0.25));
+  return Math.min(budget, Math.max(1, Math.floor(input.perApp)));
 }
 
 /** Formats per app on the days before `day`, newest first, from saved content (format and the day it was for). */

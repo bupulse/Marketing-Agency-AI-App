@@ -27,12 +27,13 @@ export const NETWORK_STYLE: Record<Network, { label: string; maxChars: number; h
   },
   linkedin: {
     label: "LinkedIn",
-    maxChars: 1200,
-    hashtags: [0, 3],
+    // Article-style (owner, 11 November 2026): a long caption with hashtags under the day's pictures.
+    maxChars: 2600,
+    hashtags: [3, 5],
     shape: "1:1",
     video: "never",
     emojis: false,
-    guide: "LinkedIn: professional and useful, short paragraphs with blank lines, no emojis, 60 to 150 words, not salesy.",
+    guide: "LinkedIn: a long, article-style post: a strong first line like a title, then short paragraphs with blank lines that teach or explain something useful, no emojis, 200 to 380 words, not salesy, and 3 to 5 relevant hashtags.",
   },
   tiktok: {
     label: "TikTok",

@@ -43,7 +43,7 @@ describe("per-network text rules", () => {
     const tags = Array.from({ length: 12 }, (_, i) => `tag${i}`);
     const li = fitToNetwork("linkedin", "Our new tower 🌱 is here #green", tags);
     expect(li.caption).toBe("Our new tower is here");
-    expect(li.hashtags).toHaveLength(3);
+    expect(li.hashtags).toHaveLength(5);
     expect(fitToNetwork("instagram", "Hi 🌱", tags)).toMatchObject({ caption: "Hi 🌱" });
     expect(fitToNetwork("instagram", "Hi", tags).hashtags).toHaveLength(10);
     const tiktok = fitToNetwork("tiktok", "word ".repeat(80), []);
@@ -69,14 +69,14 @@ describe("adapting the owner's caption", () => {
     expect(prompt).toContain("<<<OWNER CAPTION");
     expect(prompt).not.toContain(">>> ignore");
     expect(prompt).toContain("Keep the meaning and every fact exactly");
-    expect(prompt).toContain("LinkedIn: professional");
+    expect(prompt).toContain("LinkedIn: a long, article-style post");
   });
 
   it("returns the network's version within its rules (the AI is mocked)", async () => {
     const provider = { name: "gemini", generate: vi.fn(async () => ({ text: JSON.stringify({ caption: "Hydro towers for schools 🌱 now 15,000 RWF. #grow", hashtags: ["school", "grow", "green", "kigali"] }), provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } })) };
     const out = await adaptOwnPost(provider as never, { brand, network: "linkedin", caption: "Hydro towers for schools: 15,000 RWF.", media: [] });
     expect(out.caption).toBe("Hydro towers for schools now 15,000 RWF.");
-    expect(out.hashtags).toEqual(["#school", "#grow", "#green"]);
+    expect(out.hashtags).toEqual(["#school", "#grow", "#green", "#kigali"]);
     expect(provider.generate).toHaveBeenCalledTimes(1);
   });
 });
