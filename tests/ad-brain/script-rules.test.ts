@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkScript, clipSecondsFor, hasMoneyWords, looksKinyarwanda, mentionsSite, speakable, wordCount, type Script, type ScriptContext } from "@/lib/ad-brain/script-rules";
 import { recipeById } from "@/lib/ad-brain/recipes";
+import { ctaById } from "@/lib/ad-brain/ctas";
 
 const recipe = recipeById("testimonial_screens")!;
 const ctx: ScriptContext = {
@@ -35,13 +36,21 @@ describe("the script rules", () => {
     expect(checkScript(s, ctx).join(" ")).toMatch(/opens with the brand name/);
   });
 
-  it("keep AI clip lines within 25 words and without money words", () => {
+  it("keep AI clip lines within 25 words; money words are allowed (owner, 11 Nov: Omni took them, TTS is the fallback)", () => {
     const s = good();
     s.beats[2].line!.text = Array.from({ length: 30 }, () => "word").join(" ");
     expect(checkScript(s, ctx).join(" ")).toMatch(/has 30 words; an AI clip holds at most 25/);
     const t = good();
-    t.beats[2].line!.text = "And the first week is free.";
-    expect(checkScript(t, ctx).join(" ")).toMatch(/money words/);
+    t.beats[2].line!.text = "And you can get a free quote.";
+    expect(checkScript(t, ctx)).toEqual([]);
+  });
+
+  it("accept the planned soft CTA as the spoken call to action, and ask for it when it is missing", () => {
+    const soft = { ...good(), cta: { speaker: "amani", text: "Honestly? Save this for later.", source: "omni" as const } };
+    expect(checkScript(soft, { ...ctx, cta: ctaById("save-this") })).toEqual([]);
+    expect(checkScript(soft, { ...ctx, cta: ctaById("comment-ad") }).join(" ")).toMatch(/must be the planned one: "Comment AD/);
+    // Naming the site is always enough.
+    expect(checkScript(good(), { ...ctx, cta: ctaById("comment-ad") })).toEqual([]);
   });
 
   it("need a spoken call to action that names the site", () => {

@@ -3,7 +3,7 @@
 import { requireAdmin } from "@/lib/admin/auth";
 import { adminAction, finish } from "@/lib/admin/console";
 import { AdminError } from "@/lib/admin/types";
-import { AdBrainError, cancelAdJob, captureScreensNow, loadRealCaptures, runAdJobsNow, startAdJob } from "@/lib/ad-brain/service";
+import { AdBrainError, cancelAdJob, captureScreensNow, loadRealCaptures, makeVariantsFor, runAdJobsNow, startAdJob } from "@/lib/ad-brain/service";
 import { AdBrainSetupError } from "@/lib/ad-brain/facts";
 
 // Admin -> Ad Brain (docs/AD_BRAIN.md). Each action re-checks the admin (allow-listed email, AAL2, the "ai" area):
@@ -27,7 +27,14 @@ export async function startAdAction(f: FormData) {
   await adminAction("ai");
   const identity = await requireAdmin();
   const fixture = text(f, "fixture") || null;
-  await finish(BACK, fixture ? "The cached ad is queued: it renders in a minute or two (no paid assets)." : "The ad is queued. It moves on every few minutes, or press \"Move it on now\".", () => plain(() => startAdJob({ createdBy: identity.email, notes: text(f, "notes"), fixture })));
+  const [hooks, ctas] = (text(f, "variants") || "1x1").split("x").map((n) => Number(n));
+  await finish(BACK, fixture ? "The cached video is queued: it renders in a minute or two (no paid assets)." : "Queued. It moves on every few minutes, or press \"Move it on now\".", () => plain(() => startAdJob({ createdBy: identity.email, notes: text(f, "notes"), fixture, kind: text(f, "kind") || "ad", variants: { hooks, ctas } })));
+}
+
+export async function makeVariantsAction(f: FormData) {
+  await adminAction("ai");
+  const [hooks, ctas] = (text(f, "variants") || "3x1").split("x").map((n) => Number(n));
+  await finish(BACK, (n) => `${n} variants queued. They are made one after another, reusing the ad's pictures and clips.`, () => plain(() => makeVariantsFor(text(f, "id"), { hooks, ctas })));
 }
 
 export async function runAdJobsNowAction() {

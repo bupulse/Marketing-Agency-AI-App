@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { checkParams, effectById, SFX_KINDS, CAPTION_STYLES, TITLE_STYLES, SEGMENT_SOURCES, type SegmentSource } from "./effects";
+import { carriesCta, ctaById, ctaOf } from "./ctas";
 import { hasMoneyWords, looksKinyarwanda, mentionsSite } from "./script-rules";
 
 /** 9:16 at 720p, 24 frames a second (what Omni makes). */
@@ -57,6 +58,12 @@ const segmentSchema = z.object({
   transitionIn: z.object({ id: z.string().max(40), seconds: num.min(0).max(1.5) }).optional(),
   /** Real screen cards floating beside the actor: asset keys of screens and a letter each. */
   overlays: z.array(z.object({ asset: z.string().max(80), label: z.string().max(2) })).max(2).optional(),
+  /** split: the real screen shown below the actor (the segment's asset is the actor's clip). */
+  screen: z.string().max(80).optional(),
+  /** wall: the pick this spin lands on (0-based, edl.wall.picks); a pick clip: its own index. */
+  wallPick: z.number().int().min(0).max(8).optional(),
+  /** A small label chip over a clip (the poster wall's "Example ad · bakery"). */
+  chip: z.string().max(48).optional(),
   /** The dashboard's tagged script line: [CAM] [ACT] [AUDIO] [FX] [TITLE]. */
   tags: z.object({ cam: z.string().max(200).optional(), act: z.string().max(300).optional(), audio: z.string().max(200).optional(), fx: z.string().max(200).optional(), title: z.string().max(120).optional() }).optional(),
 });
@@ -84,6 +91,12 @@ export type EdlTitle = z.infer<typeof titleSchema>;
 export const edlSchema = z.object({
   version: z.literal(1),
   recipe: z.string().max(40),
+  /** An ad, or a normal content video (both end on a spoken CTA). */
+  kind: z.enum(["ad", "content"]).default("ad"),
+  /** The planned CTA (ctas.ts id). */
+  ctaId: z.string().max(40).optional(),
+  /** The poster wall: the cards on it (images or real screens) and, in order, the card each pick lands on. */
+  wall: z.object({ cards: z.array(z.string().max(80)).min(1).max(24), picks: z.array(z.string().max(80)).min(1).max(8) }).optional(),
   /** The ad's 3 to 5 signature effects (the look that must not repeat). */
   effects: z.array(z.string().max(40)).min(3).max(5),
   canvas: z.object({ w: z.literal(CANVAS.w), h: z.literal(CANVAS.h), fps: z.literal(CANVAS.fps), seconds: num }),
@@ -102,7 +115,7 @@ export type Edl = z.infer<typeof edlSchema>;
 
 export type EdlCheck = { ok: boolean; errors: string[]; warnings: string[]; edl: Edl | null };
 
-const KIND_FOR: Record<SegmentSource, EdlAsset["kind"][] | null> = { ai_clip: ["video"], ai_still_fx: ["image"], real_screen: ["screen"], brand_card: null, end_card: null };
+const KIND_FOR: Record<SegmentSource, EdlAsset["kind"][] | null> = { ai_clip: ["video"], ai_still_fx: ["image"], real_screen: ["screen"], brand_card: null, end_card: null, split: ["video"], wall: null };
 
 /** The words of a watermark the platform's own AI label replaces (hard rule 5). */
 const WATERMARK = /\bai[\s-]*(generated|made)\b|\bmade (with|by) ai\b\s*$|#ai\b/i;
@@ -141,6 +154,15 @@ export function validateEdl(input: unknown): EdlCheck {
       if (a?.kind === "video" && a.seconds !== undefined && s.clipOffset + (s.end - s.start) > a.seconds + 0.5) warnings.push(`Segment ${s.id} runs past the end of its clip (it holds the last frame).`);
     }
     for (const o of s.overlays ?? []) if (edl.assets[o.asset]?.kind !== "screen" || !edl.assets[o.asset]?.capture) errors.push(`Segment ${s.id} floats a card that is not a real screen capture.`);
+    // Hard rule 1 again: the split-screen's lower half is always a real capture.
+    if (s.source === "split") {
+      const scr = s.screen ? edl.assets[s.screen] : undefined;
+      if (!scr || scr.kind !== "screen" || !scr.capture) errors.push(`Segment ${s.id} splits the screen without a real capture below.`);
+    }
+    if (s.source === "wall") {
+      if (!edl.wall) errors.push(`Segment ${s.id} shows the poster wall, but the plan has no wall.`);
+      else if (s.wallPick !== undefined && s.wallPick >= edl.wall.picks.length) errors.push(`Segment ${s.id} lands on a pick the wall does not have.`);
+    }
     for (const e of s.effects) {
       const def = effectById(e.id);
       if (!def) errors.push(`Segment ${s.id}: "${e.id}" is not an effect in the library.`);
@@ -165,7 +187,8 @@ export function validateEdl(input: unknown): EdlCheck {
     // Hard rule 3: Kinyarwanda only with real recorded voices.
     if (v.source !== "recorded" && (v.language === "rw" || looksKinyarwanda(v.text))) errors.push(`Voice line ${v.id} is AI speech in Kinyarwanda: Kinyarwanda needs a real recorded voice.`);
     // Omni refuses money words (and they are kept for the screen and the end card).
-    if (v.source === "omni" && hasMoneyWords(v.text)) errors.push(`Voice line ${v.id} has money words ("free", a price) in AI-video speech; put them on screen or in the end-card voice.`);
+    // Omni took "get a free quote" on 11 Nov 2026: money words are allowed, and a refused clip falls back to a TTS voice.
+    if (v.source === "omni" && hasMoneyWords(v.text)) warnings.push(`Voice line ${v.id} has money words in AI-video speech; if Omni refuses it, the line becomes a voice-over.`);
     for (const e of v.effects) if (effectById(e.id)?.kind !== "audio") errors.push(`Voice line ${v.id}: "${e.id}" is not a sound effect.`);
   }
   const sorted = [...edl.voice].sort((a, b) => a.at - b.at);
@@ -179,7 +202,9 @@ export function validateEdl(input: unknown): EdlCheck {
   if (cta.length === 0) errors.push("There is no spoken call to action: the ad must end with the actor saying it.");
   else if (last && !last.cta) errors.push("The spoken call to action must be the last line.");
   else if (last && last.at < total - CTA_WITHIN_S) errors.push(`The spoken call to action starts ${(total - last.at).toFixed(1)} s before the end; it must be in the last ${CTA_WITHIN_S} s.`);
-  if (cta.length && !cta.some((v) => mentionsSite(v.text, edl.brand.url))) errors.push(`The spoken call to action does not say where to go (${edl.brand.url}).`);
+  // It names the site, or says the planned (or any known) CTA: "click the link in bio", "comment AD"... (ctas.ts).
+  const planned = ctaById(edl.ctaId);
+  if (cta.length && !cta.some((v) => mentionsSite(v.text, edl.brand.url) || (planned ? carriesCta(v.text, planned) : !!ctaOf(v.text)))) errors.push(`The spoken call to action does not say where to go or what to do (${planned ? `"${planned.text}"` : edl.brand.url}).`);
 
   // Titles: known styles, inside the ad, and never a burned-in "AI-generated" watermark (hard rule 5).
   for (const t of edl.titles) {

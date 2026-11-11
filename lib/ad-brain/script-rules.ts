@@ -1,6 +1,11 @@
 // The script rules (docs/AD_BRAIN.md, section 3.3 and the hard rules): checked on the brain's script before anything
 // is paid for. A script that breaks one goes back to the brain once with the problems listed; a second failure stops
 // the ad with the problems in plain English. Pure.
+//
+// 11 Nov 2026 (owner): money words ("free quote") are allowed in AI-video speech (Omni accepted one; a refused clip
+// falls back to a TTS voice, pipeline.ts), and the spoken CTA may be any planned soft CTA (ctas.ts), not only the site.
+
+import { carriesCta, type Cta } from "./ctas";
 
 /** Spoken English runs at about 2.5 words a second. */
 export const WORDS_PER_SECOND = 2.5;
@@ -62,7 +67,7 @@ export function speakable(text: string, source: "omni" | "tts" | "recorded", bra
 }
 
 export type ScriptLine = { speaker: string; text: string; source: "omni" | "tts" };
-export type ScriptBeat = { beat: string; line?: ScriptLine | null; scene?: string | null; action?: string | null; title?: string | null; screens?: { id: string; title: string }[] };
+export type ScriptBeat = { beat: string; line?: ScriptLine | null; scene?: string | null; action?: string | null; title?: string | null; screens?: { id: string; title: string }[]; product?: string | null };
 export type ScriptCharacter = { id: string; gender: "man" | "woman" | "other"; look: string; variantOf?: string | null; change?: string | null };
 export type Script = {
   characters: ScriptCharacter[];
@@ -79,8 +84,10 @@ export type ScriptContext = {
   /** Everything the ad may claim: the brand brief's provable claims and facts, as text. */
   facts: string;
   /** Beat ids of the recipe, in order, and which ones carry a line. */
-  beats: { id: string; speech: "line" | "none" | "cta"; titleWords?: number; screens?: { min: number; max: number } }[];
+  beats: { id: string; speech: "line" | "none" | "cta"; picture?: string; titleWords?: number; screens?: { min: number; max: number } }[];
   screenIds: string[];
+  /** The planned CTA (ctas.ts): the spoken CTA must carry it (or name the site). */
+  cta?: Cta;
 };
 
 /** Numbers that read as claims: an amount, a percentage, a count of customers, sales, views, times... */
@@ -95,7 +102,8 @@ export function checkScript(script: Script, ctx: ScriptContext): string[] {
   const byBeat = new Map(script.beats.map((b) => [b.beat, b]));
   for (const b of ctx.beats) {
     const got = byBeat.get(b.id);
-    if (b.speech === "cta") continue;
+    // The call to action is checked below; a silent end card needs nothing from the script.
+    if (b.speech === "cta" || (b.picture === "end_card" && b.speech === "none")) continue;
     if (!got) {
       out.push(`Beat "${b.id}" is missing.`);
       continue;
@@ -117,13 +125,12 @@ export function checkScript(script: Script, ctx: ScriptContext): string[] {
   for (const l of lines) {
     const n = wordCount(l.text);
     if (l.source === "omni" && n > LINE_MAX_WORDS) out.push(`The line in "${l.beat}" has ${n} words; an AI clip holds at most ${LINE_MAX_WORDS} (10 s).`);
-    if (l.source === "omni" && hasMoneyWords(l.text)) out.push(`The line in "${l.beat}" has money words ("free", a price), which AI video refuses; put them on screen or in the end-card voice.`);
     if (looksKinyarwanda(l.text)) out.push(`The line in "${l.beat}" is in Kinyarwanda; AI voices speak English only (Kinyarwanda needs a real recorded voice).`);
     if (/\bai[\s-]*generated\b/i.test(l.text)) out.push(`The line in "${l.beat}" announces it is AI-generated; the platform's own AI label does that.`);
   }
   // The spoken call to action: last, names the site.
   if (!script.cta?.text?.trim()) out.push("There is no spoken call to action.");
-  else if (!mentionsSite(script.cta.text, ctx.url)) out.push(`The call to action must say where to go (${ctx.url}), for example "Check out ${ctx.brandName} dot com".`);
+  else if (!mentionsSite(script.cta.text, ctx.url) && !(ctx.cta && carriesCta(script.cta.text, ctx.cta))) out.push(ctx.cta ? `The spoken call to action must be the planned one: "${ctx.cta.spoken}" (the actor says it, in her own words around it).` : `The call to action must say where to go (${ctx.url}), for example "Check out ${ctx.brandName} dot com".`);
   // No invented numbers: a number that reads as a claim must come from the facts.
   const facts = ctx.facts.toLowerCase();
   const texts = [...lines.map((l) => l.text), ...script.beats.flatMap((b) => [b.title ?? "", ...(b.screens ?? []).map((s) => s.title)]), script.caption, script.endCard.headline, script.endCard.sub];

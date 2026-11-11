@@ -16,17 +16,21 @@ import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { kigaliMonthStart } from "@/lib/time/kigali";
 import { getVeoOperation, submitVeo, veoClipBytes, veoModel, VeoError } from "@/lib/video-engine/veo";
-import { brainModel, briefRequest, brandBriefSchema, conceptAnswerSchema, conceptFrom, conceptRequest, scriptRequest, scriptSchema, think, type BrandBrief } from "./brain";
+import { brainModel, briefRequest, brandBriefSchema, conceptAnswerSchema, conceptFrom, conceptRequest, hooksRequest, hooksSchema, scriptRequest, scriptSchema, think, type BrandBrief } from "./brain";
 import { AD_BRAIN_FEATURE, checkSpend, clipCost, DEFAULT_AD_LIMITS, planFits, UNIT_USD, usd, type AdLimits } from "./budget";
 import { deliverAd, saveAdToGallery, type GalleryVideo } from "./deliver";
 import { validateEdl, type Edl } from "./edl";
 import { pickEffects, seededRandom } from "./effects";
 import { BUPULSE_BRAND, companyAccount, fixtureWords, loadFacts } from "./facts";
-import { isFixtureName, FIXTURES } from "./fixtures";
+import { isFixtureName, FIXTURES, wallWordFiles } from "./fixtures";
 import { combineJudgements, decideFix, hardRuleFailures, JUDGE_LOOKS, judgePrompt, judgeSchema, lowerMusic, type JudgeAnswer } from "./judge";
 import { assetNeeds, buildEdl, needsCost, type AssetNeed, type Concept, type MadeAsset } from "./plan";
 import { askAboutMedia, makeImage, makeMusic, makeSpeech, MODELS, ProviderError, wordTimings } from "./providers";
-import { pickRecipe, recipeById, recipeEffects } from "./recipes";
+import { isAdKind, pickRecipe, recipeById, recipeEffects, type AdKind } from "./recipes";
+import { ctaById, pickCta } from "./ctas";
+import { alternativeCtas, cleanVariantSpec, hookBeatOf, planVariants, type VariantSpec } from "./variants";
+import { bucketForPath } from "@/lib/publishing/schemas";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { analyzeMusic, jobDir, judgeCopy, probeSeconds, readRenderResult, startRender } from "./render";
 import { refreshScreensIfStale } from "./screens";
 import { TERMINAL } from "./status";
@@ -53,6 +57,19 @@ type Job = Awaited<ReturnType<typeof loadJob>>;
 const loadJob = (id: string) => prisma.adJob.findUniqueOrThrow({ where: { id } });
 
 class StopError extends Error {}
+/** Omni refused a clip with speech (a money word, a policy): the line becomes a voice-over and the clip silent. */
+class SpeechRefused extends Error {
+  constructor(readonly key: string) {
+    super(`Omni refused the spoken line of ${key}`);
+  }
+}
+
+/** A real product photo from the company's Gallery (Business info), for a picture that shows the real product. */
+async function mediaBytes(objectPath: string): Promise<{ bytes: Buffer; mimeType: string }> {
+  const { data, error } = await createAdminClient().storage.from(bucketForPath(objectPath)).download(objectPath);
+  if (error || !data) throw new Error("A product photo could not be read.");
+  return { bytes: Buffer.from(await data.arrayBuffer()), mimeType: data.type?.includes("png") ? "image/png" : "image/jpeg" };
+}
 
 const readWork = (job: Job): Work => {
   const w = (job.pending ?? {}) as Partial<Work>;
@@ -99,9 +116,10 @@ const addCost = (id: string, usdAmount: number) => (usdAmount > 0 ? prisma.adJob
 export async function sweepAdJobs(opts: { budgetMs?: number; onlyId?: string; stopAt?: string } = {}): Promise<{ jobs: number; steps: number; states: Record<string, string> }> {
   const deadline = Date.now() + (opts.budgetMs ?? 90_000);
   await loadServiceKeys().catch(() => undefined);
+  await promoteWaitingVariant().catch(() => undefined);
   const now = new Date();
   const open = await prisma.adJob.findMany({
-    where: { status: { notIn: [...TERMINAL] }, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }], ...(opts.onlyId ? { id: opts.onlyId } : {}) },
+    where: { status: { notIn: [...TERMINAL, "waiting"] }, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }], ...(opts.onlyId ? { id: opts.onlyId } : {}) },
     orderBy: { createdAt: "asc" },
     take: 3,
     select: { id: true, leaseUntil: true },
@@ -156,6 +174,9 @@ async function step(job: Job): Promise<"next" | "wait"> {
   const account = await companyAccount();
   const ctx: LedgerContext = { userId: account.userId, businessId: job.businessId, feature: AD_BRAIN_FEATURE };
   switch (job.status) {
+    case "waiting":
+      // A variant waits for the one before it to finish (promoteWaitingVariant).
+      return "wait";
     case "queued":
       return job.mode.startsWith("fixture:") ? startFixture(job) : (await save(job.id, { status: "understanding" }, { step: "queued", note: "Started." }), "next");
     case "understanding":
@@ -202,19 +223,22 @@ async function concept(job: Job, ctx: LedgerContext): Promise<"next"> {
   const recent = await recentJobs(job.businessId, job.id);
   const concepts = recent.map((r) => r.concept as Concept | null).filter((c): c is Concept => !!c);
   const rng = seededRandom(job.id);
-  let recipe = pickRecipe({ recent: concepts.map((c) => c.recipe), rng });
+  const kind: AdKind = isAdKind(job.kind) ? job.kind : "ad";
+  let recipe = pickRecipe({ recent: concepts.map((c) => c.recipe), rng, kind });
   let effects: string[];
   try {
     effects = pickEffects({ allowed: recipeEffects(recipe), required: recipe.required, recent: concepts.map((c) => c.effects), rng });
   } catch {
     // This format has no new look left: another one.
-    recipe = pickRecipe({ recent: [recipe.id, ...concepts.map((c) => c.recipe)], rng });
+    recipe = pickRecipe({ recent: [recipe.id, ...concepts.map((c) => c.recipe)], rng, kind });
     effects = pickEffects({ allowed: recipeEffects(recipe), required: recipe.required, recent: concepts.map((c) => c.effects), rng });
   }
-  const t = await think(ctx, brainModel(), conceptRequest({ brief: job.brandBrief as BrandBrief, recipe, effects }), conceptAnswerSchema);
+  // The CTA is planned here: rotating, never one of the last videos', soft for content (ctas.ts).
+  const cta = pickCta({ kind, recent: concepts.map((c) => c.ctaId ?? "").filter(Boolean), rng, preferred: recipe.ctas });
+  const t = await think(ctx, brainModel(), conceptRequest({ brief: job.brandBrief as BrandBrief, recipe, effects, kind, cta }), conceptAnswerSchema);
   await addCost(job.id, t.costUsd);
-  const c = conceptFrom(t.value, recipe, effects);
-  await save(job.id, { concept: json(c), status: "script" }, { step: "concept", note: `${recipe.name}, effects ${effects.join(", ")}: ${c.line}` });
+  const c = conceptFrom(t.value, recipe, effects, { kind, ctaId: cta.id });
+  await save(job.id, { concept: json(c), status: "script" }, { step: "concept", note: `${kind === "content" ? "Content" : "Ad"}: ${recipe.name}, effects ${effects.join(", ")}, CTA "${cta.text}": ${c.line}` });
   return "next";
 }
 
@@ -224,12 +248,13 @@ async function writeScript(job: Job, ctx: LedgerContext): Promise<"next"> {
   if (!recipe) throw new Error(`Unknown format "${c.recipe}".`);
   const facts = await loadFacts(job.businessId);
   const brief = job.brandBrief as BrandBrief;
-  const rules = { brandName: "BuPulse", url: BUPULSE_BRAND.url, facts: `${facts.text}\n${brief.claims.map((x) => x.claim).join("\n")}`, beats: recipe.beats.map((b) => ({ id: b.id, speech: b.speech, titleWords: b.titleWords, screens: b.screens })), screenIds: facts.screens.map((s) => s.id) };
+  const cta = ctaById(c.ctaId);
+  const rules = { brandName: "BuPulse", url: BUPULSE_BRAND.url, facts: `${facts.text}\n${brief.claims.map((x) => x.claim).join("\n")}`, beats: recipe.beats.map((b) => ({ id: b.id, speech: b.speech, picture: b.picture, titleWords: b.titleWords, screens: b.screens })), screenIds: facts.screens.map((s) => s.id), cta };
   if (facts.screens.length < 3) throw new StopError("There are fewer than 3 real screen captures with real data to show (Admin -> Ad Brain, \"Capture the screens now\"). Ads only show real screens, and never an empty page.");
   let problems: string[] = [];
   for (let round = 0; round < 2; round++) {
     await allow(job, "the script", UNIT_USD.think * 2);
-    const t = await think(ctx, brainModel(), scriptRequest({ brief, recipe, concept: c, screens: facts.screens, facts: facts.text, problems }), scriptSchema);
+    const t = await think(ctx, brainModel(), scriptRequest({ brief, recipe, concept: c, screens: facts.screens, facts: facts.text, problems, cta, products: facts.products }), scriptSchema);
     await addCost(job.id, t.costUsd);
     problems = checkScript(t.value, rules);
     if (!problems.length) {
@@ -247,7 +272,7 @@ const depOf = (n: AssetNeed) => (n.kind === "frame" || n.kind === "clip" ? n.fro
 
 function hashOf(n: AssetNeed, made: Record<string, Made>): string {
   const from = depOf(n);
-  if (n.kind === "frame") return assetHash({ kind: "frame", model: MODELS.image(), prompt: n.prompt, from: from ? made[from]?.hash : null });
+  if (n.kind === "frame") return assetHash({ kind: "frame", model: MODELS.image(), prompt: n.prompt, from: from ? made[from]?.hash : null, product: n.product?.path ?? null });
   if (n.kind === "clip") return assetHash({ kind: "clip", model: veoModel(), prompt: n.prompt, from: made[n.from]?.hash });
   if (n.kind === "music") return assetHash({ kind: "music", model: MODELS.music(), prompt: n.prompt });
   return assetHash({ kind: "voice", model: MODELS.tts(), text: n.text, voice: n.voiceName });
@@ -272,8 +297,9 @@ async function makeNeed(job: Job, ctx: LedgerContext, n: AssetNeed, work: Work, 
   const key = process.env.GEMINI_API_KEY ?? "";
   if (n.kind === "frame") {
     await allow(job, `the picture ${n.key}`, UNIT_USD.frame);
-    const reference = n.from ? await bytesOf(work.made[n.from]) : null;
-    const r = await withLedger(ctx, { provider: "gemini", model: MODELS.image() }, () => makeImage(key, { prompt: n.prompt, reference }), ledgerImage);
+    // The person (an edit of their portrait), then the real product photo when the picture shows one.
+    const references = [...(n.from ? [await bytesOf(work.made[n.from])] : []), ...(n.product ? [await mediaBytes(n.product.path)] : [])];
+    const r = await withLedger(ctx, { provider: "gemini", model: MODELS.image() }, () => makeImage(key, { prompt: n.prompt, references }), ledgerImage);
     const cost = estimateCostUsd(r.model, { ...r.usage, images: 1 });
     await addCost(job.id, cost);
     const a = await saveAsset({ hash, jobId: job.id, kind: "frame", provider: "gemini", model: r.model, bytes: r.bytes, mimeType: r.mimeType, costUsd: cost, meta: { prompt: n.prompt.slice(0, 2000) } });
@@ -310,7 +336,14 @@ async function makeNeed(job: Job, ctx: LedgerContext, n: AssetNeed, work: Work, 
   await allow(job, `a ${n.seconds} s AI clip (${n.key})`, clipCost(n.seconds) + UNIT_USD.words);
   const frame = await bytesOf(work.made[n.from]);
   const model = veoModel();
-  const operation = await withLedger(ctx, { provider: "veo", model }, () => submitVeo({ model, prompt: n.prompt, image: { base64: frame.bytes.toString("base64"), mimeType: frame.mimeType === "image/png" ? "image/png" : "image/jpeg" }, ratio: "9:16", seconds: 8, resolution: "720p" }, { apiKey: key }), () => ({ provider: "veo", model, usage: { inputTokens: 0, outputTokens: 0 } }));
+  let operation: string;
+  try {
+    operation = await withLedger(ctx, { provider: "veo", model }, () => submitVeo({ model, prompt: n.prompt, image: { base64: frame.bytes.toString("base64"), mimeType: frame.mimeType === "image/png" ? "image/png" : "image/jpeg" }, ratio: "9:16", seconds: 8, resolution: "720p" }, { apiKey: key }), () => ({ provider: "veo", model, usage: { inputTokens: 0, outputTokens: 0 } }));
+  } catch (error) {
+    // Omni turns a spoken line down at once (unbilled), e.g. a money word: keep the clip, make the line a voice-over.
+    if (n.speech && error instanceof VeoError && (error.kind === "invalid" || error.kind === "blocked")) throw new SpeechRefused(n.key);
+    throw error;
+  }
   work.clips[n.key] = { operation, submittedAt: Date.now(), hash, seconds: n.seconds, speech: n.speech, tries: (work.clips[n.key]?.tries ?? 0) + 1 };
 }
 
@@ -380,7 +413,8 @@ async function assets(job: Job, ctx: LedgerContext): Promise<"next" | "wait"> {
   const recipe = recipeById(c.recipe)!;
   let script = job.script as Script;
   const work = readWork(job);
-  let needs = assetNeeds(recipe, script, c);
+  const facts = await loadFacts(job.businessId);
+  let needs = assetNeeds(recipe, script, c, facts.products);
   if (!work.planChecked) {
     const cached = new Set<string>();
     for (const n of needs) if (!depOf(n) && (await findAsset(hashOf(n, work.made)))) cached.add(n.key);
@@ -394,7 +428,7 @@ async function assets(job: Job, ctx: LedgerContext): Promise<"next" | "wait"> {
   }
   const collected = await collectClips(job, ctx, work, script);
   script = collected.script;
-  needs = assetNeeds(recipe, script, c);
+  needs = assetNeeds(recipe, script, c, facts.products);
   let progressed = collected.changed;
   // Everything whose input exists and that is not made or being made: reuse it from the cache, or make it.
   const ready = needs.filter((n) => !work.made[n.key] && !work.clips[n.key] && (!depOf(n) || work.made[depOf(n)!]));
@@ -416,7 +450,14 @@ async function assets(job: Job, ctx: LedgerContext): Promise<"next" | "wait"> {
     await save(job.id, { pending: json(work) });
     const stop = results.find((r) => r.status === "rejected" && r.reason instanceof StopError);
     if (stop && stop.status === "rejected") throw stop.reason;
-    const failed = results.find((r) => r.status === "rejected");
+    // Lines Omni refused become voice-overs (their clips are made silent on the next pass): not a failure.
+    const refused = results.flatMap((r) => (r.status === "rejected" && r.reason instanceof SpeechRefused ? [r.reason.key] : []));
+    for (const key of refused) {
+      const fallback = speechFallback(script, key);
+      if (fallback) script = fallback;
+    }
+    if (refused.length) await save(job.id, { script: json(script) }, { step: "assets", note: `Omni refused the spoken line of ${refused.join(", ")}; it becomes a voice-over and the clip silent.` });
+    const failed = results.find((r) => r.status === "rejected" && !(r.reason instanceof SpeechRefused));
     if (failed && failed.status === "rejected") throw failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
   }
   await save(job.id, { pending: json(work) });
@@ -426,7 +467,6 @@ async function assets(job: Job, ctx: LedgerContext): Promise<"next" | "wait"> {
   // Everything made: the plan with real timings.
   const made: Record<string, MadeAsset> = {};
   for (const [k, m] of Object.entries(work.made)) if (needs.some((n) => n.key === k)) made[k] = m;
-  const facts = await loadFacts(job.businessId);
   const edl = buildEdl({ recipe, script, concept: c, made, screens: facts.screens, brand: BUPULSE_BRAND });
   const check = validateEdl(edl);
   if (!check.ok) throw new StopError(`The plan does not pass its checks: ${check.errors.slice(0, 4).join(" ")}`);
@@ -439,14 +479,18 @@ async function assets(job: Job, ctx: LedgerContext): Promise<"next" | "wait"> {
 async function startFixture(job: Job): Promise<"next"> {
   const name = job.mode.slice("fixture:".length);
   if (!isFixtureName(name)) throw new StopError(`There is no cached plan called "${name}".`);
-  const edl = FIXTURES[name](await fixtureWords());
+  const edl = FIXTURES[name](await fixtureWords(name === "wall" ? wallWordFiles : undefined));
   const check = validateEdl(edl);
   if (!check.ok) throw new StopError(`The cached plan does not pass its checks: ${check.errors.slice(0, 3).join(" ")}`);
-  await save(job.id, { plan: json(check.edl), planVersion: 1, status: "rendering", concept: json({ recipe: edl.recipe, effects: edl.effects, captionStyle: edl.captions.style, titleStyle: "slam", musicMood: "cached", line: "The cached \"Who's real?\" ad, re-rendered by the production renderer." }), caption: FIXTURE_CAPTION, hashtags: FIXTURE_TAGS }, { step: "queued", note: `Cached plan "${name}": no paid assets.` });
+  const line = name === "wall" ? "The owner's poster wall (which ad stops the scroll?), re-rendered by the production renderer." : "The cached \"Who's real?\" ad, re-rendered by the production renderer.";
+  await save(job.id, { plan: json(check.edl), planVersion: 1, status: "rendering", kind: edl.kind, concept: json({ recipe: edl.recipe, effects: edl.effects, captionStyle: edl.captions.style, titleStyle: "slam", musicMood: "cached", line, kind: edl.kind, ...(edl.ctaId ? { ctaId: edl.ctaId } : {}) }), caption: FIXTURE_CAPTIONS[name], hashtags: FIXTURE_TAGS }, { step: "queued", note: `Cached plan "${name}": no paid assets.` });
   return "next";
 }
 
-const FIXTURE_CAPTION = "One of these was made by AI. Plot twist: so was he. BuPulse writes, designs and posts your week for you, in English, French and Kinyarwanda. Get a free quote at bupulse.com.";
+const FIXTURE_CAPTIONS: Record<string, string> = {
+  twist: "One of these was made by AI. Plot twist: so was he. BuPulse writes, designs and posts your week for you, in English, French and Kinyarwanda. Get a free quote at bupulse.com.",
+  wall: "Which one would stop your scroll? Content like this, made for your business. Link in bio.",
+};
 const FIXTURE_TAGS = ["BuPulse", "Kigali", "Rwanda", "SmallBusiness", "SocialMediaMarketing", "AI"];
 
 // ---- Render ---------------------------------------------------------------------------------------------------------
@@ -556,5 +600,74 @@ async function deliver(job: Job, account: { userId: string; businessId: string; 
   const edl = job.plan as Edl;
   const out = await deliverAd({ jobId: job.id, userId: account.userId, businessId: job.businessId, timezone: account.timezone, item: work.gallery, seconds: edl.canvas.seconds, caption: job.caption, hashtags: job.hashtags, makePosts: broken.length === 0, reviewNote: last ? `Made by the Ad Brain (judge ${last.overall}/10). Watch it before you approve.` : null });
   await save(job.id, { status: "ready", videoPath: out.videoPath, videoJobId: out.videoJobId, postGroupId: out.postGroupId, error: broken.length ? `Not posted: the judge flagged ${broken.join(", ")}. The video is in the Videos library.` : null }, { step: "delivering", note: out.posts ? `In the Videos library and ${out.posts} posts waiting for your OK.` : "In the Videos library (no posts made)." });
+  // Variants asked for with "Make an ad": queued now that the ad itself is done (a failure here never undoes it).
+  const spec = cleanVariantSpec((job.brief as { variants?: unknown } | null)?.variants);
+  if (spec && !job.variantOf && job.mode === "real") {
+    await createVariants(job.id, spec).catch(async (error) => {
+      await save(job.id, {}, { step: "delivering", note: `The variants could not be queued: ${error instanceof Error ? error.message : "unknown"}` });
+    });
+  }
   return "next";
+}
+
+// ---- Variants -------------------------------------------------------------------------------------------------------
+
+/**
+ * Queues the variants of a finished ad (variants.ts): the brain writes the other hooks (one cheap call), the other
+ * CTAs come from the list, and each combination becomes a "waiting" AdJob with the ad's brief, concept and script
+ * (only the hook line and the CTA changed). They are made one after another; the cache reuses every unchanged asset.
+ */
+export async function createVariants(jobId: string, spec: VariantSpec): Promise<number> {
+  const job = await loadJob(jobId);
+  if (job.status !== "ready" || !job.script || !job.concept || job.mode !== "real") throw new StopError("Only a finished ad made by the brain can get variants.");
+  if (await prisma.adJob.count({ where: { variantOf: job.id } })) throw new StopError("This ad already has variants.");
+  const concept = job.concept as Concept;
+  const recipe = recipeById(concept.recipe);
+  if (!recipe) throw new StopError(`Unknown format "${concept.recipe}".`);
+  const script = job.script as Script;
+  const hookBeat = hookBeatOf(recipe);
+  const kind: AdKind = isAdKind(job.kind) ? job.kind : "ad";
+  let hooks: string[] = [];
+  if (spec.hooks > 1 && hookBeat) {
+    const account = await companyAccount();
+    await allow(job, "the variant hooks", UNIT_USD.think);
+    const t = await think({ userId: account.userId, businessId: job.businessId, feature: AD_BRAIN_FEATURE }, brainModel(), hooksRequest({ script, hookBeat, count: spec.hooks - 1, kind }), hooksSchema);
+    await addCost(job.id, t.costUsd);
+    hooks = t.value.hooks;
+  }
+  const ownCta = ctaById(concept.ctaId);
+  const variants = planVariants({ script, recipe, spec, hooks, ownCta, ctas: alternativeCtas(ownCta, spec.ctas - 1, kind) });
+  const brief = { ...((job.brief ?? {}) as Record<string, unknown>), variants: null };
+  for (const v of variants) {
+    await prisma.adJob.create({
+      data: {
+        businessId: job.businessId,
+        createdBy: job.createdBy,
+        status: "waiting",
+        mode: "real",
+        kind,
+        variantOf: job.id,
+        variantLabel: v.label,
+        brief: json(brief),
+        brandBrief: json(job.brandBrief),
+        concept: json({ ...concept, ...(v.ctaId ? { ctaId: v.ctaId } : {}) }),
+        script: json(v.script),
+        caption: job.caption,
+        hashtags: job.hashtags,
+        log: json([{ at: new Date().toISOString(), step: "waiting", note: `Variant ${v.label} of an ad: waits for its turn.` }]),
+      },
+    });
+  }
+  await save(job.id, {}, { step: "delivering", note: `${variants.length} variants queued (${variants.map((v) => v.label).join("; ")}).` });
+  return variants.length;
+}
+
+/** When nothing else is being made, the oldest waiting variant starts (at its assets: the script is already written). */
+export async function promoteWaitingVariant(): Promise<string | null> {
+  const busy = await prisma.adJob.count({ where: { status: { notIn: [...TERMINAL, "waiting"] } } });
+  if (busy) return null;
+  const next = await prisma.adJob.findFirst({ where: { status: "waiting" }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  if (!next) return null;
+  const { count } = await prisma.adJob.updateMany({ where: { id: next.id, status: "waiting" }, data: { status: "assets" } });
+  return count ? next.id : null;
 }

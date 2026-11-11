@@ -11,7 +11,7 @@ describe("the effects library", () => {
   });
 
   it("matches the renderer's registry (tools/ad-render), so the brain never picks an effect the renderer cannot draw", () => {
-    const py = ["adr/fx.py", "adr/text.py"].map((f) => readFileSync(join(process.cwd(), "tools/ad-render", f), "utf8")).join("\n");
+    const py = ["adr/fx.py", "adr/text.py", "adr/wall.py"].map((f) => readFileSync(join(process.cwd(), "tools/ad-render", f), "utf8")).join("\n");
     const drawn = new Set([...py.matchAll(/@(?:segment_fx|transition_fx|screen_fx|title_style)\("([a-z_]+)"\)/g)].map((m) => m[1]));
     for (const e of EFFECTS.filter((x) => ["segment", "transition", "screen", "title"].includes(x.kind))) expect(drawn.has(e.id), e.id).toBe(true);
     for (const id of drawn) expect(effectById(id), id).toBeDefined();

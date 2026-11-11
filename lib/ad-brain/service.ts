@@ -10,7 +10,10 @@ import { allowFixtureScreens, companyAccount, listScreens, seedPrototypeScreens 
 import { adBrainCompanyEmail } from "./screen-pass";
 import { captureScreens, newestCaptureAt } from "./screens";
 import { isFixtureName } from "./fixtures";
-import { adLimits, monthSpentUsd, sweepAdJobs, TERMINAL } from "./pipeline";
+import { adLimits, createVariants, monthSpentUsd, sweepAdJobs, TERMINAL } from "./pipeline";
+import { ctaById } from "./ctas";
+import { isAdKind, type AdKind } from "./recipes";
+import { cleanVariantSpec } from "./variants";
 import { GALLERY_VIDEO_BUCKET } from "@/lib/media/rules";
 
 export class AdBrainError extends Error {}
@@ -18,17 +21,36 @@ export class AdBrainError extends Error {}
 /** Ads being made at once: one (each runs a renderer and up to four paid calls). */
 export const MAX_OPEN = 1;
 
-export async function startAdJob(input: { createdBy: string; notes?: string; fixture?: string | null }): Promise<{ id: string }> {
+/**
+ * Starts a video for the company account: an ad or a normal content video (`kind`), optionally with variants (other
+ * hooks and CTAs on the same body, made after it), or a cached fixture (tests and dev).
+ */
+export async function startAdJob(input: { createdBy: string; notes?: string; fixture?: string | null; kind?: string | null; variants?: unknown }): Promise<{ id: string }> {
   const account = await companyAccount();
-  const open = await prisma.adJob.count({ where: { status: { notIn: [...TERMINAL] } } });
-  if (open >= MAX_OPEN) throw new AdBrainError("An ad is already being made. Wait for it to finish (or cancel it) first.");
+  const open = await prisma.adJob.count({ where: { status: { notIn: [...TERMINAL, "waiting"] } } });
+  if (open >= MAX_OPEN) throw new AdBrainError("A video is already being made. Wait for it to finish (or cancel it) first.");
   if (input.fixture && !isFixtureName(input.fixture)) throw new AdBrainError("There is no cached plan with that name.");
   const notes = (input.notes ?? "").replace(/\s+/g, " ").trim().slice(0, 600);
+  const kind: AdKind = isAdKind(input.kind) ? input.kind : "ad";
+  // Variants are for ads (content videos are not A/B tested).
+  const variants = kind === "ad" && !input.fixture ? cleanVariantSpec(input.variants) : null;
+  const what = `${kind === "content" ? "content video" : "ad"}${variants ? ` with ${variants.hooks} hooks x ${variants.ctas} CTAs` : ""}`;
   const job = await prisma.adJob.create({
-    data: { businessId: account.businessId, createdBy: input.createdBy.slice(0, 120), mode: input.fixture ? `fixture:${input.fixture}` : "real", brief: { notes, goal: null } as Prisma.InputJsonValue, log: [{ at: new Date().toISOString(), step: "queued", note: input.fixture ? `Queued from the cached plan "${input.fixture}".` : `Queued${notes ? `: ${notes}` : ""}.` }] as Prisma.InputJsonValue },
+    data: { businessId: account.businessId, createdBy: input.createdBy.slice(0, 120), mode: input.fixture ? `fixture:${input.fixture}` : "real", kind, brief: { notes, goal: null, variants } as Prisma.InputJsonValue, log: [{ at: new Date().toISOString(), step: "queued", note: input.fixture ? `Queued from the cached plan "${input.fixture}".` : `Queued (${what})${notes ? `: ${notes}` : ""}.` }] as Prisma.InputJsonValue },
     select: { id: true },
   });
   return job;
+}
+
+/** "Make variants" on a finished ad: other hooks and CTAs on the same body, made one after another. */
+export async function makeVariantsFor(jobId: string, spec: unknown): Promise<number> {
+  const clean = cleanVariantSpec(spec);
+  if (!clean) throw new AdBrainError("Choose at least two hooks or two CTAs.");
+  try {
+    return await createVariants(jobId, clean);
+  } catch (error) {
+    throw new AdBrainError(error instanceof Error ? error.message : "The variants could not be made.");
+  }
 }
 
 export async function cancelAdJob(id: string): Promise<void> {
@@ -44,6 +66,14 @@ export type AdJobView = {
   createdBy: string | null;
   costUsd: number;
   recipe: string | null;
+  kind: AdKind;
+  /** A variant: the ad it was made from and its label; null for the ad itself. */
+  variantOf: string | null;
+  variantLabel: string | null;
+  /** The planned spoken CTA. */
+  ctaText: string | null;
+  /** A finished ad that can still get variants. */
+  canVary: boolean;
   effects: string[];
   line: string | null;
   overall: number | null;
@@ -63,6 +93,8 @@ export type AdJobView = {
 /** The latest ads, newest first, with a signed link to each finished MP4 (an hour). */
 export async function listAdJobs(limit = 20): Promise<AdJobView[]> {
   const rows = await prisma.adJob.findMany({ orderBy: { createdAt: "desc" }, take: limit });
+  // Ads that already have variants (they cannot get more).
+  const parents = new Set((await prisma.adJob.findMany({ where: { variantOf: { in: rows.map((r) => r.id) } }, select: { variantOf: true }, distinct: ["variantOf"] })).map((v) => v.variantOf ?? ""));
   const paths = rows.flatMap((r) => (r.videoPath ? [r.videoPath] : []));
   const urls = new Map<string, string>();
   if (paths.length) {
@@ -70,7 +102,7 @@ export async function listAdJobs(limit = 20): Promise<AdJobView[]> {
     for (const d of data ?? []) if (d.path && d.signedUrl) urls.set(d.path, d.signedUrl);
   }
   return rows.map((r) => {
-    const concept = (r.concept ?? null) as { recipe?: string; effects?: string[]; line?: string } | null;
+    const concept = (r.concept ?? null) as { recipe?: string; effects?: string[]; line?: string; ctaId?: string } | null;
     const last = ((r.scores ?? []) as { overall?: number; scores?: Record<string, number>; checks?: Record<string, boolean> }[]).at(-1);
     const plan = (r.plan ?? null) as Edl | null;
     return {
@@ -81,6 +113,11 @@ export async function listAdJobs(limit = 20): Promise<AdJobView[]> {
       createdBy: r.createdBy,
       costUsd: Number(r.costUsd),
       recipe: concept?.recipe ?? null,
+      kind: isAdKind(r.kind) ? r.kind : "ad",
+      variantOf: r.variantOf,
+      variantLabel: r.variantLabel,
+      ctaText: ctaById(concept?.ctaId)?.text ?? null,
+      canVary: r.status === "ready" && r.mode === "real" && !r.variantOf && !parents.has(r.id),
       effects: concept?.effects ?? [],
       line: concept?.line ?? null,
       overall: last?.overall ?? null,

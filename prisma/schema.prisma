@@ -3683,6 +3683,11 @@ model AdJob {
   status      String    @default("queued")
   // "real": the brain and paid assets; "fixture:<name>": a cached plan and cached assets (no paid assets).
   mode        String    @default("real")
+  // "ad" (a UGC ad) or "content" (a normal content video: tips, behind the scenes...); both end on a spoken CTA.
+  kind        String    @default("ad")
+  // A variant (another hook or CTA on the same body): the ad it was made from, and its label ("hook 2 · CTA 1").
+  variantOf   String?
+  variantLabel String?
   brief       Json // { goal, subject, notes }
   brandBrief  Json?
   concept     Json? // { recipe, effects, captionStyle, musicMood, line }
@@ -3709,6 +3714,7 @@ model AdJob {
 
   @@index([businessId, createdAt])
   @@index([status, leaseUntil])
+  @@index([variantOf])
 }
 
 // One file the Ad Brain made or reused (a frame, a clip, music, a voice line, a real screen capture), cached by the

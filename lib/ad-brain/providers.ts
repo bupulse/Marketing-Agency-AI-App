@@ -58,11 +58,11 @@ const partsOf = (b: Record<string, unknown>): Part[] => ((b.candidates as { cont
 
 export type Bytes = { bytes: Buffer; mimeType: string; usage: TokenUsage; model: string };
 
-/** One 9:16 image (a portrait from text, or an edit of `reference`). */
-export async function makeImage(key: string, input: { prompt: string; reference?: { bytes: Buffer; mimeType: string } | null }, f: F = fetch): Promise<Bytes> {
+/** One 9:16 image: a portrait from text, or an edit of the first reference (a real product photo may follow it). */
+export async function makeImage(key: string, input: { prompt: string; references?: readonly { bytes: Buffer; mimeType: string }[] }, f: F = fetch): Promise<Bytes> {
   const model = MODELS.image();
   const parts: unknown[] = [];
-  if (input.reference) parts.push({ type: "image", data: input.reference.bytes.toString("base64"), mime_type: input.reference.mimeType });
+  for (const ref of input.references ?? []) parts.push({ type: "image", data: ref.bytes.toString("base64"), mime_type: ref.mimeType });
   parts.push({ type: "text", text: input.prompt });
   const b = await post(`${GEMINI_API}/interactions`, key, { model, input: parts, store: false, response_format: { type: "image", aspect_ratio: "9:16" } }, 150_000, f);
   const items = ((b.steps as { content?: { type?: string; data?: string; mime_type?: string }[] }[] | undefined) ?? []).flatMap((s) => s.content ?? []);

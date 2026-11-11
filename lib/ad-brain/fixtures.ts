@@ -61,6 +61,7 @@ export function twistFixture(words: Record<string, { w: string; s: number; e: nu
   return {
     version: 1,
     recipe: "twist",
+    kind: "ad",
     effects: ["scan_wipe", "robot_voice", "browser_window", "slam", "beat_cut"],
     canvas: { w: 720, h: 1280, fps: 24, seconds: 30 },
     brand: { name: "BuPulse", url: "bupulse.com", primary: "#2f6bff", accent: "#7b5cff", logo: "logo" },
@@ -110,6 +111,91 @@ export function twistFixture(words: Record<string, { w: string; s: number; e: nu
   };
 }
 
-export const FIXTURES = { twist: twistFixture } as const;
+/** The poster-wall fixture's words files (relative to the fixture folder). */
+export const wallWordFiles: Record<string, string> = {
+  "clip:intro": "wall/intro.words.json",
+  "clip:pick_1": "wall/makeup.words.json",
+  "clip:pick_2": "wall/food.words.json",
+  "clip:pick_3": "wall/founder.words.json",
+  "clip:cta": "wall/cta.words.json",
+};
+
+/**
+ * The owner's poster wall (11 Nov 2026, judge 8/10) as an EDL over its cached files (~/bupulse-ugc-ads/wall): the wall
+ * drifts under the narrator's line, three example ads are picked (each labelled "Example ad"), then the narrator's
+ * card is picked for the spoken CTA ("Click the link in bio"). Checks the production renderer's port of render_wall.py.
+ */
+export function wallFixture(words: Record<string, { w: string; s: number; e: number }[]> = {}): Edl {
+  const SPIN = 1.62;
+  const picks = [
+    { key: "clip:pick_1", file: "wall/makeup.mp4", frame: "wall/makeup.jpg", a: 0.45, b: 6.6, chip: "Example ad · beauty", text: "Get ready with me. This lip oil stays on all day, even in this Kigali heat." },
+    { key: "clip:pick_2", file: "wall/food.mp4", frame: "wall/food.jpg", a: 0.6, b: 5.7, chip: "Example ad · food delivery", text: "Brochettes at my door, still hot. Thank you." },
+    { key: "clip:pick_3", file: "wall/founder.mp4", frame: "wall/founder.jpg", a: 0.45, b: 5.75, chip: "Example ad · websites", text: "Most customers Google you before they call. We build websites that bring you those calls." },
+    { key: "clip:cta", file: "wall/cta.mp4", frame: "wall/founder.jpg", a: 0.45, b: 3.6, chip: "", text: "Your business needs content like this. Click the link in bio." },
+  ];
+  const assets: Edl["assets"] = {
+    "clip:intro": { kind: "video", ref: "fixture:wall/intro.mp4", seconds: 5.03, ...(words["clip:intro"] ? { words: words["clip:intro"] } : {}) },
+    "music:main": { kind: "audio", ref: "fixture:wall/main.mp3", seconds: 30.77, bpm: 107 },
+    logo: { kind: "image", ref: "repo:public/icon.png" },
+  };
+  const cards: string[] = [];
+  for (const [i, p] of picks.entries()) {
+    assets[p.key] = { kind: "video", ref: `fixture:${p.file}`, seconds: 7, ...(words[p.key] ? { words: words[p.key] } : {}) };
+    assets[`card:${i}`] = { kind: "image", ref: `fixture:${p.frame}` };
+    cards.push(`card:${i}`);
+  }
+  for (const name of ["bakery", "cafe", "carwash", "fashion", "gym", "phones", "salon", "school"]) {
+    assets[`card:${name}`] = { kind: "image", ref: `fixture:wall/cards/${name}.jpg` };
+    cards.push(`card:${name}`);
+  }
+  const segments: Edl["segments"] = [];
+  const voice: Edl["voice"] = [];
+  const heard = (key: string, a: number, b: number) => {
+    const ws = words[key]?.filter((w) => w.e > a && w.s < b) ?? [];
+    return { from: r3(Math.max(a, (ws[0]?.s ?? a) - 0.05)), to: r3(Math.min(b, (ws.at(-1)?.e ?? b - 0.2) + 0.12)) };
+  };
+  const intro = heard("clip:intro", 0, 5.03);
+  const introEnd = r3(Math.max(3.9, intro.to - intro.from + 0.6));
+  segments.push({ id: "intro", beat: "intro", start: 0, end: introEnd, source: "wall", clipOffset: 0, effects: [{ id: "poster_wall", params: {} }], tags: { cam: "poster wall" } });
+  voice.push({ id: "line-intro", character: "narrator", text: "Every business in Kigali is fighting for attention. Watch what actually stops the scroll.", source: "omni", language: "en", asset: "clip:intro", from: intro.from, to: intro.to, at: 0.25, effects: [], cta: false });
+  let t = introEnd;
+  const sfx: Edl["sfx"] = [];
+  for (const [i, p] of picks.entries()) {
+    const spinEnd = r3(t + SPIN);
+    segments.push({ id: `pick_${i + 1}-spin`, beat: `pick_${i + 1}`, start: r3(t), end: spinEnd, source: "wall", clipOffset: 0, wallPick: i, effects: [{ id: "poster_wall", params: {} }], ...(i > 0 ? { transitionIn: { id: "wall_collapse", seconds: 0.4 } } : {}) });
+    for (let k = 0; k < 9; k++) sfx.push({ at: r3(t + 1.3 * Math.pow(k / 9, 0.6)), kind: "click", gainDb: -15 });
+    sfx.push({ at: r3(t + 1.3), kind: "boom", gainDb: -14 });
+    const end = r3(spinEnd + (p.b - p.a));
+    const last = i === picks.length - 1;
+    segments.push({ id: last ? "cta" : `pick_${i + 1}`, beat: last ? "cta" : `pick_${i + 1}`, start: spinEnd, end, source: "ai_clip", asset: p.key, clipOffset: p.a, wallPick: i, effects: [], transitionIn: { id: "wall_expand", seconds: 0.42 }, ...(p.chip ? { chip: p.chip } : {}) });
+    sfx.push({ at: spinEnd, kind: "whoosh", gainDb: -10 });
+    const h = heard(p.key, p.a, p.b);
+    voice.push({ id: `line-${i}`, character: last ? "narrator" : `creator${i + 1}`, text: p.text, source: "omni", language: "en", asset: p.key, from: h.from, to: h.to, at: r3(spinEnd + h.from - p.a), effects: [], cta: last });
+    t = end;
+  }
+  const total = r3(t + 2.2);
+  segments.push({ id: "end", beat: "end", start: r3(t), end: total, source: "end_card", clipOffset: 0, effects: [] });
+  return {
+    version: 1,
+    recipe: "poster_wall",
+    kind: "ad",
+    ctaId: "link-in-bio",
+    effects: ["poster_wall", "slam", "punch_in"],
+    wall: { cards, picks: cards.slice(0, picks.length) },
+    canvas: { w: 720, h: 1280, fps: 24, seconds: total },
+    brand: { name: "BuPulse", url: "bupulse.com", primary: "#2f6bff", accent: "#7b5cff", logo: "logo" },
+    characters: [{ id: "narrator", name: "Narrator" }],
+    assets,
+    segments: segments.map((s) => (s.id === "pick_1" ? { ...s, effects: [{ id: "punch_in", params: { zoom: 1.08, seconds: 0.3 } }] } : s)),
+    voice,
+    titles: [{ text: "WHAT STOPS THE SCROLL?", start: 0.6, end: r3(introEnd - 0.1), style: "slam", y: 0.14 }],
+    captions: { style: "karaoke", y: 0.7 },
+    music: { asset: "music:main", gainDb: -6, duckDb: 11, mainOffset: 0.5, bpm: 107, beatPulse: false },
+    sfx,
+    endCard: { headline: "Content that sells", button: "Link in bio", sub: "bupulse.com" },
+  };
+}
+
+export const FIXTURES = { twist: twistFixture, wall: wallFixture } as const;
 export type FixtureName = keyof typeof FIXTURES;
 export const isFixtureName = (v: unknown): v is FixtureName => typeof v === "string" && Object.hasOwn(FIXTURES, v);

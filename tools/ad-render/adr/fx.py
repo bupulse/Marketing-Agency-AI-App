@@ -437,3 +437,44 @@ def _tap(c, im, k, t, params, idx, tap, host):
 
 def clamp01(x):
     return clamp(x, 0.0, 1.0)
+
+
+# ---- Added with the research formats (11 Nov 2026) --------------------------------------------------------------------
+@segment_fx("timer")
+def _timer(im, ctx):
+    """The 60-second challenge's honest clock: counts down from `from` seconds with the video's own time since `start`,
+    and says SPED UP (the screens are a montage, never a faked real time). Drawn on top of the picture."""
+    p = ctx["params"]
+    left = max(0.0, float(p.get("from", 60)) - (ctx["t"] - float(p.get("start", 0))))
+    c = im.convert("RGBA")
+    d = ImageDraw.Draw(c)
+    txt = "%02d:%02d" % (int(left) // 60, int(left) % 60)
+    f = font("mono", 54)
+    tw = d.textlength(txt, font=f)
+    x, y = W - tw - 60, 318
+    d.rounded_rectangle((x - 22, y - 12, x + tw + 22, y + 70), 18, fill=(0, 0, 0, 190))
+    d.text((x, y), txt, font=f, fill=(255, 80, 80, 255) if left < 10 else (255, 255, 255, 255))
+    label = str(p.get("label", "SPED UP"))[:12]
+    if label:
+        lf = font("bold", 22)
+        lw = d.textlength(label, font=lf)
+        d.rounded_rectangle((x + tw + 22 - lw - 28, y + 80, x + tw + 22, y + 116), 14, fill=(255, 225, 77, 230))
+        d.text((x + tw + 22 - lw - 14, y + 85), label, font=lf, fill=(20, 20, 20, 255))
+    return c.convert("RGB")
+
+
+def split_picture(actor, screen, brand):
+    """Split-screen reveal: the actor's clip on top, the REAL screen below fitted on a blurred fill, a thin divider."""
+    top_h = H // 2
+    out = Image.new("RGB", (W, H), (10, 10, 14))
+    out.paste(ImageOps.fit(actor, (W, top_h), centering=(0.5, 0.3)), (0, 0))
+    fill = ImageOps.fit(screen, (W, H - top_h)).filter(ImageFilter.GaussianBlur(24))
+    fill = ImageEnhance.Brightness(fill).enhance(0.55)
+    out.paste(fill, (0, top_h))
+    sw, sh = screen.size
+    scale = min((W - 40) / sw, (H - top_h - 40) / sh)
+    shown = screen.resize((max(1, int(sw * scale)), max(1, int(sh * scale))), Image.LANCZOS)
+    out.paste(rounded(shown, 14).convert("RGB"), ((W - shown.size[0]) // 2, top_h + (H - top_h - shown.size[1]) // 2), rounded(shown, 14))
+    d = ImageDraw.Draw(out)
+    d.rectangle((0, top_h - 2, W, top_h + 2), fill=tuple(brand))
+    return out

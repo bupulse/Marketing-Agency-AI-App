@@ -317,7 +317,7 @@ $0.14 in all.
    - `python -m pip install -r D:\BuPulse\tools\ad-render\requirements.txt`
    - check with `python D:\BuPulse\tools\ad-render\render.py selftest`
 4. **Update the PC**: `powershell -ExecutionPolicy Bypass -File D:\BuPulse\scripts\self-host\windows\update.ps1`. Its
-   build runs `prisma migrate deploy`, which applies the three migrations to production. Then restart the "BuPulse
+   build runs `prisma migrate deploy`, which applies the four Ad Brain migrations to production. Then restart the "BuPulse
    server" task so it sees the new PATH (Python, ffmpeg, Chrome).
 5. **Admin settings** on bupulse.com:
    - AI → monthly AI cap **$60**
@@ -333,3 +333,36 @@ $0.14 in all.
    - Then "Make an ad": about $2-3 and 15-30 minutes. The owner approved this first full ad on the live site.
 9. **Check the result**: the ad plays in the company account's Videos library, and its 4 posts wait on the Posts page.
    Approve one by hand only after watching it.
+
+## 14. Kinds, soft CTAs, real people, new formats, variants (11 Nov 2026, branch `ad-brain`)
+
+Owner requests relayed by the coordinator. No paid calls were made for this part.
+
+- **Kind** (`AdJob.kind`, `Concept.kind`, `Edl.kind`): `ad` or `content`. Recipes carry `kinds`; `pickRecipe({ kind })`
+  only picks formats of that kind. The brain is told a content video is not an ad (`KIND_BRIEF` in `brain.ts`).
+- **Soft CTAs** (`lib/ad-brain/ctas.ts`): the 10 CTAs of `docs/research/ad-formats.json`, each with how the actor says
+  it, a tone (soft/direct) and the words that show a line carries it. The concept step plans one (`pickCta`): a
+  recipe's own CTAs first, never one of the last 3 videos', soft only for content. The script must carry it
+  (`script-rules.ts`, `edl.ts` accept the planned CTA or "bupulse dot com"). The actor still **says** it.
+- **Money words** ("free", prices) are no longer a script error, only an EDL warning. If Omni refuses a spoken line at
+  submit (unbilled), the pipeline makes that line a voice-over and the clip silent (`SpeechRefused` → `speechFallback`).
+- **Real people** (`lib/ad-brain/realism.ts`): the owner's proven candid-iPhone prompt is in every person picture,
+  the video prompts ask for a real handheld phone, the brain writes characters by the research's real-human guide,
+  and slop words are removed (`realistic`). A beat may name a real product photo (`product`, loaded from Business
+  info `ProductPhoto`); that photo is sent to Nano Banana as a second reference and is part of the cache hash.
+- **New formats** (`recipes.ts`): identity reveal, split-screen reveal (`split` picture: the AI clip on top, the beat's
+  first real screen below), 60-second challenge (`timer`, labelled "SPED UP"), things I wish I knew (content, a
+  voice-over over 3 screens with numbered `list` titles), behind the scenes (content), day in the life (content), and
+  the poster wall ported from `~/bupulse-ugc-ads/wall/render_wall.py` (`wall` picture, `wall_expand`/`wall_collapse`,
+  each sample ad its own person and labelled "Example ad · <business>"). Renderer: `tools/ad-render/adr/wall.py`,
+  `fx.py` (split, timer), `text.py` (list). Required effects of a recipe (timer, poster wall) are always placed.
+- **Planner timing**: a short split video holds the split beats longer (her clip runs on as a reaction), then the end
+  card, but never so long that a CTA said before the end card leaves the last 8 s.
+- **Variants** (`lib/ad-brain/variants.ts`): "3 hooks", "2 CTAs" or both (at most 5 extra videos). When the ad is
+  ready, the brain writes the other hooks (one short text call), each combination becomes an `AdJob` with
+  status `waiting`, `variantOf` and `variantLabel`, and the ad's concept and script with only the hook line and CTA
+  changed. `promoteWaitingVariant` starts the oldest one (at the assets step) when nothing else is being made; every
+  unchanged picture and clip comes from the cache, so a variant costs about one hook clip and one CTA line. Admin:
+  the kind and variant choices in "Make an ad", "Make variants" on a finished ad, kind/variant/CTA on each card.
+- **Fixture** `wall`: the owner's 11 Nov poster wall (judge 8/10), re-rendered free by "Re-render the cached ad".
+- **Migration** `20261111120000_ad_brain_kinds_variants` (applied to TEST).

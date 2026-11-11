@@ -53,6 +53,45 @@ def pop_title(c, text, lt, y, brand):
     c.alpha_composite(lay, ((W - lay.size[0]) // 2, int(y - lay.size[1] // 2)))
 
 
+@title_style("list")
+def list_title(c, text, lt, y, brand):
+    """A numbered tip ("1. POST EVERY WEEK") slides in on a white card in the top third, with a tick that pops."""
+    if lt <= 0:
+        return
+    k = ease(lt / 0.25)
+    m = re.match(r"^\s*(\d+)[.)]?\s*(.*)$", text)
+    num, body = (m.group(1), m.group(2)) if m else ("", text)
+    f = font("black", 40)
+    d0 = ImageDraw.Draw(c)
+    while d0.textlength(body, font=f) > W - 220 and f.size > 24:
+        f = font("black", f.size - 3)
+    tw = d0.textlength(body, font=f)
+    h = 96
+    card_w = int(tw + (150 if num else 60))
+    lay = Image.new("RGBA", (card_w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(lay)
+    d.rounded_rectangle((0, 0, card_w - 1, h - 1), 26, fill=(255, 255, 255, 240))
+    x = 24
+    if num:
+        d.ellipse((x, 18, x + 60, 78), fill=tuple(brand) + (255,))
+        nf = font("black", 34)
+        nw = d.textlength(num, font=nf)
+        d.text((x + 30 - nw / 2, 26), num, font=nf, fill=(255, 255, 255, 255))
+        x += 80
+    d.text((x, (h - f.size) / 2 - 4), body, font=f, fill=(20, 22, 35, 255))
+    x0 = int((W - card_w) / 2 - (1 - k) * 120)
+    lay.putalpha(lay.getchannel("A").point(lambda v: int(v * k)))
+    c.alpha_composite(lay, (max(0, x0), int(y - h / 2)))
+    if lt > 0.35:  # the tick
+        tk = ease((lt - 0.35) / 0.15)
+        d2 = ImageDraw.Draw(c)
+        cx, cy = min(W - 40, x0 + card_w + 6), int(y - h / 2) - 8
+        r = int(22 * tk)
+        if r > 2:
+            d2.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(40, 200, 110, 255))
+            d2.line([(cx - r * 0.45, cy), (cx - r * 0.1, cy + r * 0.4), (cx + r * 0.5, cy - r * 0.35)], fill=(255, 255, 255, 255), width=max(2, r // 5))
+
+
 # ---- Captions ---------------------------------------------------------------------------------------------------------
 def caption_words(edl):
     """Every spoken word on the ad's timeline. The script's own words (right spelling) take the transcript's timings;

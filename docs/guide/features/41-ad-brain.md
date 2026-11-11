@@ -13,9 +13,15 @@ needed, and delivers the finished ad. **Nothing is published by itself**: the ad
 ## Make an ad
 
 1. Open **Admin → Ad Brain**.
-2. Open **Make an ad**. If you like, type a note for the brain, such as "push Autopilot" or "posts in Kinyarwanda".
-   Leave it empty to let the brain choose.
-3. Press **Make an ad**. Only one ad is made at a time.
+2. Open **Make an ad** and choose:
+   - **What kind of video**: **Ad** (sells BuPulse but still feels like content) or **Content** (a tip, a moment
+     behind the scenes, a day in the life; BuPulse is only mentioned).
+   - **Variants** (ads only): "Just this one", "3 hooks", "2 CTAs" or "3 hooks x 2 CTAs". Variants are the same video
+     with another opening line or another spoken call to action, made one after another once the ad is ready. Each one
+     reuses the ad's pictures and clips, so it costs only a new opening clip and CTA line (about $0.50 to $1).
+   - If you like, a note for the brain, such as "push Autopilot" or "posts in Kinyarwanda". Leave it empty to let
+     the brain choose.
+3. Press **Make it**. Only one video is made at a time; variants show as **Waiting its turn** until then.
 4. The ad moves on by itself every 4 minutes (the scheduled jobs). To speed it up, press **Move it on now**.
 5. Watch the card: Reading BuPulse → Choosing the concept → Writing the script → Making the pictures and clips →
    Editing → Being judged → Saving → **Ready**. **Progress** shows each step in plain words.
@@ -24,6 +30,21 @@ needed, and delivers the finished ad. **Nothing is published by itself**: the ad
    hashtags. Approve, edit or delete them there.
 
 A real ad takes about 15 to 30 minutes and costs about **$2 to $3**.
+
+**Variants later:** a finished ad's card has **Make variants** (3 hooks, 2 CTAs, or both) if it has none yet.
+
+**The call to action** is planned before the script and changes from video to video (never one of the last three):
+"Click the link in bio", "Comment AD and we'll DM you", "Request a quote", "Save this for later" and others from the
+research list. Content videos only use the soft ones (save, send, follow, comment). The person always **says** it.
+
+**Formats:** ads use "Who's real?", loop story, creator + screens, identity reveal, split-screen reveal (her reaction
+on top, the real screen below), 60-second challenge (with an honest "sped up" clock) and the poster wall (three
+example ads for sample businesses, each labelled "Example ad", then the narrator's CTA). Content uses "things I wish I
+knew", behind the scenes and a day in the life.
+
+**Real-looking people:** every person picture uses the owner's proven "candid iPhone photo" prompt, and words that make
+pictures look generated ("cinematic", "flawless", "studio lighting"...) are removed from what the brain writes. When a
+real product from Business info is in a picture, its photo is sent as a second reference.
 
 **Free test:** "Re-render the cached ad" re-makes the 10 November "Who's real?" ad from its saved files with the real
 renderer, judges it (about 2 cents) and delivers it. Use it to check that everything works.
@@ -74,7 +95,11 @@ cut off at the end and it has the old "AI-generated" badge.
 - **Spec:** `docs/AD_BRAIN.md` (owner decisions in section 2 are final; the phase 1 build is described at the end).
 - **Code:** `lib/ad-brain/`:
   - `effects.ts`: the effects library and the choice of 3 to 5 signature effects that never repeat a recent look
-  - `recipes.ts`: the formats (twist, loop story, creator talk + screens) and the format choice
+  - `recipes.ts`: the formats, each tagged ad and/or content, and the format choice by kind
+  - `ctas.ts`: the planned soft/direct CTAs (from `docs/research/ad-formats.json`) and their rotation
+  - `realism.ts`: the owner's proven real-person prompt and the slop-word cleaner
+  - `variants.ts`: hooks x CTAs variants of a finished ad (pure); `pipeline.ts` `createVariants` queues them as
+    `waiting` AdJobs (`variantOf`), started one at a time by `promoteWaitingVariant`
   - `script-rules.ts`: the script rules (hook, 25 words per clip, money words, Kinyarwanda, CTA, invented numbers)
   - `edl.ts`: the EDL (the plan as JSON) and its check, including the hard rules
   - `plan.ts`: script → assets to make (prompts) → EDL with real timings
@@ -89,14 +114,15 @@ cut off at the end and it has the old "AI-generated" badge.
   - `deliver.ts`: Gallery, Videos library, posts
   - `store.ts`: the `ad-brain` bucket and asset cache
   - `facts.ts`: the company account, BuPulse's facts, real screens
-  - `fixtures.ts`: the cached twist ad
+  - `fixtures.ts`: the cached twist ad and the owner's poster wall (`wall`)
   - `screen-pass.ts`: the robot's 5-minute signed read-only pass, also checked in `proxy.ts`
   - `screen-user.ts`: the pass's user for `getCurrentUser`, the company account only
   - `screen-plan.ts`: the pages, the 24 h refresh and the empty-page rule
   - `screens.ts`: runs `scripts/ad-brain/capture-screens.mjs` (headless Chrome) and stores the captures
 - **BuPulse's gallery space:** `lib/media/company-video-max.ts` (setting `adBrainGalleryVideoMb`).
   - `service.ts`: Admin
-- **Renderer:** `tools/ad-render/` (Python 3.9+, Pillow, numpy, ffmpeg). See its README.
+- **Renderer:** `tools/ad-render/` (Python 3.9+, Pillow, numpy, ffmpeg). See its README. The poster wall is
+  `adr/wall.py`; the split screen, honest timer and numbered list titles are in `adr/fx.py` and `adr/text.py`.
 - **Admin:**
   - page: `app/admin/(console)/(ai)/ad-brain/` (data), drawn by `components/admin/content-ai/ad-brain-view.tsx`
   - limits: `lib/admin/settings.ts` (`adBrainPerAdUsd`, `adBrainMonthlyUsd`, `adBrainGalleryVideoMb`), their own
@@ -104,7 +130,8 @@ cut off at the end and it has the old "AI-generated" badge.
   - previews without sign-in (development only): `/admin/preview/ad-brain`, `/admin/preview/settings-area?area=ad-brain`
 - **Cron:** `/api/cron/video-jobs` (every 4 minutes) calls `sweepAdJobs({ budgetMs: 80_000 })`.
 - **Database:**
-  - migrations `20261110230000_ad_brain` and `20261110233000_ad_brain_video_engine`
+  - migrations `20261110230000_ad_brain`, `20261110233000_ad_brain_video_engine`, `20261110234000_ad_brain_grants` and
+    `20261111120000_ad_brain_kinds_variants` (AdJob `kind`, `variantOf`, `variantLabel`)
   - tables `AdJob` and `AdAsset`, and the private bucket `ad-brain`
   - finished ads are `VideoJob` rows of engine `adbrain`, plus `Post` rows (`PENDING_APPROVAL`, group `ad-<job id>`)
 - **Tests:** `tests/ad-brain/*` (EDL check, budget, effects and the renderer registry, script rules, planner, judge, judge calibration, screen pass and proxy gate, gallery space).

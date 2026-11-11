@@ -11,8 +11,9 @@
 //   audio       a sound treatment (a voice line's effects, or the music's beat grid)
 
 export type EffectKind = "segment" | "transition" | "screen" | "title" | "caption" | "audio";
-export type SegmentSource = "ai_clip" | "ai_still_fx" | "real_screen" | "brand_card" | "end_card";
-export const SEGMENT_SOURCES: readonly SegmentSource[] = ["ai_clip", "ai_still_fx", "real_screen", "brand_card", "end_card"];
+/** Pictures a segment can show; "split" is an actor on top and a real screen below, "wall" the poster wall of ad cards. */
+export type SegmentSource = "ai_clip" | "ai_still_fx" | "real_screen" | "brand_card" | "end_card" | "split" | "wall";
+export const SEGMENT_SOURCES: readonly SegmentSource[] = ["ai_clip", "ai_still_fx", "real_screen", "brand_card", "end_card", "split", "wall"];
 
 export type ParamSpec =
   | { type: "number"; min: number; max: number; default: number }
@@ -41,7 +42,7 @@ export type SfxKind = "whoosh" | "boom" | "glitch" | "scratch" | "rewind" | "typ
 export const SFX_KINDS: readonly SfxKind[] = ["whoosh", "boom", "glitch", "scratch", "rewind", "typewriter", "click", "crash", "riser"];
 
 const PICTURE: readonly SegmentSource[] = ["ai_clip", "ai_still_fx"];
-const ANY_VISUAL: readonly SegmentSource[] = ["ai_clip", "ai_still_fx", "real_screen", "brand_card"];
+const ANY_VISUAL: readonly SegmentSource[] = ["ai_clip", "ai_still_fx", "real_screen", "brand_card", "split"];
 
 export const EFFECTS: readonly EffectDef[] = [
   // ---- On a segment's picture ---------------------------------------------------------------------------------------
@@ -62,6 +63,12 @@ export const EFFECTS: readonly EffectDef[] = [
   { id: "scan_wipe", name: "Scan-line wipe", kind: "transition", core: true, signature: true, sfx: "glitch", describe: "a glowing scan line sweeps over the picture and leaves the next scene behind it, with glitches (a transformation)", params: { direction: { type: "enum", values: ["down", "up"], default: "down" }, color: { type: "enum", values: ["cyan", "pink", "brand"], default: "cyan" } } },
   { id: "white_flash", name: "White flash", kind: "transition", core: true, signature: true, sfx: "boom", describe: "a white flash on the cut, best on a beat drop", params: {} },
   { id: "whip_pan", name: "Whip-pan", kind: "transition", core: true, signature: true, sfx: "whoosh", describe: "a fast blurred sideways pan from one shot into the next", params: {} },
+  { id: "wall_expand", name: "Wall card expands", kind: "transition", core: false, signature: false, sfx: "whoosh", describe: "the picked card on the poster wall grows into the full-screen clip", params: {} },
+  { id: "wall_collapse", name: "Clip shrinks into the wall", kind: "transition", core: false, signature: false, describe: "the clip shrinks back into its card on the poster wall", params: {} },
+
+  // ---- Layouts and overlays added with the research formats (11 Nov 2026) ----------------------------------------------
+  { id: "poster_wall", name: "Poster wall", kind: "segment", sources: ["wall"], core: false, signature: true, sfx: "riser", describe: "a streaming-style wall of ad cards; columns spin like a slot machine with motion blur and decelerating ticks, the picked card glows blue-violet", params: {} },
+  { id: "timer", name: "Honest challenge timer", kind: "segment", sources: ["real_screen", "split", "ai_clip"], core: false, signature: true, sfx: "click", describe: "a countdown clock in the corner that runs with the video, labelled \"sped up\" (never a faked time)", params: { from: { type: "number", min: 10, max: 120, default: 60 }, start: { type: "number", min: 0, max: 60, default: 0 }, label: { type: "text", max: 12, default: "SPED UP" } } },
 
   // ---- How a REAL screen capture is shown ---------------------------------------------------------------------------
   { id: "browser_window", name: "Browser window drift", kind: "screen", sources: ["real_screen"], core: true, signature: true, describe: "the real screenshot in a floating browser window with a slow 3D drift and push-in, on a dark tech grid", params: { zoom: { type: "number", min: 1, max: 1.4, default: 1.15 }, fx: { type: "number", min: 0, max: 1, default: 0.5 }, fy: { type: "number", min: 0, max: 1, default: 0.4 } } },
@@ -72,6 +79,7 @@ export const EFFECTS: readonly EffectDef[] = [
   { id: "slam", name: "Kinetic slam title", kind: "title", core: true, signature: true, sfx: "boom", describe: "a bold skewed title slams in big and settles, with a shadow", params: {} },
   { id: "typewriter", name: "Typewriter text", kind: "title", core: true, signature: true, sfx: "typewriter", describe: "a line types itself on a black strip with a blinking cursor", params: {} },
   { id: "pop", name: "One-word pop", kind: "title", core: false, signature: false, describe: "one big yellow word pops in", params: {} },
+  { id: "list", name: "Numbered list title", kind: "title", core: false, signature: false, describe: "a numbered tip (\"1. POST EVERY WEEK\") slides in on a card in the top third with a tick", params: {} },
   { id: "karaoke", name: "Word-by-word captions", kind: "caption", core: true, signature: false, describe: "CapCut-style captions, three words at a time, the spoken word in yellow", params: {} },
   { id: "one_word", name: "One-word pop captions", kind: "caption", core: true, signature: false, describe: "each spoken word pops alone, big, in the middle", params: {} },
 

@@ -53,13 +53,15 @@ describe("the EDL check", () => {
     expect(errorsOf(g)).toMatch(/must be the last line|in the last 8 s/);
   });
 
-  it("hard rule 3: no AI Kinyarwanda voice; Omni speech without money words", () => {
+  it("hard rule 3: no AI Kinyarwanda voice; money words in Omni speech only warn", () => {
     const e = clone(twistFixture());
     e.voice[0].language = "rw";
     expect(errorsOf(e)).toMatch(/Kinyarwanda needs a real recorded voice/);
     const f = clone(twistFixture());
     f.voice[0].text = "Get it free today";
-    expect(errorsOf(f)).toMatch(/money words/);
+    // Money words in Omni speech are allowed now (with the TTS fallback): a warning, not an error.
+    expect(errorsOf(f)).not.toMatch(/money words/);
+    expect(validateEdl(f).warnings.join(" ")).toMatch(/money words/);
     const g = clone(twistFixture());
     g.voice[4].text = "Check out BuPulse dot com and get a free quote."; // TTS may say "free"
     expect(validateEdl(g).ok).toBe(true);

@@ -9,7 +9,7 @@ import { prisma } from "@/lib/db";
 import { FEATURES } from "@/lib/features";
 import { getSellablePlans } from "@/lib/plan-catalog";
 import { fixtureWordFiles } from "./fixtures";
-import type { BrandInfo, ScreenCapture } from "./plan";
+import type { BrandInfo, ProductPhoto, ScreenCapture } from "./plan";
 import { adBrainCompanyEmail } from "./screen-pass";
 import { currentCaptures } from "./screen-plan";
 import { assetHash, findAsset, fixtureDir, saveAsset } from "./store";
@@ -28,7 +28,7 @@ export async function companyAccount(): Promise<{ userId: string; businessId: st
 /** BuPulse's brand: the site, Pulse Blue and Pulse Violet (docs/handovers/video-engine-map.md), the app icon. */
 export const BUPULSE_BRAND: BrandInfo = { name: "BuPulse", url: "bupulse.com", primary: "#2f6bff", accent: "#7b5cff", logoRef: "repo:public/icon.png" };
 
-export type Facts = { text: string; brand: BrandInfo; screens: ScreenCapture[]; recentPosts: string[] };
+export type Facts = { text: string; brand: BrandInfo; screens: ScreenCapture[]; recentPosts: string[]; products: ProductPhoto[] };
 
 const line = (s: string | null | undefined, max = 400) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 
@@ -52,7 +52,9 @@ export async function loadFacts(businessId: string): Promise<Facts> {
     business ? `COMPANY ACCOUNT BUSINESS INFO (${line(business.name, 80)}): ${line(business.description || business.industryDescription, 500)}${business.audience ? ` Audience: ${line(business.audience, 300)}` : ""}` : "",
     ...products.map((p) => `- Product ${line(p.name, 80)}: ${line(p.summary, 200)}${p.usps.length ? ` Why: ${p.usps.slice(0, 4).join("; ")}` : ""}`),
   ].filter(Boolean);
-  return { text: text.join("\n").slice(0, 8000), brand: BUPULSE_BRAND, screens, recentPosts: posts.map((p) => line(p.text, 200)) };
+  // Real product photos (Business info): a second reference for any picture that shows a real product.
+  const photos = await prisma.productPhoto.findMany({ where: { product: { businessId, status: "ACTIVE" }, asset: { kind: "photo" } }, orderBy: [{ productId: "asc" }, { position: "asc" }], take: 12, select: { assetId: true, product: { select: { name: true } }, asset: { select: { path: true } } } });
+  return { text: text.join("\n").slice(0, 8000), brand: BUPULSE_BRAND, screens, recentPosts: posts.map((p) => line(p.text, 200)), products: photos.map((p) => ({ id: p.assetId, name: line(p.product.name, 80), path: p.asset.path })) };
 }
 
 /** The real screen captures the ads may show (AdAsset rows of kind "screen"), newest first. */
@@ -108,9 +110,9 @@ export async function seedPrototypeScreens(jobId: string | null = null): Promise
 }
 
 /** The fixture's word timings (from its folder), for a fixture job. */
-export async function fixtureWords(): Promise<Record<string, { w: string; s: number; e: number }[]>> {
+export async function fixtureWords(files: Record<string, string> = fixtureWordFiles): Promise<Record<string, { w: string; s: number; e: number }[]>> {
   const out: Record<string, { w: string; s: number; e: number }[]> = {};
-  for (const [key, rel] of Object.entries(fixtureWordFiles)) {
+  for (const [key, rel] of Object.entries(files)) {
     const text = await fs.readFile(path.join(/*turbopackIgnore: true*/ fixtureDir(), rel), "utf8").catch(() => null);
     if (text) out[key] = (JSON.parse(text) as { words: { w: string; s: number; e: number }[] }).words;
   }

@@ -21,8 +21,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from adr import audio  # noqa: E402
 from adr.core import FPS, H, W, Clips, bg_tech, ease, ffmpeg_bin, font_path, hex_rgb, load_fitted, load_image, zoom  # noqa: E402
-from adr.fx import SCREEN, SEGMENT, TRANSITION, punch, rgb_split  # noqa: E402
+from adr.fx import SCREEN, SEGMENT, TRANSITION, punch, rgb_split, split_picture  # noqa: E402
 from adr.text import TITLES, caption_groups, caption_words, end_card, float_card, karaoke, one_word  # noqa: E402
+from adr.wall import Wall, chip  # noqa: E402
 
 PICTURE_FX_ORDER = ["slow_push", "bounce_cam", "punch_in", "camera_shake", "night_grade", "scanlines", "tape_rewind", "freeze_frame", "rgb_split", "slice_glitch", "debris"]
 
@@ -55,6 +56,18 @@ class Ad:
         self.bpm = float(m.get("bpm") or 0)
         self.drop = float(m.get("dropAt") or 0)
         self.pulse = bool(m.get("beatPulse"))
+        # The poster wall (adr/wall.py), built once from its cards.
+        self.wall = Wall(self) if self.edl.get("wall") else None
+
+    def wall_picture(self, key):
+        """A wall card's picture: an image as it is, a real screen with its crop, a clip's frame at 1 s."""
+        a = self.assets.get(key) or {}
+        if a.get("kind") == "screen":
+            return self.screen_image(key)
+        if a.get("kind") == "video":
+            self.clips.prepare(key, self.path(key))
+            return self.clips.frame(key, 1.0)
+        return load_image(self.path(key))
 
     def path(self, key):
         p = self.files.get(key)
@@ -90,6 +103,8 @@ class Ad:
         src = seg["source"]
         if src == "real_screen":
             return self.screen(seg, t, lt / dur).convert("RGB")
+        if src == "wall":
+            return self.wall.segment_picture(seg, t) if self.wall else bg_tech(t, self.brand)
         if src in ("end_card", "brand_card"):
             c = bg_tech(t, self.brand).convert("RGBA")
             end_card(c, lt / dur, self.edl["endCard"], self.brand, self.logo, self.face, self.host)
@@ -101,6 +116,9 @@ class Ad:
             lt_pic = lt
         if src == "ai_clip":
             im = self.clips.frame(seg["asset"], float(seg.get("clipOffset", 0)) + lt_pic)
+        elif src == "split":
+            # The actor's clip on top, the real screen below (hard rule 1: always a capture).
+            im = split_picture(self.clips.frame(seg["asset"], float(seg.get("clipOffset", 0)) + lt_pic), self.screen_image(seg["screen"]), self.brand)
         else:
             im = load_fitted(self.path(seg["asset"]))
             # Stills keep moving a little unless an effect moves them.
@@ -139,7 +157,13 @@ class Ad:
             p = (t - seg["start"]) / max(0.04, tr["seconds"])
             if p < 1:
                 prev = self.segments[idx - 1]
-                im = TRANSITION[tr["id"]](self.picture(prev, min(t, prev["end"] - 1e-3) if prev["source"] != "ai_clip" else t, i), im, p, tr.get("params", {}), i, self.brand)
+                if tr["id"] == "wall_expand" and self.wall and seg.get("wallPick") is not None:
+                    im = self.wall.expand(im, seg["wallPick"], p, t)
+                elif tr["id"] == "wall_collapse" and self.wall and prev.get("wallPick") is not None:
+                    # The previous pick's last frame shrinks back into its card.
+                    im = self.wall.collapse(self.picture(prev, prev["end"] - 1e-3, i), prev["wallPick"], p, t)
+                else:
+                    im = TRANSITION[tr["id"]](self.picture(prev, min(t, prev["end"] - 1e-3) if prev["source"] != "ai_clip" else t, i), im, p, tr.get("params", {}), i, self.brand)
         # A small pulse on every beat after the drop, and a punch with a split on each real screen cut.
         if seg["source"] == "real_screen" and self.pulse and self.bpm:
             k = (t - seg["start"])
@@ -160,6 +184,11 @@ class Ad:
                     float_card(c, card, o["label"], kk, 20 - int(out * 400), 250, 250, 6, -1, self.brand)
                 else:
                     float_card(c, card, o["label"], kk, 440 + int(out * 400), 250, 250, -6, 1, self.brand)
+        if seg.get("chip"):  # an example ad on the poster wall says so
+            chip(c, seg["chip"], ease(lt / 0.3), self.brand)
+        timer = self.effect(seg, "timer")
+        if timer:  # the honest challenge clock, on top of any picture
+            c = SEGMENT["timer"](c.convert("RGB"), {"t": t, "lt": lt, "dur": dur, "k": lt / max(0.05, dur), "i": i, "seg": seg, "params": timer.get("params", {})}).convert("RGBA")
         for ti in self.edl.get("titles", []):
             if ti["start"] <= t < ti["end"] and ti["style"] in TITLES:
                 TITLES[ti["style"]](c, ti["text"], t - ti["start"], ti.get("y", 0.12) * H, self.brand)
@@ -167,6 +196,10 @@ class Ad:
         y = self.edl.get("captions", {}).get("y", 0.7) * H
         if seg["source"] == "real_screen":
             y = 0.875 * H
+        elif seg["source"] == "split":
+            y = 0.40 * H
+        elif seg["source"] == "wall":
+            y = 0.80 * H
         elif seg["source"] == "end_card":
             y = 0.78 * H
         if style == "karaoke":

@@ -216,13 +216,19 @@ const TRACKS = [
 const AD_OVERVIEW: AdBrainOverview = { limits: { perAdUsd: 3, monthlyUsd: 30 }, monthSpentUsd: 2.71, screens: 11, capturedAt: ago(5), fixtures: false, account: { email: "office@bupulse.com", name: "BuPulse" } };
 const AD_JOBS: AdJobView[] = [
   {
-    id: "ad2", status: "assets", mode: "real", createdAt: ago(0.3), createdBy: "owner@example.com", costUsd: 0.47, recipe: "loop_story", effects: ["freeze_frame", "tape_rewind", "white_flash", "typewriter"],
+    id: "ad3", status: "waiting", mode: "real", kind: "ad", variantOf: "ad1", variantLabel: "hook 2 · CTA 1", ctaText: "Click the link in bio", canVary: false, createdAt: ago(25), createdBy: "owner@example.com", costUsd: 0, recipe: "twist", effects: ["scan_wipe", "robot_voice", "browser_window", "slam", "beat_cut"],
+    line: "A creator asks which of two posts was made by AI, then reveals he is the AI.", overall: null, scores: null, checks: null, error: null,
+    log: [{ at: ago(25), step: "waiting", note: "Variant hook 2 · CTA 1 of an ad: waits for its turn." }],
+    seconds: null, segments: [], voice: [], caption: "", hashtags: [], videoUrl: null, postGroupId: null,
+  },
+  {
+    id: "ad2", status: "assets", mode: "real", kind: "content", variantOf: null, variantLabel: null, ctaText: "Save this for later", canVary: false, createdAt: ago(0.3), createdBy: "owner@example.com", costUsd: 0.47, recipe: "loop_story", effects: ["freeze_frame", "tape_rewind", "white_flash", "typewriter"],
     line: "A boutique owner freezes mid-celebration, rewinds to the night she wrote posts by hand, then finds BuPulse.", overall: null, scores: null, checks: null, error: null,
     log: [{ at: ago(0.3), step: "understanding", note: "Real screens captured again: 12 pictures, 2 of empty pages kept out of ads." }, { at: ago(0.25), step: "script", note: "Script written. Call to action: “Check out BuPulse dot com and get a free quote.”" }, { at: ago(0.2), step: "assets", note: "Plan: 6 assets, about $2.05 to make (6 paid)." }],
     seconds: null, segments: [], voice: [], caption: "", hashtags: [], videoUrl: null, postGroupId: null,
   },
   {
-    id: "ad1", status: "ready", mode: "real", createdAt: ago(26), createdBy: "owner@example.com", costUsd: 2.24, recipe: "twist", effects: ["scan_wipe", "robot_voice", "browser_window", "slam", "beat_cut"],
+    id: "ad1", status: "ready", mode: "real", kind: "ad", variantOf: null, variantLabel: null, ctaText: "Click the link in bio", canVary: true, createdAt: ago(26), createdBy: "owner@example.com", costUsd: 2.24, recipe: "twist", effects: ["scan_wipe", "robot_voice", "browser_window", "slam", "beat_cut"],
     line: "A creator asks which of two posts was made by AI, then reveals he is the AI.", overall: 9, scores: { thumbStop: 9, retention: 9, productClarity: 9, wow: 9, humour: 7, sound: 8.5 }, checks: { fakeScreen: false, watermark: false, spokenCta: true, musicTooLoud: false, kinyarwandaAiVoice: false }, error: null,
     log: [{ at: ago(26), step: "judging", note: "Judge: 9/10 (hook 9, retention 9, clarity 9, sound 8.5). Passed: 9/10." }, { at: ago(26), step: "delivering", note: "In the Videos library and 4 posts waiting for your OK." }],
     seconds: 30,
