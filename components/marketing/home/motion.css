@@ -1828,7 +1828,7 @@ html:not(.dark)[data-home-scene="dark"] header img[src*="logo-white"] {
   background: linear-gradient(to bottom, #07070b, #061230 18vh, #061230 calc(100% - 18vh), #140d36);
 }
 .sc.scene-dark {
-  background: linear-gradient(to bottom, #140d36, #140d36 calc(100% - 14vh), transparent);
+  background: #140d36;
 }
 .sc-stage::after {
   /* The wall fades out at the bottom, so the violet scene hands over softly to the light page below. */
@@ -1839,4 +1839,8 @@ html:not(.dark)[data-home-scene="dark"] header img[src*="logo-white"] {
   height: 16%;
   background: linear-gradient(rgba(20, 13, 54, 0), #140d36);
   pointer-events: none;
+}
+.sc-tail {
+  height: 24vh;
+  background: linear-gradient(#140d36, color-mix(in srgb, #140d36 35%, transparent) 55%, transparent);
 }

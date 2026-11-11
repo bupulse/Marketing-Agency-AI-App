@@ -41,6 +41,7 @@ export function PostShowcase() {
   useScrollProgress(ref, onProgress);
 
   return (
+    <>
     <section ref={ref} id="designs" aria-labelledby="designs-title" data-scene="violet" data-story="0" className="sc scene-dark scroll-mt-24">
       <div className="sc-stage">
         <div className="sc-wall-wrap">
@@ -83,5 +84,8 @@ export function PostShowcase() {
         <p className="sc-note m-0">Example posts for example businesses, made by BuPulse.</p>
       </div>
     </section>
+    {/* After the wall lets go, the violet fades into the light page below. */}
+    <div aria-hidden className="sc-tail" />
+    </>
   );
 }
