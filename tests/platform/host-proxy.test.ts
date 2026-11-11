@@ -163,6 +163,21 @@ describe("with the split on", () => {
     expect(action.headers.get("x-middleware-rewrite")).toBe("https://marketing.bupulse.com/dashboard/posts");
   });
 
+  it("Next.js's own fetch of an action's redirect target: the visitor's host and cookie, and no cross-host redirect", async () => {
+    auth.signedIn = true;
+    const self = (path: string) => new NextRequest(`http://localhost:3002${path}`, { headers: { host: "localhost:3002", "x-forwarded-host": "marketing.bupulse.com" } });
+    const page = await proxy(self("/settings"));
+    expect(page.headers.get("x-middleware-rewrite")).toBe("http://localhost:3002/dashboard/settings");
+    expect(lastCookieOptions()).toMatchObject({ name: "bp-client-auth", domain: ".bupulse.com" });
+    // A redirect is left to the browser (an empty non-RSC answer), never followed by the server without cookies.
+    const old = await proxy(self("/dashboard/settings"));
+    expect(old.status).toBe(204);
+    expect(old.headers.get("location")).toBeNull();
+    auth.signedIn = false;
+    const gate = await proxy(self("/settings"));
+    expect(gate.status).toBe(204);
+  });
+
   it("a forged Host header is just the front host: no redirect anywhere else", async () => {
     const res = await proxy(new NextRequest("https://bupulse.com/dashboard", { headers: { host: "evil.test" } }));
     expect(new URL(res.headers.get("location")!).origin).toBe("https://marketing.bupulse.com");

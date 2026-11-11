@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { REF_COOKIE, refCookieFor } from "@/lib/sales/ref-cookie";
 import { isSupportPath, supportRewriteUrl, supportRoute } from "@/lib/support/app-host";
-import { AUTH_SCOPE_COOKIE, authCookieFor, authScopeValue, frontOrigin, hostKind, hostRewriteUrl, hostRoute, marketingOrigin, sessionCookieOptions } from "@/lib/platform/app-hosts";
+import { AUTH_SCOPE_COOKIE, authCookieFor, authScopeValue, frontOrigin, hostKind, hostRewriteUrl, hostRoute, isSelfFetch, marketingOrigin, requestHost, sessionCookieOptions } from "@/lib/platform/app-hosts";
 
 const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/start-trial", "/book-demo", "/custom-plan", "/account", "/apps"];
 
@@ -19,13 +19,15 @@ const HOST_REDIRECT = 307;
 // Routes each host (lib/platform/app-hosts.ts, lib/support/app-host.ts), refreshes the Supabase session cookie on
 // every request and keeps signed-out visitors out of the dashboard.
 export async function proxy(request: NextRequest) {
-  const host = request.headers.get("host");
   const path = request.nextUrl.pathname;
   // support.bupulse.com serves only the support app: its paths are rewritten under /support (lib/support/app-host.ts).
-  const support = supportRoute(path, host);
-  // bupulse.com, marketing.bupulse.com and admin.bupulse.com (switched off until their addresses are set).
+  const support = supportRoute(path, request.headers.get("host"));
+  // bupulse.com, marketing.bupulse.com and admin.bupulse.com (switched off until their addresses are set). Next.js's own
+  // fetch of a server action's redirect target comes from localhost: its host is in X-Forwarded-Host (requestHost).
+  const host = requestHost(request.headers);
+  const selfFetch = isSelfFetch(request.headers);
   const route = support ? null : hostRoute(request.method, path, request.nextUrl.search, host);
-  if (route?.action === "redirect") return noindexOnApp(NextResponse.redirect(route.url, HOST_REDIRECT), host);
+  if (route?.action === "redirect") return selfFetch ? leaveToBrowser() : noindexOnApp(NextResponse.redirect(route.url, HOST_REDIRECT), host);
   const rewrite = support?.action === "rewrite" ? supportRewriteUrl(support.path, request.nextUrl.search, request.url) : route?.action === "rewrite" ? hostRewriteUrl(route.path, request.nextUrl.search, request.url) : null;
   const pass = () => (rewrite ? NextResponse.rewrite(rewrite, { request }) : NextResponse.next({ request }));
   let response = pass();
@@ -71,6 +73,7 @@ export async function proxy(request: NextRequest) {
     // (lib/auth/safe-next.ts turns it back into the app path). Assets, APIs and auth routes are not gated.
     const appPath = route?.action === "rewrite" ? route.path : path;
     if (PROTECTED.some((p) => appPath === p || appPath.startsWith(`${p}/`))) {
+      if (selfFetch) return leaveToBrowser();
       const url = new URL("/login", frontOrigin());
       url.searchParams.set("next", `${marketingOrigin()}${path}${request.nextUrl.search}`);
       return noindexOnApp(NextResponse.redirect(url, HOST_REDIRECT), host);
@@ -102,6 +105,15 @@ export async function proxy(request: NextRequest) {
   if (ref) response.cookies.set(ref.name, ref.value, ref.options);
 
   return response;
+}
+
+/**
+ * A host redirect asked for by Next.js's own fetch of a server action's redirect target: answered with an empty, non-RSC
+ * response, so Next.js does not stream that fetch's result (its server-side fetch would follow the redirect to another
+ * host without the visitor's cookies) and lets the browser follow the action's redirect itself, through this proxy.
+ */
+function leaveToBrowser() {
+  return new NextResponse(null, { status: 204 });
 }
 
 function noindexOnApp(response: NextResponse, host: string | null) {

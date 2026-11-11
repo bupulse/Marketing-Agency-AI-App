@@ -3,7 +3,7 @@ import { Suspense, type ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { HostsProvider } from "@/components/platform/hosts";
-import { frontOrigin, hostKind, hostsConfig, marketingOrigin } from "@/lib/platform/app-hosts";
+import { frontOrigin, hostKind, hostsConfig, marketingOrigin, requestHost } from "@/lib/platform/app-hosts";
 import { pickedServices } from "@/lib/platform/services-shared";
 import { BackgroundBlobs } from "@/components/motion";
 import { AppShell, type ShellNotice } from "@/components/app/app-shell";
@@ -44,7 +44,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const { user, business, role, displayName, firstName, email, businessName, usage, entitlements, isTrial, trialDaysLeft, logoUrl, brandColors, pendingDemo, pendingInvoice } =
     await getAppContext();
   // The host the dashboard is shown on (docs/HOSTS.md): links in the browser use its clean addresses.
-  const hosts = { kind: hostKind((await headers()).get("host")), hosts: hostsConfig() };
+  const hosts = { kind: hostKind(requestHost(await headers())), hosts: hostsConfig() };
   // The service switcher in the top bar, once Marketing has its own host: Marketing, Agency (coming soon) and All services.
   const switcher = marketingOrigin() ? { chooser: `${frontOrigin()}/apps?all=1`, agencyPicked: pickedServices(user.user_metadata).includes("agency") } : null;
 

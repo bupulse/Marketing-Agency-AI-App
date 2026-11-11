@@ -365,3 +365,24 @@ export function browserClientCookieDomain(cookieHeader: string): string | null {
   }
   return authCookieFromScope(value)?.domain ?? null;
 }
+
+const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+/**
+ * The host a request is for. Normally its Host header. One exception: Next.js answers a server action's redirect by
+ * fetching the target page from itself (http://localhost:<port>, the server's own address) with the visitor's headers,
+ * so that request's Host is the loopback address while X-Forwarded-Host keeps the visitor's host. Only then is
+ * X-Forwarded-Host used: a request from outside never arrives with a loopback Host (Cloudflare and Netlify route by
+ * the real host), and the host only picks routing and the session cookie's name, never access.
+ */
+export function requestHost(headers: Pick<Headers, "get">): string | null {
+  const host = headers.get("host");
+  if (!LOOPBACK.test((host ?? "").trim())) return host;
+  const forwarded = headers.get("x-forwarded-host")?.split(",")[0].trim();
+  return forwarded && !LOOPBACK.test(forwarded) ? forwarded : host;
+}
+
+/** True for Next.js's own fetch of a server action's redirect target (see requestHost). */
+export function isSelfFetch(headers: Pick<Headers, "get">): boolean {
+  return requestHost(headers) !== headers.get("host");
+}

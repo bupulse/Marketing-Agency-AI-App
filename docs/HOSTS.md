@@ -97,6 +97,14 @@ still sends the registered bupulse.com `redirect_uri` (tests/platform/registered
 
 To switch off: empty the three settings and restart. Everything is back on one host at once (307s are not cached).
 
+## Server actions and the server's own fetch
+
+When a server action redirects (for example the login action to `/apps`), Next.js fetches the target page from the
+server itself (`http://localhost:<port>`) with the visitor's headers. That request's Host is the loopback address, so
+`requestHost()` uses its `X-Forwarded-Host` (only for a loopback Host) for routing and the session cookie, and a host
+redirect asked for by that fetch is answered with an empty response, so the browser follows the action's redirect itself
+(the server's fetch would follow it to another host without the visitor's cookies).
+
 ## Local testing
 
 ```

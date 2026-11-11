@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { HostsProvider } from "@/components/platform/hosts";
-import { hostKind, hostsConfig } from "@/lib/platform/app-hosts";
+import { hostKind, hostsConfig, requestHost } from "@/lib/platform/app-hosts";
 import { AdminShell, type ShellBadges } from "@/components/admin/shell";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getHealthSummary } from "@/lib/admin/health";
@@ -27,7 +27,7 @@ export default async function AdminConsoleLayout({ children }: { children: React
     health: health.status === "ok" ? undefined : { count: health.issues.length, tone: health.status === "problem" ? "danger" : "violet", label: plural(health.issues.length, "health issue", "health issues") },
   };
   return (
-    <HostsProvider kind={hostKind((await headers()).get("host"))} hosts={hostsConfig()}>
+    <HostsProvider kind={hostKind(requestHost(await headers()))} hosts={hostsConfig()}>
       {/* A plain calm page now (the support app's look): the moving background blobs are gone. */}
       <AdminShell email={admin.email} roleName={admin.isOwner && !admin.staffId ? undefined : admin.roleName} permissions={admin.permissions} badges={badges} currency={display.currency}>
         {children}

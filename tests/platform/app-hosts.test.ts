@@ -19,7 +19,9 @@ import {
   hostRoute,
   hostsConfig,
   hrefOn,
+  isSelfFetch,
   marketingAppPath,
+  requestHost,
   marketingOrigin,
   nextFromUrl,
   serviceHome,
@@ -331,5 +333,21 @@ describe("services", () => {
     expect(marketingStatus({ plan: "STANDARD", status: "ACTIVE", trialEndsAt: null }, "Standard", now)).toBe("Standard plan");
     expect(marketingStatus({ plan: "STANDARD", status: "EXPIRED", trialEndsAt: null }, "Standard", now)).toBe("Plan ended");
     expect(marketingStatus(null, null, now)).toBeNull();
+  });
+});
+
+describe("Next.js's own fetch of a server action's redirect target", () => {
+  const h = (init: Record<string, string>) => new Headers(init);
+  it("uses X-Forwarded-Host only when the Host is the server's own loopback address", () => {
+    expect(requestHost(h({ host: "localhost:3002", "x-forwarded-host": "marketing.bupulse.com" }))).toBe("marketing.bupulse.com");
+    expect(isSelfFetch(h({ host: "localhost:3002", "x-forwarded-host": "marketing.bupulse.com" }))).toBe(true);
+    expect(requestHost(h({ host: "127.0.0.1:3041", "x-forwarded-host": "bupulse.localhost:3041" }))).toBe("bupulse.localhost:3041");
+    // A request from outside: its own Host, whatever X-Forwarded-Host says.
+    expect(requestHost(h({ host: "bupulse.com", "x-forwarded-host": "admin.bupulse.com" }))).toBe("bupulse.com");
+    expect(isSelfFetch(h({ host: "bupulse.com", "x-forwarded-host": "admin.bupulse.com" }))).toBe(false);
+    // Local development: the browser itself on localhost.
+    expect(requestHost(h({ host: "localhost:3000", "x-forwarded-host": "localhost:3000" }))).toBe("localhost:3000");
+    expect(requestHost(h({ host: "localhost:3000" }))).toBe("localhost:3000");
+    expect(isSelfFetch(h({ host: "localhost:3000" }))).toBe(false);
   });
 });
