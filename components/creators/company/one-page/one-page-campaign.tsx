@@ -217,6 +217,7 @@ export function OnePageCampaign({ options: o, start }: { options: OnePageOptions
             <StepHead kicker="Step 1" title="Which language should creators read?" hint="The campaign page is shown in it, and the AI writes the brief in it." />
             <ChoiceCards
               label="Language of the campaign"
+              columns={4}
               value={v.language}
               onChange={(language) => set({ language })}
               options={CAMPAIGN_LANGUAGES.map((l) => ({ value: l.code, label: l.label, hint: l.native !== l.label ? l.native : undefined, icon: Languages }))}
