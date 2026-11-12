@@ -7,10 +7,12 @@ import { previewAllowed } from "@/lib/support/preview";
 import { ContactsScreen } from "@/components/contacts/contacts-screen";
 import { InboxScreen } from "@/components/inbox/inbox-screen";
 import { BioScreen } from "@/components/bio/bio-screen";
+import { chosen } from "@/components/admin/kit";
+import { ANALYTICS_VIEWS, AnalyticsScreen, type AnalyticsData, type AnalyticsView } from "@/components/analytics/analytics-screen";
 import { AutomationsScreen, NewAutomationScreen } from "@/components/automations/automations-screen";
 import type { AutomationRow } from "@/lib/automations/service";
 import { WidgetScreen, greetingIdeasFor } from "@/components/widget/widget-screen";
-import { SAMPLE_AUTOMATIONS, SAMPLE_BIO_DAYS, SAMPLE_BIO_SETTINGS, SAMPLE_BIO_SOURCE, SAMPLE_CONTACTS, SAMPLE_CONVERSATIONS, SAMPLE_FIELDS, SAMPLE_LEAD_COUNTS, SAMPLE_LEADS, SAMPLE_TAGS } from "../sample-data";
+import { SAMPLE_ANALYTICS, SAMPLE_AUTOMATIONS, SAMPLE_BIO_DAYS, SAMPLE_BIO_SETTINGS, SAMPLE_BIO_SOURCE, SAMPLE_CONTACTS, SAMPLE_CONVERSATIONS, SAMPLE_FIELDS, SAMPLE_LEAD_COUNTS, SAMPLE_LEADS, SAMPLE_TAGS } from "../sample-data";
 
 export const metadata = { title: "Client preview" };
 
@@ -52,6 +54,15 @@ const SCREENS: Record<string, (sp: SP) => ReactNode | Promise<ReactNode>> = {
   bio: () => <BioScreen initial={SAMPLE_BIO_SETTINGS} saved source={SAMPLE_BIO_SOURCE} days={SAMPLE_BIO_DAYS} baseUrl="https://bupulse.com" siteUrl="https://bupulse.com" readOnly={false} />,
   automations: (sp) => <AutomationsScreen automations={sp.empty ? [] : (SAMPLE_AUTOMATIONS as AutomationRow[])} canEdit socialReady newHref="/preview-c/automations-new" />,
   "automations-new": () => <NewAutomationScreen canEdit socialReady={false} backHref="/preview-c/automations" />,
+  analytics: (sp) => (
+    <AnalyticsScreen
+      data={sp.empty ? ({ ...SAMPLE_ANALYTICS, hasChannels: false } as unknown as AnalyticsData) : (SAMPLE_ANALYTICS as unknown as AnalyticsData)}
+      days={30}
+      view={chosen(sp, "view", ANALYTICS_VIEWS, "overview") as AnalyticsView}
+      params={sp}
+      base="/preview-c/analytics"
+    />
+  ),
   contacts: () => <ContactsScreen contacts={SAMPLE_CONTACTS} total={4} hasMore={false} q="" tag={null} channel={null} tags={SAMPLE_TAGS} fields={SAMPLE_FIELDS} canManage />,
 };
 

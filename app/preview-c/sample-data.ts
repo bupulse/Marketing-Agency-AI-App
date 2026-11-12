@@ -58,4 +58,26 @@ export const SAMPLE_AUTOMATIONS = [
   { id: "a3", name: "Follow up the next day", status: "DRAFT" as const, trigger: null as string | null, keywords: [], channels: [], updatedAt: ago(60 * 2), changed: false, runs: { started: 0, finished: 0, waiting: 0, failed: 0 } },
 ];
 
+export const SAMPLE_ANALYTICS = {
+  hasChannels: true,
+  reminderOnlyChannels: false,
+  measured: 14,
+  awaitingMetrics: 2,
+  reminderPosts: 0,
+  timeZone: "Africa/Kigali",
+  cards: { posts: { value: 16, change: 14 }, reach: { value: 12840, change: 22 }, engagement: { value: 930, change: -6 }, rate: { value: 0.072, change: -3 }, chats: { value: 41, change: 10 }, leads: { value: 12, change: null } },
+  tips: [{ id: "t1", text: "Videos got twice the reach of photos. Try one video a week." }, { id: "t2", text: "Posts at lunchtime (12:00–13:00) did best." }],
+  trend: Array.from({ length: 30 }, (_, i) => ({ label: `D${i}`, start: new Date(Date.now() - (29 - i) * 86_400_000).toISOString().slice(0, 10), reach: 200 + ((i * 97) % 600), engagement: 10 + ((i * 13) % 50), posts: i % 2 })),
+  trendUnit: "day" as const,
+  networks: [
+    { network: "instagram", posts: 9, measured: 8, reach: 8400, engagement: 640, rate: 0.076 },
+    { network: "facebook", posts: 7, measured: 6, reach: 4440, engagement: 290, rate: 0.065 },
+  ],
+  best: [
+    { id: "b1", permalink: null, thumb: null, text: "New mango smoothie, only this week!", network: "instagram", publishedAt: ago(60 * 24 * 4), reach: 2100, engagement: 260, rate: 0.124 },
+    { id: "b2", permalink: null, thumb: null, text: "Our juice bar opens at 8 on Sunday", network: "facebook", publishedAt: ago(60 * 24 * 9), reach: 1500, engagement: 140, rate: 0.093 },
+  ],
+  chat: { conversations: 41, leads: 12, conversion: 0.293, pages: [{ path: "/menu", count: 7 }, { path: "/", count: 5 }] },
+};
+
 export const SAMPLE_FIELDS = [{ id: "f1", key: "district", label: "District", type: "choice", options: ["Gasabo", "Kicukiro", "Nyarugenge"] }];
