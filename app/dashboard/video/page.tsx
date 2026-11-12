@@ -10,6 +10,8 @@ import { latestReel, reelContact, reelEngineOn } from "@/lib/reel-engine/engine"
 import { CLIP_SECONDS } from "@/lib/reel-engine/story";
 import { veoClipUsd, veoModel } from "@/lib/video-engine/veo";
 import { subjectOptions } from "@/lib/knowledge/service";
+import { galleryVideoBytes } from "@/lib/media/service";
+import { companyVideoMaxBytes } from "@/lib/media/rules";
 
 export const metadata = { title: "Videos" };
 
@@ -26,11 +28,16 @@ export default async function VideosPage({ searchParams }: PageProps<"/dashboard
   const reason = typeof params.studio === "string" && REASONS.has(params.studio) ? params.studio : null;
   const focus = typeof params.v === "string" ? params.v.slice(0, 40) : null;
 
-  const [videos, studioOn, reelsOn] = await Promise.all([listLibraryVideos(business.id), isServiceEnabled("studio"), can(role, "content") ? reelEngineOn(business.id) : false]);
+  const [videos, studioOn, reelsOn, products, videoBytes] = await Promise.all([
+    listLibraryVideos(business.id),
+    isServiceEnabled("studio"),
+    can(role, "content") ? reelEngineOn(business.id) : false,
+    // "Upload a video": what a video can be about, and the company's video storage.
+    subjectOptions(business.id).then((o) => o.products.map((p) => ({ id: p.id, name: p.name }))),
+    galleryVideoBytes(business.id),
+  ]);
   // The temporary reel engine (docs/REEL_ENGINE.md): only while it is tested, for the companies it is on for.
-  const [reelProducts, lastReel, contact] = reelsOn
-    ? await Promise.all([subjectOptions(business.id).then((o) => o.products.map((p) => ({ id: p.id, name: p.name }))), latestReel({ userId: business.userId, businessId: business.id }), reelContact(business.id)])
-    : [[], null, null];
+  const [reelProducts, lastReel, contact] = reelsOn ? await Promise.all([products, latestReel({ userId: business.userId, businessId: business.id }), reelContact(business.id)]) : [[], null, null];
   // Opening the library is what "seen" means for the bell; the cards still say "New" this once.
   await markStudioVideosSeen(business.id, videos.filter((v) => v.isNew).map((v) => v.id)).catch(() => {});
 
@@ -39,7 +46,7 @@ export default async function VideosPage({ searchParams }: PageProps<"/dashboard
 
   return (
     <>
-      <PageHeader title="Videos" description="Every video BuPulse made for you, from the Video Studio and your daily posts. Make new ones in the Video Studio; they appear here when they are ready." />
+      <PageHeader title="Videos" description="Every video BuPulse made for you, from the Video Studio and your daily posts, and the ones you upload. Make new ones in the Video Studio; they appear here when they are ready." />
       {reelsOn && <UniqueReels products={reelProducts} brand={{ name: business.name, color: business.brandColors.find((c) => /^#[0-9a-f]{6}$/i.test(c)) ?? "#1B5E20", contact }} clipUsd={veoClipUsd(CLIP_SECONDS, veoModel())} initialReel={lastReel} />}
       <VideoLibrary
         initialVideos={videos}
@@ -49,6 +56,7 @@ export default async function VideosPage({ searchParams }: PageProps<"/dashboard
         reason={reason}
         focus={focus}
         timeZone={business.timezone || "Africa/Kigali"}
+        upload={{ products, storage: { used: videoBytes, max: companyVideoMaxBytes() } }}
       />
     </>
   );
