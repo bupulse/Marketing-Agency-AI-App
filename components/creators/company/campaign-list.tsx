@@ -1,7 +1,9 @@
 import { ArrowRight, Megaphone } from "lucide-react";
 import Link from "next/link";
 import { EmptyState } from "@/components/app/empty-state";
-import { Badge, Button, GlassCard } from "@/components/ui";
+import { CARD, FOCUS, LIFT } from "@/components/admin/kit/tones";
+import { Badge, Button } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { formatShortDate } from "@/components/analytics/format";
 import { CAMPAIGN_STATUS_LABEL, PLATFORM_LABEL, type CampaignStatus, type Platform } from "@/lib/creators/company-forms";
 import type { CampaignRow } from "@/lib/creators/campaigns";
@@ -23,42 +25,49 @@ export function CampaignList({ campaigns }: { campaigns: CampaignRow[] }) {
     );
   }
   return (
-    <GlassCard padding="none" className="divide-y divide-line">
+    <ul className="kit-rise grid grid-cols-1 gap-3 md:grid-cols-2">
       {campaigns.map((c) => {
         // A draft still being set up: "Draft · step 6 of 12", Continue in quick mode, or the detailed wizard.
         const setting = c.status === "DRAFT" && c.setupStep !== null;
         const href = setting ? continueHref(c.id, c.setupStep!) : `/dashboard/creators/${c.id}`;
         return (
-          <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5 hover:bg-soft">
-            <Link href={href} className="flex min-w-0 flex-1 flex-col gap-1 no-underline">
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-[15px] font-semibold">{c.name}</span>
-                <Badge tone={STATUS_TONE[c.status] ?? "neutral"}>{setting ? `Draft · step ${c.setupStep} of ${STEP_COUNT}` : (CAMPAIGN_STATUS_LABEL[c.status as CampaignStatus] ?? c.status)}</Badge>
-                {c.applied > 0 && <Badge tone="violet">{c.applied} new {c.applied === 1 ? "applicant" : "applicants"}</Badge>}
-                {c.hidden && <Badge tone="danger">Hidden by BuPulse</Badge>}
+          <li key={c.id} className={cn("relative flex flex-col gap-3 p-4 sm:p-5", CARD, LIFT)}>
+            <div className="flex items-start gap-3">
+              <span aria-hidden className={cn("inline-flex size-11 shrink-0 items-center justify-center rounded-xl", c.status === "LIVE" ? "bg-brand-gradient text-white" : "bg-soft text-muted")}>
+                <Megaphone className="size-5" />
               </span>
-              <span className="text-[13px] text-muted">
-                {formatShortDate(c.startsOn)} to {formatShortDate(c.endsOn)}
-                {c.platforms.length > 0 && ` · ${c.platforms.map((p) => PLATFORM_LABEL[p as Platform] ?? p).join(", ")}`}
-              </span>
-            </Link>
-            {setting ? (
-              <span className="flex items-center gap-1">
-                <Link href={detailedSetupHref(c.id, c.setupStep!)} className="inline-flex min-h-11 items-center px-2 text-[13px] font-medium text-muted underline underline-offset-2 hover:text-text">
-                  Detailed setup
-                </Link>
-                <Button href={href} size="sm" trailing={<ArrowRight aria-hidden className="size-4" />}>
-                  Continue
-                </Button>
-              </span>
-            ) : (
-              <span className="text-right text-[13px] text-muted">
-                {c.joined} {c.joined === 1 ? "creator" : "creators"} · {c.tasks} {c.tasks === 1 ? "task" : "tasks"}
-              </span>
-            )}
-          </div>
+              <Link href={href} className={cn("flex min-w-0 flex-1 flex-col gap-1 text-text no-underline after:absolute after:inset-0 after:rounded-[22px] after:content-['']", FOCUS)}>
+                <span className="truncate text-[16px] font-bold">{c.name}</span>
+                <span className="text-[13px] text-muted">
+                  {formatShortDate(c.startsOn)} to {formatShortDate(c.endsOn)}
+                  {c.platforms.length > 0 && ` · ${c.platforms.map((p) => PLATFORM_LABEL[p as Platform] ?? p).join(", ")}`}
+                </span>
+              </Link>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={STATUS_TONE[c.status] ?? "neutral"}>{setting ? `Draft · step ${c.setupStep} of ${STEP_COUNT}` : (CAMPAIGN_STATUS_LABEL[c.status as CampaignStatus] ?? c.status)}</Badge>
+              {c.applied > 0 && <Badge tone="violet">{c.applied} new {c.applied === 1 ? "applicant" : "applicants"}</Badge>}
+              {c.hidden && <Badge tone="danger">Hidden by BuPulse</Badge>}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+              {setting ? (
+                <>
+                  <Link href={detailedSetupHref(c.id, c.setupStep!)} className="relative z-10 inline-flex min-h-10 items-center text-[13px] font-medium text-muted underline underline-offset-2 hover:text-text">
+                    Detailed setup
+                  </Link>
+                  <Button href={href} size="sm" className="relative z-10" trailing={<ArrowRight aria-hidden className="size-4" />}>
+                    Continue
+                  </Button>
+                </>
+              ) : (
+                <span className="text-[13px] text-muted">
+                  <strong className="font-semibold tabular-nums text-text">{c.joined}</strong> {c.joined === 1 ? "creator" : "creators"} · <strong className="font-semibold tabular-nums text-text">{c.tasks}</strong> {c.tasks === 1 ? "task" : "tasks"}
+                </span>
+              )}
+            </div>
+          </li>
         );
       })}
-    </GlassCard>
+    </ul>
   );
 }
