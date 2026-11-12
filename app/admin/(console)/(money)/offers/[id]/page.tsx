@@ -14,6 +14,8 @@ import { dateTime } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { clientViewOf, getOffer, offerEditorContext } from "@/lib/offers/service";
 import { formatMinor } from "@/lib/region-format";
+import { getVatSettings } from "@/lib/billing/vat-server";
+import { vatHintText } from "@/components/admin/vat-hint";
 import { withdrawOfferAction } from "../actions";
 
 export const metadata = { title: "Offer" };
@@ -30,7 +32,8 @@ export default async function OfferPage({ params, searchParams }: { params: Prom
     throw e;
   }
   const editing = offer.status === "draft";
-  const ctx = editing ? await offerEditorContext({ businessId: offer.businessId, offerId: offer.id }) : null;
+  const [ctx, vat] = await Promise.all([editing ? offerEditorContext({ businessId: offer.businessId, offerId: offer.id }) : Promise.resolve(null), getVatSettings()]);
+  const vatText = vatHintText(offer.adjustedMinor, offer.currency, vat);
   const facts: [string, string | null][] = [
     ["Created", `${dateTime(offer.createdAt)} by ${offer.createdBy}`],
     ["Sent", offer.sentAt ? dateTime(offer.sentAt) : null],
@@ -38,7 +41,8 @@ export default async function OfferPage({ params, searchParams }: { params: Prom
     ["Accepted", offer.acceptedAt ? `${dateTime(offer.acceptedAt)}${offer.payMethod ? `, paying by ${offer.payMethod === "momo" ? "Mobile Money" : "invoice"}` : ""}` : null],
     ["Paid", offer.paidAt ? dateTime(offer.paidAt) : null],
     ["Withdrawn", offer.withdrawnAt ? `${dateTime(offer.withdrawnAt)}: ${offer.withdrawReason ?? ""}` : null],
-    ["Price", `${formatMinor(offer.adjustedMinor, offer.currency)}${offer.adjustedMinor !== offer.computedMinor ? ` (computed ${formatMinor(offer.computedMinor, offer.currency)}: ${offer.adjustReason ?? ""})` : ""}`],
+    ["Price", `${formatMinor(offer.adjustedMinor, offer.currency)}${vatText ? " before VAT" : ""}${offer.adjustedMinor !== offer.computedMinor ? ` (computed ${formatMinor(offer.computedMinor, offer.currency)}: ${offer.adjustReason ?? ""})` : ""}`],
+    ["With VAT", vatText],
     ["Custom plan", offer.customPlanKey],
   ];
 
@@ -61,7 +65,7 @@ export default async function OfferPage({ params, searchParams }: { params: Prom
       </nav>
 
       {editing && ctx ? (
-        <OfferEditor businessId={offer.businessId} offerId={offer.id} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} notSetUp={ctx.notSetUp} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} />
+        <OfferEditor businessId={offer.businessId} offerId={offer.id} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} notSetUp={ctx.notSetUp} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} vat={vat} />
       ) : (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <Panel icon={Sparkles} tone="green" title="Details" description="What was offered, when, and what happened since.">
@@ -76,7 +80,7 @@ export default async function OfferPage({ params, searchParams }: { params: Prom
               ))}
             </ul>
           </Panel>
-          <OfferCard offer={clientViewOf(offer)} preview />
+          <OfferCard offer={clientViewOf(offer, vat)} preview />
         </div>
       )}
 

@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { addonPriceTable } from "@/lib/offers/addon-prices";
 import { YEARLY_MONTHS } from "@/lib/offers/shared";
+import { getVatSettings } from "@/lib/billing/vat-server";
 
 export const metadata = { title: "Add-on prices" };
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function AddonPricesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("plans.manage"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const table = await addonPriceTable();
+  const [table, vat] = await Promise.all([addonPriceTable(), getVatSettings()]);
 
   return (
     <>
@@ -25,7 +26,7 @@ export default async function AddonPricesPage({ searchParams }: { searchParams: 
         description={`What each feature, block of a limit and extra user costs a month in each region. Custom plan offers add these on top of the base plan (yearly = ${YEARLY_MONTHS} months).`}
       />
       <MoneyNotices sp={sp} />
-      <AddonPricesView table={table} regionKey={param(sp.region)} sp={sp} />
+      <AddonPricesView table={table} regionKey={param(sp.region)} sp={sp} vat={vat} />
     </>
   );
 }

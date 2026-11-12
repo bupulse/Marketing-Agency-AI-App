@@ -9,6 +9,9 @@ import type { listRegionsAdmin } from "@/lib/admin/regions-service";
 import { formatMinor, PAYMENT_METHODS, paymentMethodLabel } from "@/lib/region-format";
 import { removeRegionPriceAction, saveRegionAction, setRegionPriceAction } from "@/app/admin/(console)/(system)/settings/regions/actions";
 import { Notices } from "./notices";
+import type { VatSettings } from "@/lib/billing/vat";
+import { VatHint } from "@/components/admin/vat-hint";
+import { VatPriceField } from "@/components/admin/vat-price-field";
 
 type Data = Awaited<ReturnType<typeof listRegionsAdmin>>;
 type Region = Data["regions"][number];
@@ -30,7 +33,7 @@ function MethodBoxes({ checked, active }: { checked: readonly string[]; active: 
   );
 }
 
-function RegionCard({ r, plans }: { r: Region; plans: Data["plans"] }) {
+function RegionCard({ r, plans, vat }: { r: Region; plans: Data["plans"]; vat: VatSettings }) {
   const isGlobal = r.countries.length === 0;
   return (
     <Panel
@@ -47,8 +50,8 @@ function RegionCard({ r, plans }: { r: Region; plans: Data["plans"] }) {
         rowHref={(p) => `/admin/plans/${encodeURIComponent(p.planKey)}`}
         columns={[
           { key: "plan", header: "Plan", primary: true, cell: (p) => <>{p.planName}{p.planStatus !== "active" ? <span className="ml-1 text-[12px] font-normal text-muted">({p.planStatus})</span> : null}</> },
-          { key: "month", header: "A month", align: "right", cell: (p) => formatMinor(p.monthlyMinor, p.currency) },
-          { key: "year", header: "A year", align: "right", cell: (p) => formatMinor(p.yearlyMinor, p.currency) },
+          { key: "month", header: "A month", align: "right", cell: (p) => <>{formatMinor(p.monthlyMinor, p.currency)}{p.fromPlan ? null : <VatHint minor={p.monthlyMinor} currency={p.currency} vat={vat} />}</> },
+          { key: "year", header: "A year", align: "right", cell: (p) => <>{formatMinor(p.yearlyMinor, p.currency)}{p.fromPlan ? null : <VatHint minor={p.yearlyMinor} currency={p.currency} vat={vat} />}</> },
           { key: "card", header: "By card", align: "right", cell: (p) => (p.cardMonthlyUsdCents != null ? `${formatMinor(p.cardMonthlyUsdCents, "USD")} / ${p.cardYearlyUsdCents != null ? formatMinor(p.cardYearlyUsdCents, "USD") : "-"}` : "-"), hideOnPhone: true },
           { key: "paddle", header: "Paddle", cell: (p) => (p.paddleMonthlyPriceId && p.paddleYearlyPriceId ? <StatusPill tone="good" dot>Ready</StatusPill> : <StatusPill tone="muted" dot>Not in Paddle</StatusPill>) },
           {
@@ -78,15 +81,11 @@ function RegionCard({ r, plans }: { r: Region; plans: Data["plans"] }) {
               <input type="hidden" name="currency" value={r.currency} />
               <RadioChips name="planKey" legend="Plan" required defaultValue={plans[0]?.key} options={plans.map((p) => ({ value: p.key, label: p.name }))} />
               <div className="flex flex-wrap items-end gap-3">
-                <Field label={`A month (${r.currency})`} required>
-                  <Input name="monthly" inputMode="decimal" required className="w-32" placeholder={r.currency === "RWF" ? "15000" : "25"} />
-                </Field>
-                <Field label={`A year (${r.currency})`} required>
-                  <Input name="yearly" inputMode="decimal" required className="w-32" placeholder={r.currency === "RWF" ? "150000" : "250"} />
-                </Field>
+                <VatPriceField label={`A month (${r.currency})`} name="monthly" currency={r.currency} vat={vat} required className="w-32" placeholder={r.currency === "RWF" ? "15000" : "25"} />
+                <VatPriceField label={`A year (${r.currency})`} name="yearly" currency={r.currency} vat={vat} required className="w-32" placeholder={r.currency === "RWF" ? "150000" : "250"} />
                 <Button type="submit" size="sm">Set price</Button>
               </div>
-              <p className="text-xs text-muted">{r.currency === "USD" ? "The card price is the price." : "The card price is computed from the rate and margin."}</p>
+              <p className="text-xs text-muted">{r.currency === "USD" ? "The card price is the price." : `Type the price before VAT.${vat.enabled && r.currency === "RWF" ? ` Clients paying by Mobile Money pay it with ${vat.ratePercent}% VAT, rounded to 100 RWF.` : ""} The card price is computed from the price before VAT, the rate and margin (Paddle adds tax itself).`}</p>
             </form>
           </ExpandCard>
         )}
@@ -119,7 +118,7 @@ function RegionCard({ r, plans }: { r: Region; plans: Data["plans"] }) {
 }
 
 /** Admin -> Settings -> Regions and prices: one card per region with its prices; adding and editing fold away. */
-export function RegionsView({ d, ok, bad }: { d: Data; ok?: string; bad?: string }) {
+export function RegionsView({ d, ok, bad, vat }: { d: Data; ok?: string; bad?: string; vat: VatSettings }) {
   return (
     <>
       <PageHeader icon={Globe} tone="green" title="Regions and prices" description="Where a business is decides the plans it sees, their prices and currency, and how it can pay. Billing uses the company's own region, never the visitor's location." back={{ href: "/admin/settings", label: "Settings" }} />
@@ -128,7 +127,7 @@ export function RegionsView({ d, ok, bad }: { d: Data; ok?: string; bad?: string
         Card prices of local-currency plans use <strong>{d.settings.usdToRwf} RWF per USD</strong> and a <strong>{d.settings.cardMarginPercent}% margin</strong>, rounded up to whole dollars (<Link href="/admin/settings/currency" className="underline">change them</Link>). Creating those card prices in Paddle is still to do: until then card checkout in those regions says so and Mobile Money is the way (docs/REGIONS.md).
       </p>
       {d.regions.map((r) => (
-        <RegionCard key={r.key} r={r} plans={d.plans} />
+        <RegionCard key={r.key} r={r} plans={d.plans} vat={vat} />
       ))}
       <ExpandCard icon={Plus} tone="green" title="New region" summary="A country with its own currency or way to pay. A country belongs to one active region.">
         <form action={saveRegionAction} className="flex flex-col gap-3">

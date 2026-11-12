@@ -5,7 +5,7 @@ import type { ServiceView, EnvState } from "@/lib/admin/services";
 import type { SearchParamsLike } from "@/components/admin/kit";
 import { chosen } from "@/components/admin/kit";
 import { SettingsHub } from "@/components/admin/system/settings/settings-hub";
-import { CurrencyArea, GoalArea, MomoArea, PaddleArea } from "@/components/admin/system/settings/money-areas";
+import { CurrencyArea, GoalArea, MomoArea, PaddleArea, VatArea } from "@/components/admin/system/settings/money-areas";
 import { ContentArea, VoicesArea } from "@/components/admin/system/settings/content-areas";
 import { AvailabilityArea, CallsArea, GoogleCalendarArea, LeadAlertsArea } from "@/components/admin/system/settings/calls-areas";
 import { LoadingArea, TrialArea } from "@/components/admin/system/settings/site-areas";
@@ -77,6 +77,8 @@ function SettingsAreaPreview({ slug, ok }: { slug: SettingsSlug; ok?: string }) 
       return <MomoArea ok={ok} momo={{ merchantCode: "002450", momoNumber: "0788 000 000", accountName: "BuPulse Ltd", airtelNumber: "" }} dial="*182*8*1*002450#" ready />;
     case "paddle":
       return <PaddleArea ok={ok} paddle={PADDLE} webhookUrl="https://bupulse.com/api/webhooks/paddle" />;
+    case "vat":
+      return <VatArea ok={ok} vat={{ enabled: true, ratePercent: 18, tin: "" }} />;
     case "currency":
       return <CurrencyArea ok={ok} s={{ usdToRwf: 1450, cardMarginPercent: 8, displayCurrency: "RWF", usdToEur: 0.92, eurRateAuto: true }} exampleCents={1200} eur={{ rate: 0.9213, source: "ecb", fetchedAt: at(6) }} />;
     case "goal":
@@ -115,7 +117,7 @@ function SettingsAreaPreview({ slug, ok }: { slug: SettingsSlug; ok?: string }) 
 export function SystemPreview({ which, sp }: { which: SystemScreen; sp: SearchParamsLike }) {
   const ok = first(sp.notice) || undefined;
   if (which === "settings") {
-    return <SettingsHub ok={ok} d={{ momoReady: true, paddleReady: false, paddleLive: false, usdToRwf: 1450, displayCurrency: "RWF", revenueGoalRwf: 9_000_000, dailyPosts: true, skitVideos: false, voicesApproved: 1, voicesTotal: 2, telegram: "not_connected", google: "reconnect", slotMinutes: 30, windows: 3, trialDays: 14, pageLoader: "bar", canRegions: true }} />;
+    return <SettingsHub ok={ok} d={{ momoReady: true, paddleReady: false, paddleLive: false, vatEnabled: true, vatRatePercent: 18, vatTin: "", usdToRwf: 1450, displayCurrency: "RWF", revenueGoalRwf: 9_000_000, dailyPosts: true, skitVideos: false, voicesApproved: 1, voicesTotal: 2, telegram: "not_connected", google: "reconnect", slotMinutes: 30, windows: 3, trialDays: 14, pageLoader: "bar", canRegions: true }} />;
   }
   if (which === "settings-area") {
     const area = first(sp.area) || "momo";
@@ -261,6 +263,7 @@ function MorePreview({ which, sp, ok }: { which: SystemScreen; sp: SearchParamsL
       return (
         <RegionsView
           ok={ok}
+          vat={{ enabled: true, ratePercent: 18, tin: "" }}
           d={
             {
               settings: { usdToRwf: 1450, cardMarginPercent: 8 },

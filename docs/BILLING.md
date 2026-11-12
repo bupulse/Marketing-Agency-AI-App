@@ -130,6 +130,35 @@ Known limits: the Billing page still shows the stored status (an "Active" badge 
 or the webhook updates it; a card plan whose webhook was lost for good stays refused until the event is replayed in
 Paddle or reprocessed; usage during the grace days counts in the next monthly usage window.
 
+## VAT on Rwandan prices (decided 12 November 2026)
+
+BuPulse is VAT-registered with RRA. One helper, `lib/billing/vat.ts` (pure), holds the rules; the server reads the
+settings with `getVatSettings()` (`lib/billing/vat-server.ts`, cached 30 s).
+
+- **Only RWF prices** get VAT (the Rwanda region, Mobile Money, invoices, custom plan offers, add-ons, the extra skit).
+  USD prices and every card price never do: Paddle is the merchant of record and adds tax itself.
+- **Stored prices are before VAT**: `PlanRegionPrice` RW rows, custom plans (`PlanDefinition` in RWF), offers
+  (`PlanOffer.adjustedMinor`), `AddonPrice`, invoice lines. Nothing in the database was rewritten.
+- **The client sees and pays the price with VAT**: `grossRwf(net) = round(net × 1.18 / 100) × 100`. Starter 15,000 →
+  17,700, Business 50,000 → 59,000, Business Pro 80,000 → 94,400. Computed at read time: `getRegionPlans` /
+  `companyPlans` / `regionPlan` with `{ withVat: true }` (pricing page, home page, Billing, start trial, the support
+  chat facts, the Mobile Money amount), `clientPrice()` for custom plans, offers and renewals. Without the option they
+  return the stored prices, which offers, invoices and the Paddle sync price from. Card quotes (`cardQuoteOf`,
+  `offerCardQuote`) always start from the price before VAT.
+- **Receipts**: the "plan is active" email of a Mobile Money payment shows the total paid, "Of which VAT (18%)" =
+  `round(total × 18 / 118)`, the amount before VAT, and BuPulse's TIN when it is set. An RWF invoice lists the lines
+  before VAT, then "Amount before VAT", "VAT (18%)" (= total − lines) and "Total (VAT incl.)" = the client price, so it
+  matches the Mobile Money amount. USD invoices never get VAT. The `vat_minor` of each confirmed payment is kept on its
+  `manual_payment.confirmed` billing event.
+- **Settings** (Admin → Settings → VAT (Rwanda), AdminSetting `billing.vat.enabled` / `billing.vat.ratePercent` /
+  `billing.vat.tin`): on/off (default on), rate (default 18), TIN (empty until RRA gives it). An empty TIN shows a
+  warning on the settings page, the Settings hub and the Overview; receipts still work without the TIN line. The old
+  TIN and VAT rate fields of the invoice settings are no longer used (an older invoice TIN is the fallback).
+- **Admins type prices before VAT** everywhere; Regions and prices, the offer editor, a custom plan's page, add-on
+  prices and the Payments queue show "VAT 18%: X · Client pays: Y" (or the VAT inside a payment).
+- A payment opened before VAT was switched on keeps its amount; an offer's payment matches its price with VAT (Mobile
+  Money) or before VAT (card quote).
+
 ## Connecting Paddle (Admin → Settings → Card payments)
 
 No environment variable needs editing. In Admin → Settings → **Card payments (Paddle)** (AAL2, every save audited):

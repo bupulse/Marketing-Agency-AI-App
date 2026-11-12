@@ -213,7 +213,7 @@ export function PlanPicker({ plans, current, pay }: Props) {
         {chooseFor && (
           <PayChoice
             methods={methodsFor(chooseFor)}
-            momoNote={momoPrice(chooseFor) ? `${formatPrice(momoPrice(chooseFor)!.amountMinor, momoPrice(chooseFor)!.currency)} per ${intervalWord(interval)}. Approved within minutes.` : ""}
+            momoNote={momoPrice(chooseFor) ? `${formatPrice(momoPrice(chooseFor)!.amountMinor, momoPrice(chooseFor)!.currency)} per ${intervalWord(interval)}${planOf(chooseFor).vatRatePercent ? " (VAT included)" : ""}. Approved within minutes.` : ""}
             cardNote={`${formatPrice(cardPrice(chooseFor), "USD")} per ${intervalWord(interval)}, charged in USD. Renews automatically.`}
             cardBlocked={current.method === "momo" ? (pay.cardBlocked ?? null) : null}
             onMomo={() => payByMomo(chooseFor)}

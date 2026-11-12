@@ -8,6 +8,8 @@ import { cn } from "@/lib/cn";
 import { featureLabel, FEATURES, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { moneyInput, parseMoney } from "@/lib/invoices/shared";
 import { formatMinor } from "@/lib/region-format";
+import { vatApplies, type VatSettings } from "@/lib/billing/vat";
+import { vatHintText } from "./vat-hint";
 import {
   adjustmentText,
   featureAddonKey,
@@ -48,7 +50,7 @@ export type OfferEditorInitial = {
  * Round or discount it with a reason, choose monthly or yearly, and preview what the client will see. Save keeps a
  * draft; Save and send emails the company owner. The server prices it again with the same maths (lib/offers/shared.ts).
  */
-export function OfferEditor({ businessId, offerId, region, bases, prices, initial, addition, additionUnavailable, notSetUp = [], ownerEmail, now }: { businessId: string; offerId: string | null; region: { key: string; name: string; currency: string }; bases: OfferBase[]; prices: AddonPriceRow[]; initial: OfferEditorInitial; /** The client's running Mobile Money plan, for "Add to current plan" (null: not possible, see additionUnavailable). */ addition?: { current: CurrentPlanForAddition; interval: "MONTH" | "YEAR"; periodEnd: string } | null; additionUnavailable?: string | null; /** Built features that are not set up yet (lib/feature-setup.ts): "Coming soon", not sold. */ notSetUp?: readonly FeatureKey[]; ownerEmail: string | null; /** The page's render time (ISO), for the preview's "open until". */ now: string }) {
+export function OfferEditor({ businessId, offerId, region, bases, prices, initial, addition, additionUnavailable, notSetUp = [], ownerEmail, now, vat = null }: { businessId: string; offerId: string | null; region: { key: string; name: string; currency: string }; bases: OfferBase[]; prices: AddonPriceRow[]; initial: OfferEditorInitial; /** The client's running Mobile Money plan, for "Add to current plan" (null: not possible, see additionUnavailable). */ addition?: { current: CurrentPlanForAddition; interval: "MONTH" | "YEAR"; periodEnd: string } | null; additionUnavailable?: string | null; /** Built features that are not set up yet (lib/feature-setup.ts): "Coming soon", not sold. */ notSetUp?: readonly FeatureKey[]; ownerEmail: string | null; /** The page's render time (ISO), for the preview's "open until". */ now: string; /** The VAT settings: an RWF price is typed before VAT; the editor shows the VAT and what the client pays. */ vat?: VatSettings | null }) {
   const currency = region.currency;
   const [mode, setMode] = useState<"plan" | "addon">(initial.mode === "addon" && addition ? "addon" : "plan");
   const adding = mode === "addon" && addition ? addition : null;
@@ -154,7 +156,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
     validUntil: new Date(new Date(now).getTime() + num(validDays, 1) * 86_400_000),
     payMethod: null,
     invoiceId: null,
-  });
+  }, vat ?? undefined);
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -320,9 +322,14 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
               <p className="text-[13px] text-muted">Prorated again from the days left on the day the client accepts. The period end does not change.</p>
             </>
           )}
+          {vat && vatApplies(currency, vat) && total > 0 && (
+            <p className="flex justify-between gap-3 rounded-xl bg-surface px-3 py-2 text-[14px]">
+              <span>All prices here are before VAT. {vatHintText(total, currency, vat)}</span>
+            </p>
+          )}
           {(add ? add.missing : quote.missing).length > 0 && <p role="alert" className="text-[13px] text-danger">No price in {region.name} for {(add ? add.missing : quote.missing).join(", ")}. Add it in Add-on prices, or type the price below.</p>}
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={add ? `Price of the added features per period (${currency})` : `Price the client pays (${currency})`} hint={`Empty = the computed total.${adjustedMinor && computedForPrice ? ` ${adjustmentText(computedForPrice, adjustedMinor) ?? ""}` : ""}`} error={adjustError}>
+            <Field label={add ? `Price of the added features per period (${currency}${vat && vatApplies(currency, vat) ? ", before VAT" : ""})` : `Price the client pays (${currency}${vat && vatApplies(currency, vat) ? ", before VAT" : ""})`} hint={`Empty = the computed total.${adjustedMinor && computedForPrice ? ` ${adjustmentText(computedForPrice, adjustedMinor) ?? ""}` : ""}`} error={adjustError}>
               <Input value={adjusted} onChange={(e) => setAdjusted(e.target.value)} placeholder={moneyInput(computedForPrice, currency)} inputMode="decimal" maxLength={14} />
             </Field>
             <Field label="Why the price differs" error={reasonError}>

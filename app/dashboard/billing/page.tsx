@@ -21,7 +21,9 @@ import { cardCheckoutConfigured, cardPricedPlans, invoicePayMethods } from "@/li
 import { methodState } from "@/lib/billing/pay-methods";
 import { momoConfigured, momoPriceOf, offerCheckingReference } from "@/lib/billing/momo-shared";
 import { getPlan, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
-import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
+import { companyPlans, withVat, type RegionalPlan } from "@/lib/region-prices";
+import { vatRateFor } from "@/lib/billing/vat";
+import { getVatSettings } from "@/lib/billing/vat-server";
 import { currencyNote } from "@/lib/region-format";
 import { clientInvoices, openInvoiceOf, payableView } from "@/lib/invoices/service";
 import { clientOffer, selfServeAddition, staleAdditionNotice } from "@/lib/offers/service";
@@ -59,8 +61,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const trialEnd = formatDate(subscription.trialEndsAt);
   const cancelling = paid && subscription.cancelAtPeriodEnd;
   // The plans and prices of the company's region (never the visitor's IP), plus the plan the client chose at sign-up.
-  const [{ region, plans: regional }, currentPlan, chosen, momoSettings, momoPayment, offer, planCall] = await Promise.all([
-    companyPlans(business.id),
+  // Prices are what the client pays: RWF with VAT (lib/billing/vat.ts); card (USD) prices as they are.
+  const [{ region, plans: regional }, currentPlan, chosen, momoSettings, momoPayment, offer, planCall, vat] = await Promise.all([
+    companyPlans(business.id, { withVat: true }),
     getPlan(subscription.plan),
     chosenPlan ? getPlan(chosenPlan) : Promise.resolve(null),
     getMomoSettings(),
@@ -69,12 +72,13 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
     clientOffer(business.id).catch(() => null),
     // The short call booked after a custom plan request (lib/demo/plan-calls.ts), if one is coming up.
     currentPlanCall(business.id).catch(() => null),
+    getVatSettings(),
   ]);
   // Retired and hidden plans stay listed for the clients already on them, so "Your current plan" is still shown.
-  const pickable: RegionalPlan[] = [
+  const pickable: RegionalPlan[] = withVat([
     ...regional,
-    ...(currentPlan && !currentPlan.isTrial && !regional.some((p) => p.key === currentPlan.key) ? [{ ...toPublic(currentPlan), regionKey: region.key, paymentMethods: region.paymentMethods, card: null }] : []),
-  ];
+    ...(currentPlan && !currentPlan.isTrial && !regional.some((p) => p.key === currentPlan.key) ? [{ ...toPublic(currentPlan), regionKey: region.key, paymentMethods: region.paymentMethods, card: null, vatRatePercent: null }] : []),
+  ], vat);
   // Can card checkout open, and for which plans (a region's card prices must be in Paddle: docs/BILLING.md)?
   const [cardOn, cardPriced] = await Promise.all([cardCheckoutConfigured(), cardPricedPlans(region.key, pickable.map((p) => p.key))]);
   const momoReady = momoConfigured(momoSettings);
@@ -88,7 +92,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const price =
     paid && currentPlan && !currentPlan.isTrial
       ? momoPlan
-        ? `${momoPrice ? formatPrice(momoPrice.amountMinor, momoPrice.currency) : "Paid"} per ${intervalWord(subscription.interval)}, by Mobile Money`
+        ? `${momoPrice ? `${formatPrice(momoPrice.amountMinor, momoPrice.currency)}${vatRateFor(momoPrice.currency, vat) ? " (VAT included)" : ""}` : "Paid"} per ${intervalWord(subscription.interval)}, by Mobile Money`
         : `${formatUsd((cardPlanUsdCents ?? 0) / 100)} per ${intervalWord(subscription.interval)}${planAddons ? `: ${basePlan?.name ?? "your plan"} plus ${planAddons.labels.join(", ")}` : ""}`
       : null;
 
@@ -133,7 +137,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   // shown at all when card payments are not set up or switched off.
   const cardForOffers = await offerCardReady(region.paymentMethods).catch(() => false);
   const cardRate = cardForOffers ? await getSettings().then((st) => ({ usdToRwf: st.usdToRwf, marginPercent: st.cardMarginPercent })) : null;
-  const offerCard = offer && cardForOffers ? await cardQuoteOf(offer.totalMinor, offer.currency).then((q) => ({ usdCents: q.usdCents, quoteMinor: q.quoteMinor, currency: q.quoteCurrency })).catch(() => null) : null;
+  // The card quote is from the offer's price before VAT: Paddle adds tax itself.
+  const offerCard = offer && cardForOffers ? await cardQuoteOf(offer.netTotalMinor, offer.currency).then((q) => ({ usdCents: q.usdCents, quoteMinor: q.quoteMinor, currency: q.quoteCurrency })).catch(() => null) : null;
   const staleAddition = offer ? null : await staleAdditionNotice(business.id, now).catch(() => null);
   const highlighted = typeof query.invoice === "string" ? query.invoice : null;
   const checkoutSuccess = query.checkout === "success";
@@ -197,7 +202,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
 
       {payable && invoiceMethods && <InvoicePay invoice={payable} methods={invoiceMethods} highlight={highlighted === payable.number} cardReason={payableCustom || !payable.planKey ? `Card is not available for this invoice yet: pay it by Mobile Money, or write to us at ${site.email} and we will help.` : null} />}
 
-      {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} />}
+      {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} vatRatePercent={vatRateFor(momoPayment.currency, vat)} />}
 
       <GlassCard as="section" aria-labelledby="current-plan" className="flex flex-col gap-5 p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -285,6 +290,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           cardAddons={onCardPlan ? (planAddons?.features ?? []) : []}
           preselect={addition.ok && typeof query.add === "string" && (addition.addable as string[]).includes(query.add) ? (query.add as FeatureKey) : null}
           now={now.toISOString()}
+          vat={vat}
         />
       )}
 

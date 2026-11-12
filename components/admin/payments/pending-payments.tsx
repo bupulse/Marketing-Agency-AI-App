@@ -7,6 +7,7 @@ import { Field, Input, Textarea } from "@/components/ui";
 import { dateTime, money } from "@/lib/admin/format";
 import type { ManualPaymentAdminView } from "@/lib/billing/momo";
 import { cn } from "@/lib/cn";
+import { vatBreakdown, type VatSettings } from "@/lib/billing/vat";
 
 // The Mobile Money payments waiting for a decision: on Payments and at the top of the Overview. Approve and Reject run
 // the same audited actions (payments.approve); without that permission the list is read-only. Each answers in words:
@@ -36,7 +37,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
  * One card per payment to check: the amount and plan, the reference and transaction id to compare with the MoMo
  * message, the screenshot, who paid, and Confirm / Reject.
  */
-export function PendingPaymentList({ items, canApprove, confirmAction, rejectAction }: { items: ManualPaymentAdminView[]; canApprove: boolean; confirmAction: (f: FormData) => Promise<ConfirmResult>; rejectAction: (f: FormData) => Promise<ConfirmResult> }) {
+export function PendingPaymentList({ items, canApprove, confirmAction, rejectAction, vat = null }: { items: ManualPaymentAdminView[]; canApprove: boolean; confirmAction: (f: FormData) => Promise<ConfirmResult>; rejectAction: (f: FormData) => Promise<ConfirmResult>; /** The VAT settings: an RWF payment shows the VAT inside it (lib/billing/vat.ts). */ vat?: VatSettings | null }) {
   const confirmPaymentAction = confirmAction;
   const rejectPaymentAction = rejectAction;
   const proofUrls = new Map(items.filter((p) => p.proofPath).map((p) => [p.id, `/admin/payments/proof?id=${encodeURIComponent(p.id)}`] as const));
@@ -44,6 +45,7 @@ export function PendingPaymentList({ items, canApprove, confirmAction, rejectAct
     <ul className="flex flex-col gap-3">
       {items.map((p) => {
         const proof = proofUrls.get(p.id);
+        const split = vat ? vatBreakdown(p.amountMinor, p.currency, vat) : null;
         return (
           <li key={p.id} className={cn("relative flex flex-col gap-4 overflow-hidden p-4 sm:flex-row sm:p-5", CARD, p.seenBefore && "ring-1 ring-danger/40")}>
             <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-brand-gradient" />
@@ -52,6 +54,7 @@ export function PendingPaymentList({ items, canApprove, confirmAction, rejectAct
                 <IconBadge icon={Smartphone} tone="green" />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <p className="text-[20px] font-bold leading-tight tabular-nums tracking-[-0.02em]">{money(p.amountMinor, p.currency)}</p>
+                  {split && <p className="text-[12.5px] text-muted">VAT included: {money(split.vatMinor, p.currency)} VAT ({split.ratePercent}%) + {money(split.netMinor, p.currency)} before VAT</p>}
                   <p className="text-[13.5px] text-muted">
                     {p.planName} ({interval(p.interval)}) · <Link href={`/admin/users/${p.userId}`} className="font-semibold text-text underline-offset-2 hover:underline">{p.company ?? "A company"}</Link>
                   </p>

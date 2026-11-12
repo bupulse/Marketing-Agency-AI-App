@@ -40,8 +40,10 @@ Both go through `adminAction()` (allow-listed email, AAL2) and are audited (`sta
 invoices created at the same instant never share a number and no lock is needed. A number is never reused: a voided
 invoice keeps its number, and a create that fails leaves a gap. `BP-INV-0001` … `BP-INV-9999`, then `BP-INV-10000`.
 
-**Totals**: subtotal = Σ quantity × unit price; VAT = subtotal × rate, rounded to the smallest unit, only when a VAT
-rate is set (default none: no tax line); total = subtotal + VAT. Recomputed on the server on every save.
+**Totals**: subtotal = Σ quantity × unit price (prices typed before VAT). An RWF invoice gets VAT from Admin → Settings →
+VAT (default on, 18%; docs/BILLING.md, "VAT"): total = subtotal × 1.18 rounded to the nearest 100 RWF (the same amount
+Billing and Mobile Money ask for), VAT = total − subtotal. Other currencies never get VAT. Recomputed on the server on
+every save.
 
 ### Lifecycle (Admin → Invoices, `/admin/invoices`)
 

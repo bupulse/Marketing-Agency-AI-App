@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BellRing, CalendarDays, Clock3, CloudDownload, CreditCard, Gift, Globe, LoaderCircle, Mic, PhoneCall, Settings, Smartphone, Sparkles, Target } from "lucide-react";
+import { ArrowLeftRight, BellRing, CalendarDays, Clock3, CloudDownload, CreditCard, Gift, Globe, LoaderCircle, Mic, Percent, PhoneCall, Settings, Smartphone, Sparkles, Target } from "lucide-react";
 import { PageHeader, SectionCard, SectionGrid } from "@/components/admin/kit";
 import { Section } from "@/components/admin/ui";
 import { HashRedirect } from "../hash-redirect";
@@ -9,6 +9,9 @@ export type SettingsHubData = {
   momoReady: boolean;
   paddleReady: boolean;
   paddleLive: boolean;
+  vatEnabled: boolean;
+  vatRatePercent: number;
+  vatTin: string;
   usdToRwf: number;
   displayCurrency: string;
   revenueGoalRwf: number;
@@ -41,6 +44,7 @@ export function SettingsHub({ d, ok, bad }: { d: SettingsHubData; ok?: string; b
         <SectionGrid>
           <SectionCard row href={settingsHref("momo")} icon={Smartphone} tone="green" title={SETTINGS_TITLE.momo} hint="The MoMo Pay code, numbers and name clients see when they pay." value={d.momoReady ? "Offered" : "Not set up"} valueLabel={d.momoReady ? "to clients" : "clients cannot pay by MoMo"} count={d.momoReady ? undefined : 1} countLabel="Mobile Money is not set up" />
           <SectionCard row href={settingsHref("paddle")} icon={CreditCard} tone="green" title={SETTINGS_TITLE.paddle} hint="Connect Paddle so clients can pay by card." value={d.paddleReady ? "Ready" : "Not set up"} valueLabel={d.paddleLive ? "live account" : "sandbox (testing)"} />
+          <SectionCard row href={settingsHref("vat")} icon={Percent} tone="green" title={SETTINGS_TITLE.vat} hint="VAT added to RWF prices, and BuPulse's TIN on receipts." value={d.vatEnabled ? `${d.vatRatePercent}%` : "Off"} valueLabel={d.vatEnabled ? (d.vatTin ? "on RWF prices" : "on RWF prices · TIN missing") : "clients pay no VAT"} count={d.vatEnabled && !d.vatTin ? 1 : undefined} countLabel="Add BuPulse's TIN" />
           <SectionCard row href={settingsHref("currency")} icon={ArrowLeftRight} tone="green" title={SETTINGS_TITLE.currency} hint="The RWF rate and margin for card prices, and the currency the admin shows." value={`${d.usdToRwf.toLocaleString("en-US")} RWF`} valueLabel={`per US dollar · admin in ${d.displayCurrency}`} />
           {d.canRegions && <SectionCard row href="/admin/settings/regions" icon={Globe} tone="green" title="Regions and prices" hint="Which plans, prices and payment methods each country gets." />}
           <SectionCard row href={settingsHref("goal")} icon={Target} tone="green" title={SETTINGS_TITLE.goal} hint="The monthly income the goal tracker on Revenue measures against." value={`${short(d.revenueGoalRwf)} RWF`} valueLabel="a month" />

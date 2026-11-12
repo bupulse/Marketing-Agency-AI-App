@@ -39,7 +39,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function HomePage() {
   const region = await displayRegion();
-  const plans = await getRegionPlans(region.key);
+  const plans = await getRegionPlans(region.key, { withVat: true });
   const mode = ctaModeForRegion(region.key);
   return (
     <>

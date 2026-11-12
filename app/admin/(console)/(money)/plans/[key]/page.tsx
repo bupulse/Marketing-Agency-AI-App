@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/admin/kit";
 import { PlanExtras } from "@/components/admin/business/money-plans";
 import { MoneyNotices } from "@/components/admin/business/money-common";
 import { PlanForm } from "@/components/admin/plan-form";
+import { getVatSettings } from "@/lib/billing/vat-server";
 import { money } from "@/lib/admin/format";
 import { getAdminPlan } from "@/lib/admin/plans-service";
 import { AdminError } from "@/lib/admin/types";
@@ -25,6 +26,7 @@ export default async function PlanPage({ params, searchParams }: PageProps<"/adm
     throw e;
   }
   const { plan, counts, paddleConnected } = detail;
+  const vat = await getVatSettings();
   const { subscribers } = counts;
   // A custom plan is priced in its offer's currency (98,000 RWF), never in dollars.
   const cur = plan.currency;
@@ -48,6 +50,7 @@ export default async function PlanPage({ params, searchParams }: PageProps<"/adm
         paddleConnected={paddleConnected}
         version={plan.updatedAt?.toISOString()}
         subscribers={counts.payingSubscribers}
+        vat={vat}
         initial={{
           key: plan.key,
           name: plan.name,

@@ -55,7 +55,7 @@ export default async function StartTrialPage() {
     );
   }
 
-  const [{ region, plans }, jar] = await Promise.all([companyPlans(business.id), cookies()]);
+  const [{ region, plans }, jar] = await Promise.all([companyPlans(business.id, { withVat: true }), cookies()]);
   // The plan the /pricing quiz suggested (lib/plan-quiz.ts), when the company's region offers it.
   const pick = pickedPlanKey(jar.get(PLAN_PICK_COOKIE)?.value);
   const suggested = plans.some((p) => p.key === pick) ? pick : null;

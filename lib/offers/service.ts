@@ -9,6 +9,8 @@ import { logError } from "@/lib/errors";
 import { featureLabel, FEATURES, isFeatureKey, validateFeatureSet, type FeatureKey } from "@/lib/features";
 import { capabilitiesOf, clearPlanCache, getPlan, priceCents } from "@/lib/plan-catalog";
 import { companyPlans } from "@/lib/region-prices";
+import { clientPrice, vatRateFor, type VatSettings } from "@/lib/billing/vat";
+import { getVatSettings } from "@/lib/billing/vat-server";
 import { formatMinor, type RegionInfo } from "@/lib/region-format";
 import { ManualPaymentError, startOfferPayment } from "@/lib/billing/momo";
 import { renewalOpensAt } from "@/lib/billing/renewal";
@@ -306,9 +308,13 @@ export async function sendOffer(ctx: AdminContext, id: string, now: Date = new D
     if (isUnique(error)) throw new AdminError("conflict", "Another offer was sent to this company a moment ago. Look at its offers.");
     throw error;
   }
+  // The offer's price is before VAT; the email says what the client pays (with VAT on RWF, lib/billing/vat.ts).
+  const vat = await getVatSettings();
+  const pay = (minor: number) => clientPrice(minor, row.currency, vat);
+  const addition = readAddition(row.options);
   const emailed = await sendOfferEmail(
     { email: owner.user.email, name: owner.user.name ?? owner.ceoName },
-    { company: owner.name, totalMinor: row.adjustedMinor, currency: row.currency, interval: row.interval, features: options.added.map(featureLabel), validUntil, note: row.note, addition: readAddition(row.options) },
+    { company: owner.name, totalMinor: pay(row.adjustedMinor), currency: row.currency, interval: row.interval, features: options.added.map(featureLabel), validUntil, note: row.note, addition: addition ? { ...addition, nextRenewalMinor: pay(addition.nextRenewalMinor) } : addition, vatRatePercent: vatRateFor(row.currency, vat) },
   ).catch(() => false);
   return { id, status: "sent" as const, validUntil, emailed, to: owner.user.email };
 }
@@ -463,7 +469,8 @@ export async function getOffer(id: string, now: Date = new Date()): Promise<Admi
 }
 
 /** What the client sees of an offer (also the admin editor's preview). */
-export const clientViewOf = (o: AdminOfferView): ClientOfferView => toClientOffer(o);
+/** `vat`: the VAT settings, so an RWF offer shows the price the client pays (with VAT, lib/billing/vat.ts). */
+export const clientViewOf = (o: AdminOfferView, vat?: VatSettings): ClientOfferView => toClientOffer(o, vat);
 
 // ---- client: see, accept, pay -----------------------------------------------------------------------------------------
 
@@ -483,7 +490,7 @@ export async function clientOffer(businessId: string, now: Date = new Date()): P
   if (!row || isOfferExpired(row, now)) return null;
   // Features being added to a card plan are paid by the card subscription itself, never with the offer's pay buttons.
   if (readCardPlan(row.options)) return null;
-  return clientViewOf(adminView(row, ""));
+  return clientViewOf(adminView(row, ""), await getVatSettings());
 }
 
 /** card: the offer is accepted here and paid in the card checkout (lib/offers/card.ts startOfferCardCheckout). */
@@ -584,11 +591,11 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
   const fresh = await prisma.planOffer.findUnique({ where: { id: row.id } });
   if (!fresh || fresh.status !== "accepted") throw new OfferError("This offer is no longer open. Ask us for a new one.");
   // Card: accepted; the checkout itself is opened by startOfferCardCheckout (lib/offers/card.ts).
-  if (method === "card") return { offer: clientViewOf(adminView(fresh, "")), payment: null, invoiceId: null };
+  if (method === "card") return { offer: clientViewOf(adminView(fresh, ""), await getVatSettings()), payment: null, invoiceId: null };
   if (method === "momo") {
     try {
       const payment = await startOfferPayment({ userId: input.userId, offerId: row.id, now });
-      return { offer: clientViewOf(adminView(fresh, "")), payment, invoiceId: null };
+      return { offer: clientViewOf(adminView(fresh, ""), await getVatSettings()), payment, invoiceId: null };
     } catch (error) {
       if (error instanceof ManualPaymentError) throw new OfferError(error.message);
       throw error;
@@ -596,7 +603,7 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
   }
   const invoiceId = await ensureOfferInvoice(ctx, fresh, input.userId, now);
   const after = await prisma.planOffer.findUnique({ where: { id: row.id } });
-  return { offer: clientViewOf(adminView(after ?? fresh, "")), payment: null, invoiceId };
+  return { offer: clientViewOf(adminView(after ?? fresh, ""), await getVatSettings()), payment: null, invoiceId };
 }
 
 /** An addition being accepted: the same plan must still be running; the amount is prorated for today's days left. */

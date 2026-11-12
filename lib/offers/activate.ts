@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { STALE_ADDITION_REASON } from "./shared";
+import { clientPrice, type VatSettings } from "@/lib/billing/vat";
 
 // The step that switches a custom plan on (docs/OFFERS.md). Called by the Mobile Money confirmation
 // (lib/billing/momo.ts confirmManualPayment), inside its transaction, for a payment of an offer: directly (offerId) or
@@ -21,10 +22,18 @@ export async function offerForPayment(payment: { offerId?: string | null; invoic
   return null;
 }
 
-/** The money must be exactly the offer's price, in its currency (also checked before the confirmation starts). */
-export function assertOfferAmount(offer: Pick<OfferRow, "adjustedMinor" | "currency">, paid: { amountMinor: number; currency: string }) {
-  if (paid.amountMinor !== offer.adjustedMinor || paid.currency.toUpperCase() !== offer.currency.toUpperCase()) {
-    throw new AdminError("conflict", `This payment is ${paid.amountMinor} ${paid.currency.toUpperCase()}, but the custom plan offer costs ${offer.adjustedMinor} ${offer.currency.toUpperCase()}. Reject it (refund the difference if the money arrived), then ask the client to pay the offer's price from Billing.`);
+/**
+ * The money must be exactly the offer's price, in its currency (also checked before the confirmation starts). The
+ * offer's price is stored before VAT: a Mobile Money payment of an RWF offer is its price with VAT (lib/billing/vat.ts),
+ * a card quote is the price before VAT (Paddle adds tax itself). Both are accepted, and so is a payment opened before
+ * VAT was switched on.
+ */
+export function assertOfferAmount(offer: Pick<OfferRow, "adjustedMinor" | "currency">, paid: { amountMinor: number; currency: string }, vat?: VatSettings) {
+  const withVat = vat ? clientPrice(offer.adjustedMinor, offer.currency, vat) : offer.adjustedMinor;
+  const sameCurrency = paid.currency.toUpperCase() === offer.currency.toUpperCase();
+  if (!sameCurrency || (paid.amountMinor !== offer.adjustedMinor && paid.amountMinor !== withVat)) {
+    const costs = withVat !== offer.adjustedMinor ? `${withVat} ${offer.currency.toUpperCase()} with VAT` : `${offer.adjustedMinor} ${offer.currency.toUpperCase()}`;
+    throw new AdminError("conflict", `This payment is ${paid.amountMinor} ${paid.currency.toUpperCase()}, but the custom plan offer costs ${costs}. Reject it (refund the difference if the money arrived), then ask the client to pay the offer's price from Billing.`);
   }
 }
 
@@ -34,10 +43,10 @@ export function assertOfferAmount(offer: Pick<OfferRow, "adjustedMinor" | "curre
  * of the offer that this payment did not pay is voided (so the client cannot pay twice), unsubmitted Mobile Money
  * payments of the offer are closed, and the request behind it is marked offered. Audited.
  */
-export async function markOfferPaidInTx(tx: Tx, ctx: AdminContext, input: { offer: OfferRow; paymentId: string; invoiceId: string | null; planKey: string; amountMinor: number; currency: string; /** Who paid it when not a Mobile Money payment ("card:<Paddle transaction>"). */ paidBy?: string }, now: Date) {
+export async function markOfferPaidInTx(tx: Tx, ctx: AdminContext, input: { offer: OfferRow; paymentId: string; invoiceId: string | null; planKey: string; amountMinor: number; currency: string; /** Who paid it when not a Mobile Money payment ("card:<Paddle transaction>"). */ paidBy?: string; /** The VAT settings, so a Mobile Money payment with VAT matches the offer's price before VAT. */ vat?: VatSettings }, now: Date) {
   const { offer } = input;
   if (offer.customPlanKey !== input.planKey) throw new AdminError("conflict", "This payment is for a different plan than the offer's custom plan. Reject it and ask the client to pay again from Billing.");
-  assertOfferAmount(offer, input);
+  assertOfferAmount(offer, input, input.vat);
   const paidBy = input.paidBy ?? `manual_payment:${input.paymentId}`;
   const claim = await tx.planOffer.updateMany({ where: { id: offer.id, status: "accepted" }, data: { status: "paid", paidAt: now, paidBy } });
   if (claim.count !== 1) throw new AdminError("conflict", "This offer was paid or withdrawn a moment ago. Nothing was changed.");

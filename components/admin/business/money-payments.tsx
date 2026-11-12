@@ -11,6 +11,7 @@ import { dateTime } from "@/lib/admin/format";
 import type { ManualPaymentAdminView } from "@/lib/billing/momo";
 import type { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured, mtnMomoPayDial } from "@/lib/billing/momo-shared";
+import type { VatSettings } from "@/lib/billing/vat";
 import type { listUnprocessedPaddleEvents } from "@/lib/billing/paddle-events";
 import { reprocessCardEventAction } from "@/app/admin/(console)/(money)/payments/actions";
 
@@ -69,7 +70,9 @@ export function PaymentsOverview({
   canApprove,
   confirmAction,
   rejectAction,
+  vat = null,
 }: {
+  vat?: VatSettings | null;
   toCheck: ManualPaymentAdminView[];
   started: ManualPaymentAdminView[];
   cardEvents: CardEvent[];
@@ -90,7 +93,7 @@ export function PaymentsOverview({
         {toCheck.length === 0 ? (
           <EmptyState icon={CheckCircle2} tone="good" title="Nothing to check" hint="When a client pays by Mobile Money and taps I've paid, it appears here with the reference and transaction id." />
         ) : (
-          <PendingPaymentList items={toCheck} canApprove={canApprove} confirmAction={confirmAction} rejectAction={rejectAction} />
+          <PendingPaymentList items={toCheck} canApprove={canApprove} confirmAction={confirmAction} rejectAction={rejectAction} vat={vat} />
         )}
       </Section>
       <Section title="More about payments" description="Each list on its own page.">

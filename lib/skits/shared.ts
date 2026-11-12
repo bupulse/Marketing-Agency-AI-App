@@ -1,7 +1,7 @@
 // Talking skits (docs: the Skit model in prisma/schema.prisma): what the Posts page, the recorder, the server and the
 // tests share. Pure and client-safe.
 
-/** An extra skit beyond the plan's, in RWF (owner decision, 31 October 2026). Shown as a request: no payment yet. */
+/** An extra skit beyond the plan's, in RWF before VAT (owner decision, 31 October 2026; clients see it with VAT, lib/billing/vat.ts). Shown as a request: no payment yet. */
 export const EXTRA_SKIT_PRICE_RWF = 5_000;
 /** How long a skit is: about 10 seconds of talking (Seedance takes 4 to 15). */
 export const SKIT_SECONDS = 10;

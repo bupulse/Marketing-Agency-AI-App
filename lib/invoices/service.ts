@@ -14,6 +14,8 @@ import { logError } from "@/lib/errors";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { getPlan } from "@/lib/plan-catalog";
 import { companyPlans, planForAnyPriceId } from "@/lib/region-prices";
+import { vatRateFor } from "@/lib/billing/vat";
+import { getVatSettings } from "@/lib/billing/vat-server";
 import { sendInvoiceEmail, sendInvoiceReminderEmail } from "./emails";
 import { renderInvoicePdf } from "./pdf";
 import { getInvoiceSettings, loadInvoiceLogo, paymentInstructionsFor } from "./settings";
@@ -108,9 +110,15 @@ async function billToOf(businessId: string): Promise<{ billTo: BillTo; ownerEmai
   };
 }
 
+/** The VAT rate an invoice in `currency` carries (Admin -> Settings -> VAT): RWF only, null for no tax line. */
+async function invoiceVatRate(currency: string): Promise<number | null> {
+  return vatRateFor(currency, await getVatSettings());
+}
+
 async function sellerSnapshot(): Promise<SellerSnapshot> {
-  const s = await getInvoiceSettings();
-  const seller: Seller = { businessName: s.businessName, address: s.address, email: s.email, phone: s.phone, website: s.website, tin: s.tin, footer: s.footer, accentColor: s.accentColor, hasLogo: Boolean(s.logoPath) };
+  const [s, vat] = await Promise.all([getInvoiceSettings(), getVatSettings()]);
+  // BuPulse's TIN comes from Admin -> Settings -> VAT; an older TIN typed in the invoice settings is the fallback.
+  const seller: Seller = { businessName: s.businessName, address: s.address, email: s.email, phone: s.phone, website: s.website, tin: vat.tin || s.tin, footer: s.footer, accentColor: s.accentColor, hasLogo: Boolean(s.logoPath) };
   return { seller, payment: await paymentInstructionsFor(s), logoPath: s.logoPath, logoType: s.logoType };
 }
 
@@ -197,9 +205,10 @@ export async function createActivationInvoice(ctx: AdminContext, input: { busine
   if (!plan) throw new AdminError("conflict", `That plan is not offered in ${region.name} (${region.key}), the company's region. Pick one of: ${plans.map((p) => p.name).join(", ") || "none (add a price for this region first)"}.`);
   const unitMinor = interval === "YEAR" ? plan.yearlyPriceCents : plan.monthlyPriceCents;
   if (!unitMinor || unitMinor <= 0) throw new AdminError("conflict", `The ${plan.name} plan has no ${intervalLabel(interval)} price in ${region.name}.`);
-  const settings = await getInvoiceSettings();
+  // The line is the plan's price before VAT; an RWF invoice adds VAT (lib/billing/vat.ts), so its total is what Billing asks for.
+  const vatRate = await invoiceVatRate(plan.currency);
   const lines: InvoiceLine[] = [{ description: `BuPulse ${plan.name} plan, ${interval === "YEAR" ? "yearly (12 months)" : "monthly (1 month)"}`, quantity: 1, unitMinor }];
-  const totals = computeTotals(lines, settings.vatRatePercent);
+  const totals = computeTotals(lines, vatRate, plan.currency);
   const today = invoiceToday(now);
   const number = await nextInvoiceNumber();
   try {
@@ -212,7 +221,7 @@ export async function createActivationInvoice(ctx: AdminContext, input: { busine
           currency: plan.currency.toUpperCase(),
           lines: lines as Prisma.InputJsonValue,
           ...totals,
-          taxRatePercent: settings.vatRatePercent,
+          taxRatePercent: vatRate,
           issueDate: dateOfYmd(today),
           dueDate: dateOfYmd(addDaysYmd(today, DEFAULT_DUE_DAYS)),
           planKey: plan.key,
@@ -241,11 +250,11 @@ export async function updateInvoiceDraft(ctx: AdminContext, id: string, raw: unk
   const row = await prisma.invoice.findUnique({ where: { id } });
   if (!row) throw new AdminError("not_found", "No invoice with that id.");
   if (row.status !== "draft") throw new AdminError("conflict", `Invoice ${row.number} is ${row.status}: only drafts can be edited.`);
-  const settings = await getInvoiceSettings();
-  const checked = validateDraft(raw, ymdOf(row.issueDate), settings.vatRatePercent);
+  const vatRate = await invoiceVatRate(row.currency);
+  const checked = validateDraft(raw, ymdOf(row.issueDate), vatRate, row.currency);
   if (!checked.ok) throw new AdminError("invalid", Object.values(checked.errors)[0] ?? "Check the invoice and try again.");
   const { lines, dueDate, notes, billingEmail } = checked.data;
-  const data = { lines: lines as Prisma.InputJsonValue, ...checked.totals, taxRatePercent: settings.vatRatePercent, dueDate: dateOfYmd(dueDate), notes, billingEmail };
+  const data = { lines: lines as Prisma.InputJsonValue, ...checked.totals, taxRatePercent: vatRate, dueDate: dateOfYmd(dueDate), notes, billingEmail };
   await prisma.$transaction(async (tx) => {
     const { count } = await tx.invoice.updateMany({ where: { id, status: "draft" }, data });
     if (count !== 1) throw new AdminError("conflict", "The invoice was sent or voided a moment ago. Nothing was changed.");
@@ -299,13 +308,15 @@ async function deliverSentInvoice(sent: Row, billTo: BillTo, snapshot: SellerSna
 /**
  * An invoice issued straight away, without a draft: a client who accepted a custom plan offer and chose "Pay by
  * invoice" (docs/OFFERS.md). It activates `planKey` / `interval` when paid, exactly like an activation invoice (Mobile
- * Money with the invoice number, Mark as paid). No tax line: the offer's price is final. Sent at once to the company owner, due in DEFAULT_DUE_DAYS. `ctx` is the
+ * Money with the invoice number, Mark as paid). The lines are before VAT; an RWF invoice adds VAT (lib/billing/vat.ts), so
+ * its total is what the offer's Mobile Money payment asks for. Sent at once to the company owner, due in DEFAULT_DUE_DAYS. `ctx` is the
  * client's context ("client:<user id>"), so the audit says who asked for it. Returns the sent invoice.
  */
 export async function issuePlanInvoice(ctx: AdminContext, input: { businessId: string; currency: string; lines: InvoiceLine[]; planKey: string; interval: BillingInterval; notes?: string | null }, now: Date = new Date()): Promise<Row> {
   if (input.lines.length === 0) throw new AdminError("invalid", "An invoice needs at least one line.");
-  // The price on an offer is the final amount the client pays: never a tax line, whatever the VAT setting.
-  const totals = computeTotals(input.lines, null);
+  // The offer's price is before VAT: an RWF invoice adds it (Admin -> Settings -> VAT), any other currency never does.
+  const vatRate = await invoiceVatRate(input.currency);
+  const totals = computeTotals(input.lines, vatRate, input.currency);
   if (totals.totalMinor <= 0) throw new AdminError("invalid", "An invoice needs a price.");
   const [{ billTo, ownerEmail }, snapshot] = await Promise.all([billToOf(input.businessId), sellerSnapshot()]);
   if (!ownerEmail) throw new AdminError("conflict", "The company has no email address to send the invoice to.");
@@ -320,7 +331,7 @@ export async function issuePlanInvoice(ctx: AdminContext, input: { businessId: s
         currency: input.currency.toUpperCase(),
         lines: input.lines as Prisma.InputJsonValue,
         ...totals,
-        taxRatePercent: null,
+        taxRatePercent: vatRate,
         issueDate: dateOfYmd(today),
         dueDate: dateOfYmd(addDaysYmd(today, DEFAULT_DUE_DAYS)),
         notes: input.notes ?? null,
@@ -675,9 +686,9 @@ export async function openInvoiceOf(businessId: string): Promise<Row | null> {
 
 /** A made-up invoice drawn with the current settings, for the settings page preview. */
 export async function sampleInvoiceDocument(now: Date = new Date()): Promise<{ doc: InvoiceDocument; logo: { path: string; type: string } }> {
-  const [snap, settings] = await Promise.all([sellerSnapshot(), getInvoiceSettings()]);
+  const [snap, vatRate] = await Promise.all([sellerSnapshot(), invoiceVatRate("RWF")]);
   const lines: InvoiceLine[] = [{ description: "BuPulse Business plan, monthly (1 month)", quantity: 1, unitMinor: 50000 }];
-  const totals = computeTotals(lines, settings.vatRatePercent);
+  const totals = computeTotals(lines, vatRate, "RWF");
   const today = invoiceToday(now);
   return {
     doc: {
@@ -688,7 +699,7 @@ export async function sampleInvoiceDocument(now: Date = new Date()): Promise<{ d
       dueDate: addDaysYmd(today, DEFAULT_DUE_DAYS),
       lines,
       ...totals,
-      taxRatePercent: settings.vatRatePercent,
+      taxRatePercent: vatRate,
       notes: null,
       planLabel: "Business, monthly",
       seller: snap.seller,
@@ -705,7 +716,8 @@ export async function payableView(row: Row, now: Date = new Date()) {
   return {
     id: row.id,
     number: row.number,
-    total: formatInvoiceMoney(row.totalMinor, row.currency),
+    // "17,700 RWF (VAT included)" when the invoice carries VAT (RWF, lib/billing/vat.ts).
+    total: `${formatInvoiceMoney(row.totalMinor, row.currency)}${row.taxRatePercent ? " (VAT included)" : ""}`,
     dueDate: longInvoiceDateOf(row.dueDate),
     overdue: isOverdue(row, now),
     planLabel: await planLabelOf(row),

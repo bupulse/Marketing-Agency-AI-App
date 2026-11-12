@@ -6,6 +6,8 @@ import { savePlanAction, type PlanFormState } from "@/app/admin/(console)/(money
 import { formatPrice } from "@/components/billing/helpers";
 import { Badge, Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { vatApplies, type VatSettings } from "@/lib/billing/vat";
+import { VatHint } from "./vat-hint";
 import { FEATURES, dependentsOf, featureLabel, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { USAGE_METRICS, type PlanLimits, type PlanStatus, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY, CREATORS_PER_CAMPAIGN_MAX, creatorsPerCampaignLimit, LIVE_CAMPAIGNS_MAX, liveCampaignsLimit, DAILY_POST_APPS_MAX, dailyPostAppsLimit, SKITS_PER_WEEK_MAX, skitsPerWeekLimit } from "@/lib/plans";
 
@@ -120,7 +122,7 @@ function CardPreview({ name, description, monthly, yearly, currency, features, h
   );
 }
 
-export function PlanForm({ mode, initial, paddleConnected, subscribers, version }: { mode: "create" | "edit"; initial: PlanFormInitial; paddleConnected: boolean; subscribers: number; version?: string }) {
+export function PlanForm({ mode, initial, paddleConnected, subscribers, version, vat = null }: { mode: "create" | "edit"; initial: PlanFormInitial; paddleConnected: boolean; subscribers: number; version?: string; /** The VAT settings: an RWF price (a custom plan's) shows its VAT and what the client pays. */ vat?: VatSettings | null }) {
   const [state, action, pending] = useActionState<PlanFormState, FormData>(savePlanAction, {});
   const [name, setName] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
@@ -189,8 +191,8 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
           <GlassCard className="flex flex-col gap-3 p-5 sm:p-6">
             <h2 className="text-lg font-semibold tracking-[-0.02em]">Price</h2>
             <dl className="grid gap-4 sm:grid-cols-2">
-              <div><dt className="text-sm text-muted">Per month</dt><dd className="text-[15px] font-semibold tabular-nums">{formatPrice(initial.monthlyPriceCents, currency)}</dd></div>
-              <div><dt className="text-sm text-muted">Per year</dt><dd className="text-[15px] font-semibold tabular-nums">{formatPrice(initial.yearlyPriceCents, currency)}</dd></div>
+              <div><dt className="text-sm text-muted">Per month{vat && vatApplies(currency, vat) ? ", before VAT" : ""}</dt><dd className="text-[15px] font-semibold tabular-nums">{formatPrice(initial.monthlyPriceCents, currency)}{vat && <VatHint minor={initial.monthlyPriceCents} currency={currency} vat={vat} />}</dd></div>
+              <div><dt className="text-sm text-muted">Per year{vat && vatApplies(currency, vat) ? ", before VAT" : ""}</dt><dd className="text-[15px] font-semibold tabular-nums">{formatPrice(initial.yearlyPriceCents, currency)}{vat && <VatHint minor={initial.yearlyPriceCents} currency={currency} vat={vat} />}</dd></div>
             </dl>
             <p className="text-[13px] text-muted">
               {initial.isCustom
