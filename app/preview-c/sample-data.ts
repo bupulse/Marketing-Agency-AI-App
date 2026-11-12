@@ -80,4 +80,10 @@ export const SAMPLE_ANALYTICS = {
   chat: { conversations: 41, leads: 12, conversion: 0.293, pages: [{ path: "/menu", count: 7 }, { path: "/", count: 5 }] },
 };
 
+export const SAMPLE_CAMPAIGNS = [
+  { id: "k1", name: "Passion juice summer", slug: "passion-juice", status: "LIVE", setupStep: null, startsOn: "2026-11-01", endsOn: "2026-11-30", platforms: ["instagram", "tiktok"], acceptingApplications: true, listed: true, hidden: false, tasks: 4, applied: 3, joined: 12 },
+  { id: "k2", name: "Opening weekend", slug: "opening", status: "DRAFT", setupStep: 6, startsOn: "2026-12-01", endsOn: "2026-12-30", platforms: ["instagram"], acceptingApplications: true, listed: false, hidden: false, tasks: 0, applied: 0, joined: 0 },
+  { id: "k3", name: "October smoothies", slug: "october", status: "ENDED", setupStep: null, startsOn: "2026-10-01", endsOn: "2026-10-30", platforms: ["facebook"], acceptingApplications: false, listed: false, hidden: false, tasks: 3, applied: 0, joined: 8 },
+];
+
 export const SAMPLE_FIELDS = [{ id: "f1", key: "district", label: "District", type: "choice", options: ["Gasabo", "Kicukiro", "Nyarugenge"] }];

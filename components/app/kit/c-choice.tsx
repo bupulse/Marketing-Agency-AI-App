@@ -7,7 +7,7 @@
 // every movement is off under prefers-reduced-motion.
 
 import { Check, type LucideIcon } from "lucide-react";
-import { isValidElement, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { isValidElement, type KeyboardEvent, type ReactNode } from "react";
 import { KitStyles } from "@/components/admin/kit/kit-styles";
 import { cn } from "@/lib/cn";
 
@@ -33,9 +33,8 @@ function Icon({ icon, className }: { icon: CChoice<string>["icon"]; className?: 
 }
 
 /** Arrow keys move the choice inside a radio group, like real radio buttons. */
-function useArrows<T extends string>(options: readonly CChoice<T>[], value: T | null, onChange: (v: T) => void) {
-  const ref = useRef<HTMLDivElement>(null);
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+function arrowKeys<T extends string>(options: readonly CChoice<T>[], value: T | null, onChange: (v: T) => void) {
+  return (e: KeyboardEvent<HTMLDivElement>) => {
     const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
     if (!step) return;
     const usable = options.filter((o) => !o.disabled);
@@ -44,9 +43,8 @@ function useArrows<T extends string>(options: readonly CChoice<T>[], value: T | 
     const at = usable.findIndex((o) => o.value === value);
     const next = usable[(at + step + usable.length) % usable.length];
     onChange(next.value);
-    ref.current?.querySelector<HTMLButtonElement>(`[data-value="${CSS.escape(next.value)}"]`)?.focus();
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-value="${CSS.escape(next.value)}"]`)?.focus();
   };
-  return { ref, onKeyDown };
 }
 
 /** A row of chips, one answer. Scrolls sideways on a phone (`wrap` lets them wrap instead). */
@@ -66,13 +64,11 @@ export function ChoiceChips<T extends string>({
   wrap?: boolean;
   className?: string;
 }) {
-  const arrows = useArrows(options, value, onChange);
   return (
     <div
-      ref={arrows.ref}
       role="radiogroup"
       aria-label={label}
-      onKeyDown={arrows.onKeyDown}
+      onKeyDown={arrowKeys(options, value, onChange)}
       className={cn(wrap ? "flex flex-wrap gap-2" : "-mx-1 flex gap-2 overflow-x-auto px-1 py-0.5 [scrollbar-width:none]", className)}
     >
       <KitStyles />
@@ -209,9 +205,8 @@ export function ChoiceCards<T extends string>({
   columns?: keyof typeof COLS;
   className?: string;
 }) {
-  const arrows = useArrows(options, value, onChange);
   return (
-    <div ref={arrows.ref} role="radiogroup" aria-label={label} onKeyDown={arrows.onKeyDown} className={cn("kit-rise grid gap-2.5", COLS[columns], className)}>
+    <div role="radiogroup" aria-label={label} onKeyDown={arrowKeys(options, value, onChange)} className={cn("kit-rise grid gap-2.5", COLS[columns], className)}>
       <KitStyles />
       {options.map((o) => (
         <Card key={o.value} o={o} on={o.value === value} role="radio" onClick={() => onChange(o.value)} tabIndex={o.value === value || (value === null && o === options[0]) ? 0 : -1} />

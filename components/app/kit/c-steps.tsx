@@ -92,7 +92,7 @@ export function StepFrame({
           {children}
         </section>
       </div>
-      <div className="sticky bottom-0 z-20 -mx-1 flex flex-col gap-2 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1">
+      <div className="sticky bottom-0 z-20 -mx-1 flex flex-col gap-2 px-1 pt-1 pb-2 max-lg:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]">
         {aside}
         <div className="flex items-center gap-2 rounded-[26px] border border-line bg-surface/90 p-1.5 shadow-[0_18px_40px_-30px_rgba(17,24,39,0.6)] backdrop-blur-md dark:bg-[#1b1b22]/90">
           <Button variant="ghost" onClick={() => onIndex(Math.max(0, index - 1))} disabled={index === 0 || next.busy} aria-label="Back" className="px-4">

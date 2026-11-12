@@ -7,12 +7,16 @@ import { previewAllowed } from "@/lib/support/preview";
 import { ContactsScreen } from "@/components/contacts/contacts-screen";
 import { InboxScreen } from "@/components/inbox/inbox-screen";
 import { BioScreen } from "@/components/bio/bio-screen";
+import { CreatorsScreen } from "@/components/creators/company/creators-screen";
+import { OnePageCampaign } from "@/components/creators/company/one-page/one-page-campaign";
+import type { CampaignRow } from "@/lib/creators/campaigns";
+import { campaignNetworks } from "@/lib/creators/networks";
 import { chosen } from "@/components/admin/kit";
 import { ANALYTICS_VIEWS, AnalyticsScreen, type AnalyticsData, type AnalyticsView } from "@/components/analytics/analytics-screen";
 import { AutomationsScreen, NewAutomationScreen } from "@/components/automations/automations-screen";
 import type { AutomationRow } from "@/lib/automations/service";
 import { WidgetScreen, greetingIdeasFor } from "@/components/widget/widget-screen";
-import { SAMPLE_ANALYTICS, SAMPLE_AUTOMATIONS, SAMPLE_BIO_DAYS, SAMPLE_BIO_SETTINGS, SAMPLE_BIO_SOURCE, SAMPLE_CONTACTS, SAMPLE_CONVERSATIONS, SAMPLE_FIELDS, SAMPLE_LEAD_COUNTS, SAMPLE_LEADS, SAMPLE_TAGS } from "../sample-data";
+import { SAMPLE_ANALYTICS, SAMPLE_AUTOMATIONS, SAMPLE_BIO_DAYS, SAMPLE_BIO_SETTINGS, SAMPLE_BIO_SOURCE, SAMPLE_CAMPAIGNS, SAMPLE_CONTACTS, SAMPLE_CONVERSATIONS, SAMPLE_FIELDS, SAMPLE_LEAD_COUNTS, SAMPLE_LEADS, SAMPLE_TAGS } from "../sample-data";
 
 export const metadata = { title: "Client preview" };
 
@@ -62,6 +66,25 @@ const SCREENS: Record<string, (sp: SP) => ReactNode | Promise<ReactNode>> = {
       params={sp}
       base="/preview-c/analytics"
     />
+  ),
+  creators: (sp) => <CreatorsScreen campaigns={sp.empty ? [] : (SAMPLE_CAMPAIGNS as CampaignRow[])} limits={{ liveCampaigns: 2, creatorsPerCampaign: 20 }} />,
+  "creators-new": () => (
+    <div className="flex flex-col gap-4">
+      <OnePageCampaign
+        start={{ language: "en", description: "", productId: null, productName: "", productPhotos: [] }}
+        options={{
+          currency: "RWF",
+          planLimit: 20,
+          networks: campaignNetworks(true),
+          products: [
+            { id: "p1", name: "Passion juice 1 litre", hint: "Product" },
+            { id: "p2", name: "Mango smoothie", hint: "Product" },
+            { id: "p3", name: "Party pack, 20 cups", hint: "Service" },
+          ],
+          examples: ["Film yourself trying our passion juice at home", "Show your friends ordering our party pack"],
+        }}
+      />
+    </div>
   ),
   contacts: () => <ContactsScreen contacts={SAMPLE_CONTACTS} total={4} hasMore={false} q="" tag={null} channel={null} tags={SAMPLE_TAGS} fields={SAMPLE_FIELDS} canManage />,
 };
