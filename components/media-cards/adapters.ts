@@ -27,7 +27,7 @@ export function libraryStatus(v: Pick<LibraryVideo, "posts">): { status: StatusK
 }
 
 /** LibraryVideo (lib/video-library/service.ts) as VideoCard props, without the actions and onOpen the page adds. */
-export function libraryVideoCard(v: LibraryVideo, timeZone: string, now: Date = new Date()): Omit<VideoCardProps, "actions" | "onOpen" | "badge" | "index"> {
+export function libraryVideoCard(v: LibraryVideo, timeZone: string): Omit<VideoCardProps, "actions" | "onOpen" | "badge" | "index"> {
   const made = new Date(v.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone });
   const st = libraryStatus(v);
   return {
@@ -37,7 +37,8 @@ export function libraryVideoCard(v: LibraryVideo, timeZone: string, now: Date = 
     eyebrow: libraryEyebrow(v),
     status: st.status,
     statusLabel: st.label,
-    dateLabel: v.posts.next ? `Made ${made} · next post ${timeLabel(v.posts.next, now, timeZone)}` : `Made ${made}`,
+    // An absolute time, not "Tomorrow": the server and the browser render the same words.
+    dateLabel: v.posts.next ? `Made ${made} · next post ${new Date(v.posts.next).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone })}` : `Made ${made}`,
     note: v.caption || null,
   };
 }

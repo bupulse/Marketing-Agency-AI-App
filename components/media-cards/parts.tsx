@@ -152,3 +152,7 @@ export function ActionRow({ actions, compact = false, className, onDark = false 
     </div>
   );
 }
+
+/** The class of a pill button on dark glass (VideoCard's panel, the player's panel): for links and custom buttons. */
+export const glassButtonClass = (tone: "primary" | "danger" | "default" = "default", className?: string) =>
+  cn(s.glassBtn, tone === "primary" && s.glassBtnPrimary, tone === "danger" && "!text-[#ffb3bf]", "min-h-11 cursor-pointer px-4 no-underline disabled:pointer-events-none disabled:opacity-50", className);

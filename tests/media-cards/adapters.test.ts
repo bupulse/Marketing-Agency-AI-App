@@ -36,10 +36,10 @@ describe("library adapters", () => {
     expect(libraryStatus({ posts: { count: 1, next: "2026-11-13T10:30:00Z" } }).status).toBe("scheduled");
   });
   it("builds the card and player item", () => {
-    const card = libraryVideoCard(video({ posts: { count: 1, next: "2026-11-13T10:30:00Z" } }), "Africa/Kigali", now);
+    const card = libraryVideoCard(video({ posts: { count: 1, next: "2026-11-13T10:30:00Z" } }), "Africa/Kigali");
     expect(card.id).toBe("video-job1");
     expect(card.video).toEqual({ src: "https://example.test/v.mp4", poster: "https://example.test/p.jpg", durationMs: 22_000, ratio: "9:16" });
-    expect(card.dateLabel).toBe("Made 10 Nov 2026 · next post Tomorrow 12:30");
+    expect(card.dateLabel).toBe("Made 10 Nov 2026 · next post Fri 13 Nov, 12:30");
     expect(card.note).toBe("Grow greens at home #kigali");
     expect(libraryPlayerItem(video())).toMatchObject({ id: "studio:job1", src: "https://example.test/v.mp4", title: "Hydro Tower", ratio: "9:16" });
   });

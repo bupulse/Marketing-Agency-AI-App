@@ -6,7 +6,7 @@ export { PostModal, type PostModalProps } from "./post-modal";
 export { ProductCard, type ProductCardProps } from "./product-card";
 export { CampaignCard, type CampaignCardProps } from "./campaign-card";
 export { MediaStage } from "./media-stage";
-export { ActionRow, CaptionText, PlatformIcons, StatusPill, AccountPicture, statusText } from "./parts";
+export { ActionRow, CaptionText, PlatformIcons, StatusPill, AccountPicture, glassButtonClass, statusText } from "./parts";
 export * from "./helpers";
 export * from "./adapters";
 export type * from "./types";
