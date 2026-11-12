@@ -13,6 +13,8 @@ import type { CalendarPost, ComposerContext } from "@/lib/publishing/types";
 import { dayKey } from "@/lib/publishing/time";
 import { PostCard } from "./post-card";
 import { useMakingByGroup } from "@/components/content-flow/use-set-progress";
+import { bulkDeletable } from "@/lib/publishing/bulk-delete";
+import { BulkActionBar, SelectToggle, useBulkSelect } from "./bulk-select";
 
 /** Where a post's picture or video is made: its Autopilot card, or the day it was made on its product's, campaign's or General's content page. */
 export function visualHrefFor(post: ContentPost, zone: string): string | null {
@@ -29,7 +31,8 @@ export function autoNetworksOf(context: ComposerContext): string[] {
 
 /**
  * A subject's posts as cards. A card opens the post (the calendar's detail: preview, approve, move, edit, delete);
- * Edit opens the composer. More posts load as the list end scrolls into view (or with the button).
+ * Edit opens the composer. More posts load as the list end scrolls into view (or with the button). "Select" picks the
+ * waiting ones (Needs your OK, Expired; never a posted or scheduled post) to delete together.
  */
 export function PostBoard({
   posts,
@@ -40,6 +43,7 @@ export function PostBoard({
   openPost,
   empty,
   showSubject = false,
+  selectable = true,
 }: {
   posts: ContentPost[];
   zone: string;
@@ -51,6 +55,8 @@ export function PostBoard({
   openPost?: ContentPost | null;
   empty: ReactNode;
   showSubject?: boolean;
+  /** Offer "Select" -> "Delete" for the waiting posts in this list. */
+  selectable?: boolean;
 }) {
   const router = useRouter();
   const [detailId, setDetailId] = useState<string | null>(openPost?.id ?? null);
@@ -61,6 +67,7 @@ export function PostBoard({
   const all = openPost && !posts.some((p) => p.id === openPost.id) ? [openPost, ...posts] : posts;
   const detail = all.find((p) => p.id === detailId) ?? null;
   const makingOf = useMakingByGroup(all);
+  const select = useBulkSelect(selectable ? all.filter((p) => bulkDeletable(p.status)).map((p) => p.id) : []);
 
   useEffect(() => {
     loading.current = false;
@@ -83,13 +90,24 @@ export function PostBoard({
 
   return (
     <div className="@container flex flex-col gap-4">
-      <p role="status" className="px-1 text-[13px] text-muted">
-        {total === 1 ? "1 post" : `${total} posts`}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+        <p role="status" className="text-[13px] text-muted">
+          {total === 1 ? "1 post" : `${total} posts`}
+        </p>
+        <SelectToggle select={select} />
+      </div>
       <ul className="grid grid-cols-1 gap-4 @xl:grid-cols-2 @4xl:grid-cols-3 @7xl:grid-cols-4">
         {all.map((post) => (
           <li key={post.id}>
-            <PostCard post={post} zone={zone} onOpen={() => setDetailId(post.id)} showSubject={showSubject} making={post.setMaking ? makingOf(post.groupId) : null} actions={post.status === "EXPIRED" ? <UseAgainButton postId={post.id} /> : undefined} />
+            <PostCard
+              post={post}
+              zone={zone}
+              onOpen={() => setDetailId(post.id)}
+              showSubject={showSubject}
+              making={post.setMaking ? makingOf(post.groupId) : null}
+              actions={post.status === "EXPIRED" ? <UseAgainButton postId={post.id} /> : undefined}
+              selection={select.active && select.ids.includes(post.id) ? { selected: select.selected.has(post.id), onToggle: () => select.toggle(post.id) } : null}
+            />
           </li>
         ))}
       </ul>
@@ -100,6 +118,7 @@ export function PostBoard({
           </Link>
         </div>
       )}
+      <BulkActionBar select={select} />
       <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(p) => { setDetailId(null); setEditing(p); }} visualHref={detail ? visualHrefFor(detail, zone) : null} autoNetworks={autoNetworksOf(context)} />
       <PostComposer open={editing !== null} onOpenChange={(o) => !o && setEditing(null)} context={context} post={editing ?? undefined} />
     </div>

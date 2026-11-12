@@ -24,6 +24,7 @@ import { contentWhere, startOfToday, type ContentFilters, type ContentScope } fr
 import { dateDay, dayDate } from "./period";
 import { buildSubjectCards, GENERAL_LABEL, GENERAL_NAME, type CountRow, type SubjectCard, type SubjectRow } from "./grouping";
 import { isPostKind, type PostKind } from "./kind";
+import { todayBySubject, todayWhere } from "./today";
 
 const URL_SECONDS = 2 * 60 * 60;
 const VIDEO = /\.(mp4|webm)$/i;
@@ -68,7 +69,12 @@ async function makingGroups(businessId: string, rows: PostRow[], now = new Date(
   return new Set(pending.flatMap((v) => (v.groupId ? [v.groupId] : [])));
 }
 
-export type SubjectCardView = Omit<SubjectCard, "lastActivity"> & { coverUrl: string | null; lastActivity: string | null };
+export type SubjectCardView = Omit<SubjectCard, "lastActivity"> & {
+  coverUrl: string | null;
+  lastActivity: string | null;
+  /** Posts made for it today (the business's day), whatever the filters: its card glows with "Today's posts". */
+  madeToday: number;
+};
 
 export const postInclude = {
   connection: { select: { displayName: true, avatarUrl: true, ...resultsConnectionSelect } },
@@ -212,10 +218,13 @@ export async function recentAutoCount(businessId: string, now: Date): Promise<nu
   });
 }
 
-/** The grid: one card per product and campaign, plus General, with counts under the filters and signed covers. */
+/**
+ * The grid: one card per product and campaign, plus General, with counts under the filters and signed covers, and how
+ * many posts were made for each today (one grouped count, read with the others).
+ */
 export async function loadSubjectCards(businessId: string, filters: ContentFilters, zone: string, now: Date): Promise<SubjectCardView[]> {
   const photo = { orderBy: [{ position: "asc" as const }, { createdAt: "asc" as const }], take: 1, select: { asset: { select: { path: true } } } };
-  const [products, campaigns, groups] = await Promise.all([
+  const [products, campaigns, groups, todayGroups] = await Promise.all([
     prisma.product.findMany({ where: { businessId }, orderBy: { updatedAt: "desc" }, take: 500, select: { id: true, name: true, kind: true, status: true, updatedAt: true, photos: photo } }),
     prisma.campaign.findMany({ where: { businessId }, orderBy: { updatedAt: "desc" }, take: 500, select: { id: true, name: true, type: true, status: true, updatedAt: true, photos: photo } }),
     prisma.post.groupBy({
@@ -224,7 +233,9 @@ export async function loadSubjectCards(businessId: string, filters: ContentFilte
       _count: { _all: true },
       _max: { createdAt: true },
     }),
+    prisma.post.groupBy({ by: ["productId", "campaignId"], where: todayWhere(businessId, zone, now), _count: { _all: true } }),
   ]);
+  const madeToday = todayBySubject(todayGroups.map((g) => ({ productId: g.productId, campaignId: g.campaignId, count: g._count._all })));
   const productRows: SubjectRow[] = products.map((p) => ({ id: p.id, name: p.name, label: KIND_LABEL[p.kind], status: p.status, updatedAt: p.updatedAt, coverPath: p.photos[0]?.asset.path ?? null }));
   const campaignRows: SubjectRow[] = campaigns.map((c) => ({ id: c.id, name: c.name, label: CAMPAIGN_TYPE_LABEL[c.type], status: c.status, updatedAt: c.updatedAt, coverPath: c.photos[0]?.asset.path ?? null }));
   const counts: CountRow[] = groups.map((g) => ({ productId: g.productId, campaignId: g.campaignId, status: g.status, count: g._count._all, lastCreatedAt: g._max.createdAt }));
@@ -254,7 +265,7 @@ export async function loadSubjectCards(businessId: string, filters: ContentFilte
   }
   const withCovers = cards.map((c) => ({ ...c, coverPath: c.coverPath ?? covers.get(c.key) ?? null }));
   const signed = await sign(withCovers.flatMap((c) => (c.coverPath ? [c.coverPath] : [])));
-  return withCovers.map((c) => ({ ...c, coverUrl: c.coverPath ? (signed.get(c.coverPath) ?? null) : null, lastActivity: c.lastActivity?.toISOString() ?? null }));
+  return withCovers.map((c) => ({ ...c, coverUrl: c.coverPath ? (signed.get(c.coverPath) ?? null) : null, lastActivity: c.lastActivity?.toISOString() ?? null, madeToday: madeToday.get(c.key) ?? 0 }));
 }
 
 export type SubjectInfo = { scope: ContentScope; name: string; label: string; albumHref: string | null; subjectId: string | null };
