@@ -5,26 +5,30 @@ import { bucketForPath } from "@/lib/publishing/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readItems } from "@/lib/visuals/service";
 import { scheduledPostsOf } from "@/lib/video-studio/schedule";
+import { UPLOAD_ENGINE, uploadTitle } from "./upload-rules";
 
 // BuPulse's Videos library (docs/VIDEO_STUDIO_SPLIT.md): every video the system made for the company, in one list.
 //   studio     a Video Studio job that is "ready" (made on studio.bupulse.com, or by Autopilot): its MP4 is a Gallery
 //              file in the "Video Studio" folder, so it can be scheduled and deleted here
+//   upload     a video the company uploaded here ("Upload a video", lib/video-library/upload.ts): a VideoJob of engine
+//              "upload" whose MP4 is a Gallery file in the "Uploaded videos" folder, scheduled and deleted like a studio
+//              video; it used no credits
 //   slideshow  a content video (lib/visuals, a ContentVisual of kind "video"): it belongs to its post, so it is managed
 //              from that post
-// Videos are made on the studio; nothing here makes one.
+// Videos are made on the studio (or uploaded); nothing here makes one.
 
 export const LIBRARY_SHOWN = 60;
 const URL_SECONDS = 60 * 60;
 
-export type LibrarySource = "studio" | "slideshow";
+export type LibrarySource = "studio" | "upload" | "slideshow";
 
 export type LibraryVideo = {
-  /** "studio:<job id>" or "slideshow:<visual id>". */
+  /** "studio:<job id>", "upload:<job id>" or "slideshow:<visual id>". */
   key: string;
   id: string;
   source: LibrarySource;
   title: string;
-  /** "motion" | "premium3d" | "seedance" for studio videos. */
+  /** "motion" | "premium3d" | "seedance" for studio videos, "upload" for uploaded ones. */
   engine: string | null;
   ratio: string;
   durationMs: number | null;
@@ -33,7 +37,7 @@ export type LibraryVideo = {
   downloadUrl: string | null;
   posterUrl: string | null;
   caption: string;
-  /** Studio videos not opened in the library yet. */
+  /** Studio videos not opened in the library yet (an uploaded video is seen when it is uploaded). */
   isNew: boolean;
   posts: { count: number; next: string | null };
   /** Where a slideshow video is managed (its post's page). */
@@ -60,6 +64,42 @@ async function sign(paths: string[], download: boolean): Promise<Map<string, str
 const contentHref = (c: { productId: string | null; campaignId: string | null } | null) =>
   c?.productId ? `/dashboard/content/products/${c.productId}` : c?.campaignId ? `/dashboard/content/campaigns/${c.campaignId}` : "/dashboard/content";
 
+const JOB_SELECT = { id: true, engine: true, ratio: true, durationMs: true, createdAt: true, videoPath: true, posterPath: true, caption: true, seenAt: true, product: { select: { name: true } } } as const;
+type JobRow = { id: string; engine: string; ratio: string; durationMs: number | null; createdAt: Date; videoPath: string | null; posterPath: string | null; caption: string; seenAt: Date | null; product: { name: string } | null };
+
+/** A ready VideoJob (studio or uploaded) as a library card, with its signed links and its posts. */
+function jobVideo(j: JobRow, links: { url: string; download: string | null; poster: string | null }, posts: LibraryVideo["posts"]): LibraryVideo {
+  const upload = j.engine === UPLOAD_ENGINE;
+  return {
+    key: `${upload ? "upload" : "studio"}:${j.id}`,
+    id: j.id,
+    source: upload ? "upload" : "studio",
+    title: upload ? uploadTitle(j.caption) : (j.product?.name ?? "Studio video"),
+    engine: j.engine,
+    ratio: j.ratio,
+    durationMs: j.durationMs,
+    createdAt: j.createdAt.toISOString(),
+    videoUrl: links.url,
+    downloadUrl: links.download,
+    posterUrl: links.poster,
+    caption: j.caption,
+    isNew: !j.seenAt,
+    posts,
+    postHref: null,
+  };
+}
+
+/** One ready video job of the company as a library card (a video just uploaded), or null. */
+export async function libraryVideoOfJob(businessId: string, jobId: string): Promise<LibraryVideo | null> {
+  const j = await prisma.videoJob.findFirst({ where: { id: jobId, businessId, status: "ready", videoPath: { not: null } }, select: JOB_SELECT });
+  if (!j?.videoPath) return null;
+  const [play, save, posts] = await Promise.all([sign([j.videoPath, ...(j.posterPath ? [j.posterPath] : [])], false), sign([j.videoPath], true), scheduledPostsOf(businessId, [j.videoPath])]);
+  const url = play.get(j.videoPath);
+  if (!url) return null;
+  const p = posts.get(j.videoPath);
+  return jobVideo(j, { url, download: save.get(j.videoPath) ?? null, poster: j.posterPath ? (play.get(j.posterPath) ?? null) : null }, p ? { count: p.count, next: p.next?.toISOString() ?? null } : { count: 0, next: null });
+}
+
 /** The company's videos, newest first. `source` narrows the list. */
 export async function listLibraryVideos(businessId: string, opts: { source?: LibrarySource | null; limit?: number } = {}): Promise<LibraryVideo[]> {
   const limit = opts.limit ?? LIBRARY_SHOWN;
@@ -67,12 +107,12 @@ export async function listLibraryVideos(businessId: string, opts: { source?: Lib
     opts.source === "slideshow"
       ? []
       : prisma.videoJob.findMany({
-          where: { businessId, status: "ready", videoPath: { not: null } },
+          where: { businessId, status: "ready", videoPath: { not: null }, ...(opts.source === "upload" ? { engine: UPLOAD_ENGINE } : opts.source === "studio" ? { engine: { not: UPLOAD_ENGINE } } : {}) },
           orderBy: { createdAt: "desc" },
           take: limit,
-          select: { id: true, engine: true, ratio: true, durationMs: true, createdAt: true, videoPath: true, posterPath: true, caption: true, seenAt: true, product: { select: { name: true } } },
+          select: JOB_SELECT,
         }),
-    opts.source === "studio"
+    opts.source === "studio" || opts.source === "upload"
       ? []
       : prisma.contentVisual.findMany({
           where: { businessId, kind: "video", status: "ready" },
@@ -101,26 +141,7 @@ export async function listLibraryVideos(businessId: string, opts: { source?: Lib
   const out: LibraryVideo[] = [
     ...jobs.flatMap((j): LibraryVideo[] => {
       const url = play.get(j.videoPath!);
-      if (!url) return [];
-      return [
-        {
-          key: `studio:${j.id}`,
-          id: j.id,
-          source: "studio",
-          title: j.product?.name ?? "Studio video",
-          engine: j.engine,
-          ratio: j.ratio,
-          durationMs: j.durationMs,
-          createdAt: j.createdAt.toISOString(),
-          videoUrl: url,
-          downloadUrl: save.get(j.videoPath!) ?? null,
-          posterUrl: j.posterPath ? (play.get(j.posterPath) ?? null) : null,
-          caption: j.caption,
-          isNew: !j.seenAt,
-          posts: postsOf(j.videoPath!),
-          postHref: null,
-        },
-      ];
+      return url ? [jobVideo(j, { url, download: save.get(j.videoPath!) ?? null, poster: j.posterPath ? (play.get(j.posterPath) ?? null) : null }, postsOf(j.videoPath!))] : [];
     }),
     ...slides.flatMap(({ v, path }): LibraryVideo[] => {
       const url = play.get(path);
@@ -164,7 +185,7 @@ export async function markStudioVideosSeen(businessId: string, ids: string[], no
 export class LibraryError extends Error {}
 
 /**
- * Deletes a studio video: its Gallery file (and poster) and the job's link to it. Refused while a post that has not
+ * Deletes a studio or uploaded video: its Gallery file (and poster) and the job's link to it. Refused while a post that has not
  * gone out yet uses it, so nothing scheduled loses its video.
  */
 export async function deleteStudioVideo(businessId: string, jobId: string): Promise<void> {

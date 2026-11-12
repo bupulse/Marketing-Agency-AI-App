@@ -7,7 +7,8 @@ import { scoreCaption, type CaptionScore } from "@/lib/video-engine/brain/score"
 import { seedanceOverlayCaption } from "@/lib/video-engine/seedance-overlay";
 import type { Ratio } from "@/lib/video-engine/spec";
 import { withMusicCredit } from "@/lib/visuals/service";
-import { loadBriefFacts } from "./brief";
+import { UPLOAD_ENGINE } from "@/lib/video-library/upload-rules";
+import { loadBriefFacts, loadBusinessFacts } from "./brief";
 import { VideoStudioError } from "./job-view";
 
 // Scheduling a Video Studio MP4 (docs/VIDEO_APP_INTEGRATION.md, section 5, task 7): a studio video is a normal post with
@@ -16,7 +17,9 @@ import { VideoStudioError } from "./job-view";
 // with the video attached; the lengths; the queue). Each network gets its own caption: the design's own for the
 // platform it was made for, else the Brain's caption for that network (seedanceOverlayCaption); the owner may change
 // them, and each must pass the Brain's caption check (CAPTION_PASS) before anything is scheduled. A music credit line
-// that the track's licence asks for goes at the end of every post.
+// that the track's licence asks for goes at the end of every post. A video the company uploaded to the library
+// (engine "upload", lib/video-library/upload.ts) is scheduled the same way: about its product when one was chosen,
+// else about the business itself, checked as a post on the business's own page (one friendly line, few hashtags).
 
 /** The networks a studio video can go to. LinkedIn takes photos only from BuPulse. */
 export const STUDIO_NETWORKS: readonly Network[] = ["instagram", "facebook", "tiktok", "youtube"];
@@ -34,23 +37,27 @@ export type ScheduleOptions = { accounts: ScheduleAccount[]; captions: Partial<R
 
 async function readyJob(businessId: string, jobId: string) {
   const job = await prisma.videoJob.findFirst({
-    where: { id: jobId, businessId, engine: "motion" },
-    select: { id: true, status: true, videoPath: true, productId: true, caption: true, hashtags: true, platform: true, templateId: true, seconds: true, ratio: true, music: true, brief: true },
+    where: { id: jobId, businessId, engine: { in: ["motion", UPLOAD_ENGINE] } },
+    select: { id: true, engine: true, status: true, videoPath: true, productId: true, caption: true, hashtags: true, platform: true, templateId: true, seconds: true, ratio: true, music: true, brief: true },
   });
   if (!job) throw new VideoStudioError("We could not find that video.", "not_found", 404);
-  if (job.status !== "ready" || !job.videoPath || !job.productId) throw new VideoStudioError("Make the MP4 first: then it can be scheduled.", "invalid", 400);
-  return job as typeof job & { videoPath: string; productId: string };
+  if (job.status !== "ready" || !job.videoPath || (job.engine !== UPLOAD_ENGINE && !job.productId)) throw new VideoStudioError("Make the MP4 first: then it can be scheduled.", "invalid", 400);
+  return job as typeof job & { videoPath: string };
 }
 
 type Job = Awaited<ReturnType<typeof readyJob>>;
-type Facts = Awaited<ReturnType<typeof loadBriefFacts>>;
+type Facts = Awaited<ReturnType<typeof loadBusinessFacts>>;
+
+/** An uploaded video with no product is about the business: its captions are checked as a page post. */
+const aboutBusiness = (job: Job) => job.engine === UPLOAD_ENGINE && !job.productId;
+const factsOf = (businessId: string, job: Job): Promise<Facts> => (job.productId ? loadBriefFacts(businessId, job.productId) : loadBusinessFacts(businessId));
 
 const creditOf = (music: unknown): string | null => {
   const m = music as { attribution?: unknown; owned?: unknown } | null;
   return m && m.owned === false && typeof m.attribution === "string" && m.attribution.trim() ? m.attribution.trim() : null;
 };
 
-const scoreBrief = (job: Job, facts: Facts) => ({ business: facts.business, product: facts.product, styleId: job.templateId, seconds: job.seconds });
+const scoreBrief = (job: Job, facts: Facts) => ({ business: facts.business, product: facts.product, styleId: job.templateId, seconds: job.seconds, purpose: aboutBusiness(job) ? ("post" as const) : null });
 
 function check(job: Job, facts: Facts, network: Network, text: string, hashtags: string[]): CaptionScore {
   return scoreCaption(text, hashtags, scoreBrief(job, facts), { platform: network });
@@ -59,7 +66,8 @@ function check(job: Job, facts: Facts, network: Network, text: string, hashtags:
 /** The caption a network starts with: the design's own when it was made for that platform (or for anywhere), else the Brain's. */
 function defaultCaption(job: Job, facts: Facts, network: Network): NetworkCaption {
   const own = !job.platform || job.platform === network;
-  if (own && job.caption.trim()) {
+  // About the business (no product to sell): the owner's own title, which they finish in the schedule step.
+  if ((own && job.caption.trim()) || aboutBusiness(job)) {
     const s = check(job, facts, network, job.caption, job.hashtags);
     return { text: job.caption, hashtags: job.hashtags, score: s.score, missed: s.missed, own: true };
   }
@@ -80,7 +88,7 @@ function defaultCaption(job: Job, facts: Facts, network: Network): NetworkCaptio
 export async function scheduleOptions(businessId: string, jobId: string): Promise<ScheduleOptions> {
   const job = await readyJob(businessId, jobId);
   const [facts, connections, business] = await Promise.all([
-    loadBriefFacts(businessId, job.productId),
+    factsOf(businessId, job),
     prisma.connection.findMany({ where: { businessId, kind: "SOCIAL", provider: { in: [...STUDIO_NETWORKS] } }, orderBy: { createdAt: "asc" }, select: { id: true, provider: true, displayName: true, accountType: true, status: true, postingMode: true } }),
     prisma.business.findUnique({ where: { id: businessId }, select: { timezone: true } }),
   ]);
@@ -109,7 +117,7 @@ export async function scheduleJob(owner: Owner, jobId: string, input: ScheduleIn
   const other = connections.find((c) => !STUDIO_NETWORKS.includes(c.provider as Network));
   if (other) throw new PublishingError(`${LABEL[other.provider as Network] ?? other.provider} takes photos only from BuPulse, so a studio video cannot go there.`, "invalid");
 
-  const facts = await loadBriefFacts(owner.businessId, job.productId);
+  const facts = await factsOf(owner.businessId, job);
   const credit = creditOf(job.music);
   const networks = [...new Set(connections.map((c) => c.provider as Network))];
   const overrides: Record<string, { text: string; hashtags: string[] }> = {};
@@ -118,7 +126,7 @@ export async function scheduleJob(owner: Owner, jobId: string, input: ScheduleIn
     const given = input.captions?.[network];
     const chosen = given ? { text: given.text.trim(), hashtags: given.hashtags } : defaultCaption(job, facts, network);
     const s = check(job, facts, network, chosen.text, chosen.hashtags);
-    if (s.score < CAPTION_PASS) problems.push(`${LABEL[network]} caption (${s.score}/100): ${s.missed.slice(0, 2).join(" ") || "add the product, the price and how to order."}`);
+    if (s.score < CAPTION_PASS) problems.push(`${LABEL[network]} caption (${s.score}/100): ${s.missed.slice(0, 2).join(" ") || (aboutBusiness(job) ? "write one friendly line about the video." : "add the product, the price and how to order.")}`);
     overrides[network] = { text: withMusicCredit(chosen.text, credit), hashtags: chosen.hashtags };
   }
   if (problems.length) throw new PublishingError(`Improve the caption first. ${problems[0]}`, "invalid", { captions: problems.join(" ") });

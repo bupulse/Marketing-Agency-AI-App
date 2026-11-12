@@ -117,15 +117,15 @@ export async function jobForDrawing(ctx: Ctx, jobId: string, purpose: "preview" 
   };
 }
 
-/** The Gallery folder studio videos go to, made the first time. */
-export async function studioFolder(businessId: string): Promise<string> {
-  const found = await prisma.mediaFolder.findUnique({ where: { businessId_name: { businessId, name: STUDIO_FOLDER } }, select: { id: true } });
+/** The Gallery folder studio videos go to (or another named one: uploaded videos), made the first time. */
+export async function studioFolder(businessId: string, name: string = STUDIO_FOLDER): Promise<string> {
+  const found = await prisma.mediaFolder.findUnique({ where: { businessId_name: { businessId, name } }, select: { id: true } });
   if (found) return `folder:${found.id}`;
   try {
-    return `folder:${(await createFolder(businessId, STUDIO_FOLDER)).id}`;
+    return `folder:${(await createFolder(businessId, name)).id}`;
   } catch (error) {
     // Made by a parallel request in the meantime.
-    const again = await prisma.mediaFolder.findUnique({ where: { businessId_name: { businessId, name: STUDIO_FOLDER } }, select: { id: true } });
+    const again = await prisma.mediaFolder.findUnique({ where: { businessId_name: { businessId, name } }, select: { id: true } });
     if (again) return `folder:${again.id}`;
     throw error;
   }

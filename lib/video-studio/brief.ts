@@ -53,6 +53,20 @@ export async function loadBriefFacts(businessId: string, productId: string): Pro
 }
 
 /**
+ * The brief's facts for a video about the business itself, not one product (an uploaded video with no product): the
+ * business stands in as the "product", with no price.
+ */
+export async function loadBusinessFacts(businessId: string): Promise<Pick<DesignBrief, "business" | "product">> {
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { name: true, description: true, industryDescription: true, contentLanguage: true, brandColors: true, phone: true, website: true, country: true, tone: true } });
+  if (!business) throw new BriefError("We could not find your business.", "not_found");
+  const description = business.description ?? business.industryDescription;
+  return {
+    business: { name: business.name, description, language: business.contentLanguage, colors: business.brandColors, phone: business.phone, website: business.website, country: business.country, tone: business.tone },
+    product: { name: business.name, summary: description, description: null, price: null, priceNotes: null, usps: [], features: [], targetCustomer: null },
+  };
+}
+
+/**
  * The photos for a design: the paths asked for (each must be this business's gallery photo), or else the product's
  * album in order; at most MAX_DESIGN_PHOTOS. Returns the stored shape (paths, sizes, notes) without reading files.
  */
