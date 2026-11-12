@@ -11,6 +11,7 @@ import { BrandLockup } from "@/components/brand/lockup";
 import { ThemeToggle } from "@/components/theme";
 import type { BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { RAIL, RAIL_OFF, RAIL_ON, RAIL_PANEL, RAIL_ROW } from "@/components/app/rail";
 import { CommandPalette } from "./command-palette";
 import { breadcrumbsFor, findNavItem, groupHref, hubFor, inGroup, navFor, phoneTabsFor, type AdminNavGroup, type BadgeKey } from "./nav";
 import { Breadcrumbs as KitBreadcrumbs } from "./kit/breadcrumbs";
@@ -90,11 +91,11 @@ function waitingIn(badges: ShellBadges, keys: BadgeKey[]): number {
 const groupBadgeKeys = (g: AdminNavGroup): BadgeKey[] => g.items.flatMap((i) => (i.badge ? [i.badge] : []));
 
 /** BuPulse's real logo and "Admin" (components/brand/lockup.tsx), linking to the Overview. Light and dark. */
-function AdminBrand({ compact }: { compact?: boolean }) {
+function AdminBrand({ compact, onRail }: { compact?: boolean; /** On the gradient sidebar: the white logo. */ onRail?: boolean }) {
   const toHref = useHostHref();
   return (
     <Link href={toHref("/admin")} className={cn("inline-flex items-center rounded-lg no-underline", !compact && "self-start", "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30")}>
-      <BrandLockup service="Admin" height={compact ? 26 : 32} eager />
+      <BrandLockup service="Admin" height={compact ? 26 : 32} tone={onRail ? "white" : "auto"} eager />
     </Link>
   );
 }
@@ -128,9 +129,9 @@ export function Nav({ badges, permissions, onNavigate, pathname: forced }: { bad
                   onClick={() => toggle(group.id)}
                   aria-expanded={open}
                   aria-controls={`nav-${group.id}`}
-                  className="flex min-h-10 flex-1 cursor-pointer items-center gap-2.5 rounded-xl px-2 text-[11.5px] font-bold uppercase tracking-[0.08em] text-muted hover:text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30"
+                  className="flex min-h-10 flex-1 cursor-pointer items-center gap-2.5 rounded-xl px-2 text-[11.5px] font-bold uppercase tracking-[0.08em] text-white/85 hover:text-white focus-visible:outline-none dark:text-white/55 dark:hover:text-white"
                 >
-                  {GroupIcon && <IconBadge icon={GroupIcon} tone={group.tone} size="sm" className="size-6 rounded-lg [&>svg]:size-3.5" />}
+                  {GroupIcon && <span aria-hidden className="inline-flex size-6 items-center justify-center rounded-lg bg-white/15 dark:bg-white/[0.07]"><GroupIcon className="size-3.5" /></span>}
                   <span className="flex-1 text-left">{group.title}</span>
                   {!open && hidden > 0 && <CountBubble count={hidden} label={`${hidden} waiting in ${group.title}`} />}
                   {open ? <ChevronDown aria-hidden className="size-3.5" /> : <ChevronRight aria-hidden className="size-3.5" />}
@@ -143,8 +144,8 @@ export function Nav({ badges, permissions, onNavigate, pathname: forced }: { bad
                     title={`All of ${group.title}`}
                     aria-current={activeHub?.id === group.id ? "page" : undefined}
                     className={cn(
-                      "inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-soft hover:text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30",
-                      activeHub?.id === group.id && "bg-pulse-blue/10 text-pulse-blue dark:text-[#8db0ff]",
+                      "inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-white/85 hover:bg-white/12 hover:text-white focus-visible:outline-none dark:text-white/60",
+                      activeHub?.id === group.id && "bg-white text-[#1f55d6] dark:bg-white/15 dark:text-white",
                     )}
                   >
                     <LayoutGrid aria-hidden className="size-4" />
@@ -162,14 +163,15 @@ export function Nav({ badges, permissions, onNavigate, pathname: forced }: { bad
                       onClick={onNavigate}
                       aria-current={isActive ? "page" : undefined}
                       className={cn(
-                        "group relative flex min-h-10 items-center gap-3 rounded-xl px-3 text-[14px] font-medium no-underline transition-colors duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30",
-                        isActive ? "kit-pop bg-brand-gradient font-semibold text-white shadow-[0_10px_22px_-14px_rgba(47,107,255,0.9)]" : "text-muted hover:bg-soft hover:text-text",
+                        RAIL_ROW,
+                        "min-h-10 focus-visible:outline-none",
+                        isActive ? cn("kit-pop", RAIL_ON) : RAIL_OFF,
                       )}
                     >
-                      <Icon aria-hidden className={cn("size-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 motion-reduce:transform-none", isActive ? "text-white" : "")} />
+                      <Icon aria-hidden className={cn("size-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 motion-reduce:transform-none", isActive ? "text-[#1f55d6] dark:text-white" : "")} />
                       <span className="flex-1 truncate">{label}</span>
                       {isActive && badge && badges[badge] && badges[badge]!.count > 0 ? (
-                        <span aria-label={badges[badge]!.label} className="rounded-full bg-white/25 px-1.5 text-[11px] font-bold tabular-nums">
+                        <span aria-label={badges[badge]!.label} className="rounded-full bg-[#1f55d6]/12 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/25">
                           {badges[badge]!.count > 99 ? "99+" : badges[badge]!.count}
                         </span>
                       ) : (
@@ -386,29 +388,29 @@ export function AdminShell({
       </a>
 
       {/* Computer: the sidebar, full height, its own scroll. */}
-      <aside aria-label="Sidebar" className="hidden shrink-0 border-r border-line bg-surface lg:sticky lg:top-0 lg:flex lg:h-dvh lg:w-[272px] lg:flex-col dark:bg-[#111117]">
+      <aside aria-label="Sidebar" className={cn(RAIL, "hidden shrink-0 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:w-[272px] lg:flex-col dark:border-r dark:border-white/[0.06]")}>
         <div className="flex flex-col gap-5 px-4 pb-3 pt-6">
-          <AdminBrand />
+          <AdminBrand onRail />
           <button
             type="button"
             onClick={() => setSearch(true)}
-            className="group flex min-h-12 cursor-pointer items-center gap-2.5 rounded-2xl border border-line bg-bg px-3 text-[14px] text-muted transition-[border-color,box-shadow] hover:border-pulse-blue/40 hover:shadow-[0_10px_24px_-18px_rgba(47,107,255,0.8)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30 dark:bg-white/[0.04]"
+            className={cn(RAIL_PANEL, "group flex min-h-12 cursor-pointer items-center gap-2.5 rounded-2xl px-3 text-[14px] text-white transition-colors hover:bg-white/20 focus-visible:outline-none dark:text-white/85 dark:hover:bg-white/[0.09]")}
           >
-            <Search aria-hidden className="size-[18px] text-pulse-blue dark:text-[#8db0ff]" />
-            <span className="flex-1 text-left font-medium group-hover:text-text">Search</span>
-            <kbd className="rounded-md border border-line bg-surface px-1.5 py-0.5 font-sans text-[11px] font-semibold dark:bg-white/[0.06]">⌘K</kbd>
+            <Search aria-hidden className="size-[18px]" />
+            <span className="flex-1 text-left font-medium">Search</span>
+            <kbd className="rounded-md bg-white/15 px-1.5 py-0.5 font-sans text-[11px] font-semibold dark:bg-white/[0.06]">⌘K</kbd>
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
           <Nav badges={badges} permissions={permissions} pathname={forced} />
         </div>
-        <div className="flex items-center gap-2.5 border-t border-line px-4 py-3">
-          <span aria-hidden className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-[13px] font-bold text-white">{initialOf(email)}</span>
+        <div className="flex items-center gap-2.5 border-t border-white/15 px-4 py-3 dark:border-white/[0.06]">
+          <span aria-hidden className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-[13px] font-bold text-[#1f55d6] dark:bg-brand-gradient dark:text-white">{initialOf(email)}</span>
           <span className="flex min-w-0 flex-1 flex-col" title={email}>
             <span className="truncate text-[13px] font-semibold">{email}</span>
-            <span className="truncate text-[12px] text-muted">{roleName ?? "Owner"}</span>
+            <span className="truncate text-[12px] text-white/80 dark:text-white/55">{roleName ?? "Owner"}</span>
           </span>
-          <a href={toHref("/dashboard")} aria-label="Customer view" title="Customer view" className="inline-flex size-9 items-center justify-center rounded-xl text-muted hover:bg-soft hover:text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30">
+          <a href={toHref("/dashboard")} aria-label="Customer view" title="Customer view" className="inline-flex size-9 items-center justify-center rounded-xl text-white/85 hover:bg-white/12 hover:text-white focus-visible:outline-none">
             <ArrowUpRight aria-hidden className="size-4" />
           </a>
         </div>
