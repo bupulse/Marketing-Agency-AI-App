@@ -6,6 +6,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { bucketForPath } from "@/lib/publishing/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isOwnedLicence } from "@/lib/music/tracks";
+import { trackCredit } from "@/lib/music/credit";
 import type { VideoPlan } from "./types";
 import { readVideoPlan } from "./video-plan";
 import { VisualError } from "./service";
@@ -33,7 +34,9 @@ export async function setVideoMusic(businessId: string, visualId: string, trackI
   if (trackId) {
     const track = await prisma.musicTrack.findFirst({ where: { id: trackId, active: true } });
     if (!track) throw new VisualError("That track is no longer in the library.");
-    music = { trackId: track.id, title: track.title, path: track.path, attribution: track.attribution, owned: isOwnedLicence(track.licence) };
+    // With the credit line its posts' captions end with (lib/music/credit.ts): the new video's posts take the new credit
+    // when it is saved (attachVisuals replaces the old line, or takes it off for music that needs none).
+    music = { trackId: track.id, title: track.title, path: track.path, attribution: track.attribution, owned: isOwnedLicence(track.licence), credit: trackCredit(track) };
   }
   // A new mix is a remake: the video it has stays until the new one is saved, and it uses none of the plan's videos.
   await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: { ...plan, music } as unknown as Prisma.InputJsonValue, status: "pending", error: null, robotAttempts: 0 } });

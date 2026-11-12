@@ -2534,7 +2534,7 @@ model VideoJob {
   parentId       String? // the job an edit, extend, re-render or overlay came from
   parent         VideoJob?         @relation("VideoJobParent", fields: [parentId], references: [id], onDelete: SetNull)
   children       VideoJob[]        @relation("VideoJobParent")
-  engine         String // "motion" | "premium3d" | "seedance"
+  engine         String // "motion" | "premium3d" | "seedance" | "adbrain" (Ad Brain) | "upload" (Videos → Upload)
   mode           String? // "reference" | "text" | "image" | "first-last" | "edit" | "extend"
   status         String            @default("designing") // designing, designed, rendering, submitted, queued, running, ready, failed, cancelled, preview, preview-ready
   templateId     String?

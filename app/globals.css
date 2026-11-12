@@ -500,6 +500,64 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
   }
 }
 
+/* ---------- "Today's posts" glow (components/content-board/subject-grid.tsx) ----------
+   A product's, campaign's or General's card with posts made today: a crisp blue-to-violet ring and a soft glow around
+   it that breathes slowly. Both are drawn outside the card only (a masked ring, an outer shadow), so the glass card
+   itself keeps its colours. Reduced motion: the same ring and glow, still. */
+.bp-today-glow {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--radius-card);
+}
+.bp-today-glow::before,
+.bp-today-glow::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+}
+/* The ring: a 3px gradient border around the card (masked to the edge only); the gradient slowly flows. */
+.bp-today-glow::before {
+  inset: -3px;
+  padding: 3px;
+  border-radius: calc(var(--radius-card) + 3px);
+  background: linear-gradient(120deg, #2f6bff, #7b5cff, #2f6bff);
+  background-size: 200% 200%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: bp-today-flow 6s linear infinite;
+}
+/* The glow: blue on one side, violet on the other, outside the card. */
+.bp-today-glow::after {
+  inset: 0;
+  border-radius: var(--radius-card);
+  box-shadow:
+    -10px -6px 30px -4px rgba(47, 107, 255, 0.7),
+    10px 8px 32px -4px rgba(123, 92, 255, 0.7);
+  opacity: 0.75;
+  animation: bp-today-breathe 3.2s ease-in-out infinite;
+}
+.dark .bp-today-glow::after {
+  box-shadow:
+    -10px -6px 32px -4px rgba(47, 107, 255, 0.7),
+    10px 8px 34px -4px rgba(123, 92, 255, 0.7);
+}
+@keyframes bp-today-breathe {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+@keyframes bp-today-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bp-today-glow::before,
+  .bp-today-glow::after {
+    animation: none !important;
+  }
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   *,

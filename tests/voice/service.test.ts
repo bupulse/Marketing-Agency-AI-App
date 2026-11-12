@@ -4,8 +4,9 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     contentVisual: { findFirst: vi.fn(), update: vi.fn(), count: vi.fn() },
     voiceClip: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), delete: vi.fn() },
-    adminSetting: { findMany: vi.fn() },
+    adminSetting: { findMany: vi.fn(), findUnique: vi.fn() },
   },
+  ttsName: vi.fn(),
   featureStatus: vi.fn(),
   consumeUsage: vi.fn(),
   refundUsage: vi.fn(),
@@ -42,7 +43,12 @@ vi.mock("@/lib/ai/ledger", () => ({
   },
 }));
 vi.mock("@/lib/ai", () => ({ getCheapTextProvider: () => ({ provider: { name: "gemini", generate: mocks.generate }, model: "gemini-lite" }) }));
-vi.mock("@/lib/ai/tts", () => ({ getTtsProvider: () => ({ name: "elevenlabs", model: "eleven_multilingual_v2", speak: mocks.speak }) }));
+vi.mock("@/lib/ai/tts", () => ({
+  getTtsProvider: (name?: string) => {
+    mocks.ttsName(name);
+    return { name: name ?? "elevenlabs", model: "eleven_multilingual_v2", speak: mocks.speak };
+  },
+}));
 vi.mock("@/lib/content-board/settings-service", () => ({ getContentSettings: async () => ({ voiceId: "NZ8KtusXpnktPYja5Qko" }) }));
 vi.mock("@/lib/media/service", () => {
   class MediaError extends Error {}
@@ -88,6 +94,7 @@ beforeEach(() => {
   mocks.mediaUsage.mockResolvedValue({ count: 0, bytes: 0 });
   mocks.rateLimit.mockResolvedValue(undefined);
   mocks.prisma.adminSetting.findMany.mockResolvedValue([]);
+  mocks.prisma.adminSetting.findUnique.mockResolvedValue(null);
 });
 
 describe("ensureVoiceover: the video's language (Posts -> Settings, Languages)", () => {
@@ -263,6 +270,41 @@ describe("ensureVoiceover", () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue(row({ ...basePlan(), voice: { enabled: false, voiceId: VOICE } }));
     expect((await ensureVoiceover(owner, "v1"))!.plan.voice?.enabled).toBe(false);
     expect(mocks.speak).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureVoiceover: a day's reel speaks its voice-over script", () => {
+  const script = (p = basePlan()) => p.scenes.map((_, i) => `Spoken line number ${i + 1} for the reel`);
+
+  it("speaks VideoPlan.voiceScript (one line per scene), not the words on screen, and times each scene to its line", async () => {
+    const reel = { ...basePlan(), voiceScript: script(), daySetId: "g1" };
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row(reel));
+    const { plan } = (await ensureVoiceover(owner, "v1"))!;
+    const spoken = script().map((l) => `${l}.`).join(" ");
+    expect(mocks.speak).toHaveBeenCalledWith({ text: spoken, voiceId: VOICE });
+    expect(plan.voice).toMatchObject({ enabled: true, hash: voiceHash(VOICE, MODEL, spoken, 0), note: null });
+    expect(plan.voice?.timings).toHaveLength(reel.scenes.length);
+    // The captions on screen are unchanged.
+    expect(plan.scenes.map((s) => s.text)).toEqual(reel.scenes.map((s) => s.text));
+  });
+
+  it("a script too long is shortened on its own: the words on screen stay", async () => {
+    const reel = { ...basePlan(), voiceScript: basePlan().scenes.map(() => "A very long spoken line that goes on and on about the product and its many features, again and again, until nobody could say it in a short advert at all, really") };
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row(reel));
+    const short = reel.scenes.map((_, i) => `Short spoken ${i + 1}.`);
+    mocks.generate.mockResolvedValueOnce({ text: JSON.stringify({ lines: short }), provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } });
+    const { plan } = (await ensureVoiceover(owner, "v1"))!;
+    expect(mocks.speak).toHaveBeenCalledWith({ text: short.join(" "), voiceId: VOICE });
+    expect(plan.voiceScript).toEqual(short);
+    expect(plan.scenes.map((s) => s.text)).toEqual(reel.scenes.map((s) => s.text));
+  });
+
+  it("through the admin's voice provider (Admin -> Voices, voice.english): Gemini when the owner chose it", async () => {
+    mocks.prisma.adminSetting.findUnique.mockResolvedValue({ key: "voice.english", value: { provider: "gemini", voiceId: "gemini:Achird" } });
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row({ ...basePlan(), voiceScript: script() }));
+    await ensureVoiceover(owner, "v1");
+    expect(mocks.ttsName).toHaveBeenCalledWith("gemini");
+    expect(mocks.speak.mock.calls[0][0]).toEqual({ text: script().map((l) => `${l}.`).join(" "), voiceId: "Achird" });
   });
 });
 

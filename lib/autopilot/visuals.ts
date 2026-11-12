@@ -177,8 +177,12 @@ async function recordLatePicture(group: PlannedGroup, written: WrittenGroup, ctx
   await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "image", status: "pending", plan: json(plan), items: json([]) } });
 }
 
-/** A video plan for a group with a video idea (a SCRIPT post), from its script and photos. Made later in the browser. */
-async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: VisualContext) {
+/**
+ * A video plan for a group with a video idea (a SCRIPT post): the day's reel on Instagram and TikTok (owner decision,
+ * 11 November 2026), made from the group's picture first, then its photos, with its voice-over script and a song from
+ * the library. Rendered later (the robot, the browser or the server renderer).
+ */
+async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: VisualContext, picture?: string | null) {
   const scriptPost = group.posts.find((p) => p.format === "SCRIPT");
   if (!scriptPost || !ctx.videoAllowed) return;
   // A feed video post has its scenes apart from its caption; a TikTok / YouTube post's text is the script.
@@ -188,11 +192,15 @@ async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: V
     script,
     hook: written.image.headline || group.project?.title || ctx.businessName,
     businessName: ctx.businessName,
-    photos: group.photos.map((p) => p.path),
+    photos: [...(picture ? [picture] : []), ...group.photos.map((p) => p.path)],
     pack: recommendPack(ctx.business),
     colors: ctx.business.brandColors,
-    look: chooseLook({ pack: recommendPack(ctx.business), template: group.idea.template ?? null, hasPhoto: group.photos.length > 0, recent: (await recentVisualChoices(ctx.businessId)).looks, seed: group.groupId }),
+    look: chooseLook({ pack: recommendPack(ctx.business), template: group.idea.template ?? null, hasPhoto: !!picture || group.photos.length > 0, recent: (await recentVisualChoices(ctx.businessId)).looks, seed: group.groupId }),
   });
+  // The voice-over script, one spoken line per scene (the scene lines are the script's spoken lines).
+  plan.voiceScript = plan.scenes.map((s) => (/[.!?…]$/.test(s.text.trim()) ? s.text.trim() : `${s.text.trim()}.`));
+  plan.videoKind = "slideshow";
+  plan.daySetId = group.groupId;
   plan.mood = moodFor({ tone: ctx.business.tone });
   plan.music = await trackForVideo(plan.mood, group.groupId);
   if (videoGetsAiClips(ctx.videoQuality, group.groupId)) plan.quality = "ai";
@@ -210,7 +218,7 @@ export async function makeGroupVisuals(group: PlannedGroup, written: WrittenGrou
   }
   // A carousel left with one picture (its visual is already recorded as an image) is that picture.
   if (carousel && carousel.length < 2) {
-    await planGroupVideo(group, written, ctx).catch((error) => logError(error, { source: "autopilot.visuals.record", level: "warn", businessId: ctx.businessId }));
+    await planGroupVideo(group, written, ctx, carousel[0]).catch((error) => logError(error, { source: "autopilot.visuals.record", level: "warn", businessId: ctx.businessId }));
     return { designs: { "4:5": carousel[0], "1:1": carousel[0] }, aiStopped: run.aiStopped, notes: [], aiUsed: false, carousel: null };
   }
   // The single image is still made when a feed network has no carousels (in every size the networks need).
@@ -221,7 +229,7 @@ export async function makeGroupVisuals(group: PlannedGroup, written: WrittenGrou
   const aiNow = ctx.useAiImages && !run.aiStopped && run.aiMade < aiPicturesPerRun();
   const later = !carousel && aiNow && hasShortRequestLimit();
   if (needsSingle) {
-    images = await makeGroupImages(group, written.image, { ...ctx, useAiImages: aiNow && !later }, { aiStopped: run.aiStopped, caption: feedText(written) });
+    images = await makeGroupImages(group, written.image, { ...ctx, useAiImages: aiNow && !later }, { aiStopped: run.aiStopped, caption: feedText(written), forReel: ctx.videoAllowed });
     run.renders += Object.keys(images.designs).length;
     if (images.aiUsed) run.aiMade += 1;
     if (images.aiStopped) run.aiStopped = true;
@@ -234,7 +242,7 @@ export async function makeGroupVisuals(group: PlannedGroup, written: WrittenGrou
       await recordLatePicture(group, written, ctx, Object.values(images.designs).filter((p): p is string => !!p));
       run.aiMade += 1;
     } else if (!carousel && cover) await recordImage(group, written, ctx, cover);
-    await planGroupVideo(group, written, ctx);
+    await planGroupVideo(group, written, ctx, carousel?.[0] ?? cover ?? null);
   } catch (error) {
     await logError(error, { source: "autopilot.visuals.record", level: "warn", businessId: ctx.businessId });
   }

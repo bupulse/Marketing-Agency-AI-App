@@ -169,9 +169,10 @@ export async function planBatch(owner: Owner, request: BatchRequest): Promise<{ 
 
 /**
  * The steps of one picture, one AI call each, so no server call runs long (bupulse.com answers within 60 s on
- * Netlify; a Pro picture alone takes about 40 s): planned, then "painting" (the Painter), "painted" (the Checker),
- * "fixing" (the Editor's one try, when the check asked for a fix), "edited" (the Checker on the fix), then done or
- * failed. Each step saves the row, so the next call (or another painter) carries on from the database.
+ * Netlify; a Pro picture alone takes about 40 s): planned, then "painting" (the Painter), "painted" (the one quick
+ * Checker), "fixing" (the Editor's one try, only when that check found a real problem: the fix is kept and the picture
+ * is done), "edited" (rows from before the fast path: the Checker on the fix), then done or failed. Each step saves
+ * the row, so the next call (or another painter) carries on from the database.
  */
 export const WORKING_STATUSES = ["planned", "painting", "painted", "fixing", "edited"] as const;
 
@@ -251,10 +252,13 @@ async function stepRow(owner: Owner, row: ConceptRow): Promise<{ outcome: "done"
       return { outcome: "working", row: await save({ status: "fixing", check: { ok: false, problems: verdict.problems, ran: verdict.ran, fix: verdict.fix } }) };
     }
     if (row.status === "fixing") {
-      // The Editor's one try; when it fails, the first picture is kept with what the Checker saw.
+      // The Editor's one try (fast path, 11 November 2026: plan, paint, one quick check, and a fix only when that check
+      // found a real problem). The fix is kept without a second check: it only corrects what the check named, and the
+      // second read cost a Gemini call and 5 to 10 s per picture. When the Editor fails, the first picture is kept.
       try {
         const edited = await createEngineDesign({ ...owned, prompt: `Edit this advert. ${check?.fix ?? ""}`, model, aspectRatio, editOf: row.path });
-        return { outcome: "working", row: await save({ status: "edited", check: { ...check!, edit: { id: edited.id, path: edited.path } } }) };
+        await deleteDesign(owner.userId, row.designId!).catch(() => undefined);
+        return { outcome: "done", row: await finish(edited.id, edited.path, { ok: true, problems: check?.problems ?? [], ran: check?.ran ?? true }, true) };
       } catch (error) {
         await logError(error, { source: "image-engine.editor", level: "warn", businessId: owner.businessId });
         return { outcome: "done", row: await finish(row.designId!, row.path!, check ?? { ok: false, problems: [], ran: true }, false) };

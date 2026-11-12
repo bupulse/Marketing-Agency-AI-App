@@ -58,6 +58,8 @@ vi.mock("@/lib/media/service", () => {
 });
 vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: mocks.signedUpload }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => mocks.storage } }) }));
+const setReel = vi.hoisted(() => ({ createSetReel: vi.fn(async () => "reel-1") }));
+vi.mock("@/lib/content-flow/set-reel", () => setReel);
 
 import { AIBudgetExceededError } from "@/lib/ai/budget";
 import { EngineError } from "@/lib/image-engine/engine";
@@ -541,7 +543,9 @@ describe("attachToGroup (pictures)", () => {
     await attachToGroup("biz1", "g1", { feed: true });
     const status = { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] };
     expect(mocks.prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ businessId: "biz1", groupId: "g1", lockedAt: null, status });
-    expect(mocks.prisma.post.updateMany).toHaveBeenCalledWith({ where: { groupId: "g1", status, id: "fb", lockedAt: null, updatedAt }, data: { format: "CAROUSEL", mediaPaths: ["a.png", "b.png", "c.png"] } });
+    expect(mocks.prisma.post.updateMany).toHaveBeenCalledWith({ where: expect.objectContaining({ groupId: "g1", status, id: "fb", lockedAt: null, updatedAt }), data: { format: "CAROUSEL", mediaPaths: ["a.png", "b.png", "c.png"] } });
+    // A day's set (Create, Daily posts) reaches only its drafts the owner did not edit; Autopilot's scheduled posts too.
+    expect(mocks.prisma.post.findMany.mock.calls[0][0].where.OR).toEqual([{ source: { notIn: ["STUDIO", "DAILY"] } }, { status: { in: ["DRAFT", "PENDING_APPROVAL"] }, ownerEditedAt: null }]);
   });
 
   it("a picture made later replaces only the owner's photo it stood in for, never one the owner picked", async () => {
@@ -558,7 +562,7 @@ describe("attachToGroup (pictures)", () => {
     expect(mocks.prisma.post.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: "ig" }, data: { mediaPaths: ["ai.png"] } });
   });
 
-  it("Studio drafts take a finished picture only while waiting and untouched by the owner", async () => {
+  it("Studio and Daily drafts take a finished picture only while waiting and untouched by the owner", async () => {
     const { attachToContent } = await import("@/lib/visuals/service");
     mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "image", status: "ready", items: [{ path: "a.png" }] }]);
     mocks.prisma.post.findMany.mockResolvedValue([]);
@@ -566,11 +570,37 @@ describe("attachToGroup (pictures)", () => {
     expect(mocks.prisma.post.findMany.mock.calls[0][0].where).toEqual({
       businessId: "biz1",
       contentId: "content-1",
-      source: "STUDIO",
+      source: { in: ["STUDIO", "DAILY"] },
       status: { in: ["DRAFT", "PENDING_APPROVAL"] },
       ownerEditedAt: null,
       lockedAt: null,
     });
+  });
+
+  // Owner report, 11 November 2026: the nightly Daily posts (before the day's shared sets) drew one picture per post
+  // (ContentVisual by contentId, Post.source DAILY); the attach took STUDIO posts only, so they said "No picture yet".
+  it("an old Daily post's own picture reaches its post when drawn", async () => {
+    const updatedAt = new Date("2026-11-11T05:00:00Z");
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide()]) });
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "image", status: "ready", items: [{ path: `${U}/designs/d1.jpg` }] }]);
+    mocks.prisma.post.findMany.mockResolvedValue([{ id: "daily-fb", network: "facebook", format: "POST", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Fresh today" }]);
+    mocks.prisma.post.updateMany.mockResolvedValue({ count: 1 });
+    expect((await renderImageStep(owner, "v1")).status).toBe("ready");
+    const where = mocks.prisma.post.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ contentId: "c1", source: { in: ["STUDIO", "DAILY"] } });
+    expect(mocks.prisma.post.updateMany).toHaveBeenCalledWith({ where: expect.objectContaining({ id: "daily-fb", updatedAt }), data: { format: "POST", mediaPaths: [`${U}/designs/d1.jpg`] } });
+  });
+
+  it("onlyPosts limits an attach to those posts; nothing ready never empties a post", async () => {
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "image", status: "ready", items: [{ path: "a.png" }] }]);
+    mocks.prisma.post.findMany.mockResolvedValue([]);
+    await attachToGroup("biz1", "g1", { onlyPosts: ["p1", "p2"] });
+    expect(mocks.prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ groupId: "g1", id: { in: ["p1", "p2"] } });
+    mocks.prisma.post.findMany.mockClear();
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([]);
+    await attachToGroup("biz1", "g1");
+    expect(mocks.prisma.post.findMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.post.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -649,5 +679,102 @@ describe("people in the pictures (owner decision, 13 October 2026)", () => {
     expect(saved.slides[0]).toMatchObject({ source: "album", photoPath: photo });
     expect(saved.aiExhausted).toEqual({ refillAt: "2026-11-01T00:00:00.000Z" });
     expect(saved.notes[0]).toMatch(/AI images for this month used — next refill on 1 November/);
+  });
+});
+
+describe("a day's shared set (lib/content-flow/day-set.ts)", () => {
+  const draft = { kind: "slideshow" as const, hook: "Greens", cta: "Call us", scenes: [{ onScreen: "Greens", voice: "Fresh greens." }, { onScreen: "Tower", voice: "One tower." }] };
+  const setPlan = (slides: VisualSlide[], reel: typeof draft | null = draft): ImagePlan => ({ ...plan(slides), daySet: { groupId: "g1", maxAi: slides.filter((x) => x.source === "ai").length, reel } });
+  const row = (p: ImagePlan) => ({ id: "v1", businessId: "biz1", contentId: null, groupId: "g1", kind: "carousel", plan: p });
+
+  it("steps every picture side by side on the server, up to the set's AI pictures, each with its own idea", async () => {
+    const p = setPlan([slide({ source: "ai", scene: "Pupils with lettuce" }), slide({ source: "ai", scene: "The tower at night" }), slide({ source: "ai", scene: "A harvest basket" })]);
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row(p));
+    mocks.prisma.post.findMany.mockResolvedValue([{ contentId: "c9", format: "POST" }]);
+    mocks.prisma.generatedContent.findFirst.mockResolvedValue({ brief: "Weekend offer", caption: "Greens for schools.", language: "English" });
+    mocks.startPicture.mockImplementation(async (_o: unknown, r: { brief: string }) => ({ id: `concept-${r.brief.split("\n")[0]}` }));
+    const r = await renderImageStep(owner, "v1", { parallel: true });
+    expect(r.status).toBe("pending");
+    expect(mocks.startPicture).toHaveBeenCalledTimes(3);
+    const briefs = mocks.startPicture.mock.calls.map((c) => c[1].brief as string);
+    expect(briefs.map((b) => b.split("\n")[0])).toEqual(["This picture: Pupils with lettuce", "This picture: The tower at night", "This picture: A harvest basket"]);
+    expect(briefs[0]).toContain("Weekend offer");
+    expect(mocks.startPicture.mock.calls[0][1]).toMatchObject({ caption: "Greens for schools.", language: "English" });
+    // Next call: every picture steps at once and the set is ready; its reel is made from the pictures before the save.
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row(mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data.plan));
+    let k = 0;
+    mocks.stepPicture.mockImplementation(async () => ({ status: "done", id: `c${++k}`, designId: `ai${k}`, path: `${U}/designs/ai${k}.png` }));
+    const done = await renderImageStep(owner, "v1", { parallel: true });
+    expect(done.status).toBe("ready");
+    expect(mocks.stepPicture).toHaveBeenCalledTimes(3);
+    expect(setReel.createSetReel).toHaveBeenCalledWith(expect.objectContaining({ id: "v1", groupId: "g1" }), expect.anything(), [`${U}/designs/ai1.png`, `${U}/designs/ai2.png`, `${U}/designs/ai3.png`]);
+    const saved = mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data;
+    expect(saved).toMatchObject({ status: "ready", kind: "carousel" });
+    expect(saved.plan.daySet.reelVisualId).toBe("reel-1");
+  });
+
+  it("never starts more AI pictures than the set may have", async () => {
+    const p = { ...setPlan([slide({ source: "ai" }), slide({ source: "ai" })]), daySet: { groupId: "g1", maxAi: 1, reel: null } };
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row(p));
+    await renderImageStep(owner, "v1", { parallel: true });
+    expect(mocks.startPicture).toHaveBeenCalledTimes(1);
+    expect(mocks.createPhotoDesign).toHaveBeenCalledTimes(1);
+    expect(setReel.createSetReel).not.toHaveBeenCalled();
+  });
+
+  it("leaves out a picture that fails and goes on with the others", async () => {
+    const { DesignError } = await import("@/lib/designs/service");
+    mocks.createPhotoDesign.mockRejectedValueOnce(new DesignError("That photo could not be read."));
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row(setPlan([slide(), slide({ photoPath: `${U}/gallery/bbbbbbbb-2000.jpg` })], null)));
+    const r = await renderImageStep(owner, "v1", { parallel: true });
+    expect(r.status).toBe("ready");
+    const saved = mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data;
+    expect(saved.plan.slides[0]).toMatchObject({ skipped: true, note: "That photo could not be read." });
+    expect(saved.items).toHaveLength(1);
+  });
+
+  it("the posts that carry the reel get its music credit (CC BY), replaced on a music swap, within the app's limit", async () => {
+    const updatedAt = new Date("2026-10-12T10:00:00Z");
+    const credit = "Music: Allada, Kevin MacLeod (incompetech.com), CC BY 4.0";
+    const music = { trackId: "t1", title: "Allada", path: "t1.mp3", attribution: "Allada, Kevin MacLeod (incompetech.com), CC BY 4.0", owned: false, credit };
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "carousel", status: "ready", items: [{ path: "a.png" }, { path: "b.png" }] }, { kind: "video", status: "ready", items: [{ path: `${U}/videos/new.mp4` }], plan: { ...buildVideoPlan({ script: "One.\nTwo.", hook: "One", businessName: "B", photos: [], pack: "clean" }), music } }]);
+    mocks.prisma.post.findMany.mockResolvedValue([
+      // Had the reel with an older song and its credit.
+      { id: "ig", network: "instagram", format: "POST", mediaPaths: [`${U}/videos/old.mp4`], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Greens\n\nMusic: Old Song, Someone, CC BY 3.0" },
+      { id: "tt", network: "tiktok", format: "SCRIPT", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "x".repeat(2300) },
+      // The pictures post gets no credit.
+      { id: "li", network: "linkedin", format: "POST", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Article" },
+    ]);
+    await attachToGroup("biz1", "g1", { feed: true });
+    const data = Object.fromEntries(mocks.prisma.post.updateMany.mock.calls.map((c) => [c[0].where.id, c[0].data]));
+    expect(data.ig.text).toBe(`Greens\n\n${credit}`);
+    expect(data.tt.text.endsWith(`\n\n${credit}`)).toBe(true);
+    expect(data.tt.text.length).toBeLessThanOrEqual(2200);
+    expect(data.li.text).toBeUndefined();
+  });
+
+  it("no credit change while the reel is being made again (it still has its old song's file)", async () => {
+    const updatedAt = new Date("2026-10-12T10:00:00Z");
+    const music = { trackId: "t2", title: "Morning", path: "t2.mp3", attribution: "", owned: false, credit: null };
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "video", status: "pending", items: [{ path: `${U}/videos/old.mp4` }], plan: { ...buildVideoPlan({ script: "One.\nTwo.", hook: "One", businessName: "B", photos: [], pack: "clean" }), music } }]);
+    mocks.prisma.post.findMany.mockResolvedValue([{ id: "fb", network: "facebook", format: "SCRIPT", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Hi\n\nMusic: Allada, Kevin MacLeod" }]);
+    await attachToGroup("biz1", "g1");
+    expect(mocks.prisma.post.updateMany.mock.calls[0][0].data.text).toBeUndefined();
+  });
+
+  it("a redrawn picture never replaces a post's reel; a newer reel does", async () => {
+    const updatedAt = new Date("2026-10-12T10:00:00Z");
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "carousel", status: "ready", items: [{ path: "a.png" }, { path: "b.png" }] }, { kind: "video", status: "ready", items: [{ path: `${U}/videos/reel.mp4` }], plan: null }]);
+    mocks.prisma.post.findMany.mockResolvedValue([
+      { id: "ig", network: "instagram", format: "POST", mediaPaths: [`${U}/videos/reel.mp4`], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Hi" },
+      { id: "ig-old", network: "instagram", format: "POST", mediaPaths: [`${U}/videos/old.mp4`], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Hi" },
+      { id: "fb", network: "facebook", format: "POST", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null, updatedAt, text: "Hi" },
+    ]);
+    await attachToGroup("biz1", "g1", { feed: true });
+    const updates = mocks.prisma.post.updateMany.mock.calls.map((c) => [c[0].where.id, c[0].data.mediaPaths]);
+    expect(updates).toEqual([
+      ["ig-old", [`${U}/videos/reel.mp4`]],
+      ["fb", ["a.png", "b.png"]],
+    ]);
   });
 });

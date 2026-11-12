@@ -20,9 +20,28 @@ function sentence(text: string): string {
   return t && !/[.!?…]$/.test(t) ? `${t}.` : t;
 }
 
-/** The spoken lines of a video plan: its scene captions (scriptLines already removed timestamps and directions). */
-export function spokenLines(plan: Pick<VideoPlan, "scenes">): string[] {
+/** Whether the plan's voice-over script can be spoken: one line per scene, none empty. */
+export function hasVoiceScript(plan: Pick<VideoPlan, "scenes" | "voiceScript">): boolean {
+  return Array.isArray(plan.voiceScript) && plan.voiceScript.length === plan.scenes.length && plan.voiceScript.every((l) => typeof l === "string" && l.trim().length > 0);
+}
+
+/**
+ * The spoken lines of a video plan, one per scene: its voice-over script when it has one (a day's reel: the writer's
+ * spoken lines, lib/content-flow/set-reel.ts; Autopilot's), else the scene captions (scriptLines already removed
+ * timestamps and directions).
+ */
+export function spokenLines(plan: Pick<VideoPlan, "scenes" | "voiceScript">): string[] {
+  if (hasVoiceScript(plan)) return plan.voiceScript!.map((l) => sentence(l));
   return plan.scenes.map((s) => sentence(scriptLines(s.text).join(" ") || s.text));
+}
+
+/**
+ * The voice-over script after the owner edited the captions: a scene whose caption changed speaks its new caption,
+ * the others keep their spoken line. Undefined when the plan had no script (the captions are spoken).
+ */
+export function voiceScriptAfterEdit(before: Pick<VideoPlan, "scenes" | "voiceScript">, after: Pick<VideoPlan, "scenes">): string[] | undefined {
+  if (!hasVoiceScript(before) || after.scenes.length !== before.scenes.length) return undefined;
+  return after.scenes.map((s, i) => (s.text === before.scenes[i].text ? before.voiceScript![i] : sentence(s.text)));
 }
 
 /** The text sent to the voice, and where each line starts and ends in it. */

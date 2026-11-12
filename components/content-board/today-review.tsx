@@ -13,10 +13,13 @@ import type { CalendarPost, ComposerContext } from "@/lib/publishing/types";
 import { autoNetworksOf, visualHrefFor } from "./post-board";
 import { approvedMessage } from "@/lib/content-board/labels";
 import { PostCard } from "./post-card";
+import { useMakingByGroup } from "@/components/content-flow/use-set-progress";
+import { bulkDeletable } from "@/lib/publishing/bulk-delete";
+import { BulkActionBar, SelectToggle, useBulkSelect } from "./bulk-select";
 
 /**
  * "Today": the posts made today that wait for review, with Approve (scheduled at the best time), Edit and Reject on
- * each, and Approve all. Older ones waiting are one link away.
+ * each, and Approve all. "Select" picks several to delete together. Older ones waiting are one link away.
  */
 export function TodayReview({ posts, older, zone, context }: { posts: ContentPost[]; older: number; zone: string; context: ComposerContext }) {
   const router = useRouter();
@@ -27,6 +30,9 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editing, setEditing] = useState<CalendarPost | null>(null);
   const detail = posts.find((p) => p.id === detailId) ?? null;
+  // Daily posts, Autopilot and Create: a post whose set is still being made shows its real progress.
+  const makingOf = useMakingByGroup(posts);
+  const select = useBulkSelect(posts.filter((p) => bulkDeletable(p.status)).map((p) => p.id));
 
   function run(id: string | null, action: () => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>, done: (res: Record<string, unknown>) => string | { text: string; tone: "success" | "error" }) {
     setBusyId(id);
@@ -67,10 +73,15 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
             {posts.length === 0 ? "Nothing new to review today." : "New posts waiting for your OK. Approving schedules each one at the best time for its app."}
           </p>
         </div>
-        {posts.length > 1 && (
-          <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={approveAll}>
-            Approve all {posts.length}
-          </Button>
+        {posts.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <SelectToggle select={select} what="today's posts" />
+            {posts.length > 1 && !select.active && (
+              <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={approveAll}>
+                Approve all {posts.length}
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -82,9 +93,11 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
                 post={post}
                 zone={zone}
                 showSubject
+                making={post.setMaking ? makingOf(post.groupId) : null}
                 onOpen={() => setDetailId(post.id)}
+                selection={select.active && select.ids.includes(post.id) ? { selected: select.selected.has(post.id), onToggle: () => select.toggle(post.id) } : null}
                 actions={
-                  rejecting === post.id ? (
+                  select.active ? undefined : rejecting === post.id ? (
                     <>
                       <Button size="sm" variant="outline" className="border-danger text-danger" disabled={pending} onClick={() => run(post.id, () => deletePostAction(post.id), () => "Rejected and deleted.")}>
                         Yes, delete it
@@ -120,6 +133,7 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
         </Link>
       )}
 
+      <BulkActionBar select={select} />
       <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(p) => { setDetailId(null); setEditing(p); }} visualHref={detail ? visualHrefFor(detail, zone) : null} autoNetworks={autoNetworksOf(context)} />
       <PostComposer open={editing !== null} onOpenChange={(o) => !o && setEditing(null)} context={context} post={editing ?? undefined} />
     </section>

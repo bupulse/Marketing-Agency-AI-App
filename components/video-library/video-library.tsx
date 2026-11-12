@@ -3,11 +3,13 @@
 /**
  * <VideoLibrary> is the Videos page (docs/VIDEO_STUDIO_SPLIT.md): every video BuPulse made for the company, newest first,
  * with the Video Studio bar on top. Videos are made on the studio (studio.bupulse.com, a new tab, signed in with one
- * click through /dashboard/video/open); here they are watched, downloaded, scheduled (studio videos) and deleted
- * (studio videos; a post's slideshow video is managed from its post).
+ * click through /dashboard/video/open) or uploaded here ("Upload a video", components/video-library/upload-dialog.tsx);
+ * here they are watched, downloaded, scheduled (studio and uploaded videos) and deleted (the same; a post's slideshow
+ * video is managed from its post).
  *
  * Props:
  *   initialVideos  lib/video-library/service.ts listLibraryVideos
+ *   upload         "Upload a video": the company's products (for "What is it about?") and its video storage (used, cap)
  *   studio         "open" (the button works), "plan" (no video credits: "Upgrade to use") or "off" (coming soon)
  *   credits        { used, limit, resetsAt } of the plan's video credits
  *   canBuy         the person may buy (the billing permission): "Buy credits" goes to Billing
@@ -17,10 +19,11 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Clapperboard, Download, ExternalLink, Film, Loader2, Trash2 } from "lucide-react";
+import { CalendarClock, Clapperboard, Download, ExternalLink, Film, Loader2, Trash2, Upload } from "lucide-react";
 import { Badge, Button, buttonClasses, Field, GlassCard, Input, Meter, Textarea, useToast } from "@/components/ui";
 import { deleteLibraryVideo, loadLibrary, loadScheduleOptions, scheduleStudioVideo } from "@/app/dashboard/video/actions";
 import { WhatsAppShare } from "@/components/share/whatsapp-share";
+import { UploadVideoDialog } from "./upload-dialog";
 import { cn } from "@/lib/cn";
 import { whatsappCaption } from "@/lib/share/whatsapp";
 import type { Network } from "@/lib/social/types";
@@ -37,16 +40,18 @@ type Props = {
   reason: string | null;
   focus: string | null;
   timeZone: string;
+  upload: { products: { id: string; name: string }[]; storage: { used: number; max: number } };
 };
 
-type Filter = "all" | "studio" | "slideshow";
+type Filter = "all" | "studio" | "upload" | "slideshow";
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "studio", label: "Video Studio" },
+  { id: "upload", label: "Uploaded" },
   { id: "slideshow", label: "Post videos" },
 ];
 
-const ENGINE_LABEL: Record<string, string> = { motion: "Motion", premium3d: "Premium 3D", seedance: "AI video" };
+const ENGINE_LABEL: Record<string, string> = { motion: "Motion", premium3d: "Premium 3D", seedance: "AI video", upload: "Uploaded" };
 const NETWORK_LABEL: Record<Network, string> = { instagram: "Instagram Reels", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube Shorts", linkedin: "LinkedIn", twitter: "X (Twitter)" };
 const ASPECT: Record<string, string> = { "9:16": "aspect-[9/16]", "4:5": "aspect-[4/5]", "1:1": "aspect-square", "16:9": "aspect-video" };
 
@@ -277,7 +282,7 @@ function VideoCard({ video, focused, timeZone, onChange, onDeleted }: { video: L
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-semibold">{video.title}</span>
         {video.isNew && <Badge tone="violet">New</Badge>}
-        <Badge tone="neutral">{video.source === "studio" ? (ENGINE_LABEL[video.engine ?? ""] ?? "Studio") : "Post video"}</Badge>
+        <Badge tone="neutral">{video.source === "slideshow" ? "Post video" : video.source === "upload" ? "Uploaded" : (ENGINE_LABEL[video.engine ?? ""] ?? "Studio")}</Badge>
       </div>
       <p className="text-sm text-muted">
         {[made, length, video.ratio].filter(Boolean).join(" · ")}
@@ -285,7 +290,7 @@ function VideoCard({ video, focused, timeZone, onChange, onDeleted }: { video: L
         {video.posts.count > 0 ? `In ${video.posts.count} ${video.posts.count === 1 ? "post" : "posts"}${next ? `, next ${next}` : ""}.` : "Not posted yet."}
       </p>
       <div className="flex flex-wrap items-start gap-2">
-        {video.source === "studio" && <SchedulePanel video={video} timeZone={timeZone} onScheduled={(n, at) => onChange({ ...video, posts: { count: video.posts.count + n, next: video.posts.next && at && video.posts.next < at ? video.posts.next : (at ?? video.posts.next) } })} />}
+        {video.source !== "slideshow" && <SchedulePanel video={video} timeZone={timeZone} onScheduled={(n, at) => onChange({ ...video, posts: { count: video.posts.count + n, next: video.posts.next && at && video.posts.next < at ? video.posts.next : (at ?? video.posts.next) } })} />}
         {video.downloadUrl && (
           <a href={video.downloadUrl} className={buttonClasses({ size: "sm", variant: "ghost" })}>
             <Download aria-hidden className="size-4" />
@@ -298,15 +303,17 @@ function VideoCard({ video, focused, timeZone, onChange, onDeleted }: { video: L
             Open its post
           </Button>
         )}
-        {video.source === "studio" && <DeleteButton video={video} onDeleted={onDeleted} />}
+        {video.source !== "slideshow" && <DeleteButton video={video} onDeleted={onDeleted} />}
       </div>
     </GlassCard>
   );
 }
 
-export function VideoLibrary({ initialVideos, studio, credits, canBuy, reason, focus, timeZone }: Props) {
+export function VideoLibrary({ initialVideos, studio, credits, canBuy, reason, focus, timeZone, upload }: Props) {
   const [videos, setVideos] = useState(initialVideos);
   const [filter, setFilter] = useState<Filter>("all");
+  const [uploading, setUploading] = useState(false);
+  const [videoBytes, setVideoBytes] = useState(upload.storage.used);
   const shown = useMemo(() => (filter === "all" ? videos : videos.filter((v) => v.source === filter)), [videos, filter]);
 
   // The "Your video is ready" email opens on its video.
@@ -329,14 +336,30 @@ export function VideoLibrary({ initialVideos, studio, credits, canBuy, reason, f
     <div className="flex flex-col gap-5">
       {reason && REASON_TEXT[reason] && <p className="rounded-2xl bg-soft p-4 text-sm">{REASON_TEXT[reason]}</p>}
       <StudioBar studio={studio} credits={credits} canBuy={canBuy} timeZone={timeZone} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-[17px] font-semibold">Your videos</h2>
+        <Button variant="outline" onClick={() => setUploading(true)} leading={<Upload className="size-4" aria-hidden />}>
+          Upload a video
+        </Button>
+      </div>
+      <UploadVideoDialog
+        open={uploading}
+        onOpenChange={setUploading}
+        products={upload.products}
+        storage={{ used: videoBytes, max: upload.storage.max }}
+        onUploaded={(video, bytes) => {
+          setVideos((list) => [video, ...list.filter((x) => x.key !== video.key)]);
+          setVideoBytes((b) => b + bytes);
+        }}
+      />
       {videos.length === 0 ? (
         <GlassCard padding="lg" className="flex flex-col items-center gap-3 text-center">
           <Film aria-hidden className="size-8 text-pulse-blue" />
           <span className="text-[17px] font-semibold">No videos yet</span>
           <span className="max-w-md text-sm text-muted">
             {studio === "open"
-              ? "Open the Video Studio and make your first video. When it is ready it appears here, and we email you."
-              : "Your videos will appear here: the ones the Video Studio makes for you, and the videos of your daily posts."}
+              ? "Open the Video Studio and make your first video, or upload one you already have. Studio videos appear here when they are ready, and we email you."
+              : "Your videos will appear here: the ones the Video Studio makes for you, the ones you upload, and the videos of your daily posts."}
           </span>
         </GlassCard>
       ) : (

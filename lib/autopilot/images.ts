@@ -43,9 +43,12 @@ export interface GroupImages {
   aiUsed: boolean;
 }
 
-/** Every feed post (a picture or a carousel) shows a picture; articles and scripts to film have none. */
-function needsPicture(group: PlannedGroup): boolean {
-  return !!group.idea.template || group.posts.some((p) => p.format === "POST" || p.format === "CAROUSEL");
+/**
+ * Every feed post (a picture or a carousel) shows a picture; articles and scripts to film have none. A reel BuPulse
+ * makes (`forReel`) is made from the group's picture, so it needs one too.
+ */
+function needsPicture(group: PlannedGroup, forReel = false): boolean {
+  return !!group.idea.template || group.posts.some((p) => p.format === "POST" || p.format === "CAROUSEL") || (forReel && group.posts.some((p) => p.format === "SCRIPT"));
 }
 
 /** Remembers which photo a design used, so the next plans prefer photos that were not used recently. */
@@ -54,12 +57,14 @@ async function markPhoto(designId: string, path: string | undefined) {
   await prisma.design.update({ where: { id: designId }, data: { prompt: `${PHOTO_MARK}${path}` } }).catch(() => {});
 }
 
-export async function makeGroupImages(group: PlannedGroup, image: ImageText, ctx: ImageContext, options: { aiStopped?: boolean; caption?: string | null } = {}): Promise<GroupImages> {
+export async function makeGroupImages(group: PlannedGroup, image: ImageText, ctx: ImageContext, options: { aiStopped?: boolean; caption?: string | null; forReel?: boolean } = {}): Promise<GroupImages> {
   const result: GroupImages = { designs: {}, aiStopped: !!options.aiStopped, notes: [], aiUsed: false };
-  if (!needsPicture(group)) return result;
+  if (!needsPicture(group, options.forReel)) return result;
   const cover = group.photos[0];
   const owner = { userId: ctx.userId, businessId: ctx.businessId, subjectId: group.project?.id ?? null, service: ctx.service };
-  const aspects = [...new Set(group.networks.filter((n) => n !== "tiktok" && n !== "youtube").map(aspectFor))];
+  const feedAspects = [...new Set(group.networks.filter((n) => n !== "tiktok" && n !== "youtube").map(aspectFor))];
+  // A TikTok or YouTube reel made from the picture takes the portrait one.
+  const aspects = feedAspects.length || !options.forReel ? feedAspects : (["4:5"] as Aspect[]);
   if (aspects.length === 0) return result;
 
   // An AI picture: one for the whole group, used for every size.

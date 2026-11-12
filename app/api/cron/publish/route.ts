@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { publishDue } from "@/lib/publishing/engine";
 import { runDueJobs } from "@/lib/jobs/due";
 import "@/lib/jobs/handlers";
+import { healWaitingPosts } from "@/lib/visuals/reattach";
 
 // Compares without stopping at the first different character.
 function safeEqual(a: string, b: string): boolean {
@@ -28,5 +29,7 @@ export async function POST(request: NextRequest) {
     console.error("[jobs.cron]", error instanceof Error ? error.message : error);
     return null;
   });
+  // The safety net for pictures an attach missed (lib/visuals/reattach.ts): at most every 10 minutes, never fails the call.
+  await healWaitingPosts().catch(() => null);
   return NextResponse.json(jobs ? { ...published, jobs } : published);
 }

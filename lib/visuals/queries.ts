@@ -6,7 +6,7 @@ import { bucketForPath } from "@/lib/publishing/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readImagePlan } from "./direction";
-import { robotStateOf } from "./robot";
+import { robotStateOf, serverRenderOn } from "./robot";
 import { readItems } from "./service";
 import type { VisualKind, VisualStatus, VisualView } from "./types";
 import { readVideoPlan } from "./video-plan";
@@ -60,6 +60,7 @@ export async function loadVisuals(businessId: string, by: { contentIds?: string[
     clips: row.kind === "video" && clipsInProgress(row) ? ("making" as const) : null,
     renderedAt: row.renderedAt?.toISOString() ?? null,
     robot: robotStateOf(row),
+    robotSoon: row.kind === "video" && serverRenderOn(),
   }));
 }
 

@@ -13,6 +13,9 @@ import { logError } from "@/lib/errors";
 import { rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { NETWORKS } from "@/lib/social/types";
 import { ForbiddenError } from "@/lib/team/roles";
+import { signPaths } from "@/lib/publishing/media";
+import { createClient } from "@/lib/supabase/server";
+import { setProgress, type SetProgress } from "@/lib/visuals/progress";
 
 const id = z.string().min(1).max(64);
 const inputSchema = z.object({
@@ -59,6 +62,38 @@ export async function createDayContentAction(input: DayRunInputForm): Promise<({
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     await logError(error, { source: "content-flow.run", userId: user.id });
     return { ok: false, error: "We could not make today's content just now. You were not charged for what was not made; please try again." };
+  }
+}
+
+/**
+ * How far the day's shared sets are (lib/visuals/progress.ts SetProgress), for the loading screen to poll every second
+ * or two: the step in words, steps done / total, each picture as it becomes ready (with a signed URL), the reel.
+ * Read only; the drawing itself runs on the server whether this is asked or not.
+ */
+export async function daySetProgressAction(groupIds: string[]): Promise<{ ok: true; sets: SetProgress[] } | { ok: false; error: string }> {
+  const ids = z.array(z.string().regex(/^[A-Za-z0-9-]{8,64}$/)).min(1).max(20).safeParse(groupIds);
+  if (!ids.success) return { ok: false, error: "We could not find those posts." };
+  let user: Awaited<ReturnType<typeof requireActiveUser>>;
+  try {
+    user = await requireActiveUser("content", "throw");
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    throw error;
+  }
+  try {
+    const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
+    if (!business) return { ok: false, error: "Set up your business first." };
+    const sets = await setProgress(business.id, ids.data);
+    const paths = sets.flatMap((s) => [...s.images.flatMap((i) => (i.path ? [i.path] : [])), ...(s.reel?.path ? [s.reel.path] : [])]);
+    const urls = paths.length ? await signPaths(await createClient(), paths, 60 * 60).catch(() => new Map<string, string>()) : new Map<string, string>();
+    for (const s of sets) {
+      for (const i of s.images) if (i.path && urls.has(i.path)) i.url = urls.get(i.path);
+      if (s.reel?.path && urls.has(s.reel.path)) s.reel.url = urls.get(s.reel.path);
+    }
+    return { ok: true, sets };
+  } catch (error) {
+    await logError(error, { source: "content-flow.set-progress", level: "warn", userId: user.id });
+    return { ok: false, error: "We could not check your pictures just now." };
   }
 }
 

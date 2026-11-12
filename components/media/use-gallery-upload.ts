@@ -20,7 +20,7 @@ export type VideoFrame = { durationMs: number | null; width: number | null; heig
  * when this browser cannot play it. `crossOrigin`: a signed Storage URL (an imported video), loaded with CORS so the
  * frame can be drawn; when that is refused the size is still read, without a poster.
  */
-export async function videoFrame(src: string, options: { crossOrigin?: boolean } = {}): Promise<VideoFrame | null> {
+export async function videoFrame(src: string, options: { crossOrigin?: boolean; /** Where the poster is taken (seconds; default the first frame). */ at?: number } = {}): Promise<VideoFrame | null> {
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;
@@ -33,7 +33,7 @@ export async function videoFrame(src: string, options: { crossOrigin?: boolean }
       setTimeout(() => resolve(false), 15_000);
       video.src = src;
     });
-    if (!loaded) return options.crossOrigin ? videoFrame(src) : null;
+    if (!loaded) return options.crossOrigin ? videoFrame(src, { at: options.at }) : null;
     const durationMs = Number.isFinite(video.duration) ? video.duration * 1000 : null;
     const width = video.videoWidth || null;
     const height = video.videoHeight || null;
@@ -42,7 +42,7 @@ export async function videoFrame(src: string, options: { crossOrigin?: boolean }
       await new Promise<void>((resolve) => {
         video.onseeked = () => resolve();
         setTimeout(resolve, 3000);
-        video.currentTime = Math.min(0.1, (video.duration || 1) / 2);
+        video.currentTime = Math.min(options.at ?? 0.1, (video.duration || 1) / 2);
       });
       const target = scaledSize(width, height, POSTER_MAX_SIDE);
       const canvas = document.createElement("canvas");

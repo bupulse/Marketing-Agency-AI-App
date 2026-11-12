@@ -1,8 +1,10 @@
 "use server";
 
+import { getEnglishVoice } from "@/lib/voice/provider-setting";
 import { z } from "zod";
 import { knowledgeAction, type Result } from "@/lib/knowledge/guard";
 import { remakeContentVisuals } from "@/lib/visuals/content";
+import { remakeDaySetVisuals } from "@/lib/content-flow/set-remake";
 import { finalizeVideo, leaseVideoForBrowser, markVideoFailed, prepareVideoUpload, removeVisual, renderImageStep, updateImageVisual, updateVideoPlan } from "@/lib/visuals/service";
 import { activeTracks } from "@/lib/music/service";
 import { featureStatus } from "@/lib/entitlements";
@@ -37,6 +39,15 @@ export async function remakeVisual(contentId: string, only?: "image" | "video", 
   if (!id.safeParse(contentId).success || (only && only !== "image" && only !== "video")) return BAD;
   if (script !== undefined && (typeof script !== "string" || only !== "video" || script.length > SCRIPT_RULES.maxLength)) return { ok: false, error: `Keep your script under ${SCRIPT_RULES.maxLength} characters.` };
   return knowledgeAction({ ...GUARD, source: "visuals.remake" }, ({ userId, businessId }) => remakeContentVisuals({ userId, businessId }, contentId, only, script === undefined ? {} : { script }));
+}
+
+/**
+ * "New pictures" on a day's shared set (lib/content-flow/set-remake.ts): the set is made again by its group, drawn on
+ * the server right away, and the group's posts take the new pictures and reel when they are ready. Never per post.
+ */
+export async function remakeDaySet(groupId: string): Promise<Result<{ groupId: string }>> {
+  if (typeof groupId !== "string" || !/^[A-Za-z0-9-]{8,64}$/.test(groupId)) return BAD;
+  return knowledgeAction({ ...GUARD, source: "visuals.remake-set" }, async ({ userId, businessId }) => ({ groupId: (await remakeDaySetVisuals({ userId, businessId }, groupId)).groupId }));
 }
 
 const changesSchema = z.object({
@@ -141,9 +152,10 @@ export async function reportVideoFailure(visualId: string, message: string): Pro
 }
 
 /** What the video panel's sound choices need: the library's tracks, the voices, and the voiceover characters used. */
-export async function loadSoundOptions(): Promise<Result<{ tracks: { id: string; title: string; moods: string[] }[]; voiceInPlan: boolean; used: number; limit: number }>> {
+export async function loadSoundOptions(): Promise<Result<{ tracks: { id: string; title: string; moods: string[] }[]; voiceInPlan: boolean; used: number; limit: number; provider: "elevenlabs" | "gemini"; defaultVoiceId: string }>> {
   return knowledgeAction({ permission: "content", feature: "content", source: "visuals.sound.options" }, async ({ userId, businessId }) => {
-    const [tracks, voice, usage] = await Promise.all([activeTracks().catch(() => []), featureStatus(businessId, "voice").catch(() => "plan_unknown"), getUsageSummary(userId).catch(() => null)]);
-    return { tracks: tracks.map((t) => ({ id: t.id, title: t.title, moods: t.moods })), voiceInPlan: voice === "ok", used: usage?.used.voiceCharacters ?? 0, limit: usage?.limits.voiceCharacters ?? 0 };
+    const [tracks, voice, usage, english] = await Promise.all([activeTracks().catch(() => []), featureStatus(businessId, "voice").catch(() => "plan_unknown"), getUsageSummary(userId).catch(() => null), getEnglishVoice()]);
+    // The voices offered are the active provider's (Admin -> Settings -> Voices, lib/voice/provider-setting.ts).
+    return { tracks: tracks.map((t) => ({ id: t.id, title: t.title, moods: t.moods })), voiceInPlan: voice === "ok", used: usage?.used.voiceCharacters ?? 0, limit: usage?.limits.voiceCharacters ?? 0, provider: english.provider, defaultVoiceId: english.voiceId };
   });
 }

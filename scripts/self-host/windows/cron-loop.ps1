@@ -10,6 +10,10 @@
 # (scripts/monitor/pc-self-check.mjs): it times https://bupulse.com from outside the PC (through the internet and the
 # tunnel) and records the result on the local server, so the Server page's uptime has a point every 5 minutes even when
 # GitHub's 5-minute check runs late. One line per check in self-check.log. If it fails, nothing else is affected.
+#
+# And all the time, on a fourth thread: the render worker (server.mjs videos -> scripts/video-robot/pc-worker.mjs). It
+# makes pending videos (reels, daily slideshows with voice-over and music) in headless Edge or Chrome within a minute
+# or two of being planned. Its lines go to videos.log; if it fails, it starts again and nothing else is affected.
 $logs = Join-Path $env:USERPROFILE "bupulse-prod"
 $log = Join-Path $logs "cron.log"
 
@@ -137,6 +141,41 @@ try {
   [void]$selfCheckRunner.BeginInvoke()
 } catch {
   try { Add-Content (Join-Path $logs "self-check.log") "self-check could not start: $($_.Exception.Message) $((Get-Date).ToUniversalTime().ToString('s'))Z" } catch { }
+}
+
+$videos = {
+  param($logs, $repo)
+  $vLog = Join-Path $logs "videos.log"
+  $server = Join-Path $repo "scripts\self-host\windows\server.mjs"
+  Set-Location $repo
+  while ($true) {
+    $code = $null
+    try {
+      # Runs up to an hour (pc-worker.mjs), then exits so a fresh one starts with the current code.
+      & node $server videos 2>&1 | ForEach-Object { try { Add-Content $vLog "$_" } catch { } }
+      $code = $LASTEXITCODE
+    } catch {
+      try { Add-Content $vLog "render worker failed: $($_.Exception.Message) $((Get-Date).ToUniversalTime().ToString('s'))Z" } catch { }
+    }
+    try {
+      # Trim the log to its last 2,000 lines once it passes 5 MB.
+      if ((Test-Path $vLog) -and (Get-Item $vLog).Length -gt 5MB) { $tail = Get-Content $vLog -Tail 2000; Set-Content $vLog $tail }
+    } catch { }
+    # Exit 3: no robot secret (docs/SELF_HOST.md); look again in 30 minutes. Otherwise start again after 15 s.
+    if ($code -eq 3) { Start-Sleep -Seconds 1800 } else { Start-Sleep -Seconds 15 }
+  }
+}
+
+# The render worker's own thread (docs/SELF_HOST.md, "Videos made on the PC"). If it cannot start, or the worker
+# fails, the jobs below still run; the GitHub video robot still makes the videos every 15 minutes.
+$videosRunner = $null
+try {
+  $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+  $videosRunner = [PowerShell]::Create()
+  [void]$videosRunner.AddScript($videos).AddArgument($logs).AddArgument($repoRoot)
+  [void]$videosRunner.BeginInvoke()
+} catch {
+  try { Add-Content (Join-Path $logs "videos.log") "render worker could not start: $($_.Exception.Message) $((Get-Date).ToUniversalTime().ToString('s'))Z" } catch { }
 }
 
 while ($true) {

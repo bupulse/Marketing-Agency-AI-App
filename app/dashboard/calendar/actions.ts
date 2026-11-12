@@ -16,6 +16,7 @@ import {
   approvePosts,
   createPosts,
   deletePost,
+  deletePosts,
   duplicatePost,
   markPosted,
   PublishingError,
@@ -33,6 +34,7 @@ import type { ActionFailure, ActionResult, ComposeInput, ComposerContext, EditIn
 import { createClient } from "@/lib/supabase/server";
 import { signPaths } from "@/lib/publishing/media";
 import type { Network } from "@/lib/social/types";
+import { MAX_BULK_DELETE, type BulkDeleteResult } from "@/lib/publishing/bulk-delete";
 
 const SAVE_FAILED = "We could not save that. Please try again.";
 
@@ -137,6 +139,20 @@ export async function duplicatePostAction(postId: string): Promise<ActionResult<
 
 export async function deletePostAction(postId: string): Promise<ActionResult<{ note?: string }>> {
   return run("delete", "compose", (o) => deletePost(o, String(postId)));
+}
+
+/**
+ * "Select" -> "Delete" on the Posts pages: many waiting posts at once (Needs your OK, Expired), with the single
+ * delete's rules (lib/publishing/service.ts deletePosts). Never a posted, scheduled or going-out post: those come back
+ * as skipped, with why. Up to MAX_BULK_DELETE ids; one rate-limit step for the whole batch.
+ */
+export async function deletePostsAction(postIds: string[]): Promise<ActionResult<BulkDeleteResult>> {
+  const list: unknown[] = Array.isArray(postIds) ? postIds : [];
+  if (list.length === 0) return { ok: false, error: "Pick at least one post." };
+  if (list.length > MAX_BULK_DELETE) return { ok: false, error: `Pick ${MAX_BULK_DELETE} posts or fewer at a time.` };
+  if (!list.every((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 64)) return { ok: false, error: "Some of those posts could not be found. Refresh the page and try again." };
+  const ids = list as string[];
+  return run("delete-many", "compose", (o) => deletePosts(o, ids), "content");
 }
 
 export async function approvePostsAction(postIds: string[]): Promise<ActionResult<{ approved: number }>> {

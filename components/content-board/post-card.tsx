@@ -12,6 +12,9 @@ import { CHIP_STYLE, networkLabel, statusChip, UNPOSTED, unpostedReason } from "
 import { WhatsAppShare } from "@/components/share/whatsapp-share";
 import { postShareCaption } from "@/lib/share/whatsapp";
 import { dailyPostLabel } from "@/lib/daily-posts/settings";
+import { MakingScreen } from "@/components/visuals/making-screen";
+import type { MakingProgress } from "@/components/visuals/making-progress";
+import { SelectCheckbox } from "./bulk-select";
 
 const dateOnly = (iso: string, zone: string) => new Intl.DateTimeFormat("en-US", { timeZone: zone, month: "short", day: "numeric" }).format(new Date(iso));
 
@@ -20,7 +23,25 @@ const dateOnly = (iso: string, zone: string) => new Intl.DateTimeFormat("en-US",
  * of the caption, its status and when it was made. Like a social post at a glance, in BuPulse's own look. The whole
  * top part opens the post; `actions` (approve, edit...) and "Share to WhatsApp" sit below it as separate buttons.
  */
-export function PostCard({ post, zone, onOpen, actions, showSubject = false }: { post: ContentPost; zone: string; onOpen: () => void; actions?: ReactNode; showSubject?: boolean }) {
+export function PostCard({
+  post,
+  zone,
+  onOpen,
+  actions,
+  showSubject = false,
+  making,
+  selection,
+}: {
+  post: ContentPost;
+  zone: string;
+  onOpen: () => void;
+  actions?: ReactNode;
+  showSubject?: boolean;
+  /** Its set's real progress while the pictures or reel are still being made (Daily posts, Autopilot, Create). */
+  making?: MakingProgress | null;
+  /** Select mode ("Select" -> "Delete"): a checkbox on the card, and a tap on the card picks it instead of opening it. */
+  selection?: { selected: boolean; onToggle: () => void } | null;
+}) {
   const chip = statusChip(post, (iso) => (post.status === "PUBLISHED" ? dateOnly(iso, zone) : formatDateTime(iso, zone)));
   const still = post.media.find((m) => !/\.(mp4|webm)$/i.test(m.path))?.url ?? post.poster;
   const video = post.kind === "video";
@@ -31,10 +52,21 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
   const unposted = UNPOSTED.includes(post.status);
 
   return (
-    <article className={cn("glass flex h-full flex-col overflow-hidden rounded-card", unposted && "!border-2 !border-amber-600 dark:!border-amber-400")}>
+    <article
+      className={cn(
+        "glass relative flex h-full flex-col overflow-hidden rounded-card",
+        unposted && "!border-2 !border-amber-600 dark:!border-amber-400",
+        // An outline, not a ring: the glass card's own shadow would replace a ring's box-shadow.
+        selection?.selected && "outline-[3px] outline-offset-[3px] outline-pulse-blue outline-solid dark:outline-[#8db0ff]",
+      )}
+    >
+      {selection && <SelectCheckbox checked={selection.selected} onChange={selection.onToggle} label={`Select ${networkLabel(post.network)} ${type}, ${chip.label}`} />}
       <button
         type="button"
-        onClick={onOpen}
+        onClick={selection ? selection.onToggle : onOpen}
+        // In select mode the checkbox is the one keyboard stop for the card; a tap anywhere on it still picks it.
+        tabIndex={selection ? -1 : undefined}
+        aria-hidden={selection ? true : undefined}
         aria-label={`${networkLabel(post.network)} ${type}, ${chip.label}. Open`}
         className="group flex flex-1 cursor-pointer flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pulse-blue focus-visible:ring-inset"
       >
@@ -78,6 +110,12 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
             </span>
           )}
           {slides > 1 && <span className="sr-only">{slides} slides</span>}
+          {/* Its set is still being made: the same loading screen as the day's set, over whatever the card has. */}
+          {making && making.step !== "ready" && (
+            <div className={cn("absolute inset-0", still || (video && post.media[0]) ? "bg-[var(--bp-dialog)]/85 backdrop-blur-sm" : "bg-soft")}>
+              <MakingScreen size="sm" progress={making} />
+            </div>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col gap-2.5 p-4">

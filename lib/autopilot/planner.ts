@@ -16,7 +16,8 @@ import { ideaNetworks, isVideoIdea, PICTURE_NETWORKS, POST_MIX, suitsIndustry, t
 import type { AutopilotConfig } from "./settings";
 import { DEFAULT_POSTING_TIMES } from "./settings";
 import { localDateISO, minutesOf, weekDates, weekdayOfISO, zonedToUtc } from "./timezone";
-import { MAX_RUN_VIDEOS, repeatedFormat, VIDEO_SHARE, type RecentFormats } from "@/lib/content-flow/format";
+import { MAX_RUN_VIDEOS, repeatedFormat, type RecentFormats } from "@/lib/content-flow/format";
+import { REEL_APPS } from "@/lib/content-flow/day-set";
 
 
 export interface PlanConnection {
@@ -255,17 +256,13 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
   const pinned = new Map<Pick, string>(picks.map((p) => [p, p.holiday!.date]));
 
   // 2. With products, a mix of post types (something new, a tip, an offer) as the week has room, each for an account
-  // the owner connected and each a designed picture (never turned into a video below).
-  const mixed = new Set<Pick>();
+  // the owner connected and each with a designed picture (on Instagram and TikTok the day's reel is made from it).
   if (input.projects.length > 0) {
     for (const ids of POST_MIX) {
       if (picks.length >= n) break;
       if (picks.some((p) => ids.includes(p.idea.id))) continue;
       const pick = chooseFrom(candidates((i) => ids.includes(i.id) && !i.needs.includes("holiday") && targets(i).some((x) => preferred.has(x))));
-      if (pick) {
-        take(pick);
-        mixed.add(pick);
-      }
+      if (pick) take(pick);
     }
   }
 
@@ -406,18 +403,23 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
   // videos BuPulse can make this run, never the same format three days running on one app.
   let videosLeft = input.video?.inPlan ? Math.min(MAX_RUN_VIDEOS, Math.max(0, Math.floor(input.video.videosLeft))) : 0;
   const formatsSoFar: RecentFormats = Object.fromEntries(Object.entries(input.recentFormats ?? {}).map(([k, v]) => [k, [...(v ?? [])]]));
-  const decideFormat = (network: Network, format: AutopilotFormat, date: string, photoCount: number, pictureOnly: boolean): AutopilotFormat => {
+  // The day's distribution (lib/content-flow/day-set.ts, owner decisions 11 November 2026): Instagram, TikTok and
+  // YouTube get a reel every day while videos last (made from the group's picture); Facebook, LinkedIn and X keep the
+  // picture (a video idea there becomes its picture post).
+  const decideFormat = (network: Network, format: AutopilotFormat, date: string, photoCount: number): AutopilotFormat => {
     if (!input.video?.inPlan || format === "ARTICLE") return format;
-    // A video idea stays one (past the budget it is the script to film, as without video in the plan).
-    if (format === "SCRIPT") {
-      videosLeft = Math.max(0, videosLeft - 1);
-      return format;
-    }
+    if (REEL_APPS.includes(network)) {
+      if (format === "SCRIPT") {
+        // A video idea stays one (past the budget it is the script to film, as without video in the plan).
+        videosLeft = Math.max(0, videosLeft - 1);
+        return format;
+      }
+      if (videosLeft > 0) {
+        videosLeft -= 1;
+        return "SCRIPT";
+      }
+    } else if (format === "SCRIPT") return "POST";
     const repeated = repeatedFormat(formatsSoFar, network, date);
-    if (!pictureOnly && rng() < VIDEO_SHARE.auto[network] && repeated !== "video" && videosLeft > 0) {
-      videosLeft -= 1;
-      return "SCRIPT";
-    }
     if (repeated === "image" && format === "POST" && photoCount >= 2 && formatAllowed(network, "CAROUSEL")) return "CAROUSEL";
     if (repeated === "carousel" && format === "CAROUSEL") return "POST";
     return format;
@@ -430,7 +432,8 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     const account = accountOf.get(pick);
     const accountFormat = account ? idea.formats[account.network] : undefined;
     // Every feed post shows a picture: an idea without a template of its own gets the announcement layout (images.ts).
-    const wantsImage = idea.template !== null || accountFormat === "POST" || accountFormat === "CAROUSEL";
+    // A reel app's post is the day's reel while videos last: it is made from the group's pictures, so it wants them too.
+    const wantsImage = idea.template !== null || accountFormat === "POST" || accountFormat === "CAROUSEL" || (!!input.video?.inPlan && !!account && REEL_APPS.includes(account.network));
     const projectPhotos = (pick.project?.photoPaths ?? []).map((path) => ({ path, fromProject: true }));
     const carousel = Object.values(idea.formats).includes("CAROUSEL");
     const photos: PlannedGroup["photos"] = [...projectPhotos.slice(0, carousel ? 3 : 1)];
@@ -461,7 +464,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
       }
       perDay.set(dayKey, (perDay.get(dayKey) ?? 0) + 1);
       noteTime(connection.id, at);
-      const effective = decideFormat(connection.network, planned, date, photos.length, mixed.has(pick));
+      const effective = decideFormat(connection.network, planned, date, photos.length);
       const kind = packFormat(effective);
       if (kind) (formatsSoFar[connection.network] ??= []).unshift({ day: date, format: kind });
       posts.push({ connectionId: connection.id, network: connection.network, format: effective, scheduledAt: at });

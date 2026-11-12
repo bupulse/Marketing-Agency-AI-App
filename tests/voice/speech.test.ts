@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mixSamples } from "@/lib/voice/mix";
-import { estimateSpeechMs, fitPlanToVoice, gainAt, lineTimings, MUSIC_LEVEL, musicEnvelope, speechText, spokenLines } from "@/lib/voice/speech";
+import { estimateSpeechMs, fitPlanToVoice, gainAt, hasVoiceScript, lineTimings, MUSIC_LEVEL, musicEnvelope, speechText, spokenLines, voiceScriptAfterEdit } from "@/lib/voice/speech";
 import { captionAlphas, sceneStarts, totalDuration } from "@/lib/visuals/timeline";
 import { buildVideoPlan } from "@/lib/visuals/video-plan";
 import { VIDEO_LIMITS } from "@/lib/visuals/types";
@@ -100,5 +100,21 @@ describe("music under the voice", () => {
     expect(mixSamples({ voice: null, music: null, sampleRate: rate, totalMs: 1000, speech: [] })).toBeNull();
     // A mono voice alone stays mono.
     expect(mixSamples({ voice: [new Float32Array(10)], music: null, sampleRate: rate, totalMs: 10, speech: [] })).toHaveLength(1);
+  });
+});
+
+describe("the reel's voice-over script", () => {
+  it("speaks VideoPlan.voiceScript (one line per scene) when the plan has one, else the captions", () => {
+    const p = plan();
+    const voiceScript = ["Your phone dies by noon?", "The Aero lasts all day", "Come see it in Kigali", "Kigali Phones, see you soon"];
+    expect(hasVoiceScript({ ...p, voiceScript })).toBe(true);
+    expect(spokenLines({ ...p, voiceScript })).toEqual(["Your phone dies by noon?", "The Aero lasts all day.", "Come see it in Kigali.", "Kigali Phones, see you soon."]);
+    // A script that does not match the scenes (or has an empty line) is not used: the captions are spoken.
+    expect(spokenLines({ ...p, voiceScript: voiceScript.slice(0, 2) })).toEqual(spokenLines(p));
+    expect(spokenLines({ ...p, voiceScript: ["a", "", "c", "d"] })).toEqual(spokenLines(p));
+    // The owner edits a caption: that scene speaks its new words, the others keep their spoken line.
+    const edited = { ...p, scenes: p.scenes.map((s, i) => (i === 1 ? { ...s, text: "Two days of battery" } : s)) };
+    expect(voiceScriptAfterEdit({ ...p, voiceScript }, edited)).toEqual([voiceScript[0], "Two days of battery.", voiceScript[2], voiceScript[3]]);
+    expect(voiceScriptAfterEdit(p, edited)).toBeUndefined();
   });
 });

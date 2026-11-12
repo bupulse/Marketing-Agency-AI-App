@@ -1,8 +1,12 @@
-// The text-to-speech seam (docs/VOICE_AND_MUSIC.md). Feature code depends on TtsProvider only; ElevenLabs is the
-// provider today (ELEVENLABS_API_KEY, server-side only, never logged). Each call returns the MP3 and when every
-// character is spoken, so captions and scenes can follow the voice.
+// The text-to-speech seam (docs/VOICE_AND_MUSIC.md). Feature code depends on TtsProvider only. Two providers: ElevenLabs
+// (ELEVENLABS_API_KEY) and Gemini text-to-speech (GEMINI_API_KEY, lib/ai/tts-gemini.ts); which one speaks English
+// voice-overs is the admin's choice (lib/voice/provider-setting.ts). Keys are server-side only, never logged. Each call
+// returns the audio and when every character is spoken, so captions and scenes can follow the voice.
 import "server-only";
 import { AIProviderError } from "./types";
+import { DEFAULT_GEMINI_TTS_MODEL, GeminiTtsProvider } from "./tts-gemini";
+
+export type TtsProviderName = "elevenlabs" | "gemini";
 
 export interface TtsRequest {
   text: string;
@@ -10,9 +14,9 @@ export interface TtsRequest {
 }
 
 export interface TtsResult {
-  /** MP3 bytes. */
+  /** MP3 (ElevenLabs) or WAV (Gemini) bytes. */
   audio: Uint8Array;
-  mimeType: "audio/mpeg";
+  mimeType: "audio/mpeg" | "audio/wav";
   /** Start and end of each character of `text`, in milliseconds. */
   charStartsMs: number[];
   charEndsMs: number[];
@@ -20,6 +24,8 @@ export interface TtsResult {
   characters: number;
   provider: string;
   model: string;
+  /** Real token counts when the provider bills tokens (Gemini); without it the ledger records characters as input. */
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 export interface TtsProvider {
@@ -75,12 +81,22 @@ export class ElevenLabsProvider implements TtsProvider {
 let provider: TtsProvider | null | undefined;
 /** The key and model the provider was built with; null while a test has set it (setTtsProvider). */
 let providerFor: string | null | undefined;
+let gemini: TtsProvider | null | undefined;
+let geminiFor: string | null | undefined;
 
 /**
- * The configured voice provider, or null when ELEVENLABS_API_KEY is not set (videos then have no voiceover). A key
- * saved or replaced in Admin -> Services is picked up on the next call.
+ * The voice provider by name (ElevenLabs when not given), or null when its key is not set (videos then have no
+ * voiceover). A key saved or replaced in Admin -> Services is picked up on the next call.
  */
-export function getTtsProvider(): TtsProvider | null {
+export function getTtsProvider(name: TtsProviderName = "elevenlabs"): TtsProvider | null {
+  if (name === "gemini") {
+    const signature = `${process.env.GEMINI_API_KEY ?? ""}\u0000${process.env.GEMINI_TTS_MODEL ?? ""}`;
+    if (gemini !== undefined && (geminiFor === null || geminiFor === signature)) return gemini;
+    const key = process.env.GEMINI_API_KEY;
+    gemini = key ? new GeminiTtsProvider(key, process.env.GEMINI_TTS_MODEL || DEFAULT_GEMINI_TTS_MODEL) : null;
+    geminiFor = signature;
+    return gemini;
+  }
   const signature = `${process.env.ELEVENLABS_API_KEY ?? ""}\u0000${process.env.ELEVENLABS_MODEL ?? ""}`;
   if (provider !== undefined && (providerFor === null || providerFor === signature)) return provider;
   const key = process.env.ELEVENLABS_API_KEY;
@@ -89,8 +105,13 @@ export function getTtsProvider(): TtsProvider | null {
   return provider;
 }
 
-/** Tests replace the provider (undefined: build it from the environment again). */
-export function setTtsProvider(next: TtsProvider | null | undefined) {
+/** Tests replace a provider (undefined: build it from the environment again). */
+export function setTtsProvider(next: TtsProvider | null | undefined, name: TtsProviderName = "elevenlabs") {
+  if (name === "gemini") {
+    gemini = next;
+    geminiFor = next === undefined ? undefined : null;
+    return;
+  }
   provider = next;
   providerFor = next === undefined ? undefined : null;
 }

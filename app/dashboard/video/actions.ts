@@ -6,18 +6,20 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { featureBlocked } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
-import { MediaError } from "@/lib/media/service";
+import { discardUpload, MediaError } from "@/lib/media/service";
 import { PUBLISHING_LIMITS } from "@/lib/publishing/limits";
 import { PublishingError } from "@/lib/publishing/service";
 import { rateLimit, RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import type { Network } from "@/lib/social/types";
 import { ForbiddenError } from "@/lib/team/roles";
 import { deleteStudioVideo, LibraryError, listLibraryVideos, type LibrarySource, type LibraryVideo } from "@/lib/video-library/service";
+import { finishVideoUpload, startVideoUploads, type VideoUploadSlot } from "@/lib/video-library/upload";
+import { UPLOAD_PICK_MAX, UPLOAD_TITLE_MAX } from "@/lib/video-library/upload-rules";
 import { VideoStudioError } from "@/lib/video-studio/jobs";
 import { scheduleJob, scheduleOptions, STUDIO_NETWORKS, type ScheduleOptions } from "@/lib/video-studio/schedule";
 
-// The Videos library (docs/VIDEO_STUDIO_SPLIT.md). Videos are made on the Video Studio (studio.bupulse.com); here the
-// company schedules and deletes them. Each action works inside the signed-in person's company, with the `content`
+// The Videos library (docs/VIDEO_STUDIO_SPLIT.md). Videos are made on the Video Studio (studio.bupulse.com) or uploaded
+// here ("Upload a video", lib/video-library/upload.ts); here the company schedules and deletes them. Each action works inside the signed-in person's company, with the `content`
 // permission; scheduling also needs the calendar in the plan.
 
 export type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -48,7 +50,7 @@ async function library<T extends object>(source: string, fn: (ctx: Ctx) => Promi
 
 /** The library again (after a delete, or when the studio finished something while the page was open). */
 export async function loadLibrary(source: LibrarySource | null = null): Promise<Result<{ videos: LibraryVideo[] }>> {
-  const s = source === "studio" || source === "slideshow" ? source : null;
+  const s = source === "studio" || source === "upload" || source === "slideshow" ? source : null;
   return library("video.library", async ({ businessId }) => ({ videos: await listLibraryVideos(businessId, { source: s }) }));
 }
 
@@ -97,4 +99,42 @@ export async function deleteLibraryVideo(jobId: string): Promise<Result> {
   });
   if (out.ok) revalidatePath("/dashboard/gallery");
   return out;
+}
+
+const pickSchema = z.array(z.object({ name: z.string().max(260), type: z.string().max(100), size: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) })).min(1).max(UPLOAD_PICK_MAX);
+
+/**
+ * "Upload a video", step 1: checks the picked videos (type, 50 MB, the quotas, the company's video cap) and gives each
+ * one that passes a signed upload straight to Storage (and one for its poster). Lines up with `files`.
+ */
+export async function startVideoUploadsAction(files: z.input<typeof pickSchema>): Promise<Result<{ slots: VideoUploadSlot[] }>> {
+  const parsed = pickSchema.safeParse(files);
+  if (!parsed.success) return { ok: false, error: `Pick up to ${UPLOAD_PICK_MAX} videos at a time.` };
+  return library("video.upload.start", async (ctx) => ({ slots: await startVideoUploads(ctx, parsed.data) }));
+}
+
+const finishSchema = z.object({
+  path: z.string().min(1).max(300),
+  title: z.string().max(UPLOAD_TITLE_MAX, `Keep the title under ${UPLOAD_TITLE_MAX} characters.`),
+  productId: z.string().max(40).nullish().transform((v) => v || null),
+  width: z.number().int().nullish().transform((v) => v ?? null),
+  height: z.number().int().nullish().transform((v) => v ?? null),
+});
+
+/** "Upload a video", step 2: the uploaded file is checked and put in the library (no credits used). */
+export async function finishVideoUploadAction(input: z.input<typeof finishSchema>): Promise<Result<{ video: LibraryVideo }>> {
+  const parsed = finishSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "That upload could not be used." };
+  const out = await library("video.upload.finish", async (ctx) => ({ video: await finishVideoUpload(ctx, parsed.data) }));
+  if (out.ok) revalidatePath("/dashboard/gallery");
+  return out;
+}
+
+/** An upload that failed or was cancelled: its file (and poster) removed, unless it already became a video. */
+export async function discardVideoUploadAction(path: string): Promise<void> {
+  if (typeof path !== "string" || path.length > 300) return;
+  await library("video.upload.discard", async ({ userId }) => {
+    await discardUpload(userId, path);
+    return {};
+  });
 }

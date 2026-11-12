@@ -3,6 +3,7 @@ import { Megaphone, Package, Search, Sparkles } from "lucide-react";
 import { Button, GlassCard, Input } from "@/components/ui";
 import { contentQuery, SUBJECT_SORT_LABEL, SUBJECT_SORTS, type ContentFilters } from "@/lib/content-board/filters";
 import type { SubjectCardView } from "@/lib/content-board/queries";
+import { cn } from "@/lib/cn";
 
 const ICON = { product: Package, campaign: Megaphone, general: Sparkles } as const;
 
@@ -13,7 +14,8 @@ function drillQuery(f: ContentFilters) {
 
 /**
  * The grid of products, campaigns and General. Search and sort are a plain GET form (works without JavaScript and
- * keeps the URL shareable); the other filters ride along as hidden fields.
+ * keeps the URL shareable); the other filters ride along as hidden fields. A card with posts made for it today glows
+ * (a brand ring and soft glow, still under reduced motion) with a "Today's posts" label.
  */
 export function SubjectGrid({ cards, filters, period }: { cards: SubjectCardView[]; filters: ContentFilters; /** The Day / Week / Month label the counts are for. */ period?: string | null }) {
   const hidden = new URLSearchParams(contentQuery({ ...filters, q: undefined, sort: "recent" }).slice(1));
@@ -61,8 +63,9 @@ export function SubjectGrid({ cards, filters, period }: { cards: SubjectCardView
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {cards.map((c) => {
             const Icon = ICON[c.kind];
+            const today = c.madeToday > 0;
             return (
-              <li key={c.key}>
+              <li key={c.key} className={cn(today && "bp-today-glow")}>
                 <Link href={`${c.href}${drillQuery(filters)}`} className="glass group flex h-full flex-col overflow-hidden rounded-card transition-transform duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pulse-blue motion-reduce:transition-none motion-reduce:hover:translate-y-0">
                   <div className="relative aspect-[16/10] w-full overflow-hidden bg-soft">
                     {c.coverUrl ? (
@@ -72,6 +75,13 @@ export function SubjectGrid({ cards, filters, period }: { cards: SubjectCardView
                     ) : (
                       <span aria-hidden className="flex size-full items-center justify-center bg-brand-gradient text-white">
                         <Icon className="size-10" />
+                      </span>
+                    )}
+                    {today && (
+                      <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-brand-gradient px-2.5 py-1 text-[12px] font-semibold text-white shadow-[0_6px_18px_-8px_rgba(47,107,255,0.9)]">
+                        <Sparkles aria-hidden className="size-3.5" />
+                        Today&apos;s posts
+                        <span className="sr-only">: {c.madeToday === 1 ? "1 post made today" : `${c.madeToday} posts made today`}</span>
                       </span>
                     )}
                     {c.counts.review > 0 && (

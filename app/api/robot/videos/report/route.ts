@@ -4,9 +4,10 @@ import { readBody, robotGuard, robotJson } from "@/lib/visuals/robot-auth";
 import { recordRobotRun } from "@/lib/visuals/robot";
 
 const count = z.number().int().min(0).max(1000);
-const schema = z.object({ claimed: count, made: count, failed: count });
+const schema = z.object({ claimed: count, made: count, failed: count, runner: z.enum(["github", "pc"]).optional() });
 
-// Video robot (docs/VIDEO_ROBOT.md): the end-of-run heartbeat, counts only.
+// Video robot (docs/VIDEO_ROBOT.md): the end-of-run heartbeat, counts only, and which machine ran it (GitHub or the
+// production PC's render worker).
 export async function POST(request: NextRequest) {
   const denied = await robotGuard(request);
   if (denied) return denied;

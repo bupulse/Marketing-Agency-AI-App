@@ -6,6 +6,8 @@ vi.mock("@/lib/publishing/engine", () => ({ publishDue }));
 vi.mock("@/lib/publishing/metrics", () => ({ collectMetrics }));
 // The metrics run also fills the Video Studio outcomes' numbers (tests/video-studio/outcomes.test.ts).
 vi.mock("@/lib/video-studio/outcomes", () => ({ fillOutcomeStats: vi.fn(async () => ({ day: 1, week: 0 })) }));
+// The publisher's picture safety net (tests/visuals/reattach.test.ts).
+vi.mock("@/lib/visuals/reattach", () => ({ healWaitingPosts: vi.fn(async () => null) }));
 
 import { POST as metricsRoute } from "@/app/api/cron/metrics/route";
 import { POST as publishRoute } from "@/app/api/cron/publish/route";

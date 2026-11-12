@@ -11,6 +11,7 @@ import { buildProfile, preferredHours, preferredWeekdays, withLab } from "@/lib/
 import { labSchedule } from "@/lib/training-lab/schedule-reader";
 import { loadPostResults } from "@/lib/autopilot/results";
 import { EDITABLE, QUEUED, type PostStatusName } from "./status";
+import { BULK_DELETABLE, bulkSkipReason, MAX_BULK_DELETE, type BulkDeleteResult } from "./bulk-delete";
 import { dayKey, isValidTimeZone, parseLocalInput } from "./time";
 import { dayDate } from "@/lib/content-board/period";
 import { formatFor, validatePost, type PostFormatName } from "./validate";
@@ -324,6 +325,36 @@ export async function deletePost(owner: Owner, postId: string): Promise<{ note?:
   const { count } = await prisma.post.deleteMany({ where: { id: postId, businessId: owner.businessId, status: post.status } });
   if (count === 0) throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
   return post.status === "PUBLISHED" ? { note: "Removed from BuPulse. It stays live on the network: delete it there too if you want it gone." } : {};
+}
+
+/**
+ * "Select" -> "Delete" (lib/publishing/bulk-delete.ts): deletes many waiting posts of this business in one go, with
+ * deletePost's rules. Only the company's own posts are read; a post going out (PUBLISHING, or held by the publisher),
+ * posted, or no longer waiting stays and is reported with why. The delete re-checks status and lock in the same
+ * statement, so a post that started going out between the read and the delete stays too ("changed"). A post's
+ * versions, metrics and video outcome go with it (database cascade), like a single delete; its pictures stay in the
+ * Gallery, shared with the day's other posts.
+ */
+export async function deletePosts(owner: Owner, postIds: string[]): Promise<BulkDeleteResult> {
+  const ids = [...new Set(postIds)];
+  if (ids.length === 0) throw new PublishingError("Pick at least one post.", "invalid");
+  if (ids.length > MAX_BULK_DELETE) throw new PublishingError(`Pick ${MAX_BULK_DELETE} posts or fewer at a time.`, "invalid");
+  const rows = await prisma.post.findMany({ where: { id: { in: ids }, businessId: owner.businessId }, select: { id: true, status: true, lockedAt: true } });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const skipped: BulkDeleteResult["skipped"] = [];
+  const deletable: string[] = [];
+  for (const id of ids) {
+    const reason = bulkSkipReason(byId.get(id));
+    if (reason) skipped.push({ id, reason });
+    else deletable.push(id);
+  }
+  if (deletable.length === 0) return { deleted: 0, skipped };
+  const { count } = await prisma.post.deleteMany({ where: { id: { in: deletable }, businessId: owner.businessId, status: { in: [...BULK_DELETABLE] }, lockedAt: null } });
+  if (count < deletable.length) {
+    const left = await prisma.post.findMany({ where: { id: { in: deletable }, businessId: owner.businessId }, select: { id: true } });
+    for (const r of left) skipped.push({ id: r.id, reason: "changed" });
+  }
+  return { deleted: count, skipped };
 }
 
 /**

@@ -28,20 +28,30 @@ import { pagesFirst } from "@/lib/social/choices";
 import { NETWORKS, type Network } from "@/lib/social/types";
 import { configuredModel } from "@/lib/studio/service";
 import { consumeUsage, getUsageSummary, refundUsage, UsageLimitError } from "@/lib/usage";
-import { writePack, type PackSlot, type WrittenPost } from "@/lib/ai/pack";
-import { ANGLES, chooseAngles, funCountFor, funShareFor, isAngleId } from "@/lib/studio/angles";
+import { writePack, type PackSlot, type SetBrief, type WrittenPost, type WrittenSet } from "@/lib/ai/pack";
+import { ANGLES, chooseAngles, funCountFor, funShareFor, isAngleId, type AngleId } from "@/lib/studio/angles";
 import { aiImagesLeft, angleFacts, recentAngles } from "@/lib/studio/pack";
 import { directVisual } from "@/lib/visuals/art-director";
-import { diversifyPack } from "@/lib/visuals/direction";
+import { diversifyPack, slideText } from "@/lib/visuals/direction";
 import { featureStatus } from "@/lib/entitlements";
 import { VOICE_FEATURE } from "@/lib/voice/service";
-import { aiPhotosAvailable, audienceFor, directionContext, planVisuals, updateImageVisual, videoAvailable, type Owner } from "@/lib/visuals/service";
+import { aiExhaustedNote, aiPhotosAvailable, audienceFor, directionContext, planVisuals, updateImageVisual, videoAvailable, type Owner } from "@/lib/visuals/service";
+import { acceptsVideo } from "@/lib/visuals/post-media";
+import { VISUAL_LIMITS, type ImagePlan, type ReelDraft, type VisualSlide } from "@/lib/visuals/types";
+import { clip, scriptLines } from "@/lib/visuals/video-plan";
+import { videoGetsAiClips } from "@/lib/visuals/video-quality";
+import { recommendPack } from "@/lib/designs/packs";
+import { moodFor } from "@/lib/music/tracks";
+import { clampImageCount, decideDayFormat, distributeRound, draftFormatOf, imageCountFor, MAX_SET_IMAGES, packFormatOf, REEL_APPS, roundNeedsImages, roundsOf, type DayFormat, type DaySlot } from "./day-set";
+import { chooseDayVideoKind, PLAN_KINDS, studioVideoOptions, type DayVideoKind } from "./video-kind";
+import { createSetReel } from "./set-reel";
+import { startSets } from "./set-worker";
 import { dayNumber, dayVariety, subjectKeyOf } from "./variety";
 import { runCost, type DayMode, type DesignChoice } from "./cost";
 import { dayBounds, dayDate, todayIn } from "./day";
-import { albumVideos, assignMedia, hasBeforeAfter, isDrawable, mediaLines, ownMediaFor, type GalleryItem, type PostMedia } from "./media";
+import { hasBeforeAfter, isDrawable, isMp4, mediaLines, orderPhotos, orderVideos, ownMediaFor, type GalleryItem, type PostMedia } from "./media";
 import { fitToNetwork, isVideoNetwork, languageLine, languageMixOf, NETWORK_STYLE } from "./networks";
-import { decideFormats, VIDEO_APPS, type FormatChoice, type FormatPreference } from "./format";
+import { MAX_RUN_VIDEOS, type FormatChoice, type FormatPreference } from "./format";
 import { recentFormats } from "./recent-formats";
 import { seededRandom } from "@/lib/autopilot/learning";
 import { labBlock } from "@/lib/image-engine/prompter";
@@ -105,9 +115,44 @@ export type DailyRunLimits = {
   avoidAngles: readonly string[];
   /** The owner's video quality (Content -> Settings): "ai" or "mix" mark videos for AI clips. Simple when missing. */
   videoQuality?: VideoQuality;
+  /** The plan's talking skit is today's video (lib/skits/schedule.ts): no other reel is made. */
+  skitDay?: boolean;
 };
 
-export type DayRunResult = { day: string; packId: string; posts: number; scheduled: number; skipped: { network: Network; reason: string }[]; failed: Network[]; angles: string[]; contests: number; videos: number; notes: string[] };
+/**
+ * A day's shared set as the run made it (part B's loading screen reads its progress with lib/visuals/progress.ts
+ * setProgress(businessId, [groupId])). `drawing`: its pictures are being drawn on the server now.
+ */
+export type DaySetResult = { groupId: string; format: DayFormat; videoKind: DayVideoKind; videoReason: string; reel: boolean; drawing: boolean };
+
+export type DayRunResult = { day: string; packId: string; posts: number; scheduled: number; skipped: { network: Network; reason: string }[]; failed: Network[]; angles: string[]; contests: number; videos: number; notes: string[]; sets: DaySetResult[] };
+
+/** One round's shared set while the run plans it. */
+type DaySetPlan = {
+  round: number;
+  angle: AngleId;
+  format: DayFormat;
+  kind: DayVideoKind;
+  reason: string;
+  /** The reel BuPulse makes from the pictures, or null (none, or the owner's own video, or a skit day). */
+  reelMade: ReelDraft["kind"] | null;
+  /** The owner's own Gallery video as the reel (a video day). */
+  album: GalleryItem | null;
+  /** AI pictures this set may make. */
+  aiImages: number;
+  maxImages: number;
+  /** Post.groupId of its posts and its visuals. */
+  groupId: string;
+};
+
+/**
+ * Whether a post's text is its video script (to film, or to go with a video the app takes no upload of): TikTok and
+ * YouTube without the reel uploaded, and every script to film.
+ */
+function scriptIsText(network: Network, role: DaySlot["role"] | undefined): boolean {
+  if (role === "film") return true;
+  return role === "reel" && isVideoNetwork(network) && !acceptsVideo(network, "reel.mp4");
+}
 
 type Item = { type: string; title: string; price: string | null; features: string[]; context: string | null; photoPaths: string[] };
 
@@ -138,10 +183,10 @@ const subjectWhere = (scope: ContentScope) => (scope.kind === "product" ? { prod
 
 /** How often each gallery path led a picture or went out as a post lately, so the next days prefer others. */
 async function recentUses(businessId: string, scope: ContentScope, since: Date): Promise<Map<string, number>> {
-  const [visuals, posts] = await Promise.all([
-    prisma.contentVisual.findMany({ where: { businessId, createdAt: { gte: since }, content: subjectWhere(scope) }, select: { plan: true }, take: 200 }),
-    prisma.post.findMany({ where: { businessId, ...subjectWhere(scope), createdAt: { gte: since } }, select: { mediaPaths: true }, take: 300 }),
-  ]);
+  const posts = await prisma.post.findMany({ where: { businessId, ...subjectWhere(scope), createdAt: { gte: since } }, select: { mediaPaths: true, groupId: true }, take: 300 });
+  // A day's shared set hangs from its posts' group (no content row), so its photos count through the posts.
+  const groupIds = [...new Set(posts.flatMap((p) => (p.groupId ? [p.groupId] : [])))];
+  const visuals = await prisma.contentVisual.findMany({ where: { businessId, createdAt: { gte: since }, OR: [{ content: subjectWhere(scope) }, ...(groupIds.length ? [{ groupId: { in: groupIds }, contentId: null }] : [])] }, select: { plan: true }, take: 200 });
   const uses = new Map<string, number>();
   const add = (p: unknown) => typeof p === "string" && uses.set(p, (uses.get(p) ?? 0) + 1);
   for (const v of visuals) {
@@ -278,6 +323,14 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   let assigned: ReturnType<typeof assignAngles> = [];
   let choices: FormatChoice[] = [];
   const notes: string[] = [];
+  // The day's shared sets (day-set.ts), and what each post carries from its set.
+  const daySets: DaySetPlan[] = [];
+  let daySlots: (DaySlot & { round: number })[] = [];
+  const packId = globalThis.crypto.randomUUID();
+  // The AI pictures the sets may make: "AI designs" with the plan's AI images left (a daily run: its share of them).
+  const useAi = input.mode !== "own" && input.design === "ai" && allowance.aiPhotos;
+  const aiLeftNow = useAi ? await aiImagesLeft(owner) : { count: 0, exhausted: null };
+  const setAiImages = input.daily ? Math.min(aiLeftNow.count, Math.max(0, input.daily.maxAiImages)) : aiLeftNow.count;
   const facts = input.mode === "own" ? null : { ...(await angleFacts(businessId, packSubject, subject.item, business.country, now)), contests: true };
   const priceHistory = previous.slice(0, 6).map((p) => p.angle === "price" || mentionsPrice(p.caption, subject.item.price));
   const own = new Map<Network, Exclude<ReturnType<typeof ownMediaFor>, { skip: string }>>();
@@ -293,34 +346,64 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
     const [album, uses] = await Promise.all([subjectGallery(businessId, input.scope), recentUses(businessId, input.scope, since)]);
     // Photos the owner picked while describing come first, then the album.
     gallery = [...picked, ...album.filter((a) => !picked.some((p) => p.path === a.path))].map((m) => ({ ...m, recentUses: picked.some((p) => p.path === m.path) ? -1 : (uses.get(m.path) ?? 0) }));
-    // A different idea per post, rotated per subject across days and balanced fun / professional by the brand's tone;
-    // the price follows the owner's choice. Then each post's format (format.ts), then its media.
+    // A different idea per day's set, rotated per subject across days and balanced fun / professional by the brand's
+    // tone; the price follows the owner's choice. Then the day's format, the studio's video and what each app gets.
     const angleFacts = { ...facts!, hasBeforeAfter: hasBeforeAfter(gallery) };
     const recent = await recentAngles(businessId, packSubject);
-    const pick = (avoid: readonly string[]) =>
-      chooseAngles(angleFacts, recent, slotNetworks.length, {
-        funCount: funCountFor(funShareFor(profile?.answers), slotNetworks.length, dayNumber(day)),
+    // One shared set per round (the k-th post of each app): one idea, one day format, one set of pictures and one
+    // reel, distributed to the apps (day-set.ts); the studio picks the video (video-kind.ts).
+    const rounds = roundsOf(slotNetworks);
+    const pickRounds = (avoid: readonly string[]) =>
+      chooseAngles(angleFacts, recent, rounds.length, {
+        funCount: funCountFor(funShareFor(profile?.answers), rounds.length, dayNumber(day)),
         exclude: [...(priceAngleAllowed(priceChoice, priceHistory, !!subject.item.price) ? [] : ["price" as const]), ...avoid.filter(isAngleId)],
       });
     // A daily run leaves out yesterday's ideas, unless that leaves too few.
-    const avoided = input.daily?.avoidAngles.length ? pick(input.daily.avoidAngles) : [];
-    const angles = avoided.length >= slotNetworks.length ? avoided : pick([]);
-    assigned = assignAngles(angles, slotNetworks);
-    const own = albumVideos(slotNetworks, gallery);
-    const decision = decideFormats({
-      slots: assigned,
-      day,
-      preference: input.format,
-      videoInPlan: allowance.videoInPlan,
-      videosLeft: allowance.videosLeft,
-      freeVideo: (i) => own[i] !== null,
-      photoApps: VIDEO_APPS.filter((n) => getProvider(n).rules.formats.includes("POST")),
-      recent: await recentFormats(businessId, zone, day),
-      rng: seededRandom(`${businessId}|${subjectKey}|${day}|${now.toISOString()}`),
+    const avoided = input.daily?.avoidAngles.length ? pickRounds(input.daily.avoidAngles) : [];
+    const angles = avoided.length >= rounds.length ? avoided : pickRounds([]);
+    const recentDays = await recentFormats(businessId, zone, day);
+    const rng = seededRandom(`${businessId}|${subjectKey}|${day}|${now.toISOString()}`);
+    // The owner's own MP4 videos not used lately: a video day may use one as its reel, free.
+    const freshVideos = orderVideos(gallery).filter((v) => isMp4(v) && (v.recentUses ?? 0) <= 0);
+    const drawable = orderPhotos(gallery, day).filter(isDrawable);
+    let videosLeft = allowance.videoInPlan ? Math.min(MAX_RUN_VIDEOS, Math.max(0, Math.floor(allowance.videosLeft))) : 0;
+    let aiLeft = setAiImages;
+    const studio = studioVideoOptions();
+    const placed: typeof daySlots = [];
+    rounds.forEach((networks, round) => {
+      const angle = angles[round] ?? angles[round % Math.max(1, angles.length)];
+      if (!angle) return;
+      const album = freshVideos[round] ?? null;
+      const wantsReel = networks.some((n) => REEL_APPS.includes(n) || n === "facebook");
+      const canMake = videosLeft > 0;
+      const format = decideDayFormat({ day, preference: input.format, videoPossible: canMake || !!album, recent: recentDays, rng });
+      const kind = chooseDayVideoKind({ format: format.format, angle, skitDay: input.daily?.skitDay, albumVideo: format.format === "video" && !!album, aiClips: videoGetsAiClips(input.daily?.videoQuality, `${packId}|${round}`), ...studio });
+      const made = wantsReel && canMake && PLAN_KINDS.includes(kind.kind);
+      const reel = made || kind.kind === "album";
+      if (made) videosLeft -= 1;
+      if (wantsReel && kind.kind === "skit") notes.push(kind.reason);
+      else if (wantsReel && !reel && networks.some((n) => REEL_APPS.includes(n))) {
+        const instead = [...new Set(networks.filter((n) => REEL_APPS.includes(n)))].map((n) => (n === "instagram" ? "Instagram gets the pictures" : `${NETWORK_STYLE[n].label} gets a video script to film yourself`));
+        const line = `${instead.join(" and ")} instead of a reel today: ${allowance.videoInPlan ? "your plan's videos are used up for now" : "videos are not in your plan"}.`;
+        if (!notes.includes(line)) notes.push(line);
+      }
+      const aiForSet = Math.min(MAX_SET_IMAGES, aiLeft);
+      aiLeft -= aiForSet;
+      const set: DaySetPlan = { round, angle, format: format.format, kind: kind.kind, reason: kind.reason, reelMade: made ? (kind.kind as ReelDraft["kind"]) : null, album: kind.kind === "album" ? album : null, aiImages: aiForSet, maxImages: clampImageCount(MAX_SET_IMAGES, { aiImages: aiForSet, photos: drawable.length }), groupId: round === 0 ? packId : globalThis.crypto.randomUUID() };
+      daySets.push(set);
+      for (const s of distributeRound({ networks, format: format.format, reel })) placed.push({ ...s, round: daySets.length - 1 });
     });
-    choices = decision.choices;
-    notes.push(...decision.notes);
-    media = assignMedia({ networks: slotNetworks, gallery, day, videoInPlan: allowance.videoInPlan, choices });
+    daySlots = placed;
+    slotNetworks = daySlots.map((s) => s.network);
+    assigned = daySlots.map((s) => ({ angle: daySets[s.round].angle, network: s.network, format: packFormatOf(s.role, daySets[s.round].maxImages) }));
+    choices = assigned.map((a) => ({ format: a.format }));
+    media = daySlots.map((s, i): PostMedia => {
+      const lead = drawable.length ? [...drawable.slice(i % drawable.length), ...drawable.slice(0, i % drawable.length)] : [];
+      const set = daySets[s.round];
+      if (s.role === "images") return { kind: "image", photos: lead };
+      if (s.role === "film") return { kind: "script", photos: lead };
+      return set.album ? { kind: "gallery-video", video: set.album, photos: lead } : { kind: "render-video", photos: lead };
+    });
   }
   if (slotNetworks.length === 0) throw new DayRunError(skipped.map((s) => s.reason).join(" ") || "Nothing could be made from that.");
 
@@ -335,8 +418,9 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   // The marketing interview's language mix adds a few phrases of other languages; not when the owner chose a mix.
   const phraseMix = (part: LanguagePart) => (languages[part].mode === "mix" ? null : languageMixOf(profile));
 
-  const designedCount = input.mode === "own" ? (input.overlays ? slotNetworks.filter((n) => own.get(n)!.format !== "SCRIPT" && !own.get(n)!.mediaPaths.some(isVideoPath)).length : 0) : media.filter((m) => m.kind === "image").length;
-  const videos = media.filter((m) => m.kind === "render-video").length;
+  // The sets' pictures at most (the writer may choose fewer), and one reel per set that makes one.
+  const designedCount = input.mode === "own" ? (input.overlays ? slotNetworks.filter((n) => own.get(n)!.format !== "SCRIPT" && !own.get(n)!.mediaPaths.some(isVideoPath)).length : 0) : daySets.reduce((n, s) => n + s.aiImages, 0);
+  const videos = input.mode === "own" ? 0 : daySets.filter((s) => s.reelMade).length;
   const cost = runCost({ mode: input.mode, design: input.design, posts: slotNetworks.length, designed: designedCount, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videosLeft: allowance.videosLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
   if (!cost.enoughText) throw new DayRunError(`Not enough text generations left for ${slotNetworks.length} posts. ${cost.message}`);
 
@@ -353,7 +437,6 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
     profile: profileContext(business.profile),
     ...kb,
   };
-  const packId = globalThis.crypto.randomUUID();
   const configured = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
   const ledger = { userId, businessId, feature: input.daily ? "daily-posts" : "content" };
   const model = { provider: configured, model: configuredModel(configured) };
@@ -366,6 +449,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   });
   let kept = 0;
   let written: (WrittenPost & { slot: number; provider: string; model: string; showsPrice: boolean })[] = [];
+  let writtenSets: (WrittenSet | null)[] = [];
   try {
     if (input.mode === "own") {
       // "Bring my own": the owner's caption adapted per network (one call each); a failed call keeps the owner's caption.
@@ -387,7 +471,9 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
     } else {
       // "AI makes it" / "Describe": a content pack, one call for every post (angles and formats chosen above).
       const item0 = subject.item;
-      const showsPrice = priceSlots(priceChoice, assigned.map((a) => a.angle), priceHistory, !!subject.item.price);
+      // The price is per set: every post of the price set shows it (they share its pictures), the others none.
+      const priceBySet = priceSlots(priceChoice, daySets.map((s) => s.angle), priceHistory, !!subject.item.price);
+      const showsPrice = daySlots.map((s) => priceBySet[s.round] ?? false);
       const slots: PackSlot[] = assigned.map((slot, i) => {
         const m = media[i];
         const variety = dayVariety(subjectKey, day, i);
@@ -397,8 +483,12 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
         // The shared prompt has no price unless every post shows it; the price post gets the price in its own line.
         const price = showsPrice[i] ? `State the price exactly as given: ${item0.price}.` : "Do not mention any price, cost, discount, free offer or amount in this post.";
         const language = oneLanguage ? "" : `Language: write this post (caption, hashtags, headlines and video script) only in ${postLanguages[i]}.`;
-        return { ...slot, format, note: [...mediaLines(m), `Opening: ${variety.hook} Structure: ${variety.structure}`, price, language].filter(Boolean).join(" ") };
+        const role = daySlots[i]?.role;
+        const shared = role === "images" ? "It shows the set's pictures (the same ones on every app today)." : role === "reel" ? (daySlots[i]?.companion ? "It is the set's reel posted as a video (the pictures go in another post)." : "It is the set's reel (a short vertical video with music); write the caption for the reel.") : "";
+        return { ...slot, format, note: [shared, ...mediaLines(m), `Opening: ${variety.hook} Structure: ${variety.structure}`, price, language].filter(Boolean).join(" ") };
       });
+      // The day's sets: their posts, the pictures they may have and whether a reel is made from them.
+      const setBriefs: SetBrief[] = daySets.map((set, r) => ({ slots: daySlots.flatMap((s, i) => (s.round === r ? [i] : [])), maxImages: set.maxImages, reel: !!set.reelMade }));
       // The owner's Training Lab for the post writer, read once per run: examples, never notes and Kinyarwanda phrases as one more
       // block of the prompt (never part of the facts), and the spellings to fix afterwards. An empty Lab or an error changes nothing.
       const sector = sectorFromText([business.industry, business.description].filter(Boolean).join(" "));
@@ -425,9 +515,10 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
         ? { type: item.type, title: item.title, price: item.price, features: item.features, context: item.context }
         : { type: item.type, title: item.title, price: null, features: item.features.filter((f) => !isPriceLike(f, item.price)), context: priceFreeLines(withoutPriceLines(item.context), item.price) };
       const writerBrand: BrandContext = allPriced ? brand : { ...brand, knowledgeBase: priceFreeLines(brand.knowledgeBase, item.price), profile: priceFreeLines(brand.profile, item.price), description: brand.description && stripPriceLike(brand.description, item.price) };
-      const pack = await withLedger(ledger, model, () => writePack(getTextProvider(), writerBrand, promotion, slots, facts!.moment ?? null, extra), usage);
+      const pack = await withLedger(ledger, model, () => writePack(getTextProvider(), writerBrand, promotion, slots, facts!.moment ?? null, extra, setBriefs), usage);
+      writtenSets = pack.sets;
       written = pack.posts.flatMap((written0): typeof written => {
-        const slot = slots.findIndex((s) => s.angle === written0.angle && s.network === written0.network);
+        const slot = written0.slotIndex ?? slots.findIndex((s) => s.angle === written0.angle && s.network === written0.network);
         if (slot < 0) return [];
         // The owner's spellings (Training Lab) of the post's own language.
         const [p] = fixWrittenPosts([written0], languageExtra(postLanguages[slot]), [business.name, item0.title]);
@@ -484,6 +575,8 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   for (const [i, w] of done.entries()) {
     const kind = input.mode === "own" ? null : media[w.slot]?.kind;
     if ((kind !== "render-video" && kind !== "script") || w.videoScript.trim()) continue;
+    // A reel made from the day's set has its scenes and voice-over from the set; only a script to film needs one.
+    if (kind === "render-video" && !scriptIsText(w.network, daySlots[w.slot]?.role)) continue;
     try {
       const script = await writeContentScript(owner, contents[i].id);
       w.videoScript = script;
@@ -493,32 +586,44 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
     }
   }
 
-  // Step 2: the visuals, Gallery first. One art director call per designed post, each with its idea's people;
-  // AI photos only with "AI designs", for the first posts while the plan's images last; covers made to differ.
-  await planDayVisuals(owner, { input, business, subject: subject.item, media, own, done, contents, allowance }).catch((e) => logError(e, { source: "content-flow.visuals", level: "warn", businessId }));
+  // Step 2: the visuals. "Bring my own" with designs: one art director call per post, as before. Otherwise the day's
+  // shared sets: one set of pictures per round (and its reel's draft), drawn on the server right after this answer.
+  let planned: string[] = [];
+  if (input.mode === "own") {
+    await planDayVisuals(owner, { input, business, subject: subject.item, media, own, done, contents, allowance }).catch((e) => logError(e, { source: "content-flow.visuals", level: "warn", businessId }));
+  } else {
+    planned = await planDaySets(owner, { business, subject: subject.item, sets: daySets, slots: daySlots, done, contents, written: writtenSets, photos: orderPhotos(gallery, day).filter(isDrawable).map((p) => p.path), languages: postLanguages, aiExhausted: useAi && setAiImages === 0 ? aiLeftNow.exhausted : null }).catch(async (e) => {
+      await logError(e, { source: "content-flow.sets", level: "warn", businessId });
+      return [] as string[];
+    });
+  }
 
   // Step 3: the posts, as drafts waiting for review (or scheduled where Content -> Settings says so). A contest waits
-  // for the owner's prize and rules and is never scheduled on its own.
+  // for the owner's prize and rules and is never scheduled on its own. A day's posts carry their set's id
+  // (Post.groupId), so the set's pictures and reel reach them when ready (attachToGroup).
   const targets = await targetsFor(businessId, [...new Set(done.map((w) => w.network))]);
   const rows: Prisma.PostCreateManyInput[] = done.map((w, i) => {
     const target = targets.find((t) => t.network === w.network)!;
-    const m = postMediaFor(input, w.network, media[w.slot], own.get(w.network));
+    const slot = input.mode === "own" ? null : daySlots[w.slot];
+    const set = slot ? daySets[slot.round] : null;
+    const m = slot && !set?.album ? { format: draftFormatOf(slot.role), mediaPaths: [] as string[] } : postMediaFor(input, w.network, media[w.slot], own.get(w.network));
     const contest = contestOf(w);
     const caption = contest ? contestDraftText(w.caption) : w.caption;
+    // A TikTok / YouTube video without the owner's video is the script to film (the video BuPulse makes goes with it
+    // where the app takes no upload); a reel BuPulse can upload, and a video on Instagram or Facebook, keep the caption.
+    const scriptText = slot ? scriptIsText(w.network, slot.role) && m.mediaPaths.length === 0 : m.format === "SCRIPT" && m.mediaPaths.length === 0 && (isVideoNetwork(w.network) || media[w.slot]?.kind === "script");
     return {
       businessId,
       connectionId: target.connection?.id ?? null,
       remindOnly: target.connection === null,
       network: w.network,
-      groupId: packId,
+      groupId: set?.groupId ?? packId,
       ...columns,
       contentId: contents[i].id,
       status: "PENDING_APPROVAL",
       format: m.format,
       source: input.daily ? "DAILY" : "STUDIO",
-      // A TikTok / YouTube video without the owner's video is the script to film (the video BuPulse makes goes with
-      // it); a video post on Instagram, Facebook or LinkedIn keeps its caption (the video becomes the post).
-      text: m.format === "SCRIPT" && m.mediaPaths.length === 0 && w.videoScript && (isVideoNetwork(w.network) || media[w.slot]?.kind === "script") ? (contest ? contestDraftText(w.videoScript) : w.videoScript) : caption,
+      text: scriptText && w.videoScript ? (contest ? contestDraftText(w.videoScript) : w.videoScript) : caption,
       hashtags: w.hashtags,
       mediaPaths: m.mediaPaths,
       ...(contest ? { contest: {}, reviewNote: CONTEST_NOTE } : {}),
@@ -529,8 +634,14 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
     await logError(e, { source: "content-flow.auto", level: "warn", businessId });
     return { scheduled: 0, waiting: 0 };
   });
+  // The pictures start right away on the server (and the reel once they are ready), whether the page stays open or not.
+  if (planned.length) await startSets(businessId, planned, now).catch((e) => logError(e, { source: "content-flow.start-sets", level: "warn", businessId }));
   const videoPosts = input.mode === "own" ? 0 : done.filter((w) => media[w.slot]?.kind === "render-video" || media[w.slot]?.kind === "gallery-video").length;
-  return { day, packId, posts: created.length, scheduled: auto.scheduled, skipped, failed, angles: input.mode === "own" ? [] : done.map((w) => w.angle), contests: done.filter(contestOf).length, videos: videoPosts, notes };
+  const sets: DayRunResult["sets"] =
+    input.mode === "own"
+      ? []
+      : daySets.flatMap((s) => (done.some((w) => daySlots[w.slot]?.round === daySets.indexOf(s)) ? [{ groupId: s.groupId, format: s.format, videoKind: s.kind, videoReason: s.reason, reel: !!s.reelMade || !!s.album, drawing: planned.includes(s.groupId) }] : []));
+  return { day, packId, posts: created.length, scheduled: auto.scheduled, skipped, failed, angles: input.mode === "own" ? [] : done.map((w) => w.angle), contests: done.filter(contestOf).length, videos: videoPosts, notes, sets };
 }
 
 const isVideoPath = (p: string) => /\.(mp4|webm)$/i.test(p);
@@ -631,6 +742,112 @@ async function planDayVisuals(
 }
 
 /**
+ * The day's shared sets (one per round): the picture visual with 1 to 4 slides (the writer's pictures, AI while the
+ * set's AI images last, else the owner's photos as they are) and the reel's draft, saved on the set's id
+ * (ContentVisual.groupId = Post.groupId). Planned without the art director (the writer chose the pictures in the
+ * captions' call), so Create answers sooner. The AI pictures are paid now (one credit each, as before), so another run
+ * cannot use them meanwhile. Returns the sets whose pictures are to be drawn.
+ */
+async function planDaySets(
+  owner: Owner,
+  ctx: {
+    business: { name: string; tone: string | null; industry: string | null; brandColors: string[] };
+    subject: Item;
+    sets: DaySetPlan[];
+    slots: (DaySlot & { round: number })[];
+    done: (WrittenPost & { slot: number; showsPrice: boolean })[];
+    contents: { id: string; caption: string; adHeadlines: string[]; videoScript: string; language: string }[];
+    written: (WrittenSet | null)[];
+    /** The album's drawable photos, least used first. */
+    photos: string[];
+    languages: string[];
+    aiExhausted: { refillAt: string | null } | null;
+  },
+): Promise<string[]> {
+  const { business, subject, sets, slots, done, contents, written, photos } = ctx;
+  const pack = recommendPack(business);
+  const out: string[] = [];
+  for (const [r, set] of sets.entries()) {
+    const posts = done.filter((w) => slots[w.slot]?.round === r);
+    if (posts.length === 0) continue;
+    const roundSlots = slots.filter((s) => s.round === r);
+    if (!roundNeedsImages(roundSlots, !!set.reelMade)) continue;
+    const contest = set.angle === "challenge";
+    const priced = posts.some((p) => p.showsPrice);
+    // The words on a picture or in the reel follow the set's price and contest rules, whatever the writer did.
+    const words = (text: string) => {
+      const t = contest ? withoutPlaceholders(text) : text;
+      return priced ? t : stripPriceLike(t, subject.price);
+    };
+    const lead = posts.find((p) => slots[p.slot]?.role === "images") ?? posts[0];
+    const leadContent = contents[done.indexOf(lead)];
+    const reelPost = posts.find((p) => slots[p.slot]?.role === "reel" && !slots[p.slot]?.companion) ?? posts.find((p) => slots[p.slot]?.role === "reel");
+    const w = written[r];
+    // The writer's pictures (it chose their count by the idea); without them, the rules' count with the headlines.
+    const headlines = leadContent.adHeadlines.length ? leadContent.adHeadlines : [subject.title];
+    const images = (w?.images ?? Array.from({ length: clampImageCount(imageCountFor(set.angle, photos.length), { aiImages: set.aiImages, photos: photos.length }) }, (_, i) => ({ headline: headlines[i % headlines.length], idea: `${ANGLES[set.angle].label}: ${subject.title}` }))).slice(0, set.maxImages);
+    let albumNext = 0;
+    const slides: VisualSlide[] = images.flatMap((img, i): VisualSlide[] => {
+      const ai = i < set.aiImages;
+      // An AI picture uses an album photo as its reference; an own photo goes as it is, from the other end of the album.
+      const photo = ai ? (photos.length ? photos[i % photos.length] : null) : (photos[photos.length - 1 - albumNext++] ?? null);
+      if (!ai && !photo) return [];
+      return [{ template: "announcement", headline: slideText(words(img.headline), VISUAL_LIMITS.headline) || slideText(subject.title, VISUAL_LIMITS.headline), subline: "", chip: "", source: ai ? "ai" : "album", photoPath: photo, scene: words(img.idea).slice(0, 200) || undefined, designId: null, path: null }];
+    });
+    const language = ctx.languages[lead.slot] ?? leadContent.language;
+    const reelLanguage = reelPost ? (ctx.languages[reelPost.slot] ?? language) : language;
+    const draft: ReelDraft | null = set.reelMade ? reelDraftOf(set.reelMade, w?.reel ?? null, { script: reelPost ? (contents[done.indexOf(reelPost)]?.videoScript ?? "") : "", headline: slides[0]?.headline || subject.title, title: subject.title, words, language: reelLanguage, mood: moodFor({ angle: set.angle, tone: business.tone }) }) : null;
+    const aiCount = slides.filter((s) => s.source === "ai").length;
+    const plan: ImagePlan = {
+      version: 1,
+      pack,
+      aspectRatio: "4:5",
+      slides,
+      directedBy: w ? "ai" : "rules",
+      notes: ctx.aiExhausted ? [aiExhaustedNote(ctx.aiExhausted.refillAt)] : [],
+      ...(ctx.aiExhausted ? { aiExhausted: ctx.aiExhausted } : {}),
+      mood: moodFor({ angle: set.angle, tone: business.tone }),
+      language,
+      daySet: { groupId: set.groupId, maxAi: aiCount, reel: draft },
+    };
+    if (slides.length === 0) {
+      // Nothing to draw (no AI pictures, no photo of the owner's): the reel is made on the brand backdrop.
+      if (draft) await createSetReel({ id: "", businessId: owner.businessId, groupId: set.groupId }, plan, []);
+      continue;
+    }
+    // The AI pictures are paid now, so another run or a team member cannot use them meanwhile; a slide that ends up
+    // without its AI picture gives its credit back when drawn (lib/visuals/service.ts drawSlide).
+    if (aiCount > 0) {
+      try {
+        const { periodStart } = await consumeUsage(owner.userId, "image", aiCount);
+        for (const s of slides) if (s.source === "ai") s.prepaidAi = periodStart.toISOString();
+      } catch (error) {
+        // The credits went meanwhile: the slides try when drawn and fall back to the owner's photos.
+        if (!(error instanceof UsageLimitError)) throw error;
+      }
+    }
+    await prisma.contentVisual.create({ data: { businessId: owner.businessId, groupId: set.groupId, kind: slides.length > 1 ? "carousel" : "image", status: "pending", plan: plan as unknown as Prisma.InputJsonValue, items: [] } });
+    out.push(set.groupId);
+  }
+  return out;
+}
+
+/** The reel's draft: the writer's scenes and voice-over, else scenes from the reel post's script (or its headline). */
+export function reelDraftOf(
+  kind: ReelDraft["kind"],
+  written: WrittenSet["reel"],
+  ctx: { script: string; headline: string; title: string; words: (text: string) => string; language: string | null; mood: string | null },
+): ReelDraft {
+  const fromWriter = (written?.scenes ?? []).map((s) => ({ onScreen: ctx.words(s.onScreen), voice: ctx.words(s.voice) })).filter((s) => s.onScreen);
+  const fromScript = scriptLines(ctx.script)
+    .slice(0, 5)
+    .map((line) => ({ onScreen: clip(ctx.words(line), 60), voice: ctx.words(line) }))
+    .filter((s) => s.onScreen);
+  const scenes = fromWriter.length >= 2 ? fromWriter : fromScript.length >= 2 ? fromScript : [{ onScreen: ctx.words(ctx.headline), voice: ctx.words(ctx.headline) }, { onScreen: ctx.words(ctx.title), voice: ctx.words(ctx.title) }].filter((s) => s.onScreen);
+  return { kind, hook: scenes[0]?.onScreen ?? ctx.title, cta: ctx.words(written?.cta ?? ""), scenes, language: ctx.language, mood: ctx.mood };
+}
+
+/**
  * The post's media and format when it is drafted. Designed pictures and BuPulse's videos are filled in when they are
  * drawn (attachToContent); the owner's own photos and videos are used as they are.
  */
@@ -654,7 +871,7 @@ export function postMediaFor(input: Pick<DayRunInput, "mode" | "overlays">, netw
  */
 export async function confirmContest(owner: Owner, postId: string, input: ContestConfirm, now = new Date()): Promise<void> {
   const [post, business] = await Promise.all([
-    prisma.post.findFirst({ where: { id: postId, businessId: owner.businessId }, select: { id: true, text: true, status: true, contest: true, contentId: true, updatedAt: true } }),
+    prisma.post.findFirst({ where: { id: postId, businessId: owner.businessId }, select: { id: true, text: true, status: true, contest: true, contentId: true, groupId: true, updatedAt: true } }),
     prisma.business.findUnique({ where: { id: owner.businessId }, select: { timezone: true } }),
   ]);
   if (!post || readContest(post.contest) === null) throw new DayRunError("We could not find that contest post.");
@@ -669,8 +886,9 @@ export async function confirmContest(owner: Owner, postId: string, input: Contes
   });
   if (count === 0) throw new DayRunError("This post changed meanwhile. Open it again and confirm once more.");
   // The picture is drawn again with the prize on its cover; its photo (AI or album) is reused, no new AI image.
-  if (post.contentId) {
-    const visual = await prisma.contentVisual.findFirst({ where: { businessId: owner.businessId, contentId: post.contentId, kind: { not: "video" } }, orderBy: { createdAt: "desc" }, select: { id: true } });
+  if (post.contentId || post.groupId) {
+    // The post's own picture, or its day's shared set (lib/content-flow/day-set.ts).
+    const visual = await prisma.contentVisual.findFirst({ where: { businessId: owner.businessId, kind: { not: "video" }, OR: [...(post.contentId ? [{ contentId: post.contentId }] : []), ...(post.groupId ? [{ groupId: post.groupId, contentId: null }] : [])] }, orderBy: { createdAt: "desc" }, select: { id: true } });
     if (visual) await updateImageVisual(owner, visual.id, { slides: [{ index: 0, chip: input.prize.slice(0, 24) }] }).catch((e) => logError(e, { source: "content-flow.contest.redraw", level: "warn", businessId: owner.businessId }));
   }
 }

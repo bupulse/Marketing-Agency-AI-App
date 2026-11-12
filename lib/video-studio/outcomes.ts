@@ -6,6 +6,7 @@ import { hookById } from "@/lib/video-engine/brain/database";
 import { formatFromTemplate, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { OutcomeStats } from "@/lib/video-engine/brain/types";
 import { isVideoPath } from "@/lib/visuals/post-media";
+import { UPLOAD_ENGINE } from "@/lib/video-library/upload-rules";
 
 // What studio videos did once posted (docs/VIDEO_APP_INTEGRATION.md, section 5, step 3; docs/research/BRAIN.md,
 // "Learning from our own results"): a VideoOutcome per published post of a studio MP4, written when the post goes out
@@ -28,8 +29,9 @@ export async function recordStudioOutcome(post: { id: string; businessId: string
     const platform = BRAIN_PLATFORM[post.network];
     const path = post.mediaPaths.find(isVideoPath);
     if (!platform || !path) return false;
-    const job = await prisma.videoJob.findFirst({ where: { businessId: post.businessId, videoPath: path }, select: { id: true, templateId: true, hookId: true, seconds: true, brief: true, captionScore: true } });
-    if (!job) return false;
+    const job = await prisma.videoJob.findFirst({ where: { businessId: post.businessId, videoPath: path }, select: { id: true, engine: true, templateId: true, hookId: true, seconds: true, brief: true, captionScore: true } });
+    // A video the company uploaded was not designed by the Brain: nothing for it to learn from.
+    if (!job || job.engine === UPLOAD_ENGINE) return false;
     const brief = (job.brief ?? {}) as Brief;
     const sector = sectorFromText([brief.business?.name, brief.business?.description, brief.product?.name, brief.product?.summary].filter(Boolean).join(" "));
     const { count } = await prisma.videoOutcome.createMany({
