@@ -195,6 +195,7 @@ function Player({ items, index, onIndexChange, onClose }: MediaPlayerProps & { i
       aria-labelledby={titleId}
       tabIndex={-1}
       onPointerMove={wake}
+      onPointerDown={wake}
       className={cn("fixed inset-0 z-[120] grid bg-black text-[#f4f4fb] outline-none md:grid-cols-[minmax(0,1fr)_380px]", closing ? s.backdropOut : s.backdrop)}
     >
       <div aria-hidden className={s.bgBlur} style={{ backgroundImage: item.poster ? `url("${item.poster}")` : "linear-gradient(135deg,#1b2a6b,#3a1f6e)" }} />
@@ -309,7 +310,7 @@ function Player({ items, index, onIndexChange, onClose }: MediaPlayerProps & { i
               </button>
             </>
           )}
-          <button type="button" onClick={() => setInfoOpen((o) => !o)} aria-expanded={infoOpen} aria-label="About this video" className={cn(s.fbtn, "md:hidden")}>
+          <button type="button" onClick={() => setInfoOpen((o) => !o)} aria-expanded={infoOpen} aria-label="About this video" className={cn(s.fbtn, "md:!hidden")}>
             <Info aria-hidden className="size-[22px]" />
           </button>
         </div>
@@ -331,7 +332,9 @@ function Player({ items, index, onIndexChange, onClose }: MediaPlayerProps & { i
         )}
         inert={!wide && !infoOpen ? true : undefined}
       >
-        <span aria-hidden className="mx-auto -mt-2 mb-1 h-1 w-10 rounded-full bg-white/25 md:hidden" />
+        <button type="button" onClick={() => setInfoOpen(false)} aria-label="Hide details" className="mx-auto -mt-4 -mb-1 grid h-11 w-24 cursor-pointer place-items-center md:hidden">
+          <span aria-hidden className="h-1 w-10 rounded-full bg-white/30" />
+        </button>
         {infoPanel}
       </aside>
     </div>

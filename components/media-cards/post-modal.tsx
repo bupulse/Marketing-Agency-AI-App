@@ -105,15 +105,15 @@ function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 
       {/* Previous and next, outside the box */}
       {posts.length > 1 && (
         <>
-          <button type="button" onClick={() => go(-1)} disabled={index === 0} aria-label="Previous post (←)" className={cn(s.fbtn, "absolute top-1/2 left-4 z-[2] -translate-y-1/2 max-md:hidden")}>
+          <button type="button" onClick={() => go(-1)} disabled={index === 0} aria-label="Previous post (←)" className={cn(s.fbtn, "absolute top-1/2 left-4 z-[2] -translate-y-1/2 max-md:!hidden")}>
             <ChevronLeft aria-hidden className="size-6" />
           </button>
-          <button type="button" onClick={() => go(1)} disabled={index === posts.length - 1} aria-label="Next post (→)" className={cn(s.fbtn, "absolute top-1/2 right-4 z-[2] -translate-y-1/2 max-md:hidden")}>
+          <button type="button" onClick={() => go(1)} disabled={index === posts.length - 1} aria-label="Next post (→)" className={cn(s.fbtn, "absolute top-1/2 right-4 z-[2] -translate-y-1/2 max-md:!hidden")}>
             <ChevronRight aria-hidden className="size-6" />
           </button>
         </>
       )}
-      <button type="button" onClick={close} aria-label="Close (Esc)" className={cn(s.fbtn, "absolute top-4 right-4 z-[2] max-md:hidden")}>
+      <button type="button" onClick={close} aria-label="Close (Esc)" className={cn(s.fbtn, "absolute top-4 right-4 z-[2] max-md:!hidden")}>
         <X aria-hidden className="size-[22px]" />
       </button>
 

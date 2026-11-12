@@ -202,7 +202,7 @@ export function VideoCard({ video, title, eyebrow, status, statusLabel, dateLabe
                 )}
                 {onOpen && (
                   <span className="text-[12.5px] font-semibold">
-                    Click to watch with sound <span aria-hidden>→</span>
+                    Watch with sound <span aria-hidden>→</span>
                   </span>
                 )}
               </div>

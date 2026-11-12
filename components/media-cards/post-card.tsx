@@ -197,7 +197,7 @@ export function PostCard({ post, actions, footer, onOpen, ratio, selected, index
         </div>
         <span className="block truncate text-[12px] text-muted">{post.subject ? post.subject.name : networkName(post.platform)}</span>
       </div>
-      {status}
+      {post.media.length === 0 && status}
       {openButton}
     </header>
   );
@@ -206,6 +206,12 @@ export function PostCard({ post, actions, footer, onOpen, ratio, selected, index
     <div className={cn("relative", post.platform === "twitter" && "mx-3.5 overflow-hidden rounded-2xl border border-line")} style={{ aspectRatio: shape }}>
       <MediaStage media={post.media} title={title} onOpen={onOpen} dots={post.platform === "instagram" ? "below" : "over"} className="absolute inset-0" />
       {label}
+      {/* The status sits on the picture (glass), so the account row keeps room for the name. */}
+      {post.status && (
+        <span className="pointer-events-none absolute top-3 left-3 z-[3] max-w-[calc(100%-5rem)]">
+          <StatusPill status={post.status} label={post.statusLabel} glass />
+        </span>
+      )}
     </div>
   );
 
