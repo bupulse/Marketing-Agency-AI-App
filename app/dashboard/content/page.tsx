@@ -1,23 +1,13 @@
-import Link from "next/link";
-import { PenLine, Settings, Sparkles } from "lucide-react";
-import { EmptyState } from "@/components/app/empty-state";
+import { redirect } from "next/navigation";
 import { getAppContext } from "@/components/app/context";
+import { PostsView } from "@/components/app/views/a-posts-view";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
 import { SwitchToAutoBanner } from "@/components/content-board/content-actions";
-import { FilterBar } from "@/components/content-board/filter-bar";
-import { PeriodBar } from "@/components/content-board/period-bar";
-import { SubjectGrid } from "@/components/content-board/subject-grid";
 import { TodayReview } from "@/components/content-board/today-review";
-import { Button, GlassCard } from "@/components/ui";
 import { parseContentFilters } from "@/lib/content-board/filters";
 import { loadSubjectCards, loadToday, missingApps, recentAutoCount, switchableByHand } from "@/lib/content-board/queries";
-import { contentQuery, customRangeText } from "@/lib/content-board/filters";
-import { periodLabel, periodOf } from "@/lib/content-board/period";
-import { parseDay, todayIn } from "@/lib/content-flow/day";
 import { can } from "@/lib/team/roles";
 import { ConnectAppsBanner } from "@/components/content-board/connect-apps-banner";
-import { ScheduleAllButton } from "@/components/content-board/schedule-all";
 import { SkitSection } from "@/components/skits/skit-section";
 import { loadComposerContext } from "@/lib/publishing/queries";
 
@@ -25,19 +15,27 @@ export const metadata = { title: "Posts" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
+/** The query keys of the board's filters and period: a link with any of them belongs on "All posts". */
+const BROWSE_KEYS = ["app", "type", "status", "range", "date", "from", "to", "auto", "view", "day", "q", "sort", "limit"];
+
+/**
+ * Posts (redesigned 12 Nov 2026, one job per screen): today's posts to check first, the talking skits, then cards to
+ * the rest: All posts (every post by product, campaign, app or date, with the filters), the General posts and the
+ * Settings. Old links with filters (?status=review, ?auto=1&status=scheduled from the emails) go to All posts.
+ */
 export default async function ContentPage({ searchParams }: { searchParams: SearchParams }) {
   const blocked = await featureGate("content");
   if (blocked) return blocked;
+  const sp = await searchParams;
+  if (BROWSE_KEYS.some((k) => sp[k] !== undefined)) {
+    const keep = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) for (const one of Array.isArray(v) ? v : v === undefined ? [] : [v]) keep.append(k, one);
+    redirect(`/dashboard/content/all?${keep.toString()}`);
+  }
   const { business, entitlements, role } = await getAppContext();
-  const parsed = parseContentFilters(await searchParams);
+  const filters = parseContentFilters(sp);
   const zone = business.timezone || "UTC";
   const now = new Date();
-  // The Day / Week / Month switch: none ("All") by default here; the day is kept within the date bar's range.
-  const todayKey = todayIn(zone, now);
-  const anchor = parseDay(parsed.day, zone, now);
-  const filters = { ...parsed, day: parsed.view && anchor !== todayKey ? anchor : undefined };
-  const period = filters.view ? periodOf(filters.view, anchor) : null;
-  const label = period ? periodLabel(period, todayKey) : null;
   const posting = entitlements.usable.has("calendar");
 
   const [cards, today, autoCount, context, switchable, missing] = await Promise.all([
@@ -49,55 +47,21 @@ export default async function ContentPage({ searchParams }: { searchParams: Sear
     missingApps(business.id),
   ]);
   const nothingYet = cards.length === 1 && cards[0].kind === "general" && cards[0].total === 0 && !today?.posts.length && !today?.older;
+  const total = cards.reduce((n, c) => n + c.total, 0);
+  const subjects = cards.filter((c) => c.kind !== "general").length;
+  const general = cards.find((c) => c.kind === "general");
 
   return (
-    <div className="flex flex-col gap-8">
-      <PageHeader
-        title="Posts"
-        description="Review today's posts, then find every post by product, campaign or app."
-        action={
-          <Button href="/dashboard/content/settings" variant="outline" size="sm" leading={<Settings aria-hidden className="size-4" />}>
-            Settings
-          </Button>
-        }
-      />
-
-      {autoCount > 0 && (
-        <GlassCard role="status" className="flex flex-wrap items-center gap-3 p-4">
-          <Sparkles aria-hidden className="size-5 shrink-0 text-pulse-blue" />
-          <p className="min-w-0 flex-1 text-[15px]">
-            {autoCount === 1 ? "1 post was" : `${autoCount} posts were`} scheduled for you in the last 24 hours, without waiting for approval. You can change or cancel {autoCount === 1 ? "it" : "them"} until {autoCount === 1 ? "it goes" : "they go"} out.
-          </p>
-          <Link href="/dashboard/content?auto=1&status=scheduled" className="inline-flex min-h-11 items-center font-semibold text-pulse-blue">
-            See them
-          </Link>
-        </GlassCard>
-      )}
-
-      <ConnectAppsBanner apps={missing} canConnect={can(role, "channels")} />
-      {switchable.length > 0 && <SwitchToAutoBanner postIds={switchable} />}
-
-      {nothingYet ? (
-        <EmptyState
-          icon={PenLine}
-          title="No content yet"
-          text="Add a product or campaign and BuPulse writes the posts for it: a caption for each app, with its picture or video. New posts wait here for your OK."
-          action={<Button href="/dashboard/knowledge/products/new">Add a product or service</Button>}
-        />
-      ) : (
+    <PostsView
+      data={{ autoCount, total, subjects, generalTotal: posting && general ? general.total : null, calendar: entitlements.usable.has("calendar"), nothingYet }}
+      banners={
         <>
-          {today && context && <TodayReview posts={today.posts} older={today.older} zone={zone} context={context} />}
-          {entitlements.usable.has("video") && <SkitSection businessId={business.id} zone={zone} canRecord={can(role, "content") && !entitlements.block} />}
-          <PeriodBar path="/dashboard/content" view={filters.view ?? null} anchor={anchor} today={todayKey} label={label ?? ""} query={contentQuery(filters)} allowAll custom={filters.range === "custom" ? customRangeText(filters) : null} />
-          <FilterBar filters={filters} />
-          {posting && (
-            <div className="-mt-4 flex justify-end">
-              <ScheduleAllButton query={contentQuery(filters)} />
-            </div>
-          )}
-          <SubjectGrid cards={cards} filters={filters} period={label} />
+          <ConnectAppsBanner apps={missing} canConnect={can(role, "channels")} />
+          {switchable.length > 0 && <SwitchToAutoBanner postIds={switchable} />}
         </>
-      )}
-    </div>
+      }
+      today={today && context ? <TodayReview posts={today.posts} older={today.older} zone={zone} context={context} /> : null}
+      skits={entitlements.usable.has("video") ? <SkitSection businessId={business.id} zone={zone} canRecord={can(role, "content") && !entitlements.block} /> : null}
+    />
   );
 }

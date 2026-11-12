@@ -1,6 +1,7 @@
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
+import { CalendarDays } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { Calendar } from "@/components/publishing/calendar";
 import { loadCalendarPosts, loadComposerContext } from "@/lib/publishing/queries";
 import { can } from "@/lib/team/roles";
@@ -17,7 +18,7 @@ export default async function CalendarPage() {
 
   return (
     <>
-      <PageHeader title="Calendar" description="See what is planned, what is live and what needs attention." />
+      <PageHeader icon={CalendarDays} tone="indigo" title="Calendar" description="What goes out each day. Drag a post to another day to move it." />
       <Calendar posts={posts} context={context} todayKey={dayKey(now, context.timezone)} nowIso={now.toISOString()} canSetZone={can(role, "settings")} />
     </>
   );

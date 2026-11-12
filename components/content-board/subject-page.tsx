@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Megaphone, Package, Sparkles } from "lucide-react";
+import { Megaphone, Package, Sparkles } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
 import { CreateDayContent } from "@/components/content-flow/create-day-dialog";
 import { DayVisuals } from "@/components/content-flow/day-visuals";
 import { ContestConfirm } from "@/components/content-flow/contest-confirm";
@@ -115,13 +114,13 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
 
   return (
     <div className="flex flex-col gap-6">
-      <Link href="/dashboard/content" className="-mb-2 inline-flex min-h-11 w-fit items-center gap-1 px-1 text-[15px] font-medium text-muted hover:text-text">
-        <ChevronLeft aria-hidden className="size-4" /> Posts
-      </Link>
       <PageHeader
+        icon={Icon}
+        tone={scope.kind === "campaign" ? "pink" : scope.kind === "product" ? "blue" : "violet"}
         title={info.name}
         description={info.label}
-        action={
+        back={{ href: "/dashboard/content", label: "Posts" }}
+        actions={
           <div className="flex flex-wrap gap-2">
             {info.albumHref && (
               <Button href={info.albumHref} variant="outline" size="sm">

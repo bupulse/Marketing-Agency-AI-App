@@ -10,15 +10,16 @@
  *     Bring my own               the owner's photos or videos and one caption, adapted per app
  */
 
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ImagePlus, PenLine, Sparkles, Upload, Wand2, X } from "lucide-react";
+import { ChevronDown, ImagePlus, PenLine, SlidersHorizontal, Sparkles, Upload, Wand2, X } from "lucide-react";
 import { createDayContentAction } from "@/app/dashboard/content/day-actions";
 import { MediaPicker, type PickedPhoto } from "@/components/media/media-picker";
 import { MakingScreen } from "@/components/visuals/making-screen";
 import { fromSetProgress, type MakingProgress } from "@/components/visuals/making-progress";
 import { useSetProgress } from "./use-set-progress";
-import { Button, Chip, Dialog, Field, Select, Textarea, useToast } from "@/components/ui";
+import { ChoiceCards, ChoiceChips } from "@/components/app/kit/a-choice-cards";
+import { Button, Chip, Dialog, Field, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { ContentScope } from "@/lib/content-board/filters";
 import { runCost, type DayMode, type DesignChoice } from "@/lib/content-flow/cost";
@@ -43,28 +44,10 @@ function formatHint(format: FormatPreference, allowance: Allowance): string {
   return "BuPulse picks picture, carousel or video for each post: mostly videos on TikTok and YouTube, a mix on Instagram and Facebook, mostly pictures on LinkedIn.";
 }
 
-function Option({ selected, onSelect, icon, title, text, disabled }: { selected: boolean; onSelect: () => void; icon: ReactNode; title: string; text: string; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      disabled={disabled}
-      onClick={onSelect}
-      className={cn(
-        "flex min-h-11 w-full cursor-pointer items-start gap-3 rounded-card border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        selected ? "border-pulse-blue bg-ok-bg" : "border-line bg-glass hover:bg-soft",
-      )}
-    >
-      <span aria-hidden className={cn("mt-0.5 shrink-0", selected ? "text-pulse-blue" : "text-muted")}>
-        {icon}
-      </span>
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[15px] font-semibold">{title}</span>
-        <span className="text-[13px] text-muted">{text}</span>
-      </span>
-    </button>
-  );
+/** Tap-to-pick ideas for "Describe today's content": a tap fills the box, the owner can still change the words. */
+function briefIdeas(subjectName: string, general: boolean): string[] {
+  const it = general ? "our business" : subjectName;
+  return [`Promote ${it} this week`, "Announce a special offer", "Share a happy customer's story", `Show how ${general ? "we work" : "it is made or used"}`, "Thank our customers"];
 }
 
 export function CreateDayContent({ scope, path, subjectName, networks, allowance, album, label = "Create today's content", openOnAsk = false }: { scope: ContentScope; path: string; subjectName: string; networks: NetworkChoice[]; allowance: Allowance; album?: string; label?: string; /** Opens by itself on ?create=1 (+ Create → New post, components/app/nav.ts). */ openOnAsk?: boolean }) {
@@ -216,22 +199,46 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
           </div>
         )}
         <div className={cn("@container flex flex-col gap-5", screen && "hidden")}>
-          <div role="radiogroup" aria-label="How to make it" className="grid gap-3 @md:grid-cols-2">
-            <Option selected={!manual} onSelect={() => { setManual(false); setMode("ai"); }} icon={<Wand2 className="size-5" />} title="AI makes it for me" text="A caption, a 30-second video script and 3 ad headlines for each app, from your Business info; then pictures and videos, your own Photos first." />
-            <Option selected={manual} onSelect={() => { setManual(true); setMode("describe"); }} icon={<PenLine className="size-5" />} title="I'll create it" text="Describe what to post today, or bring your own photos and caption." />
-          </div>
+          <ChoiceCards
+            label="How to make it"
+            value={manual ? "manual" : "ai"}
+            onChange={(v) => {
+              setManual(v === "manual");
+              setMode(v === "manual" ? "describe" : "ai");
+            }}
+            items={[
+              { value: "ai", label: "AI makes it for me", hint: "Captions for each app from your Business info, with pictures or videos.", icon: Wand2 },
+              { value: "manual", label: "I'll create it", hint: "Say what to post, or bring your own photos.", icon: PenLine, tone: "violet" },
+            ]}
+          />
 
           {manual && (
-            <div role="radiogroup" aria-label="How you create it" className="grid gap-3 @md:grid-cols-2">
-              <Option selected={mode === "describe"} onSelect={() => setMode("describe")} icon={<PenLine className="size-5" />} title="Describe today's content" text="Tell BuPulse what to post; it writes and designs it." />
-              <Option selected={mode === "own"} onSelect={() => setMode("own")} icon={<Upload className="size-5" />} title="Bring my own" text="Your photos or videos and one caption, adapted to each app." />
-            </div>
+            <ChoiceCards
+              label="How you create it"
+              value={mode === "own" ? "own" : "describe"}
+              onChange={(v) => setMode(v)}
+              items={[
+                { value: "describe", label: "Describe it", hint: "Tell BuPulse what to post; it writes and designs it.", icon: PenLine, tone: "indigo" },
+                { value: "own", label: "Bring my own", hint: "Your photos or videos and one caption, fitted to each app.", icon: Upload, tone: "pink" },
+              ]}
+            />
           )}
 
           {mode === "describe" && (
-            <Field label="What should today's posts say?" hint="For example: Promote the hydro tower for schools this week, mention free installation.">
-              <Textarea value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={1000} rows={3} placeholder="Promote the hydro tower for schools this week…" />
-            </Field>
+            <div className="flex flex-col gap-2">
+              <Field label="What should today's posts say?" hint="Tap an idea, or write your own in a few words.">
+                <Textarea value={brief} onChange={(e) => setBrief(e.target.value)} maxLength={1000} rows={2} placeholder="Promote the hydro tower for schools this week…" />
+              </Field>
+              <ul aria-label="Ideas" className="flex flex-wrap gap-2">
+                {briefIdeas(subjectName, scope.kind === "general").map((idea) => (
+                  <li key={idea}>
+                    <Chip selected={brief === idea} onClick={() => setBrief(idea)} className="px-3.5 py-1.5 text-[13px]">
+                      {idea}
+                    </Chip>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {mode === "own" && (
             <Field label="Your caption" hint="BuPulse adapts its length, hashtags and tone to each app, without changing what you say.">
@@ -257,10 +264,15 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
                 </Button>
               </div>
               {mode === "own" && (
-                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-[14px]">
-                  <input type="checkbox" checked={overlays} onChange={(e) => setOverlays(e.target.checked)} className="size-5 accent-pulse-blue" />
-                  Add BuPulse designs over my photos (otherwise they are used as they are)
-                </label>
+                <ChoiceChips
+                  label="Your photos"
+                  value={overlays ? "designs" : "plain"}
+                  onChange={(v) => setOverlays(v === "designs")}
+                  items={[
+                    { value: "plain", label: "Use them as they are" },
+                    { value: "designs", label: "Add BuPulse designs on top" },
+                  ]}
+                />
               )}
             </div>
           )}
@@ -279,46 +291,51 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
           </fieldset>
 
           {mode !== "own" && (
-            <div className="grid gap-4 @md:grid-cols-2">
-              <Field label="Posts per app" hint={allowance.postsPerApp > 1 ? `Your plan allows up to ${allowance.postsPerApp} per app a day, counting what this ${scope.kind === "general" ? "page" : scope.kind} already has today.` : "Your plan makes 1 post per app a day."}>
-                <Select value={String(each)} onChange={(e) => setPerApp(Number(e.target.value))} disabled={allowance.postsPerApp <= 1}>
-                  {Array.from({ length: allowance.postsPerApp }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      {i + 1}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Price" hint={price === "auto" ? "At most about 1 post in 4 shows the price, never two in a row." : price === "with" ? "Every post states the price (it needs one)." : "No price in captions or designs: posts that start conversations."}>
-                <Select value={price} onChange={(e) => setPrice(e.target.value as PriceChoice)}>
-                  {PRICE_CHOICES.map((p) => (
-                    <option key={p} value={p}>
-                      {PRICE_CHOICE_LABEL[p]}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
+            <ChoiceCards
+              label="Pictures"
+              value={design}
+              onChange={(v) => setDesign(v)}
+              items={[
+                { value: "ai", label: "Unique AI pictures", hint: allowance.aiPhotos ? "A new ad for every post. Uses AI image credits, then your photos." : "No AI image credits left this month, or not in your plan.", icon: Sparkles, disabled: !allowance.aiPhotos },
+                { value: "free", label: "Your own photos", hint: "Your photos as they are. No credits.", icon: ImagePlus, tone: "violet" },
+              ]}
+            />
           )}
 
           {mode !== "own" && (
-            <Field label="Format" hint={formatHint(format, allowance)}>
-              <Select value={format} onChange={(e) => setFormat(e.target.value as FormatPreference)}>
-                {FORMAT_PREFERENCES.map((f) => (
-                  <option key={f} value={f}>
-                    {FORMAT_PREFERENCE_LABEL[f]}
-                    {f === "auto" ? " (default)" : ""}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
-
-          {mode !== "own" && (
-            <div role="radiogroup" aria-label="Design" className="grid gap-3 @md:grid-cols-2">
-              <Option selected={design === "ai"} disabled={!allowance.aiPhotos} onSelect={() => setDesign("ai")} icon={<Sparkles className="size-5" />} title="Unique AI pictures" text={allowance.aiPhotos ? "A different finished ad for every post, made from your product and photos; uses AI image credits (your own photos when they run out)." : "No AI image credits left this month, or not in your plan."} />
-              <Option selected={design === "free"} onSelect={() => setDesign("free")} icon={<ImagePlus className="size-5" />} title="Your own photos" text="Your product photos as they are, no credits used." />
-            </div>
+            <details className="group rounded-2xl border border-line bg-surface open:pb-1 dark:bg-white/[0.03]">
+              <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-2 [&::-webkit-details-marker]:hidden">
+                <SlidersHorizontal aria-hidden className="size-4 shrink-0 text-muted" />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-[14px] font-semibold">More choices</span>
+                  <span className="truncate text-[12.5px] text-muted">
+                    {each === 1 ? "1 post" : `${each} posts`} per app · {PRICE_CHOICE_LABEL[price]} · {FORMAT_PREFERENCE_LABEL[format]}
+                  </span>
+                </span>
+                <ChevronDown aria-hidden className="size-4 shrink-0 text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+              </summary>
+              <div className="flex flex-col gap-4 px-4 pt-2 pb-3">
+                {allowance.postsPerApp > 1 ? (
+                  <ChoiceChips
+                    label="Posts per app"
+                    value={String(each)}
+                    onChange={(v) => setPerApp(Number(v))}
+                    items={Array.from({ length: allowance.postsPerApp }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+                    hint={`Your plan allows up to ${allowance.postsPerApp} per app a day, counting what this ${scope.kind === "general" ? "page" : scope.kind} already has today.`}
+                  />
+                ) : (
+                  <p className="text-[13px] text-muted">Your plan makes 1 post per app a day.</p>
+                )}
+                <ChoiceChips
+                  label="Price"
+                  value={price}
+                  onChange={(v) => setPrice(v)}
+                  items={PRICE_CHOICES.map((p) => ({ value: p, label: PRICE_CHOICE_LABEL[p] }))}
+                  hint={price === "auto" ? "At most about 1 post in 4 shows the price, never two in a row." : price === "with" ? "Every post states the price (it needs one)." : "No price in captions or designs: posts that start conversations."}
+                />
+                <ChoiceChips label="Format" value={format} onChange={(v) => setFormat(v)} items={FORMAT_PREFERENCES.map((f) => ({ value: f, label: FORMAT_PREFERENCE_LABEL[f] }))} hint={formatHint(format, allowance)} />
+              </div>
+            </details>
           )}
 
           <p role="status" className={cn("rounded-2xl px-4 py-3 text-[14px]", cost.enoughText ? "bg-soft" : "bg-danger-bg text-danger")}>

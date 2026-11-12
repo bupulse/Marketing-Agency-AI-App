@@ -8,6 +8,7 @@ import { Bell, ChevronDown, ChevronRight, Clapperboard, ExternalLink, LogOut, Me
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import Image from "next/image";
 import { ThemeToggle } from "@/components/theme";
+import { KitStyles } from "@/components/admin/kit/kit-styles";
 import { Avatar, Button, useToast } from "@/components/ui";
 import { readableTextColor } from "@/lib/color-contrast";
 import { cn } from "@/lib/cn";
@@ -628,6 +629,8 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
         } as CSSProperties
       }
     >
+      {/* The kit's gentle animations (rise-in cards, the tick's pop), shared with the admin console; off under reduced motion. */}
+      <KitStyles />
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-surface focus:px-4 focus:py-2"
