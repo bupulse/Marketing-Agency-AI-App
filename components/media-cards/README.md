@@ -17,6 +17,7 @@ All props are data only. Pages map their rows to them; `adapters.ts` has the map
 | `post-modal.tsx` | `PostModal`: the opened post (media left, caption and details right; a full-screen sheet on phones) |
 | `product-card.tsx` | `ProductCard` |
 | `campaign-card.tsx` | `CampaignCard` (creator campaigns and Business info offers or events) |
+| `media-tile.tsx` | `MediaTile`: a photo, design or video tile of a fixed shape |
 | `parts.tsx` | `StatusPill`, `PlatformIcons`, `AccountPicture`, `CaptionText`, `ActionRow`, `glassButtonClass` |
 | `helpers.ts` | pure helpers: `durationLabel`, `splitCaption`, `extraHashtags`, `truncateCaption`, `timeLabel`, `postStatusKey`, `priceLabel`, `dateRangeLabel`... (tests/media-cards) |
 | `adapters.ts` | `libraryVideoCard`, `libraryPlayerItem`, `contentPostView`, `postMedia` |
@@ -35,28 +36,29 @@ To override a module property from Tailwind (for example `hidden` on an `fbtn`),
 glass panel holds Schedule (opens a dialog with the schedule form), Download, Share to WhatsApp, Open its post (post
 videos) and Delete (confirm in place). A card opens `MediaPlayer` with the same actions in its side panel.
 
-### Posts, Content board, Calendar — to do
-Data: `ContentPost` (lib/content-board/queries.ts) → `contentPostView(post, zone)` gives `PostView`.
-- `components/content-board/post-card.tsx` (`PostCard` there) → render the media-cards `PostCard` with
-  `post={contentPostView(post, zone)}`, `actions` from `content-actions.tsx` (Approve, Edit, Schedule, Delete as
-  `MediaAction[]`), `footer={<WhatsAppShare …/>}`, `onOpen` → open `PostModal`. Keep the select mode (`selected`) and
-  the "making" screen (render `MakingScreen` instead of the card while `post.setMaking`).
-- `components/content-board/post-board.tsx` (the grid) → one `PostModal` for the shown list:
-  `posts={shown.map(toDetail)}`, `index`, `actionsFor`. `toDetail` adds `variants` (the other posts of the same
-  `groupId`, one tab per network), `details` (scheduled time, apps, product or campaign, made by) and `dateLine`.
-- `components/publishing/post-detail.tsx` is today's opened post: `PostModal` can replace its view; keep its edit form
-  where "Edit" goes.
-- Calendar (`components/publishing/calendar.tsx`): the day cells stay small; a click on a post opens `PostModal` with
-  the day's posts (prev/next walk the day).
-- Gallery / Designs pages: a design is a `PostView` with `media` = its images and no status; or a `VideoCard` for reels.
+### Posts, Content board, Today, Calendar — done
+- `components/content-board/post-card.tsx`: the board's `PostCard` renders the media-cards `PostCard` from
+  `boardPostView(post, zone)` with its slots: the select box (`topSlot`), the making screen (`mediaOverlay`), "No picture
+  yet" (`placeholder`), Auto (`mediaBadges`), the idea / contest / moved chips (`badges`), type and created date
+  (`meta`), the "Not posted yet" / expired notes (`notes`) and `actions` + Share to WhatsApp (`footer`). Used by
+  `post-board.tsx` (All posts, General, products, campaigns) and `today-review.tsx` (Posts page "Today").
+- `components/publishing/post-detail.tsx`: `PostDetail` keeps its props and opens as `PostModal` (`detailView`):
+  media left; right column the account, caption per app (tabs from the post's group), details (when, app, made by),
+  then every note, results, the move form and the script/versions (`renderBody`), and the buttons (`renderFooter`).
+  Edit still opens the composer. `list` + `onNavigate` give previous/next: the board's cards, Today's list, or the
+  calendar day (`calendar.tsx` passes the opened post's day).
+- Previews: `/media-preview/wired` (`?open=b1…b8`, `?theme=dark`) renders PostBoard, Calendar, ProductGrid,
+  CampaignList, DesignStudio and photo tiles with made-up rows. Server actions need a signed-in company; in a browser
+  the opened post's "script and versions" box asks for sign-in, so the headless screenshots drop those requests.
 
-### Products and campaigns — to do
-- Business info products (`components/knowledge`, Product rows): `ProductCard` with
-  `price={priceLabel(p.priceModel, p.priceAmount, p.currency)}`, `imageUrl` = first ProductPhoto (signed),
-  `kindLabel` from `ProductKind`, `status="draft"` / `"ended"` for DRAFT / ARCHIVED, `stats` (posts made, last post),
-  actions Make a post / Edit, `href` the product page.
-- Creator campaigns (`components/creators`, CreatorCampaign): `CampaignCard` with `status={campaignStatusKey(c.status)}`,
-  `dates={{ start: startsOn, end: endsOn, today }}`, `metric={{ label: "views", value, target: viewTargetCampaign }}`,
-  `budget` from payRules and paid-out totals, `creators`, `platforms`, cover from `look`.
-- Business info campaigns (Campaign: EVENT / OFFER / …): `CampaignCard` with `kindLabel`, `line={priceInfo}`, dates and
-  `metric={{ label: "posts made", value, target }}`.
+### Products, campaigns, designs, photos — done
+- `components/knowledge/product-grid.tsx`: `ProductCard` per Business info product (kind, status, store badge,
+  photos/texts counts and "Needs details" in `extra`).
+- `app/dashboard/knowledge/campaigns/page.tsx`: `CampaignCard` per Business info campaign (type, phase as the status,
+  `dateText`, `line={priceInfo}`, products/texts `facts`).
+- `components/creators/company/campaign-list.tsx`: `CampaignCard` per creator campaign (status, platforms, dates,
+  creators and tasks; drafts keep "Draft · step N of 12", Continue and Detailed setup; applicants and hidden badges).
+  The list rows carry no views or budget, so the ring and bar stay off until they do.
+- `components/designs/design-studio.tsx` and `components/media/gallery-view.tsx`: `MediaTile` (fixed shape, the design
+  whole with `fit="contain"`, lift, glass label, a video's hover preview); Save / Canva / Delete and the gallery's
+  select box are unchanged.
