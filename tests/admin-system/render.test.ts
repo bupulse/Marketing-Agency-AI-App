@@ -14,7 +14,7 @@ import type { SystemHealth } from "@/lib/admin/health";
 
 const html = (type: unknown, props: unknown) => renderToStaticMarkup(createElement(type as never, props as never));
 
-const HUB: SettingsHubData = { momoReady: false, paddleReady: true, paddleLive: true, usdToRwf: 1450, displayCurrency: "RWF", revenueGoalRwf: 9_000_000, dailyPosts: true, skitVideos: false, voicesApproved: 0, voicesTotal: 2, telegram: "connected", google: "reconnect", slotMinutes: 30, windows: 0, trialDays: 14, pageLoader: "bar", canRegions: false };
+const HUB: SettingsHubData = { momoReady: false, paddleReady: true, paddleLive: true, vatEnabled: true, vatRatePercent: 18, vatTin: "", usdToRwf: 1450, displayCurrency: "RWF", revenueGoalRwf: 9_000_000, dailyPosts: true, skitVideos: false, voicesApproved: 0, voicesTotal: 2, telegram: "connected", google: "reconnect", slotMinutes: 30, windows: 0, trialDays: 14, pageLoader: "bar", canRegions: false };
 
 describe("form choices", () => {
   it("RadioChips posts name=value like the select it replaces, with the default ticked", () => {

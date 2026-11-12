@@ -25,6 +25,7 @@ import { clearMomoSettingsCache, getMomoPrice, getMomoSettings, saveMomoSettings
 import { MOMO_SETTING_KEY } from "@/lib/billing/momo-shared";
 import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
+import { clearVatSettingsCache } from "@/lib/billing/vat-server";
 
 const CONSOLE = consoleContext("198.51.100.1");
 const API = apiContext("key1", "203.0.113.5", "all");
@@ -65,6 +66,7 @@ beforeEach(() => {
   resetRegionCache();
   resetRegionPriceCache();
   clearMomoSettingsCache();
+  clearVatSettingsCache();
   process.env.ADMIN_EMAILS = "owner@bupulse.com, second@bupulse.com";
   process.env.RESEND_API_KEY = "re_test";
 });
@@ -73,12 +75,21 @@ describe("prices and settings", () => {
   it("the Mobile Money price is the plan's price in the company's region; nothing where the region has no Mobile Money", async () => {
     seed();
     prices();
-    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 15000, currency: "RWF" });
-    expect(await getMomoPrice("biz1", "PRO", "YEAR")).toEqual({ amountMinor: 350000, currency: "RWF" });
+    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF" });
+    expect(await getMomoPrice("biz1", "PRO", "YEAR")).toEqual({ amountMinor: 413000, currency: "RWF" });
     expect(await getMomoPrice("biz1", "NOPE", "MONTH")).toBeNull();
     // The same company moved to the catch-all region (card only): no Mobile Money price, whatever the plan.
     h.db.business.rows[0].pricingRegion = "GLOBAL";
     expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toBeNull();
+  });
+
+  it("the price is with 18% VAT (rounded to 100 RWF); with VAT switched off it is the stored price", async () => {
+    seed();
+    prices();
+    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF" });
+    h.db.adminSetting.rows.push({ key: "billing.vat.enabled", value: false });
+    clearVatSettingsCache();
+    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 15000, currency: "RWF" });
   });
 
   it("saving the settings is console-only, refuses malformed codes and numbers, and is audited with before and after", async () => {
@@ -130,7 +141,7 @@ describe("starting a payment", () => {
     seed();
     settings();
     const p = await start();
-    expect(p).toMatchObject({ planKey: "STANDARD", planName: "Standard", interval: "MONTH", amountMinor: 15000, currency: "RWF", status: "pending", submitted: false });
+    expect(p).toMatchObject({ planKey: "STANDARD", planName: "Standard", interval: "MONTH", amountMinor: 17700, currency: "RWF", status: "pending", submitted: false });
     expect(p.reference).toMatch(/^BP-[A-Z2-9]{4}$/);
     const again = await start();
     expect(again.id).toBe(p.id);
@@ -159,7 +170,7 @@ describe("starting a payment", () => {
     const first = await start();
     const second = await start({ plan: "PRO", interval: "YEAR" });
     expect(second.id).not.toBe(first.id);
-    expect(second.amountMinor).toBe(350000);
+    expect(second.amountMinor).toBe(413000);
     expect(h.db.manualPayment.rows.find((r) => r.id === first.id)?.status).toBe("expired");
     await proof(second.id);
     const third = await start({ plan: "STANDARD" });
@@ -224,7 +235,7 @@ describe("the proof", () => {
     expect(h.sendEmail).toHaveBeenCalledTimes(2);
     const mail = h.sendEmail.mock.calls[0][0] as unknown as { to: string; subject: string; text: string };
     expect(mail.to).toBe("owner@bupulse.com");
-    expect(mail.subject).toBe(`New MoMo payment to check: ${p.reference} · 15,000 RWF`);
+    expect(mail.subject).toBe(`New MoMo payment to check: ${p.reference} · 17,700 RWF`);
     expect(mail.text).toContain("Inzu Fashion (owner@example.rw)");
     expect(mail.text).toContain("MP1234567");
     expect(h.trackEvent).toHaveBeenCalledWith("momo_payment_submitted", expect.objectContaining({ userId: USER }));
@@ -301,9 +312,9 @@ describe("confirming", () => {
     // Money for the roll-up: one BillingEvent in USD cents at the owner's rate.
     expect(h.db.billingEvent.rows).toHaveLength(1);
     expect(h.db.billingEvent.rows[0]).toMatchObject({ provider: "MANUAL_MOMO", type: "manual_payment.confirmed", eventId: p.id, userId: USER });
-    expect((h.db.billingEvent.rows[0].payload as { data: { usd_cents: number; amount_minor: number; id: string } }).data).toMatchObject({ usd_cents: 1034, amount_minor: 15000, id: p.reference });
+    expect((h.db.billingEvent.rows[0].payload as { data: { usd_cents: number; amount_minor: number; id: string } }).data).toMatchObject({ usd_cents: 1221, amount_minor: 17700, vat_minor: 2700, id: p.reference });
     const { parseMoneyEvent } = await import("@/lib/analytics/math");
-    expect(parseMoneyEvent("manual_payment.confirmed", h.db.billingEvent.rows[0].payload, NOW)).toMatchObject({ kind: "payment", cents: 1034, id: p.reference });
+    expect(parseMoneyEvent("manual_payment.confirmed", h.db.billingEvent.rows[0].payload, NOW)).toMatchObject({ kind: "payment", cents: 1221, id: p.reference });
     expect(lastAudit()).toMatchObject({ actor: "admin", action: "confirm_momo_payment", target: `payment:${p.id}`, ip: "198.51.100.1" });
     expect(lastAudit().before).toMatchObject({ status: "pending", subscription: { plan: "TRIAL" } });
     expect(lastAudit().after).toMatchObject({ status: "confirmed", subscription: { plan: "STANDARD", status: "ACTIVE" } });

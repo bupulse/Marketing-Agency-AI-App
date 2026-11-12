@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeDb, type FakeDb } from "../admin/fake-db";
 import { authUser, code, companyOf, DAY, installSignUp, recipients, seedCatalog, subjects } from "./world";
 
-// Journey 2: a client on its trial pays by Mobile Money. The payment gets a BP- reference and the RWF price, the client
+// Journey 2: a client on its trial pays by Mobile Money. The payment gets a BP- reference and the RWF price with VAT, the client
 // reports the transaction id, the owner approves it (ACTIVE with a period end), a replayed transaction id is refused,
 // renewal notices go out before the period ends, and after the grace days the account becomes read-only (nothing is
 // deleted) until the client pays again. docs/MOMO.md, docs/RWANDA_LAUNCH_PLAN.md section 12.
@@ -75,7 +75,7 @@ describe("journey: trial -> Mobile Money -> ACTIVE -> renewal -> grace -> read-o
 
     // 1. Start: one pending payment with a BP- reference and the RWF price of the plan in the company's region.
     const payment = await startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: PAID_AT });
-    expect(payment).toMatchObject({ planKey: "BUSINESS", interval: "MONTH", amountMinor: 35000, currency: "RWF", status: "pending", submitted: false });
+    expect(payment).toMatchObject({ planKey: "BUSINESS", interval: "MONTH", amountMinor: 41300, currency: "RWF", status: "pending", submitted: false });
     expect(payment.reference).toMatch(/^BP-[A-Z2-9]{4}$/);
     expect((await startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: PAID_AT })).id).toBe(payment.id); // a reload makes no second one
     expect(h.db.manualPayment.rows).toHaveLength(1);
@@ -91,7 +91,7 @@ describe("journey: trial -> Mobile Money -> ACTIVE -> renewal -> grace -> read-o
     const submitted = await proof(userId, payment.id);
     expect(submitted).toMatchObject({ submitted: true, status: "pending", transactionId: "MP2610140001", network: "MTN" });
     expect(recipients(h.sendEmail.mock.calls)).toEqual(["owner@bupulse.com", "second@bupulse.com"]);
-    expect(h.track).toHaveBeenCalledWith("momo_payment_submitted", expect.objectContaining({ userId, props: expect.objectContaining({ plan: "BUSINESS", amountMinor: 35000 }) }));
+    expect(h.track).toHaveBeenCalledWith("momo_payment_submitted", expect.objectContaining({ userId, props: expect.objectContaining({ plan: "BUSINESS", amountMinor: 41300 }) }));
     expect(subscription).toMatchObject({ status: "TRIALING", plan: "TRIAL" }); // reporting is not paying
     // A submitted payment cannot be cancelled by the client: the owner decides it.
     expect(await cancelManualPayment(userId, payment.id, PAID_AT)).toBe(false);
@@ -113,11 +113,11 @@ describe("journey: trial -> Mobile Money -> ACTIVE -> renewal -> grace -> read-o
     expect(subjects(h.sendEmail.mock.calls)).toEqual(["Your BuPulse Business plan is active"]);
     expect(recipients(h.sendEmail.mock.calls)).toEqual(["owner1@example.com"]);
     expect(audits("confirm_momo_payment")).toHaveLength(1);
-    expect(audits("confirm_momo_payment")[0]).toMatchObject({ target: `payment:${payment.id}`, before: { status: "pending" }, after: { status: "confirmed", reference: payment.reference, amountMinor: 35000, currency: "RWF", period: "fresh" } });
+    expect(audits("confirm_momo_payment")[0]).toMatchObject({ target: `payment:${payment.id}`, before: { status: "pending" }, after: { status: "confirmed", reference: payment.reference, amountMinor: 41300, currency: "RWF", period: "fresh" } });
     const revenue = h.db.billingEvent.rows.filter((r) => r.type === "manual_payment.confirmed");
     expect(revenue).toHaveLength(1);
     expect(revenue[0]).toMatchObject({ provider: "MANUAL_MOMO", eventId: payment.id, userId });
-    expect(revenue[0].payload.data).toMatchObject({ amount_minor: 35000, currency: "RWF", usd_cents: Math.round((35000 / 1450) * 100) });
+    expect(revenue[0].payload.data).toMatchObject({ amount_minor: 41300, currency: "RWF", usd_cents: Math.round((41300 / 1450) * 100), vat_minor: 6300 });
     // Entitlements: the paid plan's limits now (Business: 200 texts), not the trial's 10.
     expect((await companyEntitlements(businessId)).block).toBeNull();
     for (let i = 0; i < 12; i++) await consumeUsage(userId, "text");
@@ -144,7 +144,7 @@ describe("journey: trial -> Mobile Money -> ACTIVE -> renewal -> grace -> read-o
     expect(await processMomoRenewals({ now: new Date(periodEnd.getTime() - 0.25 * DAY) })).toMatchObject({ reminded1d: 0 });
     expect(subjects(h.sendEmail.mock.calls)).toEqual(["Your BuPulse Business plan ends in 5 days", "Your BuPulse Business plan ends tomorrow"]);
     expect(recipients(h.sendEmail.mock.calls)).toEqual(["owner1@example.com", "owner1@example.com"]);
-    expect((h.sendEmail.mock.calls[0][0] as { text: string }).text).toContain("35,000 RWF");
+    expect((h.sendEmail.mock.calls[0][0] as { text: string }).text).toContain("41,300 RWF (VAT included)");
     expect(h.db.renewalNotice.rows.map((r) => r.kind)).toEqual(["5d", "1d"]);
 
     // 7. The period ends. During the grace days the plan still works; after them it is read-only (PAST_DUE), with a
