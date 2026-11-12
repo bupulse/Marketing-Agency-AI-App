@@ -3,8 +3,7 @@ import { CalendarRange, ImageIcon, Plus } from "lucide-react";
 import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
-import { BackLink } from "@/components/knowledge/back-link";
+import { SectionHeader } from "@/components/knowledge/section-header";
 import { Badge, Button, GlassCard } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { localDateISO, safeZone } from "@/lib/autopilot/timezone";
@@ -33,8 +32,7 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <BackLink />
-      <PageHeader title="Campaigns" description="Events, offers, promotions and launches. Give them dates and link the products they are about." action={all.length > 0 ? newButton : undefined} />
+      <SectionHeader section="campaigns" title="Campaigns" description="Events, offers, promotions and launches. Give them dates and link the products they are about." action={all.length > 0 ? newButton : undefined} />
       {all.length === 0 ? (
         <EmptyState
           icon={CalendarRange}

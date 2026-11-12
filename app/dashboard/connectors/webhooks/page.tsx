@@ -1,7 +1,8 @@
 import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { KeptDataNote } from "@/components/app/kept-data-note";
-import { PageHeader } from "@/components/app/page-header";
+import { Webhook } from "lucide-react";
+import { KitStyles, PageHeader } from "@/components/admin/kit";
 import { ConnectorsSubNav } from "@/components/connectors/sub-nav";
 import { WebhooksManager } from "@/components/connectors/webhooks-manager";
 import { listDeliveries, listEndpoints, MAX_ENDPOINTS } from "@/lib/webhooks/endpoints";
@@ -19,7 +20,8 @@ export default async function WebhooksPage() {
   if (readOnly && endpoints.length === 0) return featureGate("webhooks");
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Webhooks" description="Send new leads, new content and post results to Zapier, Make or your own system, as they happen. On every plan." />
+      <KitStyles />
+      <PageHeader icon={Webhook} tone="indigo" title="Webhooks" description="Send new leads, new content and post results to Zapier, Make or your own system, as they happen. On every plan." />
       <ConnectorsSubNav current="webhooks" />
       {readOnly && <KeptDataNote feature="webhooks" label="webhooks" entitlements={entitlements} what="Your webhooks" />}
       <WebhooksManager

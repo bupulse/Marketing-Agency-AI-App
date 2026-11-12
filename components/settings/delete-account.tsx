@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Button, Dialog, Field, GlassCard, Input } from "@/components/ui";
+import { Trash2 } from "lucide-react";
+import { BPanel } from "@/components/app/kit/b-cards";
+import { Button, Dialog, Field, Input } from "@/components/ui";
 import { scheduleAccountDeletion, type SettingsState } from "@/app/dashboard/settings/actions";
 
 const ERASED = ["your account", "your business and brand", "all content and designs", "uploaded files", "connections", "leads"];
@@ -14,17 +16,17 @@ export function DeleteAccount({ email, wholeCompany = false, teammates = 0 }: { 
   const matches = typed.trim().toLowerCase() === email.toLowerCase();
 
   return (
-    <GlassCard as="section" aria-labelledby="danger" className="flex flex-col gap-4 border border-danger/30 p-5 sm:p-6">
-      <div className="flex flex-col gap-1">
-        <h2 id="danger" className="text-lg font-semibold text-danger">
-          Delete account
-        </h2>
-        <p className="text-sm text-muted">
-          {wholeCompany
-            ? "As the owner, this deletes the whole company. It is locked straight away and permanently erased after 30 days. Sign in any time before then to keep it."
-            : "Your sign-in is removed from the company after 30 days. The company and its content stay with your teammates. Sign in any time before then to keep it."}
-        </p>
-      </div>
+    <BPanel
+      id="danger"
+      icon={Trash2}
+      danger
+      title="Delete account"
+      hint={
+        wholeCompany
+          ? "As the owner, this deletes the whole company. It is locked straight away and erased after 30 days. Sign in any time before then to keep it."
+          : "Your sign-in is removed from the company after 30 days. The company and its content stay with your teammates. Sign in any time before then to keep it."
+      }
+    >
       <p className="text-sm text-muted">{wholeCompany ? `Erased for good: ${ERASED.join(", ")}.` : "Erased for good: your sign-in and your profile. Nothing your company created is deleted."}</p>
       {wholeCompany && teammates > 0 && (
         <p role="note" className="rounded-xl bg-danger-bg px-3 py-2 text-sm text-danger">
@@ -76,6 +78,6 @@ export function DeleteAccount({ email, wholeCompany = false, teammates = 0 }: { 
           </div>
         </form>
       </Dialog>
-    </GlassCard>
+    </BPanel>
   );
 }

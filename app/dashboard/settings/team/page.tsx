@@ -1,4 +1,6 @@
-import { getAppContext, PageHeader } from "@/components/app";
+import { Users } from "lucide-react";
+import { KitStyles, PageHeader } from "@/components/admin/kit";
+import { getAppContext } from "@/components/app";
 import { pageGate } from "@/components/app/no-access";
 import { TeamManager } from "@/components/team/team-manager";
 import { prisma } from "@/lib/db";
@@ -17,7 +19,8 @@ export default async function TeamPage() {
   ]);
   return (
     <>
-      <PageHeader title="Team" description="Invite colleagues to work in your company. Everyone shares the same content, designs, leads, channels and credits." />
+      <KitStyles />
+      <PageHeader icon={Users} tone="indigo" title="Team" description="Invite colleagues. Everyone shares the same posts, designs, leads, channels and credits." back={{ href: "/dashboard/settings?part=team", label: "Settings" }} />
       <TeamManager
         me={actorId}
         role={role}

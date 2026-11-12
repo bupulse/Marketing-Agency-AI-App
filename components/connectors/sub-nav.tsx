@@ -18,8 +18,8 @@ export function ConnectorsSubNav({ current }: { current: (typeof TABS)[number]["
               href={tab.href}
               aria-current={tab.id === current ? "page" : undefined}
               className={cn(
-                "inline-flex min-h-11 items-center rounded-full px-4 text-[15px] font-semibold no-underline transition-colors",
-                tab.id === current ? "bg-brand-gradient text-white shadow-glow" : "text-muted hover:bg-soft hover:text-text",
+                "inline-flex min-h-11 items-center rounded-full border-2 px-4 text-[14px] font-semibold no-underline transition-[border-color,background-color] duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30 motion-reduce:transition-none",
+                tab.id === current ? "border-pulse-blue bg-pulse-blue/[0.08] text-text dark:bg-pulse-blue/15" : "border-line bg-surface text-muted hover:border-pulse-blue/40 hover:text-text dark:bg-white/[0.03]",
               )}
             >
               {tab.label}

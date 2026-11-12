@@ -1,10 +1,8 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { CHECKOUT_PENDING_COOKIE, checkoutPendingSince } from "@/lib/billing/checkout-pending";
-import { AlertTriangle, ArrowRight } from "lucide-react";
 import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
-import { PageHeader } from "@/components/app/page-header";
+import { BILLING_TABS, BillingView, type BillingPlanLine, type BillingTab } from "@/components/billing/billing-view";
 import { CheckoutScript } from "@/components/billing/checkout";
 import { CheckoutReturn } from "@/components/billing/checkout-return";
 import { cardChangeNote, formatDate, formatPrice, intervalWord, formatUsd, statusLabel } from "@/components/billing/helpers";
@@ -14,7 +12,6 @@ import { InvoicePay } from "@/components/billing/invoice-pay";
 import { MomoPayment } from "@/components/billing/momo-payment";
 import { PlanActions } from "@/components/billing/plan-actions";
 import { PlanPicker } from "@/components/billing/plan-picker";
-import { Badge, GlassCard, Meter } from "@/components/ui";
 import { currentManualPayment } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { cardCheckoutConfigured, cardPricedPlans, invoicePayMethods } from "@/lib/billing/card-ready";
@@ -161,173 +158,103 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
     ...(entitlements.inPlan.has("videoStudio") ? [{ label: "Video Studio credits", used: used.videoCredits, max: limits.videoCredits }] : []),
   ].filter((m) => m.max > 0);
 
+
+  // The plan card's lines, in the order the old card showed them (trial end, renewal, cancelling).
+  const lines: BillingPlanLine[] = [];
+  if (isTrial && trialEnd) lines.push({ text: `${trialDaysLeft === 0 ? `Trial ended ${trialEnd}` : `Trial ends ${trialEnd}`}${trialDaysLeft ? ` (${trialDaysLeft} ${trialDaysLeft === 1 ? "day" : "days"} left)` : ""}` });
+  if (paid && periodEnd && !cancelling && !pastDue && renewal?.kind === "auto") lines.push({ text: `Renews automatically on ${periodEnd}` });
+  if (paid && !cancelling && !pastDue && renewal?.kind === "paid") lines.push({ text: `Your plan is paid until ${formatDate(renewal.until)}. You can renew from ${formatDate(renewal.opensAt)}, 7 days before it ends.` });
+  if (paid && periodEnd && !cancelling && !pastDue && renewal?.kind === "open") lines.push({ text: `Your plan is paid until ${periodEnd} (${renewal.daysLeft} ${renewal.daysLeft === 1 ? "day" : "days"} left). Renew now; the new period starts when this one ends.`, tone: "strong" });
+  if (cancelling && periodEnd) lines.push({ text: `Cancels on ${periodEnd}. Your plan stays active until then.${renewal?.kind === "paid" ? ` You can renew it from ${formatDate(renewal.opensAt)}.` : ""}`, tone: "danger" });
+
+  const plansHidden = waitingForCheckout || momoPayment?.status === "pending";
+  const receiptsCount = bpInvoices.length + ((paid || invoices.length > 0) && !momoPlan ? invoices.length : 0);
+  const showReceipts = bpInvoices.length > 0 || ((paid || invoices.length > 0) && !momoPlan);
+  const addable = addition && (addition.ok || addition.card) && !cardPending;
+  // ?add=<feature> (from "Add to your plan") opens the Add features tab with it ticked.
+  const tab: BillingTab = typeof query.add === "string" && addable ? "add" : ((BILLING_TABS as readonly string[]).includes(String(query.show)) ? (query.show as BillingTab) : "plans");
+
   return (
     <>
       <CheckoutScript />
-      <PageHeader title="Billing" description="Your plan, your usage and your receipts." />
-
-      {(checkoutSuccess || waitingForCheckout) && <CheckoutReturn waiting={waitingForCheckout} since={since} />}
-
-      {pastDue && (
-        <GlassCard role="alert" className="flex items-start gap-3 border border-danger/40 p-5">
-          <AlertTriangle aria-hidden className="mt-0.5 size-5 shrink-0 text-danger" />
-          <div className="flex flex-col gap-1">
-            <strong>{momoPlan ? "Your plan has ended" : "Your last payment didn't go through"}</strong>
-            <p className="text-sm text-muted">
-              {momoPlan
-                ? "Pay by Mobile Money to keep creating. Everything you have made is saved; new content is paused until the payment is confirmed."
-                : "Update your payment method to keep creating. Everything you have made is saved; new content is paused until the payment goes through."}
-            </p>
-          </div>
-        </GlassCard>
-      )}
-
-      {staleAddition && (
-        <GlassCard role="status" className="flex items-start gap-3 border border-line p-5">
-          <AlertTriangle aria-hidden className="mt-0.5 size-5 shrink-0 text-muted" />
-          <p className="text-sm">{staleAddition}</p>
-        </GlassCard>
-      )}
-
-      {offer && (
-        <OfferCard
-          offer={offer}
-          checkingReference={offerCheckingReference(momoPayment, offer)}
-          actions={
-            offer.status === "sent" || (offer.status === "accepted" && !(momoPayment?.status === "pending" && momoPayment.submitted)) ? (
-              <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoReady)} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} addition={Boolean(offer.addition)} />
-            ) : undefined
-          }
-        />
-      )}
-
-      {payable && invoiceMethods && <InvoicePay invoice={payable} methods={invoiceMethods} highlight={highlighted === payable.number} cardReason={payableCustom || !payable.planKey ? `Card is not available for this invoice yet: pay it by Mobile Money, or write to us at ${site.email} and we will help.` : null} />}
-
-      {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} vatRatePercent={vatPercentOf(momoPayment.vatRateBps)} />}
-
-      <GlassCard as="section" aria-labelledby="current-plan" className="flex flex-col gap-5 p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <span id="current-plan" className="text-[13px] text-muted">
-              Current plan
-            </span>
-            <strong className="text-2xl tracking-[-0.02em]">
-              {isTrial && chosen ? `${plan.name} of ${chosen.name}` : plan.name}
-              {paid && <span className="text-base font-medium text-muted"> · {subscription.interval === "YEAR" ? "Yearly" : "Monthly"}</span>}
-            </strong>
-            {price && <span className="text-sm text-muted">{price}</span>}
-            {isTrial && trialEnd && (
-              <span className="text-sm text-muted">
-                {trialDaysLeft === 0 ? `Trial ended ${trialEnd}` : `Trial ends ${trialEnd}`}
-                {trialDaysLeft ? ` (${trialDaysLeft} ${trialDaysLeft === 1 ? "day" : "days"} left)` : ""}
-              </span>
+      <BillingView
+        params={query}
+        tab={tab}
+        alerts={{
+          pastDue: pastDue ? { momo: momoPlan } : null,
+          stale: staleAddition,
+          cardPending: cardPending
+            ? cardPending.removal
+              ? `Removing ${cardPending.labels.join(", ")} from your card plan: waiting for the card provider to confirm. This takes a moment; reload Billing to see it off.`
+              : `Adding ${cardPending.labels.join(", ")} to your card plan: waiting for the card payment to be confirmed. This takes a moment; reload Billing to see them on.`
+            : null,
+        }}
+        top={
+          <>
+            {(checkoutSuccess || waitingForCheckout) && <CheckoutReturn waiting={waitingForCheckout} since={since} />}
+            {offer && (
+              <OfferCard
+                offer={offer}
+                checkingReference={offerCheckingReference(momoPayment, offer)}
+                actions={
+                  offer.status === "sent" || (offer.status === "accepted" && !(momoPayment?.status === "pending" && momoPayment.submitted)) ? (
+                    <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoReady)} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} addition={Boolean(offer.addition)} />
+                  ) : undefined
+                }
+              />
             )}
-            {paid && periodEnd && !cancelling && !pastDue && renewal?.kind === "auto" && <span className="text-sm text-muted">Renews automatically on {periodEnd}</span>}
-            {paid && !cancelling && !pastDue && renewal?.kind === "paid" && (
-              <span className="text-sm text-muted">
-                Your plan is paid until {formatDate(renewal.until)}. You can renew from {formatDate(renewal.opensAt)}, 7 days before it ends.
-              </span>
-            )}
-            {paid && periodEnd && !cancelling && !pastDue && renewal?.kind === "open" && (
-              <span className="text-sm font-medium">
-                Your plan is paid until {periodEnd} ({renewal.daysLeft} {renewal.daysLeft === 1 ? "day" : "days"} left). Renew now; the new period starts when this one ends.
-              </span>
-            )}
-            {cancelling && periodEnd && <span className="text-sm font-medium text-danger">Cancels on {periodEnd}. Your plan stays active until then.{renewal?.kind === "paid" ? ` You can renew it from ${formatDate(renewal.opensAt)}.` : ""}</span>}
-          </div>
-          <Badge tone={status === "ACTIVE" || status === "TRIALING" ? (cancelling ? "neutral" : "success") : "danger"}>
-            {statusLabel(status, cancelling)}
-          </Badge>
-        </div>
-
-        {paid && (
-          <PlanActions
-            cancelAtPeriodEnd={cancelling}
-            pastDue={pastDue}
-            periodEnd={periodEnd}
-            method={momoPlan ? "momo" : "card"}
-            renew={renew}
-            canResume={renewal?.kind !== "paid"}
-          />
-        )}
-
-        <div className="flex flex-col gap-3 border-t border-line pt-5">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold">Usage</h2>
-            {resetsAt && (
-              <span className="text-sm text-muted">{isTrial ? "Trial ends" : "Resets"} {formatDate(resetsAt)}</span>
-            )}
-          </div>
-          {meters.map((m) => (
-            <Meter key={m.label} value={m.used} max={m.max} label={m.label} showValue />
-          ))}
-        </div>
-      </GlassCard>
-
-      {/* Hidden while a purchase is being confirmed, so nobody buys a second plan by accident. */}
-      {!waitingForCheckout && momoPayment?.status !== "pending" && (
-        <>
-          <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue, method: paid ? (momoPlan ? "momo" : "card") : null }} pay={{ regionMethods: region.paymentMethods, momoConfigured: momoReady, cardConfigured: cardOn, cardPriced, cardBlocked: momoPlan && renewal?.kind === "paid" ? `By card from ${formatDate(renewal.opensAt)}, 7 days before your plan ends.` : null, cardNote, cardAddons: planAddons?.labels ?? null }} />
-          <p className="px-1 text-sm text-muted">
-            Prices for {region.name}. {currencyNote(region.currency, region.paymentMethods)}
-          </p>
-        </>
-      )}
-
-      {cardPending && (
-        <GlassCard role="status" className="flex items-start gap-3 border border-line p-5">
-          <AlertTriangle aria-hidden className="mt-0.5 size-5 shrink-0 text-muted" />
-          <p className="text-sm">{cardPending.removal ? `Removing ${cardPending.labels.join(", ")} from your card plan: waiting for the card provider to confirm. This takes a moment; reload Billing to see it off.` : `Adding ${cardPending.labels.join(", ")} to your card plan: waiting for the card payment to be confirmed. This takes a moment; reload Billing to see them on.`}</p>
-        </GlassCard>
-      )}
-
-      {addition && (addition.ok || addition.card) && !cardPending && (
-        <AddFeatures
-          data={addition.ok && (!onCardPlan || cardPlanTerms) ? { current: { ...addition.current, features: [...addition.current.features] }, interval: addition.interval, periodEnd: addition.periodEnd, region: addition.region, prices: addition.prices, addable: addition.addable, soon: addition.soon, method: addition.method } : null}
-          unavailable={addition.ok ? (onCardPlan && !cardPlanTerms ? CARD_PLAN_UNAVAILABLE : null) : addition.reason}
-          momo={methodState(regionHas("momo"), momoReady)}
-          cardRate={cardForOffers && addition.ok && !onCardPlan ? cardRate : null}
-          cardPlan={cardPlanTerms}
-          cardAddons={onCardPlan ? (planAddons?.features ?? []) : []}
-          preselect={addition.ok && typeof query.add === "string" && (addition.addable as string[]).includes(query.add) ? (query.add as FeatureKey) : null}
-          now={now.toISOString()}
-          vat={vat}
-        />
-      )}
-
-      {bpInvoices.length > 0 && <ClientInvoices invoices={bpInvoices} />}
-
-      {(paid || invoices.length > 0) && !momoPlan && <InvoiceList invoices={invoices} />}
-
-      <GlassCard as="aside" className="flex flex-wrap items-center justify-between gap-3 p-5">
-        <div>
-          <strong>Need something different?</strong>
-          <p className="text-sm text-muted">{paid ? "Tell us what to change and we send you an offer: you pay only for what you add, for the days left in your period." : "Tell us what your business needs and we put together a custom plan with only what you use."}</p>
-          {planCall && (
-            <p className="mt-1 text-sm">
-              Your call about it is on {formatSlot(planCall.startsAt)} (Kigali).{" "}
-              <Link href="/custom-plan/call" className="font-semibold underline">
-                See or move your call
-              </Link>
-            </p>
-          )}
-        </div>
-        <Link href="/custom-plan?from=billing" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold no-underline">
-          {paid ? "Request a custom change" : "Request a custom plan"}
-          <ArrowRight aria-hidden className="size-4" />
-        </Link>
-      </GlassCard>
-
-      <GlassCard as="aside" className="flex flex-wrap items-center justify-between gap-3 p-5">
-        <div>
-          <strong>Need done-for-you marketing?</strong>
-          <p className="text-sm text-muted">Our team can run your social content and lead capture for you.</p>
-        </div>
-        <Link href="/done-for-you" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold no-underline">
-          See done-for-you
-          <ArrowRight aria-hidden className="size-4" />
-        </Link>
-      </GlassCard>
+            {payable && invoiceMethods && <InvoicePay invoice={payable} methods={invoiceMethods} highlight={highlighted === payable.number} cardReason={payableCustom || !payable.planKey ? `Card is not available for this invoice yet: pay it by Mobile Money, or write to us at ${site.email} and we will help.` : null} />}
+            {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} vatRatePercent={vatPercentOf(momoPayment.vatRateBps)} />}
+          </>
+        }
+        plan={{
+          name: isTrial && chosen ? `${plan.name} of ${chosen.name}` : plan.name,
+          interval: paid ? (subscription.interval === "YEAR" ? "Yearly" : "Monthly") : null,
+          price,
+          lines,
+          status: { label: statusLabel(status, cancelling), tone: status === "ACTIVE" || status === "TRIALING" ? (cancelling ? "muted" : "good") : "bad" },
+        }}
+        planActions={
+          paid ? <PlanActions cancelAtPeriodEnd={cancelling} pastDue={pastDue} periodEnd={periodEnd} method={momoPlan ? "momo" : "card"} renew={renew} canResume={renewal?.kind !== "paid"} /> : null
+        }
+        usage={{ resets: resetsAt ? `${isTrial ? "Trial ends" : "Resets"} ${formatDate(resetsAt)}` : null, meters }}
+        /* Hidden while a purchase is being confirmed, so nobody buys a second plan by accident. */
+        plans={
+          plansHidden ? null : (
+            <>
+              <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue, method: paid ? (momoPlan ? "momo" : "card") : null }} pay={{ regionMethods: region.paymentMethods, momoConfigured: momoReady, cardConfigured: cardOn, cardPriced, cardBlocked: momoPlan && renewal?.kind === "paid" ? `By card from ${formatDate(renewal.opensAt)}, 7 days before your plan ends.` : null, cardNote, cardAddons: planAddons?.labels ?? null }} />
+              <p className="px-1 text-sm text-muted">
+                Prices for {region.name}. {currencyNote(region.currency, region.paymentMethods)}
+              </p>
+            </>
+          )
+        }
+        add={
+          addable ? (
+            <AddFeatures
+              data={addition.ok && (!onCardPlan || cardPlanTerms) ? { current: { ...addition.current, features: [...addition.current.features] }, interval: addition.interval, periodEnd: addition.periodEnd, region: addition.region, prices: addition.prices, addable: addition.addable, soon: addition.soon, method: addition.method } : null}
+              unavailable={addition.ok ? (onCardPlan && !cardPlanTerms ? CARD_PLAN_UNAVAILABLE : null) : addition.reason}
+              momo={methodState(regionHas("momo"), momoReady)}
+              cardRate={cardForOffers && addition.ok && !onCardPlan ? cardRate : null}
+              cardPlan={cardPlanTerms}
+              cardAddons={onCardPlan ? (planAddons?.features ?? []) : []}
+              preselect={addition.ok && typeof query.add === "string" && (addition.addable as string[]).includes(query.add) ? (query.add as FeatureKey) : null}
+              now={now.toISOString()}
+              vat={vat}
+            />
+          ) : null
+        }
+        receipts={
+          showReceipts ? (
+            <>
+              {bpInvoices.length > 0 && <ClientInvoices invoices={bpInvoices} />}
+              {(paid || invoices.length > 0) && !momoPlan && <InvoiceList invoices={invoices} />}
+            </>
+          ) : null
+        }
+        receiptsCount={receiptsCount}
+        custom={{ paid, call: planCall ? `Your call about it is on ${formatSlot(planCall.startsAt)} (Kigali).` : null }}
+      />
     </>
   );
 }

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check } from "lucide-react";
-import { Button, Field, GlassCard, Select, useToast } from "@/components/ui";
+import { Check, Languages } from "lucide-react";
+import { BPanel } from "@/components/app/kit/b-cards";
+import { BChoice } from "@/components/app/kit/b-choice";
+import { Button, useToast } from "@/components/ui";
 import { CONTENT_LANGUAGES } from "@/lib/brand/languages";
 import { saveContentLanguage } from "@/app/dashboard/brand/language-action";
 
@@ -29,29 +31,20 @@ export function LanguageSection({ initial }: { initial: string }) {
   }
 
   return (
-    <GlassCard as="section" aria-labelledby="brand-language" className="p-5 sm:p-6">
+    <BPanel id="brand-language" icon={Languages} tone="violet" title="Content language" hint="The language captions, scripts and headlines are written in.">
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-5">
-        <div className="flex flex-col gap-1">
-          <h2 id="brand-language" className="text-lg font-semibold tracking-[-0.02em]">
-            Content language
-          </h2>
-          <p className="text-[14px] text-muted">The language captions, scripts and headlines are written in.</p>
-        </div>
-        <Field label="Language" error={error ?? undefined} className="max-w-sm">
-          <Select
-            value={language}
-            onChange={(e) => {
-              setLanguage(e.target.value);
-              setSaved(false);
-            }}
-          >
-            {CONTENT_LANGUAGES.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <BChoice
+          legend="Language"
+          hideLegend
+          options={CONTENT_LANGUAGES.map((l) => ({ value: l, label: l }))}
+          value={language}
+          onChange={(v) => {
+            if (!v) return;
+            setLanguage(v);
+            setSaved(false);
+          }}
+          error={error ?? undefined}
+        />
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={pending}>
             {pending ? "Saving…" : "Save"}
@@ -65,6 +58,6 @@ export function LanguageSection({ initial }: { initial: string }) {
           </span>
         </div>
       </form>
-    </GlassCard>
+    </BPanel>
   );
 }

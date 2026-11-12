@@ -41,7 +41,7 @@ export const QUIZ_ROUNDS: readonly (QuizRound & { id: QuizRoundId; section: Sect
   { id: "why", title: "Why you", emoji: "⭐", blurb: "Why people choose you", section: "competitors", href: "/dashboard/knowledge/competitors" },
   { id: "rules", title: "Rules", emoji: "📋", blurb: "Payment, delivery and questions", section: "faqs", href: "/dashboard/knowledge/faqs" },
   { id: "find", title: "Find us", emoji: "📍", blurb: "Hours, phone and address", section: "locations", href: "/dashboard/knowledge/locations" },
-  { id: "look", title: "Your look", emoji: "🎨", blurb: "Your logo and colours", section: "brand", href: "/dashboard/brand#brand-look" },
+  { id: "look", title: "Your look", emoji: "🎨", blurb: "Your logo and colours", section: "brand", href: "/dashboard/brand?part=look" },
   { id: "voice", title: "Your voice", emoji: "🎙️", blurb: "How your posts sound", section: "interview", href: "/dashboard/knowledge/interview" },
   { id: "love", title: "Love notes", emoji: "💬", blurb: "What customers say", section: "reviews", href: "/dashboard/knowledge/reviews" },
   { id: "golive", title: "Go live", emoji: "🚀", blurb: "Connect your social accounts", section: "channels", href: "/dashboard/connections" },
