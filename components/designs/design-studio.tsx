@@ -17,6 +17,7 @@ import { createContext, useContext, useState, useTransition, type ReactNode } fr
 import { useRouter } from "next/navigation";
 import { Download, Trash2 } from "lucide-react";
 import { Button, useToast } from "@/components/ui";
+import { MediaTile } from "@/components/media-cards";
 import { EditInCanva } from "./edit-in-canva";
 import { deleteDesign, getDesignDownloadUrl } from "@/app/dashboard/designs/actions";
 import { groupByDay } from "@/lib/designs/list";
@@ -92,18 +93,10 @@ function Gallery({ designs, timeZone = "UTC" }: { designs: StudioDesign[]; timeZ
         <section key={g.day || "all"} aria-label={g.label || undefined} className="flex flex-col gap-3">
           {g.label && <h3 className="px-1 text-[14px] font-semibold text-muted">{g.label}</h3>}
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-      {g.items.map((d) => (
+      {g.items.map((d, i) => (
         <li key={d.id} className="flex flex-col gap-2">
           {/* The whole design, whatever its shape: fitted inside the square tile, never cut. */}
-          <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-soft">
-            {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
-            <img
-              src={d.url}
-              alt={`${d.kind === "AI" ? "AI picture" : "Picture"}, ${d.aspectRatio}`}
-              loading="lazy"
-              className="absolute inset-0 size-full object-contain"
-            />
-          </div>
+          <MediaTile index={i} fit="contain" item={{ url: d.url, alt: `${d.kind === "AI" ? "AI picture" : "Picture"}, ${d.aspectRatio}` }} label={`${d.kind === "AI" ? "AI picture" : "Picture"} · ${d.aspectRatio}`} />
           <div className="flex items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1">
               <DownloadButton id={d.id} size="sm" label="Save" />

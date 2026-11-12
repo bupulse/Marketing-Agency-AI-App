@@ -13,7 +13,7 @@ import { formatBytes, formatDuration, MEDIA_MAX_ASSETS, MEDIA_MAX_TOTAL_BYTES, U
 import type { GalleryOverview, MediaItem } from "@/lib/media/service";
 import type { PhotoAlbums } from "@/lib/media/albums";
 import { DestinationDialog } from "./destination-dialog";
-import { GalleryThumb } from "./media-thumb";
+import { MediaTile } from "@/components/media-cards";
 import { ImportMenu } from "./import-menu";
 import { UploadProgress } from "./upload-progress";
 import { useGalleryUpload } from "./use-gallery-upload";
@@ -307,21 +307,15 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
             {items.map((item, i) => {
               const on = selected.has(item.id);
               return (
-                <li key={item.id} className="animate-pop group relative" style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}>
-                  <button
-                    type="button"
+                <li key={item.id} className="group relative">
+                  <MediaTile
+                    index={i}
+                    item={{ url: item.url, kind: item.kind, poster: item.posterUrl, durationMs: item.durationMs }}
+                    label={item.name}
+                    selected={on}
                     onClick={() => (selecting ? toggle(item.id) : setViewing(item.id))}
-                    aria-label={selecting ? `${on ? "Deselect" : "Select"} ${item.name}` : `Open ${item.name}`}
-                    className={cn(
-                      "relative block aspect-square w-full cursor-pointer overflow-hidden rounded-2xl bg-soft ring-2 transition-[box-shadow] duration-300",
-                      on ? "ring-pulse-blue" : "ring-transparent",
-                    )}
-                  >
-                    <GalleryThumb item={item} alt="" className={cn("transition-transform duration-500 ease-out-soft group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100", on && "scale-95")} />
-                    <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/55 to-transparent px-3 pt-6 pb-2 text-left text-xs font-medium text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100 max-sm:hidden">
-                      {item.name}
-                    </span>
-                  </button>
+                    ariaLabel={selecting ? `${on ? "Deselect" : "Select"} ${item.name}` : `Open ${item.name}`}
+                  />
                   <button
                     type="button"
                     role="checkbox"

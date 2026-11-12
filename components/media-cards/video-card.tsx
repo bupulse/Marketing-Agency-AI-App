@@ -91,6 +91,17 @@ function Preview({ video }: { video: VideoSource }) {
   );
 }
 
+/** A video's still with the muted hover preview, for a tile that is not a VideoCard (MediaTile). */
+export function VideoStill({ video, fit = "cover", host }: { video: VideoSource; fit?: "cover" | "contain"; host: React.RefObject<HTMLElement | null> }) {
+  const previewing = useHoverPreview(host, true);
+  return (
+    <>
+      <Still video={video} fit={fit} />
+      {previewing && <Preview video={video} />}
+    </>
+  );
+}
+
 export type VideoCardProps = {
   video: VideoSource;
   title: string;

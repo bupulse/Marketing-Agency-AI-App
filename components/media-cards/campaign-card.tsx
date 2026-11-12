@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useRef, useState, type CSSProperties } from "react";
+import { useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { CalendarDays, Megaphone, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { campaignDayLabel, compactNumber, dateRangeLabel, progressOf, ringDash } from "./helpers";
@@ -25,6 +25,12 @@ export type CampaignCardProps = {
   /** The bar: money paid against the budget (creator campaigns). Already in whole units. */
   budget?: { spent: number; total: number; currency: string } | null;
   creators?: number | null;
+  /** Words for the dates instead of `dates` ("12–14 Oct 2026", "No dates"). */
+  dateText?: string | null;
+  /** Small facts in the line with the dates ("3 products", "12 texts"). */
+  facts?: string[];
+  /** More marks under the name's block ("2 new applicants"). */
+  extra?: ReactNode;
   /** A short line under the name (the brief, the offer: "20% off"). */
   line?: string | null;
   actions?: MediaAction[];
@@ -41,7 +47,7 @@ const R = 26;
  * campaign's dot pings), platforms and name on it; under it a progress ring for views against the target that fills
  * when it scrolls into view, the budget bar, the dates ("Day 4 of 18") and the creators; actions at the bottom.
  */
-export function CampaignCard({ name, coverUrl, status, statusLabel, kindLabel, platforms = [], dates, metric, budget, creators, line, actions = [], href, onOpen, index = 0, className }: CampaignCardProps) {
+export function CampaignCard({ name, coverUrl, status, statusLabel, kindLabel, platforms = [], dates, metric, budget, creators, dateText, facts = [], extra, line, actions = [], href, onOpen, index = 0, className }: CampaignCardProps) {
   const card = useRef<HTMLElement>(null);
   const gid = `mc-ring-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const { seen } = useInView(card);
@@ -138,13 +144,14 @@ export function CampaignCard({ name, coverUrl, status, statusLabel, kindLabel, p
             </div>
           </div>
         )}
-        {(dates || creators != null) && (
+        {extra && <div className="flex flex-wrap gap-1.5">{extra}</div>}
+        {(dates || dateText || creators != null || facts.length > 0) && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted">
-            {dates && (
+            {(dates || dateText) && (
               <span className="inline-flex items-center gap-1.5">
                 <CalendarDays aria-hidden className="size-4" />
-                {dateRangeLabel(dates.start, dates.end)}
-                {dates.today && <b className="font-semibold text-text"> · {campaignDayLabel(dates.start, dates.end, dates.today)}</b>}
+                {dateText ?? (dates ? dateRangeLabel(dates.start, dates.end) : "")}
+                {dates?.today && <b className="font-semibold text-text"> · {campaignDayLabel(dates.start, dates.end, dates.today)}</b>}
               </span>
             )}
             {creators != null && (
@@ -153,6 +160,9 @@ export function CampaignCard({ name, coverUrl, status, statusLabel, kindLabel, p
                 {creators} {creators === 1 ? "creator" : "creators"}
               </span>
             )}
+            {facts.map((f) => (
+              <span key={f}>{f}</span>
+            ))}
           </div>
         )}
         {actions.length > 0 && <ActionRow actions={actions} compact className="relative z-[2] mt-auto pt-1" />}

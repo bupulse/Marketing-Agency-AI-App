@@ -62,7 +62,11 @@
 }
 
 /* ---------- Video card ---------- */
+/* The frame keeps its shape whatever the media's size: a grid row's taller neighbour must not stretch it (stretch
+   would win over aspect-ratio), and nothing inside can push it open. */
 .video {
+  align-self: start;
+  contain: layout paint;
   border-radius: 26px;
   background: #0b0b14;
   overflow: hidden;

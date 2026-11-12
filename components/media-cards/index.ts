@@ -10,3 +10,4 @@ export { ActionRow, CaptionText, PlatformIcons, StatusPill, AccountPicture, glas
 export * from "./helpers";
 export * from "./adapters";
 export type * from "./types";
+export { MediaTile, type MediaTileProps } from "./media-tile";

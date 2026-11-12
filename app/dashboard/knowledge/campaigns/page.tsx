@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { CalendarRange, ImageIcon, Plus } from "lucide-react";
+import { CalendarRange, Plus } from "lucide-react";
 import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
 import { SectionHeader } from "@/components/knowledge/section-header";
-import { Badge, Button, GlassCard } from "@/components/ui";
+import { Button, GlassCard } from "@/components/ui";
+import { CampaignCard } from "@/components/media-cards";
 import { cn } from "@/lib/cn";
 import { localDateISO, safeZone } from "@/lib/autopilot/timezone";
 import { CAMPAIGN_TYPE_LABEL, campaignPhase, dayString, formatDateRange, PHASE_LABEL } from "@/lib/knowledge/campaigns";
@@ -54,42 +55,26 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
             <GlassCard className="px-4 py-10 text-center text-[15px] text-muted">Nothing here.</GlassCard>
           ) : (
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
-              {campaigns.map((c) => {
+              {campaigns.map((c, i) => {
                 const startsOn = dayString(c.startsAt);
                 const endsOn = dayString(c.endsAt);
                 const phase = campaignPhase({ startsOn, endsOn }, today);
+                const key = c.status !== "ACTIVE" ? (c.status === "DRAFT" ? "draft" : "ended") : phase === "running" ? "live" : phase === "upcoming" ? "scheduled" : phase === "ended" ? "ended" : "draft";
                 return (
-                  <li key={c.id}>
-                    <Link href={`${BASE}/${c.id}`} className="block h-full no-underline">
-                      <GlassCard interactive padding="none" className="flex h-full flex-col overflow-hidden">
-                        <div className="relative aspect-[16/9] bg-soft">
-                          {c.thumb ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- private signed URL
-                            <img src={c.thumb} alt="" loading="lazy" className="size-full object-cover" />
-                          ) : (
-                            <span aria-hidden className="flex size-full items-center justify-center bg-brand-gradient text-white/80">
-                              <ImageIcon className="size-8" />
-                            </span>
-                          )}
-                          <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-                            <Badge tone="blue" className="bg-glass-strong">
-                              {CAMPAIGN_TYPE_LABEL[c.type]}
-                            </Badge>
-                            <Badge tone={phase === "running" ? "success" : "neutral"} className="bg-glass-strong">
-                              {c.status === "ACTIVE" ? PHASE_LABEL[phase] : STATUS_LABEL[c.status]}
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="flex flex-1 flex-col gap-1.5 p-4">
-                          <strong className="line-clamp-2 text-[16px] leading-snug">{c.name}</strong>
-                          <span className="truncate text-[14px] text-muted">{formatDateRange(startsOn, endsOn) || "No dates"}{c.priceInfo ? ` · ${c.priceInfo}` : ""}</span>
-                          <div className="mt-auto flex flex-wrap gap-x-3 pt-2 text-[13px] text-muted">
-                            <span>{c._count.products} {c._count.products === 1 ? "product" : "products"}</span>
-                            <span>{c._count.contents} {c._count.contents === 1 ? "text" : "texts"}</span>
-                          </div>
-                        </div>
-                      </GlassCard>
-                    </Link>
+                  <li key={c.id} className="flex">
+                    <CampaignCard
+                      index={i}
+                      className="w-full"
+                      href={`${BASE}/${c.id}`}
+                      name={c.name}
+                      coverUrl={c.thumb}
+                      kindLabel={CAMPAIGN_TYPE_LABEL[c.type]}
+                      status={key}
+                      statusLabel={c.status === "ACTIVE" ? PHASE_LABEL[phase] : STATUS_LABEL[c.status]}
+                      line={c.priceInfo}
+                      dateText={formatDateRange(startsOn, endsOn) || "No dates"}
+                      facts={[`${c._count.products} ${c._count.products === 1 ? "product" : "products"}`, `${c._count.contents} ${c._count.contents === 1 ? "text" : "texts"}`]}
+                    />
                   </li>
                 );
               })}
