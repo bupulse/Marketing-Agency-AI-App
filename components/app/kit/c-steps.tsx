@@ -145,7 +145,7 @@ export function SectionTabs<T extends string>({ label, tabs, current, onChange, 
     ref.current?.querySelector<HTMLButtonElement>(`#${idPrefix}-tab-${next.id}`)?.focus();
   };
   return (
-    <div ref={ref} role="tablist" aria-label={label} onKeyDown={onKeyDown} className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 py-1 [scrollbar-width:none] sm:grid sm:overflow-visible" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+    <div ref={ref} role="tablist" aria-label={label} onKeyDown={onKeyDown} className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 py-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
       <KitStyles />
       {tabs.map((t) => {
         const on = t.id === current;
@@ -161,7 +161,7 @@ export function SectionTabs<T extends string>({ label, tabs, current, onChange, 
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(t.id)}
             className={cn(
-              "group relative flex min-w-[9.5rem] shrink-0 snap-start cursor-pointer items-center gap-2.5 rounded-[18px] border-2 p-2.5 text-left transition-[transform,border-color,background-color] duration-200 hover:-translate-y-0.5 motion-reduce:transform-none motion-reduce:transition-none sm:min-w-0 sm:p-3",
+              "group relative flex min-w-[9.5rem] shrink-0 snap-start cursor-pointer items-center gap-2.5 rounded-[18px] border-2 p-2.5 text-left transition-[transform,border-color,background-color] duration-200 hover:-translate-y-0.5 motion-reduce:transform-none motion-reduce:transition-none sm:min-w-0 sm:flex-1 sm:basis-[11.5rem] sm:p-3",
               FOCUS,
               on ? "border-pulse-blue bg-pulse-blue/[0.07] dark:bg-pulse-blue/15" : "border-line bg-surface hover:border-pulse-blue/40 dark:bg-white/[0.03]",
             )}

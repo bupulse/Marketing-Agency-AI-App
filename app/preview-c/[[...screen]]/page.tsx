@@ -6,8 +6,9 @@ import { LeadsScreen } from "@/components/leads/leads-screen";
 import { previewAllowed } from "@/lib/support/preview";
 import { ContactsScreen } from "@/components/contacts/contacts-screen";
 import { InboxScreen } from "@/components/inbox/inbox-screen";
+import { BioScreen } from "@/components/bio/bio-screen";
 import { WidgetScreen, greetingIdeasFor } from "@/components/widget/widget-screen";
-import { SAMPLE_CONTACTS, SAMPLE_CONVERSATIONS,SAMPLE_FIELDS, SAMPLE_LEAD_COUNTS, SAMPLE_LEADS, SAMPLE_TAGS } from "../sample-data";
+import { SAMPLE_BIO_DAYS, SAMPLE_BIO_SETTINGS, SAMPLE_BIO_SOURCE, SAMPLE_CONTACTS, SAMPLE_CONVERSATIONS, SAMPLE_FIELDS, SAMPLE_LEAD_COUNTS, SAMPLE_LEADS, SAMPLE_TAGS } from "../sample-data";
 
 export const metadata = { title: "Client preview" };
 
@@ -46,6 +47,7 @@ const SCREENS: Record<string, (sp: SP) => ReactNode | Promise<ReactNode>> = {
       suggestedDomains={["inzozi.example.com"]}
     />
   ),
+  bio: () => <BioScreen initial={SAMPLE_BIO_SETTINGS} saved source={SAMPLE_BIO_SOURCE} days={SAMPLE_BIO_DAYS} baseUrl="https://bupulse.com" siteUrl="https://bupulse.com" readOnly={false} />,
   contacts: () => <ContactsScreen contacts={SAMPLE_CONTACTS} total={4} hasMore={false} q="" tag={null} channel={null} tags={SAMPLE_TAGS} fields={SAMPLE_FIELDS} canManage />,
 };
 

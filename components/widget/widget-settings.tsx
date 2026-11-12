@@ -244,7 +244,7 @@ export function WidgetSettings({
             Open <ExternalLink aria-hidden className="size-3.5" />
           </a>
         </div>
-        <iframe key={previewKey} src={previewSrc} title="Chat preview" className="h-[560px] w-full overflow-hidden rounded-2xl border border-line bg-white" />
+        <iframe key={previewKey} src={previewSrc} title="Chat preview" className="h-[480px] w-full overflow-hidden rounded-2xl border border-line bg-white lg:h-[560px]" />
         <p className="px-1 text-[12.5px] text-muted">This is the real chat: try it. Test replies count towards your monthly chat replies, and contact details you enter appear in Leads.</p>
       </GlassCard>
     </div>

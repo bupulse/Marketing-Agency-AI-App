@@ -32,4 +32,24 @@ export const SAMPLE_CONVERSATIONS = [
   { id: "v3", channel: "FACEBOOK" as const, status: "OPEN" as const, unread: 1, preview: "Do you deliver to Kicukiro?", lastMessageAt: ago(60 * 5), botPaused: false, assignee: null, contact: { id: "c3", name: "Jean Bosco", avatarUrl: null } },
 ];
 
-export const SAMPLE_FIELDS =[{ id: "f1", key: "district", label: "District", type: "choice", options: ["Gasabo", "Kicukiro", "Nyarugenge"] }];
+export const SAMPLE_BIO_SETTINGS = { enabled: true, slug: "inzozi", tagline: "", whatsapp: "+250700000000", message: "", phone: null, location: "KN 5 Rd, Kigali", landmark: "", showHours: true, links: ["instagram" as const], productIds: ["p1", "p2"] };
+export const SAMPLE_BIO_SOURCE = {
+  name: "Inzozi Juice Bar",
+  defaultTagline: "Fresh juice and smoothies in Kimihurura, delivery in Kigali",
+  accent: "#2f6bff",
+  logoUrl: null,
+  whatsappNumbers: [{ value: "+250700000000", display: "+250 700 000 000" }],
+  phoneNumbers: [{ value: "+250700000000", display: "+250 700 000 000" }, { value: "+250700000009", display: "+250 700 000 009" }],
+  locations: [{ address: "KN 5 Rd, Kigali", label: "Main shop", text: "KN 5 Rd, Kimihurura, Kigali", mapsUrl: "https://maps.example.com" }],
+  hours: { lines: ["Mon–Sat 08:00–20:00", "Sun 10:00–18:00"], status: "Open now until 20:00", open: true },
+  links: [{ type: "instagram" as const, href: "https://instagram.com/example", display: "@inzozi" }, { type: "website" as const, href: "https://inzozi.example.com", display: "inzozi.example.com" }],
+  products: [
+    { id: "p1", name: "Passion juice 1 litre", price: "RWF 3,000", summary: "", photoUrl: null },
+    { id: "p2", name: "Mango smoothie", price: "RWF 2,500", summary: "", photoUrl: null },
+    { id: "p3", name: "Avocado shake", price: "RWF 2,800", summary: "", photoUrl: null },
+    { id: "p4", name: "Party pack, 20 cups", price: "RWF 35,000", summary: "", photoUrl: null },
+  ],
+};
+export const SAMPLE_BIO_DAYS = Array.from({ length: 30 }, (_, i) => ({ date: new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10), views: (i * 7) % 23, whatsapp: (i * 3) % 5, calls: i % 3 === 0 ? 1 : 0 }));
+
+export const SAMPLE_FIELDS = [{ id: "f1", key: "district", label: "District", type: "choice", options: ["Gasabo", "Kicukiro", "Nyarugenge"] }];
