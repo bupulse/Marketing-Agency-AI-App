@@ -26,13 +26,13 @@ export function InvoiceEditor({ doc, logoSrc, id, initial, sendTo }: { doc: Invo
   // What the server will receive, and what it will say about it.
   const parsedLines: InvoiceLine[] = lines.map((l) => ({ description: l.description.trim(), quantity: /^\d+$/.test(l.quantity.trim()) ? Number(l.quantity) : NaN, unitMinor: parseMoney(l.price, currency) ?? NaN }));
   const payload = { lines: parsedLines, dueDate, notes, billingEmail };
-  const check = validateDraft(payload, doc.issueDate, doc.taxRatePercent);
+  const check = validateDraft(payload, doc.issueDate, doc.taxRatePercent, currency);
   const errors = check.ok ? {} : check.errors;
   const priceError = (i: number) => (Number.isNaN(parsedLines[i].unitMinor) ? `Type a price like ${currency === "RWF" ? "15000" : "49.00"}.` : errors[`lines.${i}.unitMinor`]);
   const qtyError = (i: number) => (Number.isNaN(parsedLines[i].quantity) ? "A whole number." : errors[`lines.${i}.quantity`]);
   const lineValid = (l: InvoiceLine) => Number.isFinite(l.quantity) && Number.isFinite(l.unitMinor);
   const shown = parsedLines.map((l) => ({ ...l, quantity: Number.isFinite(l.quantity) ? l.quantity : 0, unitMinor: Number.isFinite(l.unitMinor) ? l.unitMinor : 0 }));
-  const totals = computeTotals(shown, doc.taxRatePercent);
+  const totals = computeTotals(shown, doc.taxRatePercent, currency);
   const preview: InvoiceDocument = { ...doc, lines: shown, ...totals, dueDate: dueDate || doc.dueDate, notes: notes.trim() || null };
   const ready = check.ok && parsedLines.every(lineValid) && totals.totalMinor > 0;
   const data = JSON.stringify(payload);
@@ -84,7 +84,7 @@ export function InvoiceEditor({ doc, logoSrc, id, initial, sendTo }: { doc: Invo
         </Field>
         <p className="text-sm">
           Total <strong>{formatInvoiceMoney(totals.totalMinor, currency)}</strong>
-          {doc.taxRatePercent ? ` (incl. VAT ${doc.taxRatePercent}%: ${formatInvoiceMoney(totals.taxMinor, currency)})` : " (no VAT)"}
+          {doc.taxRatePercent ? ` (incl. VAT ${doc.taxRatePercent}%: ${formatInvoiceMoney(totals.taxMinor, currency)}). Type the prices before VAT.` : " (no VAT)"}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button type="submit" variant="outline" disabled={!check.ok || !parsedLines.every(lineValid)}>

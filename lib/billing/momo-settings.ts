@@ -31,11 +31,11 @@ export async function getMomoSettings(): Promise<MomoSettings> {
 }
 
 /**
- * What a company pays by Mobile Money for a plan and interval: the plan's price in the company's region (never the
+ * What a company pays by Mobile Money for a plan and interval: the plan's price in the company's region, with VAT on RWF (never the
  * visitor's IP). Null when the plan is not offered there or the region does not take Mobile Money (docs/REGIONS.md).
  */
 export async function getMomoPrice(businessId: string, planKey: string, interval: BillingInterval): Promise<{ amountMinor: number; currency: string } | null> {
-  const { plans } = await companyPlans(businessId);
+  const { plans } = await companyPlans(businessId, { withVat: true });
   const plan = plans.find((p) => p.key === planKey);
   return plan ? momoPriceOf(plan, interval) : null;
 }

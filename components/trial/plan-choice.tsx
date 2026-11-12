@@ -58,7 +58,7 @@ export function PlanChoice({ plans, current, suggested = null }: { plans: Region
               </div>
               <p className="flex items-baseline gap-1.5">
                 <span className="text-3xl font-bold tracking-[-0.03em]">{formatPrice(plan.monthlyPriceCents, plan.currency)}</span>
-                <span className="text-sm text-muted">/ month</span>
+                <span className="text-sm text-muted">/ month{plan.vatRatePercent ? ", VAT included" : ""}</span>
               </p>
               {plan.card && <p className="text-[13px] text-muted">or {formatPrice(plan.card.monthlyUsdCents, "USD")} a month by card</p>}
               <div className="flex flex-wrap gap-1.5">

@@ -9,6 +9,8 @@ import { sendInvoiceReminders } from "@/lib/invoices/service";
 import { sendOfferReminders } from "@/lib/offers/reminders";
 import { sendPlanPausedEmail, sendRenewalReminderEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
+import { clientPrice, vatRateFor } from "./vat";
+import { getVatSettings } from "./vat-server";
 import { sweepUnsubmittedProofs } from "./momo";
 import { retryCarryOvers } from "./carry-over";
 import { refreshEurRate } from "@/lib/money/display-server";
@@ -73,12 +75,14 @@ async function release(userId: string, periodEnd: Date, kind: string) {
  * the plan is no longer offered there, what the client paid last time (the owner can still confirm any amount by hand).
  */
 async function reminderInput(sub: Sub) {
-  const [plan, settings, business] = await Promise.all([getPlan(sub.plan), getMomoSettings(), prisma.business.findUnique({ where: { userId: sub.userId }, select: { id: true } })]);
+  const [plan, settings, business, vat] = await Promise.all([getPlan(sub.plan), getMomoSettings(), prisma.business.findUnique({ where: { userId: sub.userId }, select: { id: true } }), getVatSettings()]);
   // A custom plan renews at its own price (after features were added mid-period, the full new total: docs/OFFERS.md),
   // never at the last payment, which may have been only the prorated add-on.
-  const custom = plan?.isCustom ? { amountMinor: priceCents(plan, sub.interval), currency: plan.currency.toUpperCase() } : null;
+  // Its price is stored before VAT: the client pays it with VAT when it is in RWF (lib/billing/vat.ts).
+  const custom = plan?.isCustom ? { amountMinor: clientPrice(priceCents(plan, sub.interval), plan.currency, vat), currency: plan.currency.toUpperCase() } : null;
   const price = custom ?? (business ? await getMomoPrice(business.id, sub.plan, sub.interval) : null) ?? (await lastPaid(sub.userId));
-  return { planName: plan?.name ?? sub.plan, interval: sub.interval, amountMinor: price?.amountMinor ?? 0, currency: price?.currency ?? "RWF", periodEnd: sub.currentPeriodEnd as Date, details: settings };
+  const currency = price?.currency ?? "RWF";
+  return { planName: plan?.name ?? sub.plan, interval: sub.interval, amountMinor: price?.amountMinor ?? 0, currency, vatRatePercent: vatRateFor(currency, vat), periodEnd: sub.currentPeriodEnd as Date, details: settings };
 }
 
 async function lastPaid(userId: string) {

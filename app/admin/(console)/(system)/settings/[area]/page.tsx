@@ -15,10 +15,11 @@ import { telegramStatus } from "@/lib/lead-alerts/telegram-settings";
 import { approvedVoices } from "@/lib/content-languages/service";
 import { APPROVAL_LANGUAGES } from "@/lib/content-languages/voice";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
+import { getVatSettings } from "@/lib/billing/vat-server";
 import { momoConfigured, mtnMomoPayDial } from "@/lib/billing/momo-shared";
 import { PADDLE_WEBHOOK_PATH, paddleStatus } from "@/lib/billing/paddle-setup";
 import { isSettingsSlug, SETTINGS_TITLE } from "@/components/admin/system/settings-areas";
-import { CurrencyArea, GoalArea, MomoArea, PaddleArea } from "@/components/admin/system/settings/money-areas";
+import { CurrencyArea, GoalArea, MomoArea, PaddleArea, VatArea } from "@/components/admin/system/settings/money-areas";
 import { ContentArea, VoicesArea } from "@/components/admin/system/settings/content-areas";
 import { AvailabilityArea, CallsArea, GoogleCalendarArea, LeadAlertsArea } from "@/components/admin/system/settings/calls-areas";
 import { LoadingArea, TrialArea } from "@/components/admin/system/settings/site-areas";
@@ -50,6 +51,8 @@ export default async function SettingsAreaPage({ params, searchParams }: PagePro
     }
     case "paddle":
       return <PaddleArea {...msg} paddle={await paddleStatus()} webhookUrl={`${publicSiteUrl()}${PADDLE_WEBHOOK_PATH}`} />;
+    case "vat":
+      return <VatArea {...msg} vat={await getVatSettings()} />;
     case "currency": {
       const s = await getSettings();
       return <CurrencyArea {...msg} s={s} exampleCents={cardUsdCents(15000, "RWF", s.usdToRwf, s.cardMarginPercent)} eur={await effectiveUsdToEur(s)} />;

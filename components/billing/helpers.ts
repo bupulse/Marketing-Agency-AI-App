@@ -4,7 +4,8 @@ import { formatMinor } from "@/lib/region-format";
 import { RENEWAL_WINDOW_DAYS, renewalOpensAt, type RenewalState } from "@/lib/billing/renewal";
 
 /** The price part of a plan in the currency's smallest unit (the shape of PublicPlan); `currency` defaults to USD. */
-export type PlanPrices = { monthlyPriceCents: number; yearlyPriceCents: number; currency?: string };
+/** `vatRatePercent` is set when the prices already include VAT (RWF, lib/billing/vat.ts): a "VAT included" note goes beside them. */
+export type PlanPrices = { monthlyPriceCents: number; yearlyPriceCents: number; currency?: string; vatRatePercent?: number | null };
 
 /** An amount in a plan's currency: "$49", "15,000 RWF". */
 export const formatPrice = (minor: number, currency = "USD") => formatMinor(minor, currency);

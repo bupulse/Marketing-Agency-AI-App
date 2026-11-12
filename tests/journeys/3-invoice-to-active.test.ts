@@ -78,13 +78,13 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
   it("drafts, sends, is paid by the client, confirmed by the owner, and cannot be paid twice", async () => {
     const { userId, businessId, subscription } = await afterDemo(1);
 
-    // 1. Only the console drafts an invoice, for the plan the client chose at the region's RWF price; the demo is done.
+    // 1. Only the console drafts an invoice, for the plan the client chose at the region's RWF price (before VAT, plus 18% VAT); the demo is done.
     expect(await code(inv.createActivationInvoice(API, { businessId }, AT))).toMatch(/^forbidden/);
     const draft = await inv.createActivationInvoice(CONSOLE, { businessId }, AT);
     expect(draft).toMatchObject({ number: "BP-INV-0001", created: true });
     expect((await inv.createActivationInvoice(CONSOLE, { businessId }, AT)).created).toBe(false); // one draft per company
     const row = () => h.db.invoice.rows.find((i) => i.id === draft.id)!;
-    expect(row()).toMatchObject({ status: "draft", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", totalMinor: 35000 });
+    expect(row()).toMatchObject({ status: "draft", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", subtotalMinor: 35000, taxMinor: 6300, totalMinor: 41300 });
     expect(h.db.demoBooking.rows[0].status).toBe("done");
     expect(subscription.status).toBe("PENDING_DEMO");
     // The client cannot see or pay a draft.
@@ -96,7 +96,7 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
     await inv.sendInvoice(CONSOLE, draft.id, AT);
     expect(row()).toMatchObject({ status: "sent", sentTo: ["owner1@example.com"] });
     expect(recipients(h.sendEmail.mock.calls)).toEqual(["owner1@example.com"]);
-    expect(subjects(h.sendEmail.mock.calls)[0]).toMatch(/^Invoice BP-INV-0001 from BuPulse: 35,000 RWF due 16 October 2026/);
+    expect(subjects(h.sendEmail.mock.calls)[0]).toMatch(/^Invoice BP-INV-0001 from BuPulse: 41,300 RWF due 16 October 2026/);
     expect((h.sendEmail.mock.calls[0][0].attachments ?? [])[0].filename).toBe("BP-INV-0001.pdf");
     expect(h.sendEmail.mock.calls[0][0].html).toContain("https://bupulse.com/dashboard/billing?invoice=BP-INV-0001");
     expect(await code(inv.sendInvoice(CONSOLE, draft.id, AT))).toMatch(/^conflict/);
@@ -106,7 +106,7 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
 
     // 3. The client pays by MoMo: the reference is the invoice number and the amount the invoice total.
     const pay = await momo.startInvoicePayment({ userId, invoiceId: draft.id, now: AT });
-    expect(pay).toMatchObject({ reference: "BP-INV-0001", invoiceId: draft.id, amountMinor: 35000, currency: "RWF", planKey: "BUSINESS", interval: "MONTH" });
+    expect(pay).toMatchObject({ reference: "BP-INV-0001", invoiceId: draft.id, amountMinor: 41300, currency: "RWF", planKey: "BUSINESS", interval: "MONTH" });
     expect((await momo.startInvoicePayment({ userId, invoiceId: draft.id, now: AT })).id).toBe(pay.id);
     await momo.submitManualProof(userId, { paymentId: pay.id, transactionId: "MP77001234", payerPhone: "0781234567", network: "MTN" }, AT);
     expect(row().status).toBe("sent"); // reporting is not paying
@@ -121,9 +121,9 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
     expect(row()).toMatchObject({ status: "paid", paidBy: `manual_payment:${pay.id}`, paidAt: AT });
     expect(subscription).toMatchObject({ status: "ACTIVE", plan: "BUSINESS", provider: "MANUAL_MOMO", currentPeriodEnd: new Date("2026-11-13T08:00:00Z") });
     expect(audits("invoice_paid")).toHaveLength(1);
-    expect(audits("invoice_paid")[0]).toMatchObject({ target: `invoice:${draft.id}`, before: { status: "sent" }, after: { status: "paid", number: "BP-INV-0001", amountMinor: 35000, currency: "RWF" } });
+    expect(audits("invoice_paid")[0]).toMatchObject({ target: `invoice:${draft.id}`, before: { status: "sent" }, after: { status: "paid", number: "BP-INV-0001", amountMinor: 41300, currency: "RWF" } });
     expect(audits("confirm_momo_payment")[0]).toMatchObject({ after: expect.objectContaining({ invoiceId: draft.id }) });
-    expect(h.db.billingEvent.rows[0].payload.data).toMatchObject({ id: "BP-INV-0001", invoice_id: draft.id, amount_minor: 35000 });
+    expect(h.db.billingEvent.rows[0].payload.data).toMatchObject({ id: "BP-INV-0001", invoice_id: draft.id, amount_minor: 41300, vat_minor: 6300 });
     expect(subjects(h.sendEmail.mock.calls)).toEqual(["Your BuPulse Business plan is active"]);
     expect((await companyEntitlements(businessId)).block).toBeNull();
     for (const feature of ["content", "websiteChat", "webhooks", "apiAccess"] as const) expect(await hasFeature(businessId, feature)).toBe(true);
@@ -195,7 +195,7 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
     expect(h.db.subscription.rows[0]).toMatchObject({ status: "ACTIVE", plan: "BUSINESS" });
     expect(h.db.invoice.rows[0]).toMatchObject({ status: "paid", paidBy: `momo:${plain.reference}`, paidAt: AT });
     expect(audits("invoice_paid")).toHaveLength(1);
-    expect(audits("invoice_paid")[0]).toMatchObject({ actor: "admin", target: `invoice:${draft.id}`, after: expect.objectContaining({ paidBy: `momo:${plain.reference}`, amountMinor: 35000 }) });
+    expect(audits("invoice_paid")[0]).toMatchObject({ actor: "admin", target: `invoice:${draft.id}`, after: expect.objectContaining({ paidBy: `momo:${plain.reference}`, amountMinor: 41300 }) });
     // The payment itself stays a plain one, and the reminder no longer chases the paid invoice.
     expect(h.db.manualPayment.rows[0].invoiceId).toBeNull();
     vi.setSystemTime(new Date("2026-10-17T08:00:00Z"));
@@ -207,12 +207,12 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
     const rows = h.db.invoice.rows;
     const base = { businessId, status: "sent", currency: "RWF", interval: "MONTH", sentAt: new Date("2026-10-12T08:00:00Z"), taxMinor: 0, dueDate: new Date("2026-10-30T00:00:00Z"), reminderSentAt: null };
     rows.push(
-      { ...base, id: "i_old", number: "BP-INV-0001", planKey: "BUSINESS", totalMinor: 35000, subtotalMinor: 35000, sentAt: new Date("2026-10-11T08:00:00Z") },
-      { ...base, id: "i_new", number: "BP-INV-0002", planKey: "BUSINESS", totalMinor: 35000, subtotalMinor: 35000 },
-      { ...base, id: "i_other", number: "BP-INV-0003", planKey: "STARTER", totalMinor: 15000, subtotalMinor: 15000 },
-      { ...base, id: "i_void", number: "BP-INV-0004", planKey: "BUSINESS", totalMinor: 35000, subtotalMinor: 35000, status: "void" },
-      { ...base, id: "i_draft", number: "BP-INV-0005", planKey: "BUSINESS", totalMinor: 35000, subtotalMinor: 35000, status: "draft", sentAt: null },
-      { ...base, id: "i_year", number: "BP-INV-0006", planKey: "BUSINESS", totalMinor: 350000, subtotalMinor: 350000, interval: "YEAR" },
+      { ...base, id: "i_old", number: "BP-INV-0001", planKey: "BUSINESS", totalMinor: 41300, subtotalMinor: 35000, sentAt: new Date("2026-10-11T08:00:00Z") },
+      { ...base, id: "i_new", number: "BP-INV-0002", planKey: "BUSINESS", totalMinor: 41300, subtotalMinor: 35000 },
+      { ...base, id: "i_other", number: "BP-INV-0003", planKey: "STARTER", totalMinor: 17700, subtotalMinor: 15000 },
+      { ...base, id: "i_void", number: "BP-INV-0004", planKey: "BUSINESS", totalMinor: 41300, subtotalMinor: 35000, status: "void" },
+      { ...base, id: "i_draft", number: "BP-INV-0005", planKey: "BUSINESS", totalMinor: 41300, subtotalMinor: 35000, status: "draft", sentAt: null },
+      { ...base, id: "i_year", number: "BP-INV-0006", planKey: "BUSINESS", totalMinor: 413000, subtotalMinor: 350000, interval: "YEAR" },
     );
     const plain = await momo.startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: AT });
     await momo.submitManualProof(userId, { paymentId: plain.id, transactionId: "MP88112244", payerPhone: "0781234567", network: "MTN" }, AT);
@@ -226,20 +226,20 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
   it("a payment that does not match the invoice total is not auto-settled: it is flagged for review, then the admin marks it paid", async () => {
     const { userId, businessId, subscription } = await afterDemo(1);
     const draft = await inv.createActivationInvoice(CONSOLE, { businessId }, AT);
-    // An invoice with a setup fee on top of the plan line: 35,000 + 20,000.
+    // An invoice with a setup fee on top of the plan line: 35,000 + 20,000 before VAT = 64,900 with VAT.
     await inv.updateInvoiceDraft(CONSOLE, draft.id, { lines: [{ description: "BuPulse Business plan, monthly", quantity: 1, unitMinor: 35000 }, { description: "Setup", quantity: 1, unitMinor: 20000 }], dueDate: "2026-10-16", notes: "", billingEmail: "" });
     await inv.sendInvoice(CONSOLE, draft.id, AT);
     const row = () => h.db.invoice.rows.find((i) => i.id === draft.id)!;
-    expect(row().totalMinor).toBe(55000);
+    expect(row().totalMinor).toBe(64900);
 
-    // The client pays the standard 35,000 from the pay screen; the owner confirms the money (the plan opens).
+    // The client pays the standard 41,300 (35,000 + VAT) from the pay screen; the owner confirms the money (the plan opens).
     const plain = await momo.startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: AT });
     await momo.submitManualProof(userId, { paymentId: plain.id, transactionId: "MP88113300", payerPhone: "0781234567", network: "MTN" }, AT);
     h.sendEmail.mockClear();
     await momo.confirmManualPayment(CONSOLE, plain.id, AT);
     expect(subscription).toMatchObject({ status: "ACTIVE", plan: "BUSINESS" });
     // The invoice is NOT marked paid; the payment is recorded on it, audited, and the admins are alerted.
-    expect(row()).toMatchObject({ status: "sent", paidBy: null, paymentReview: [expect.objectContaining({ source: "momo", reference: plain.reference, amountMinor: 35000, currency: "RWF" })] });
+    expect(row()).toMatchObject({ status: "sent", paidBy: null, paymentReview: [expect.objectContaining({ source: "momo", reference: plain.reference, amountMinor: 41300, currency: "RWF" })] });
     expect(audits("invoice_paid")).toHaveLength(0);
     expect(audits("invoice_payment_review")).toHaveLength(1);
     expect(subjects(h.sendEmail.mock.calls)).toContain("Payment received for BP-INV-0001: check and mark paid");
@@ -264,7 +264,7 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
   it("a payment that only renews the plan already running never settles or flags an invoice", async () => {
     const { userId, businessId, subscription } = await afterDemo(1);
     Object.assign(subscription, { status: "ACTIVE", plan: "BUSINESS", provider: "MANUAL_MOMO", interval: "MONTH", currentPeriodStart: AT, currentPeriodEnd: new Date(AT.getTime() + 5 * 86_400_000) });
-    h.db.invoice.rows.push({ id: "i1", businessId, number: "BP-INV-0001", status: "sent", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", totalMinor: 35000, subtotalMinor: 35000, taxMinor: 0, lines: [{ description: "Plan", quantity: 1, unitMinor: 35000 }], sentAt: new Date(AT.getTime() - 3_600_000), reminderSentAt: null });
+    h.db.invoice.rows.push({ id: "i1", businessId, number: "BP-INV-0001", status: "sent", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", totalMinor: 41300, subtotalMinor: 35000, taxMinor: 6300, lines: [{ description: "Plan", quantity: 1, unitMinor: 35000 }], sentAt: new Date(AT.getTime() - 3_600_000), reminderSentAt: null });
     const renewal = await momo.startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: AT });
     expect(renewal.periodNote).toMatchObject({ mode: "extend" });
     await momo.submitManualProof(userId, { paymentId: renewal.id, transactionId: "MP99001122", payerPhone: "0781234567", network: "MTN" }, AT);
@@ -277,7 +277,7 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
 
   it("a payment confirmed before the invoice was sent does not settle it", async () => {
     const { userId, businessId } = await afterDemo(1);
-    h.db.invoice.rows.push({ id: "i_later", businessId, number: "BP-INV-0001", status: "sent", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", totalMinor: 35000, subtotalMinor: 35000, taxMinor: 0, sentAt: new Date(AT.getTime() + 3_600_000), reminderSentAt: null });
+    h.db.invoice.rows.push({ id: "i_later", businessId, number: "BP-INV-0001", status: "sent", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", totalMinor: 41300, subtotalMinor: 35000, taxMinor: 6300, sentAt: new Date(AT.getTime() + 3_600_000), reminderSentAt: null });
     const plain = await momo.startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: AT });
     await momo.submitManualProof(userId, { paymentId: plain.id, transactionId: "MP88112255", payerPhone: "0781234567", network: "MTN" }, AT);
     await momo.confirmManualPayment(CONSOLE, plain.id, AT);

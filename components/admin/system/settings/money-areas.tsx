@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowLeftRight, CreditCard, FlaskConical, Rocket, Smartphone, Target } from "lucide-react";
+import { ArrowLeftRight, CreditCard, FlaskConical, Percent, Rocket, Smartphone, Target } from "lucide-react";
+import { adminVatPreview, type VatSettings } from "@/lib/billing/vat";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { ExpandCard, StatusPill } from "@/components/admin/kit";
 import { RadioChips, SwitchRow } from "@/components/admin/kit/form-choices";
@@ -194,6 +195,55 @@ export function CurrencyArea({
             <Button type="submit" size="sm" variant="outline">Refresh EUR rate now</Button>
           </form>
         </div>
+      </Panel>
+    </AreaFrame>
+  );
+}
+
+/** /admin/settings/vat: VAT on Rwandan (RWF) prices: on or off, the rate, and BuPulse's TIN. */
+export function VatArea({ vat, ok, bad }: Msg & { vat: VatSettings }) {
+  const examples = [15_000, 50_000, 80_000];
+  return (
+    <AreaFrame icon={Percent} tone="green" title={SETTINGS_TITLE.vat} description="VAT is added to prices in RWF only (Rwanda, paid by Mobile Money or invoice). Card prices in US dollars never get it: Paddle adds tax itself." ok={ok} bad={bad}>
+      {!vat.tin && (
+        <p className={notice.warn} role="status">
+          <strong>Your TIN is missing.</strong> Receipts and invoices still work, but they cannot show BuPulse&apos;s TIN until you add it below.
+        </p>
+      )}
+      <Panel id="vat" title="VAT on RWF prices" description="The prices you type in the admin are before VAT. Clients see and pay the price with VAT, rounded to the nearest 100 RWF." action={vat.enabled ? <StatusPill tone="good" dot>Added to RWF prices</StatusPill> : <StatusPill tone="warn" dot>Off</StatusPill>}>
+        <form action={saveSettingsAction} className="flex flex-col gap-4">
+          <input type="hidden" name="vatPanel" value="1" />
+          <SwitchRow name="vatEnabled" defaultChecked={vat.enabled} label="Add VAT to RWF prices" hint="Off: clients pay the prices you typed, with no VAT. Use it only if BuPulse stops being VAT-registered." />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="VAT rate (%)" required hint="18 in Rwanda.">
+              <Input name="vatRatePercent" type="number" min={0.1} max={100} step="0.1" defaultValue={vat.ratePercent} required className="w-28" />
+            </Field>
+            <Field label="BuPulse TIN (from RRA)" hint="Printed on every receipt and invoice. Leave empty until you have it.">
+              <Input name="vatTin" defaultValue={vat.tin} maxLength={40} placeholder="e.g. 123456789" />
+            </Field>
+          </div>
+          <div>
+            <Button type="submit">Save</Button>
+          </div>
+        </form>
+        <ul className="grid gap-2 text-[14px] sm:grid-cols-3">
+          {examples.map((net) => {
+            const p = adminVatPreview(net, "RWF", vat);
+            return (
+              <li key={net} className="rounded-2xl bg-soft px-4 py-3">
+                <span className="block text-[12px] font-semibold uppercase tracking-[0.04em] text-muted">You type {formatMinor(net, "RWF")}</span>
+                {p ? (
+                  <>
+                    Client pays <strong>{formatMinor(p.grossMinor, "RWF")}</strong> <span className="text-muted">(VAT {formatMinor(p.vatMinor, "RWF")})</span>
+                  </>
+                ) : (
+                  <>Client pays <strong>{formatMinor(net, "RWF")}</strong> <span className="text-muted">(no VAT)</span></>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        <p className="text-[13px] text-muted">Receipts show the total paid, the VAT inside it and the amount before VAT. A payment already made keeps the amount it was made with.</p>
       </Panel>
     </AreaFrame>
   );

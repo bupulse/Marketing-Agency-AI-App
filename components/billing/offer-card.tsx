@@ -4,6 +4,7 @@ import { Badge, GlassCard } from "@/components/ui";
 import { formatMinor } from "@/lib/region-format";
 import { MANAGED_TIER_LABEL, METRIC_LABEL, OFFER_STATUS_LABEL, type ClientOfferView } from "@/lib/offers/shared";
 import { checkingText } from "@/lib/billing/momo-shared";
+import { vatIncludedText } from "@/lib/billing/vat";
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Kigali" });
 
@@ -29,6 +30,7 @@ export function OfferCard({ offer, actions, preview = false, checkingReference =
             {formatMinor(offer.totalMinor, offer.currency)}
             <span className="text-base font-medium text-muted">{addition ? " to pay now" : ` / ${per}`}</span>
           </strong>
+          {offer.vatRatePercent ? <span className="text-xs text-muted">{vatIncludedText(offer.vatRatePercent)}</span> : null}
           {addition && (
             <span className="text-sm text-muted">
               Only the added features, for the {addition.daysLeft} {addition.daysLeft === 1 ? "day" : "days"} left of your {per} ({formatMinor(addition.addonMinor, offer.currency)} / {per} prorated). Your plan still renews on {longDate(addition.renewsOn)}, then at{" "}

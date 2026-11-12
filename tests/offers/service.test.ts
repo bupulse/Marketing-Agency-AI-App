@@ -149,7 +149,7 @@ describe("making and sending an offer", () => {
     const r = await offers.sendOffer(CONSOLE, saved.id, NOW);
     expect(r).toMatchObject({ status: "sent", emailed: true, to: "biz1@example.rw" });
     expect(offerRow(saved.id).validUntil.toISOString()).toBe("2026-10-20T08:00:00.000Z");
-    expect(h.sendEmail.mock.calls[0][0]).toMatchObject({ to: "biz1@example.rw", subject: expect.stringContaining("73,000") });
+    expect(h.sendEmail.mock.calls[0][0]).toMatchObject({ to: "biz1@example.rw", subject: expect.stringContaining("86,100") });
     expect(h.sendEmail.mock.calls[0][0].text).toContain("/dashboard/billing#offer");
     expect(await code(offers.sendOffer(CONSOLE, saved.id, NOW))).toBe("conflict");
     expect(audits("send_offer")).toHaveLength(1);
@@ -175,7 +175,7 @@ describe("what the client sees", () => {
     const id = await sentOffer();
     expect(await offers.clientOffer("biz2", NOW)).toBeNull();
     const mine = await offers.clientOffer("biz1", NOW);
-    expect(mine).toMatchObject({ id, status: "sent", totalMinor: 73000, currency: "RWF", basePlanName: "Standard" });
+    expect(mine).toMatchObject({ id, status: "sent", totalMinor: 86100, netTotalMinor: 73000, vatRatePercent: 18, currency: "RWF", basePlanName: "Standard" });
     expect(mine!.features.filter((f) => f.added).map((f) => f.key)).toEqual(["aiPhotos", "websiteChat", "autopilot"]);
     // Another company cannot accept it, even with the id.
     expect(await msg(offers.acceptOffer({ userId: OTHER, actorId: OTHER, businessId: "biz2", offerId: id, method: "momo" }, NOW))).toMatch(/could not find/);
@@ -218,7 +218,7 @@ describe("accept -> pay by Mobile Money -> activate", () => {
     const id = await sentOffer();
     const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
     expect(offerRow(id)).toMatchObject({ status: "accepted", payMethod: "momo", customPlanKey: customPlanKeyFor(id) });
-    expect(r.payment).toMatchObject({ planKey: customPlanKeyFor(id), amountMinor: 73000, currency: "RWF", offerId: id, status: "pending" });
+    expect(r.payment).toMatchObject({ planKey: customPlanKeyFor(id), amountMinor: 86100, currency: "RWF", offerId: id, status: "pending" });
     expect(sub()).toMatchObject({ plan: "STANDARD", status: "ACTIVE" });
     expect(audits("accept_offer")[0]).toMatchObject({ actor: `client:${USER}` });
     // Accepting again (another tab) gives the same payment, no second plan.
@@ -305,7 +305,7 @@ describe("accept -> pay by Mobile Money -> activate", () => {
     // Renewing opens in the last 7 days of the period (docs/BILLING.md, "Renewing").
     expect(await msg(momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: LATER }))).toMatch(/is paid until 13 November 2026/);
     const renewal = await momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: new Date("2026-11-08T09:00:00Z") });
-    expect(renewal).toMatchObject({ amountMinor: 73000, currency: "RWF", offerId: null });
+    expect(renewal).toMatchObject({ amountMinor: 86100, currency: "RWF", offerId: null });
     expect(await msg(momo.startManualPayment({ userId: OTHER, plan: customPlanKeyFor(id), interval: "MONTH", now: LATER }))).toMatch(/not available/);
   });
 });
@@ -317,7 +317,7 @@ describe("accept -> pay by invoice -> activate", () => {
     const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
     const invoice = h.db.invoice.rows[0];
     expect(r.invoiceId).toBe(invoice.id);
-    expect(invoice).toMatchObject({ status: "sent", currency: "RWF", totalMinor: 73000, planKey: customPlanKeyFor(id), interval: "MONTH", createdBy: `client:${USER}` });
+    expect(invoice).toMatchObject({ status: "sent", currency: "RWF", subtotalMinor: 73000, taxRatePercent: 18, totalMinor: 86100, planKey: customPlanKeyFor(id), interval: "MONTH", createdBy: `client:${USER}` });
     expect(offerRow(id)).toMatchObject({ status: "accepted", payMethod: "invoice", invoiceId: invoice.id });
     expect(h.sendEmail).toHaveBeenCalled(); // the invoice email
     // Asking again returns the same invoice.
@@ -433,12 +433,12 @@ describe("review fixes", () => {
   const DAY = 86_400_000;
   const at = (days: number) => new Date(NOW.getTime() + days * DAY);
 
-  it("an offer invoice has no tax line whatever the VAT setting: the offer's price is the total", async () => {
+  it("an RWF offer invoice: the offer's price before VAT, plus VAT (Settings, VAT), so its total is the Mobile Money amount; the old invoice VAT rate is ignored", async () => {
     seed();
-    h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 18 } });
+    h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 5 } });
     const id = await sentOffer();
     await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
-    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 73000, taxMinor: 0, totalMinor: 73000, taxRatePercent: null });
+    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 73000, taxMinor: 13100, totalMinor: 86100, taxRatePercent: 18 });
   });
 
   it("confirming refuses a payment whose amount or currency is not the offer's price; nothing changes", async () => {
@@ -447,7 +447,7 @@ describe("review fixes", () => {
     const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
     await momo.submitManualProof(USER, { paymentId: r.payment!.id, transactionId: "MP77777777", payerPhone: "078 123 4567", network: "MTN" }, NOW);
     h.db.manualPayment.rows[0].amountMinor = 70000;
-    expect(await msg(momo.confirmManualPayment(CONSOLE, r.payment!.id, LATER))).toMatch(/70000 RWF, but the custom plan offer costs 73000 RWF/);
+    expect(await msg(momo.confirmManualPayment(CONSOLE, r.payment!.id, LATER))).toMatch(/70000 RWF, but the custom plan offer costs 86100 RWF with VAT/);
     h.db.manualPayment.rows[0].amountMinor = 73000;
     h.db.manualPayment.rows[0].currency = "USD";
     expect(await code(momo.confirmManualPayment(CONSOLE, r.payment!.id, LATER))).toBe("conflict");
@@ -461,7 +461,7 @@ describe("review fixes", () => {
     const id = await sentOffer();
     await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
     const p = await momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "YEAR", now: NOW });
-    expect(p).toMatchObject({ offerId: id, amountMinor: 73000, interval: "MONTH" });
+    expect(p).toMatchObject({ offerId: id, amountMinor: 86100, interval: "MONTH" });
     await offers.withdrawOffer(CONSOLE, id, "Client changed plans", NOW);
     expect(await msg(momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: NOW }))).toMatch(/not available|no longer open/);
   });

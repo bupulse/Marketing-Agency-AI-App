@@ -6,7 +6,9 @@ import { Panel } from "@/components/admin/ui";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
 import { Button, Field, Input, PhoneInput, Textarea } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
+import Link from "next/link";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
+import { getVatSettings } from "@/lib/billing/vat-server";
 import { sampleInvoiceDocument } from "@/lib/invoices/service";
 import { getInvoiceSettings, logoDataUrl } from "@/lib/invoices/settings";
 import { defaultPaymentInstructions, INVOICE_SETTING_LIMITS as L } from "@/lib/invoices/shared";
@@ -18,7 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function InvoiceSettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("payments.view"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const [s, momo, sample] = await Promise.all([getInvoiceSettings(), getMomoSettings(), sampleInvoiceDocument()]);
+  const [s, momo, sample, vat] = await Promise.all([getInvoiceSettings(), getMomoSettings(), sampleInvoiceDocument(), getVatSettings()]);
   const logoSrc = await logoDataUrl(s.logoPath, s.logoType);
   // The payment text starts as the one built from where clients pay by Mobile Money (Payments -> Where clients pay).
   const instructions = s.paymentInstructions || defaultPaymentInstructions(momo);
@@ -55,8 +57,14 @@ export default async function InvoiceSettingsPage({ searchParams }: { searchPara
                 <Field label="Email"><Input name="email" type="email" defaultValue={s.email} maxLength={L.email} /></Field>
                 <PhoneInput name="phone" label="Phone" defaultValue={s.phone} />
                 <Field label="Website"><Input name="website" defaultValue={s.website} maxLength={L.website} placeholder="https://bupulse.com" /></Field>
-                <Field label="TIN (optional)" hint="Printed when filled in."><Input name="tin" defaultValue={s.tin} maxLength={L.tin} /></Field>
-                <Field label="VAT rate % (optional)" hint="Empty = no tax line (the default). 18 adds an 18% VAT line."><Input name="vatRatePercent" defaultValue={s.vatRatePercent ?? ""} inputMode="decimal" placeholder="None" /></Field>
+                <div className="flex flex-col gap-1 rounded-2xl bg-soft px-4 py-3 text-[14px] sm:col-span-2">
+                  <span className="font-semibold">TIN and VAT</span>
+                  <span className="text-muted">
+                    {vat.enabled ? `RWF invoices add ${vat.ratePercent}% VAT to the prices you type.` : "VAT is off: invoices have no VAT line."} USD invoices never get VAT.{" "}
+                    {vat.tin || s.tin ? `TIN printed: ${vat.tin || s.tin}.` : "No TIN yet: invoices are printed without one."}{" "}
+                    <Link href="/admin/settings/vat" className="font-semibold underline">Change in Settings, VAT</Link>
+                  </span>
+                </div>
                 <Field label="Accent colour" hint="Headings, the total and the top band.">
                   <Input name="accentColor" type="color" defaultValue={s.accentColor} className="h-11 w-24 p-1" />
                 </Field>

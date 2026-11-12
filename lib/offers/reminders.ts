@@ -4,6 +4,8 @@ import { isServiceEnabled } from "@/lib/admin/switch";
 import { logError } from "@/lib/errors";
 import { sendOfferReminderEmail } from "./emails";
 import { DAY_MS, readAddition } from "./shared";
+import { clientPrice, vatRateFor } from "@/lib/billing/vat";
+import { getVatSettings } from "@/lib/billing/vat-server";
 
 // Accepted offers that are not paid (docs/OFFERS.md): one reminder to the company owner 3 days after accepting and one
 // after 7, from the daily Mobile Money renewals job. Each is claimed before sending (reminder3SentAt / reminder7SentAt,
@@ -29,8 +31,12 @@ export async function sendOfferReminders(now: Date = new Date(), limit = 100): P
       const release = () => prisma.planOffer.updateMany({ where: { id: offer.id, [field]: now }, data: { [field]: null, ...(day === 7 && !offer.reminder3SentAt ? { reminder3SentAt: null } : {}) } }).catch(() => undefined);
       try {
         const owner = await prisma.business.findUnique({ where: { id: offer.businessId }, select: { ceoName: true, user: { select: { email: true, name: true } } } });
+        // The offer's price is before VAT; the reminder says what the client pays (with VAT on RWF, lib/billing/vat.ts).
+        const vat = await getVatSettings();
+        const pay = (minor: number) => clientPrice(minor, offer.currency, vat);
+        const addition = readAddition(offer.options);
         const ok = owner?.user?.email
-          ? await sendOfferReminderEmail({ email: owner.user.email, name: owner.user.name ?? owner.ceoName }, { day, totalMinor: offer.adjustedMinor, currency: offer.currency, interval: offer.interval, method: offer.payMethod, addition: readAddition(offer.options) })
+          ? await sendOfferReminderEmail({ email: owner.user.email, name: owner.user.name ?? owner.ceoName }, { day, totalMinor: pay(offer.adjustedMinor), currency: offer.currency, interval: offer.interval, method: offer.payMethod, addition: addition ? { ...addition, nextRenewalMinor: pay(addition.nextRenewalMinor) } : addition, vatRatePercent: vatRateFor(offer.currency, vat) })
           : false;
         if (!ok) {
           await release();

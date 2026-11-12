@@ -115,8 +115,7 @@ export async function saveInvoiceSettingsAction(f: FormData) {
       email: text(f, "email"),
       phone: text(f, "phone"),
       website: text(f, "website"),
-      tin: text(f, "tin"),
-      vatRatePercent: text(f, "vatRatePercent"),
+      // TIN and VAT are set in Admin -> Settings -> VAT (lib/billing/vat.ts); the stored invoice values are left as they are.
       footer: text(f, "footer"),
       paymentInstructions: text(f, "paymentInstructions"),
       accentColor: text(f, "accentColor"),

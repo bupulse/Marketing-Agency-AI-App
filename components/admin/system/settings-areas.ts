@@ -4,7 +4,7 @@
 
 export const SETTINGS_BASE = "/admin/settings";
 
-export const SETTINGS_SLUGS = ["momo", "paddle", "currency", "goal", "content", "voices", "lead-alerts", "google-calendar", "calls", "availability", "trial", "loading"] as const;
+export const SETTINGS_SLUGS = ["momo", "paddle", "vat", "currency", "goal", "content", "voices", "lead-alerts", "google-calendar", "calls", "availability", "trial", "loading"] as const;
 export type SettingsSlug = (typeof SETTINGS_SLUGS)[number];
 
 export const isSettingsSlug = (v: unknown): v is SettingsSlug => typeof v === "string" && (SETTINGS_SLUGS as readonly string[]).includes(v);
@@ -15,6 +15,7 @@ export const settingsHref = (slug: SettingsSlug, anchor?: string) => `${SETTINGS
 export const SETTINGS_TITLE: Record<SettingsSlug, string> = {
   momo: "Mobile Money",
   paddle: "Card payments (Paddle)",
+  vat: "VAT (Rwanda)",
   currency: "Card prices and currency",
   goal: "Revenue goal",
   content: "Daily posts and videos",
@@ -68,6 +69,7 @@ export function settingsBackFor(has: (field: string) => boolean): string {
   if (has("dailyPanel")) return settingsHref("content", "daily-posts");
   if (has("skitPanel")) return settingsHref("content", "skit-videos");
   if (has("previewPanel")) return settingsHref("content", "first-post-preview");
+  if (has("vatPanel") || has("vatRatePercent") || has("vatTin")) return settingsHref("vat");
   if (has("currencyPanel") || has("usdToRwf") || has("cardMarginPercent") || has("displayCurrency") || has("usdToEur")) return settingsHref("currency");
   if (has("revenueGoalRwf") || has("goalStartMonth")) return settingsHref("goal");
   if (has("meetingLink") || has("organizerEmail") || has("slotMinutes") || has("bufferMinutes") || has("demoDailyCap") || has("blockedDates")) return settingsHref("calls");

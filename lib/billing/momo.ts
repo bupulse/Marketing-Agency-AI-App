@@ -14,6 +14,8 @@ import { companyPlans } from "@/lib/region-prices";
 import { matchInvoicePayment, readPaymentReviews, withPaymentReview, type PaymentReview } from "@/lib/invoices/shared";
 import { sendInvoiceReviewAlertEmail, sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
+import { clientPrice, vatBreakdown } from "./vat";
+import { getVatSettings } from "./vat-server";
 import { earlyRenewalMessage, tooEarlyToRenew } from "./renewal";
 import { checkProofObject, createProofUpload, ProofFileError, removeProofObjects, verifiedProofPath } from "./momo-proofs";
 import {
@@ -204,11 +206,14 @@ export async function startInvoicePayment(input: { userId: string; invoiceId: st
   return openPayment(input.userId, sub, { planKey: invoice.planKey, interval: invoice.interval, amountMinor: invoice.totalMinor, currency: invoice.currency, invoiceId: invoice.id, offerId: null, reference: invoice.number }, now);
 }
 
-/** A custom plan's Mobile Money price: its own amount in its own currency, when the company's region takes Mobile Money. */
+/**
+ * A custom plan's Mobile Money price: its own amount (stored before VAT) in its own currency, with VAT when it is RWF
+ * (lib/billing/vat.ts), when the company's region takes Mobile Money.
+ */
 async function customPlanMomoPrice(businessId: string, plan: { monthlyPriceCents: number; yearlyPriceCents: number; currency: string }, interval: BillingInterval) {
-  const { region } = await companyPlans(businessId);
+  const [{ region }, vat] = await Promise.all([companyPlans(businessId), getVatSettings()]);
   if (!region.paymentMethods.includes("momo") || plan.currency.toUpperCase() !== region.currency.toUpperCase()) return null;
-  return { amountMinor: priceCents(plan, interval), currency: plan.currency.toUpperCase() };
+  return { amountMinor: clientPrice(priceCents(plan, interval), plan.currency, vat), currency: plan.currency.toUpperCase() };
 }
 
 /**
@@ -233,7 +238,9 @@ export async function startOfferPayment(input: { userId: string; offerId: string
   }
   const { region } = await companyPlans(business.id);
   if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Choose Pay by invoice, or contact support.");
-  return openPayment(input.userId, sub, { planKey: offer.customPlanKey, interval: offer.interval, amountMinor: offer.adjustedMinor, currency: offer.currency, invoiceId: null, offerId: offer.id, reference: null }, now);
+  // The offer's price is before VAT; the client pays it with VAT when it is in RWF (lib/billing/vat.ts).
+  const amountMinor = clientPrice(offer.adjustedMinor, offer.currency, await getVatSettings());
+  return openPayment(input.userId, sub, { planKey: offer.customPlanKey, interval: offer.interval, amountMinor, currency: offer.currency, invoiceId: null, offerId: offer.id, reference: null }, now);
 }
 
 type PaymentTarget = { planKey: string; interval: BillingInterval; amountMinor: number; currency: string; invoiceId: string | null; offerId: string | null; reference: string | null };
@@ -437,7 +444,8 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
   // A payment of a custom plan offer (directly, or through the invoice made from it) also settles the offer.
   const offer = await offerForPayment(payment);
   if (offer && offer.status !== "accepted") throw new AdminError("conflict", `The custom plan offer this payment is for is ${offer.status}. Reject this payment (and refund it if the money arrived) instead.`);
-  if (offer) assertOfferAmount(offer, payment);
+  const vat = await getVatSettings();
+  if (offer) assertOfferAmount(offer, payment, vat);
   // Features added to the running plan (docs/OFFERS.md): the plan they were priced on must still be the one running;
   // the subscription moves to the new custom plan and its period does not change.
   const addition = offer ? readAddition(offer.options) : null;
@@ -528,7 +536,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
         });
         if (written.count !== 1) throw new SubscriptionMoved();
         // The offer is paid and its custom plan replaces any older one of the company (in the same transaction).
-        if (offer) await markOfferPaidInTx(tx, ctx, { offer, paymentId: payment.id, invoiceId: payment.invoiceId, planKey: plan.key, amountMinor: payment.amountMinor, currency: payment.currency }, now);
+        if (offer) await markOfferPaidInTx(tx, ctx, { offer, paymentId: payment.id, invoiceId: payment.invoiceId, planKey: plan.key, amountMinor: payment.amountMinor, currency: payment.currency, vat }, now);
         // The money, for the revenue roll-up and the activity feed (same shape of row as a Paddle payment event).
         await tx.billingEvent.create({
           data: {
@@ -540,7 +548,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
             payload: {
               event_type: "manual_payment.confirmed",
               occurred_at: now.toISOString(),
-              data: { id: payment.reference, invoice_id: payment.invoiceId, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, plan: plan.key, interval: payment.interval, transaction_id: transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
+              data: { id: payment.reference, invoice_id: payment.invoiceId, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, vat_minor: vatBreakdown(payment.amountMinor, payment.currency, vat)?.vatMinor ?? 0, plan: plan.key, interval: payment.interval, transaction_id: transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
             },
           },
         });
@@ -564,7 +572,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
     }
     let emailed = false;
     if (client.email) {
-      emailed = await sendPlanActiveEmail({ email: client.email, name: client.name }, { planName: plan.name, interval: payment.interval, amountMinor: payment.amountMinor, currency: payment.currency, reference: payment.reference, periodEnd: period.end }).catch(() => false);
+      emailed = await sendPlanActiveEmail({ email: client.email, name: client.name }, { planName: plan.name, interval: payment.interval, amountMinor: payment.amountMinor, currency: payment.currency, reference: payment.reference, periodEnd: period.end, vat: vatBreakdown(payment.amountMinor, payment.currency, vat) }).catch(() => false);
     }
     return { id: paymentId, status: "confirmed" as const, plan: plan.key, periodMode: period.mode, periodStart: period.start, periodEnd: period.end, emailed };
   }

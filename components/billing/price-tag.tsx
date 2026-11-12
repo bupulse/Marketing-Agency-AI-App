@@ -1,5 +1,6 @@
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { cn } from "@/lib/cn";
+import { VAT_INCLUDED_NOTE } from "@/lib/billing/vat";
 import { formatPlanPrice, formatPrice, intervalWord, yearlyDiscountPercent, type PlanPrices } from "./helpers";
 
 /**
@@ -31,6 +32,7 @@ export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices; in
         </span>
         <span className={cn("text-muted", size === "sm" && "text-sm")}>/ {intervalWord(interval)}</span>
       </p>
+      {plan.vatRatePercent ? <p className="text-xs text-muted">{VAT_INCLUDED_NOTE}</p> : null}
     </div>
   );
 }

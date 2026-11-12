@@ -6,6 +6,8 @@ import { moneyInput } from "@/lib/invoices/shared";
 import type { addonPriceTable } from "@/lib/offers/addon-prices";
 import { ADDONS } from "@/lib/offers/shared";
 import { saveAddonPricesAction } from "@/app/admin/(console)/(money)/addon-prices/actions";
+import { vatApplies, type VatSettings } from "@/lib/billing/vat";
+import { VatHint } from "@/components/admin/vat-hint";
 
 export type AddonTable = Awaited<ReturnType<typeof addonPriceTable>>;
 
@@ -16,7 +18,7 @@ const kindText = (a: (typeof ADDONS)[number]) =>
  * Add-on prices: pick a region (a tile each, with how many add-ons are priced there), then its prices as one form.
  * Only one region shows at a time; old #region-XX links open that region.
  */
-export function AddonPricesView({ table, regionKey, sp }: { table: AddonTable; regionKey: string; sp: SearchParamsLike }) {
+export function AddonPricesView({ table, regionKey, sp, vat = null }: { table: AddonTable; regionKey: string; sp: SearchParamsLike; /** The VAT settings: RWF prices are typed before VAT; each shows what the client pays. */ vat?: VatSettings | null }) {
   const current = table.find((t) => t.region.key === regionKey) ?? table[0];
   if (!current) return <EmptyState icon={Globe} title="No active price regions." hint="Add or switch on a region in Money, Regions first." />;
   const { region, prices } = current;
@@ -34,7 +36,7 @@ export function AddonPricesView({ table, regionKey, sp }: { table: AddonTable; r
         allValue={table[0].region.key}
         options={table.map((t) => ({ value: t.region.key, label: `${t.region.name}`, hint: `${t.region.currency} · ${priced(t)} of ${ADDONS.length} priced`, icon: Globe, tone: priced(t) < ADDONS.length ? "orange" : "green" }))}
       />
-      <Panel icon={Tags} tone="green" title={`${region.name} (${region.key})`} description={`Prices in ${region.currency} a month. Leave a field empty for "no price here": the offer editor then warns and prices it at 0.`} id={`prices-${region.key}`}>
+      <Panel icon={Tags} tone="green" title={`${region.name} (${region.key})`} description={`Prices in ${region.currency} a month${vat && vatApplies(region.currency, vat) ? `, before VAT (clients pay them with ${vat.ratePercent}% VAT)` : ""}. Leave a field empty for "no price here": the offer editor then warns and prices it at 0.`} id={`prices-${region.key}`}>
         <form action={saveAddonPricesAction} id={`region-${region.key}`} className="flex scroll-mt-24 flex-col gap-4">
           <input type="hidden" name="regionKey" value={region.key} />
           <ul aria-label={`Add-on prices in ${region.name}`} className="flex flex-col divide-y divide-line">
@@ -49,6 +51,7 @@ export function AddonPricesView({ table, regionKey, sp }: { table: AddonTable; r
                       {!p && <StatusPill tone="warn">No price</StatusPill>}
                     </span>
                     <span className="text-[12.5px] text-muted">{kindText(a)} · <span className="font-mono">{a.key}</span></span>
+                    {p && vat ? <VatHint minor={p.monthlyMinor} currency={region.currency} vat={vat} /> : null}
                   </span>
                   <input type="hidden" name={`before_${a.key}`} value={value} />
                   <label className="flex items-center gap-2 text-[13px] font-semibold text-muted">

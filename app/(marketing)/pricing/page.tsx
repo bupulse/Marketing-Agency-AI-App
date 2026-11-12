@@ -32,7 +32,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   // ?region= only counts when REGION_OVERRIDE=1 (local development); see lib/region.ts.
   const region = await displayRegionWithOverride(sp.region);
-  const [plans, trialDays, canLocate] = await Promise.all([getRegionPlans(region.key), getSetting("trialDays"), geoLookupAvailable()]);
+  const [plans, trialDays, canLocate] = await Promise.all([getRegionPlans(region.key, { withVat: true }), getSetting("trialDays"), geoLookupAvailable()]);
   const days = `${trialDays} ${trialDays === 1 ? "day" : "days"}`;
   // Rwanda visitors ask for a free quote instead of starting a trial (lib/quote/cta.ts): the steps, the custom plan
   // card and the FAQ say so, and no line here sends them to the trial.

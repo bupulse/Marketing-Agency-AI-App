@@ -5,6 +5,7 @@ import { DEFAULT_CARD_MARGIN_PERCENT, DEFAULT_USD_TO_RWF } from "@/lib/region-fo
 import { DEFAULT_BUFFER_MINUTES, DEFAULT_SLOT_MINUTES, isValidYmd } from "@/lib/demo/slots";
 import { isPageLoader, type PageLoader } from "@/lib/ui/page-loader";
 import { isDisplayCurrency, type DisplayCurrency } from "@/lib/money/display";
+import { DEFAULT_VAT_SETTINGS, VAT_SETTING_KEYS, vatTinProblem } from "@/lib/billing/vat";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -62,6 +63,12 @@ export type Settings = {
   dailyPosts: boolean;
   /** Talking skit videos made with Seedance 2.0 on Higgsfield (lib/skits). Off by default until the owner's lip-sync test: skits then wait as "Voice received". */
   skitVideos: boolean;
+  /** VAT on RWF prices (lib/billing/vat.ts). On by default: BuPulse is VAT-registered with RRA. */
+  vatEnabled: boolean;
+  /** The VAT rate in percent (18 in Rwanda). */
+  vatRatePercent: number;
+  /** BuPulse's TIN at RRA, printed on receipts and invoices. Empty until the owner fills it in. */
+  vatTin: string;
 };
 export type SettingName = keyof Settings;
 
@@ -84,6 +91,9 @@ const KEYS: Record<SettingName, string> = {
   firstPostPreview: "sales.firstPostPreview",
   dailyPosts: "content.dailyPosts",
   skitVideos: "content.skitVideos",
+  vatEnabled: VAT_SETTING_KEYS.enabled,
+  vatRatePercent: VAT_SETTING_KEYS.ratePercent,
+  vatTin: VAT_SETTING_KEYS.tin,
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -105,6 +115,9 @@ export const DEFAULT_SETTINGS: Settings = {
   firstPostPreview: false,
   dailyPosts: true,
   skitVideos: false,
+  vatEnabled: DEFAULT_VAT_SETTINGS.enabled,
+  vatRatePercent: DEFAULT_VAT_SETTINGS.ratePercent,
+  vatTin: DEFAULT_VAT_SETTINGS.tin,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -160,6 +173,18 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   firstPostPreview: (value) => value === true || value === "on" || value === "true" || value === "1",
   dailyPosts: (value) => value === true || value === "on" || value === "true" || value === "1",
   skitVideos: (value) => value === true || value === "on" || value === "true" || value === "1",
+  vatEnabled: (value) => value === true || value === "on" || value === "true" || value === "1",
+  vatRatePercent: (value) => {
+    const n = number("The VAT rate (%)", 0, 100, false)(value);
+    if (n <= 0) throw new AdminError("invalid", "The VAT rate must be above 0. To stop adding VAT, turn the switch off.");
+    return n;
+  },
+  vatTin: (value) => {
+    const v = String(value ?? "").trim();
+    const problem = vatTinProblem(v);
+    if (problem) throw new AdminError("invalid", problem);
+    return v;
+  },
   goalStartMonth: (value) => {
     const v = String(value ?? "").trim();
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new AdminError("invalid", "The launch month must look like 2026-11 (year and month).");
