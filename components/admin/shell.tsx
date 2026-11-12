@@ -7,6 +7,7 @@ import { CurrencySwitch } from "./currency-switch";
 import type { DisplayCurrency } from "@/lib/money/display";
 import { ArrowUpRight, ChevronDown, ChevronRight, Ellipsis, LayoutGrid, LogOut, Search, X } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { BrandLockup } from "@/components/brand/lockup";
 import { ThemeToggle } from "@/components/theme";
 import type { BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -88,20 +89,12 @@ function waitingIn(badges: ShellBadges, keys: BadgeKey[]): number {
 
 const groupBadgeKeys = (g: AdminNavGroup): BadgeKey[] => g.items.flatMap((i) => (i.badge ? [i.badge] : []));
 
-/** The admin mark: the pulse line on a gradient tile, BuPulse and "Admin". Works on light and dark. */
+/** BuPulse's real logo and "Admin" (components/brand/lockup.tsx), linking to the Overview. Light and dark. */
 function AdminBrand({ compact }: { compact?: boolean }) {
   const toHref = useHostHref();
   return (
-    <Link href={toHref("/admin")} className="flex items-center gap-2.5 rounded-xl no-underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30">
-      <span aria-hidden className="inline-flex size-9 items-center justify-center rounded-[11px] bg-brand-gradient text-white shadow-[0_8px_18px_-10px_rgba(47,107,255,0.9)]">
-        <svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 12h4l3-7 4 14 3-7h4" />
-        </svg>
-      </span>
-      <span className="flex flex-col leading-none">
-        <span className="text-[16px] font-bold tracking-[-0.01em] text-text">BuPulse</span>
-        {!compact && <span className="pt-0.5 text-[11px] font-bold uppercase tracking-[0.1em] text-muted">Admin console</span>}
-      </span>
+    <Link href={toHref("/admin")} className={cn("inline-flex items-center rounded-lg no-underline", !compact && "self-start", "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30")}>
+      <BrandLockup service="Admin" height={compact ? 26 : 32} eager />
     </Link>
   );
 }
@@ -394,7 +387,7 @@ export function AdminShell({
 
       {/* Computer: the sidebar, full height, its own scroll. */}
       <aside aria-label="Sidebar" className="hidden shrink-0 border-r border-line bg-surface lg:sticky lg:top-0 lg:flex lg:h-dvh lg:w-[272px] lg:flex-col dark:bg-[#111117]">
-        <div className="flex flex-col gap-4 px-4 pb-3 pt-5">
+        <div className="flex flex-col gap-5 px-4 pb-3 pt-6">
           <AdminBrand />
           <button
             type="button"
