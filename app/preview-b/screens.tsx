@@ -13,6 +13,8 @@ import { chosen, KitStyles, PageHeader } from "@/components/admin/kit";
 import { SETTINGS_PARTS, SettingsView, type SettingsPart } from "@/components/settings/settings-view";
 import { TeamManager } from "@/components/team/team-manager";
 import { Users } from "lucide-react";
+import { billingPreview, usagePreview } from "./money-screens";
+import { connectionsPreview, connectorsPreview, domainsPreview, storesPreview, upgradePreview } from "./connect-screens";
 
 const INDUSTRIES = [
   { slug: "bakery", name: "Bakery and pastry" },
@@ -130,4 +132,11 @@ export const PREVIEW_B_SCREENS: Record<string, (sp: Sp) => ReactNode | Promise<R
   brand,
   settings,
   "settings/team": team,
+  billing: billingPreview,
+  usage: usagePreview,
+  upgrade: upgradePreview,
+  domains: domainsPreview,
+  connections: connectionsPreview,
+  connectors: connectorsPreview,
+  stores: storesPreview,
 };
