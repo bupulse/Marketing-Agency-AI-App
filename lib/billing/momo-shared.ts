@@ -1,6 +1,7 @@
 // Manual Mobile Money payments: the parts with no database or server imports, so the client components, the
 // admin pages and the tests share one set of rules (docs/MOMO.md).
 import { z } from "zod";
+import { vatOf, withVat } from "@/lib/vat";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { addMonths, MANUAL_GRACE_DAYS } from "./period";
 
@@ -127,6 +128,15 @@ export type MomoPrice = {
 };
 
 type VatPart = { vatMinor: number; totalMinor: number };
+
+/**
+ * A price before VAT plus a region's VAT, as what a client sends by Mobile Money (custom plan offers and their
+ * renewals: docs/OFFERS.md). At 0% the amount is unchanged and there is no VAT part.
+ */
+export function withRegionVat(netMinor: number, currency: string, region: { vatRateBps?: number | null; vatLabel?: string | null } | null | undefined): MomoPrice {
+  const vat = withVat(netMinor, vatOf(region));
+  return vat.vatMinor > 0 ? { amountMinor: vat.totalMinor, currency: currency.toUpperCase(), vatMinor: vat.vatMinor, vatRateBps: vat.rateBps } : { amountMinor: netMinor, currency: currency.toUpperCase(), vatMinor: 0, vatRateBps: null };
+}
 
 /**
  * The price is typed before VAT; a region with VAT (Rwanda, 18%) adds it on top, so a 50,000 RWF plan is sent as

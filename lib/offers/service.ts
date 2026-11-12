@@ -9,6 +9,8 @@ import { logError } from "@/lib/errors";
 import { featureLabel, FEATURES, isFeatureKey, validateFeatureSet, type FeatureKey } from "@/lib/features";
 import { capabilitiesOf, clearPlanCache, getPlan, priceCents } from "@/lib/plan-catalog";
 import { companyPlans } from "@/lib/region-prices";
+import { companyRegion } from "@/lib/region";
+import { vatOf, withVat } from "@/lib/vat";
 import { formatMinor, type RegionInfo } from "@/lib/region-format";
 import { ManualPaymentError, startOfferPayment } from "@/lib/billing/momo";
 import { renewalOpensAt } from "@/lib/billing/renewal";
@@ -308,7 +310,7 @@ export async function sendOffer(ctx: AdminContext, id: string, now: Date = new D
   }
   const emailed = await sendOfferEmail(
     { email: owner.user.email, name: owner.user.name ?? owner.ceoName },
-    { company: owner.name, totalMinor: row.adjustedMinor, currency: row.currency, interval: row.interval, features: options.added.map(featureLabel), validUntil, note: row.note, addition: readAddition(row.options) },
+    { company: owner.name, totalMinor: row.adjustedMinor, currency: row.currency, interval: row.interval, features: options.added.map(featureLabel), validUntil, note: row.note, addition: readAddition(row.options), vat: withVat(row.adjustedMinor, vatOf(await companyRegion(row.businessId))) },
   ).catch(() => false);
   return { id, status: "sent" as const, validUntil, emailed, to: owner.user.email };
 }
@@ -483,7 +485,13 @@ export async function clientOffer(businessId: string, now: Date = new Date()): P
   if (!row || isOfferExpired(row, now)) return null;
   // Features being added to a card plan are paid by the card subscription itself, never with the offer's pay buttons.
   if (readCardPlan(row.options)) return null;
-  return clientViewOf(adminView(row, ""));
+  return withOfferVat(clientViewOf(adminView(row, "")), await companyRegion(businessId));
+}
+
+/** The offer as the client sees it, with the region's VAT on its (before-VAT) price; unchanged at 0%. */
+export function withOfferVat(view: ClientOfferView, region: { vatRateBps?: number | null; vatLabel?: string | null } | null): ClientOfferView {
+  const vat = withVat(view.totalMinor, vatOf(region));
+  return vat.vatMinor > 0 ? { ...view, vat } : view;
 }
 
 /** card: the offer is accepted here and paid in the card checkout (lib/offers/card.ts startOfferCardCheckout). */
@@ -584,11 +592,11 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
   const fresh = await prisma.planOffer.findUnique({ where: { id: row.id } });
   if (!fresh || fresh.status !== "accepted") throw new OfferError("This offer is no longer open. Ask us for a new one.");
   // Card: accepted; the checkout itself is opened by startOfferCardCheckout (lib/offers/card.ts).
-  if (method === "card") return { offer: clientViewOf(adminView(fresh, "")), payment: null, invoiceId: null };
+  if (method === "card") return { offer: withOfferVat(clientViewOf(adminView(fresh, "")), region), payment: null, invoiceId: null };
   if (method === "momo") {
     try {
       const payment = await startOfferPayment({ userId: input.userId, offerId: row.id, now });
-      return { offer: clientViewOf(adminView(fresh, "")), payment, invoiceId: null };
+      return { offer: withOfferVat(clientViewOf(adminView(fresh, "")), region), payment, invoiceId: null };
     } catch (error) {
       if (error instanceof ManualPaymentError) throw new OfferError(error.message);
       throw error;
@@ -596,7 +604,7 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
   }
   const invoiceId = await ensureOfferInvoice(ctx, fresh, input.userId, now);
   const after = await prisma.planOffer.findUnique({ where: { id: row.id } });
-  return { offer: clientViewOf(adminView(after ?? fresh, "")), payment: null, invoiceId };
+  return { offer: withOfferVat(clientViewOf(adminView(after ?? fresh, "")), region), payment: null, invoiceId };
 }
 
 /** An addition being accepted: the same plan must still be running; the amount is prorated for today's days left. */

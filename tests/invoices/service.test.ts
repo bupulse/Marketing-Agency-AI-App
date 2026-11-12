@@ -40,6 +40,13 @@ import { MOMO_SETTING_KEY } from "@/lib/billing/momo-shared";
 import { cardPaymentOf, INVOICE_SETTING_KEY, invoiceForCardPayment, matchInvoicePayment, type CardPayment } from "@/lib/invoices/shared";
 import * as inv from "@/lib/invoices/service";
 import { resetRegionCache } from "@/lib/region";
+import { REGION_SEEDS } from "@/lib/region-format";
+
+/** The regions with Rwanda's VAT switched on (Admin -> Regions): the seeds have it off until BuPulse is VAT-registered. */
+function rwandaVat(bps = 1800) {
+  h.db.pricingRegion.rows.push(...REGION_SEEDS.map((r) => ({ ...r, countries: [...r.countries], paymentMethods: [...r.paymentMethods], vatRateBps: r.key === "RW" ? bps : 0 })));
+  resetRegionCache();
+}
 import { resetRegionPriceCache } from "@/lib/region-prices";
 
 const CONSOLE = consoleContext("198.51.100.1");
@@ -129,7 +136,7 @@ describe("activation: No trial, send invoice", () => {
     seed();
     const r = await inv.createActivationInvoice(CONSOLE, { businessId: "biz1" }, NOW);
     expect(r).toMatchObject({ number: "BP-INV-0001", created: true });
-    expect(invoice()).toMatchObject({ status: "draft", currency: "RWF", planKey: "PRO", interval: "MONTH", subtotalMinor: 35000, taxRatePercent: 18, taxMinor: 6300, totalMinor: 41300, createdBy: "admin" }); // Rwanda's 18% VAT (Regions)
+    expect(invoice()).toMatchObject({ status: "draft", currency: "RWF", planKey: "PRO", interval: "MONTH", subtotalMinor: 35000, taxMinor: 0, totalMinor: 35000, createdBy: "admin" });
     expect(invoice().lines).toEqual([{ description: "BuPulse Pro plan, monthly (1 month)", quantity: 1, unitMinor: 35000 }]);
     expect(invoice().issueDate.toISOString()).toBe("2026-10-13T00:00:00.000Z");
     expect(invoice().dueDate.toISOString()).toBe("2026-10-16T00:00:00.000Z");
@@ -138,9 +145,11 @@ describe("activation: No trial, send invoice", () => {
     expect(h.db.subscription.rows[0].status).toBe("PENDING_DEMO"); // nothing opens until it is paid
   });
 
-  it("yearly, VAT from the settings, USD outside Rwanda", async () => {
+  it("yearly, VAT from the company's region (Rwanda switched to 18%), USD outside Rwanda without VAT", async () => {
     seed();
-    h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 18 } });
+    // The old invoice VAT setting is no longer read: only the region's rate counts.
+    h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 5 } });
+    rwandaVat();
     await inv.createActivationInvoice(CONSOLE, { businessId: "biz1", interval: "YEAR" }, NOW);
     expect(invoice()).toMatchObject({ interval: "YEAR", subtotalMinor: 350000, taxRatePercent: 18, taxMinor: 63000, totalMinor: 413000 });
     company("bizG", OTHER, { region: "GLOBAL" });
@@ -148,7 +157,7 @@ describe("activation: No trial, send invoice", () => {
     h.db.planRegionPrice.rows.push({ id: "prp_pro_g", planKey: "PRO", regionKey: "GLOBAL", currency: "USD", monthlyMinor: 9900, yearlyMinor: 99000 });
     resetRegionPriceCache();
     await inv.createActivationInvoice(CONSOLE, { businessId: "bizG" }, NOW);
-    expect(h.db.invoice.rows[1]).toMatchObject({ currency: "USD", subtotalMinor: 9900 });
+    expect(h.db.invoice.rows[1]).toMatchObject({ currency: "USD", subtotalMinor: 9900, taxRatePercent: null, taxMinor: 0, totalMinor: 9900 });
   });
 
   it("refuses the API, a plan the region does not sell, and a company already paying", async () => {
@@ -162,10 +171,10 @@ describe("activation: No trial, send invoice", () => {
 });
 
 describe("the editor", () => {
-  it("saves lines, due date, notes and billing contact, and recomputes the totals with the VAT setting", async () => {
+  it("saves lines, due date, notes and billing contact, and recomputes the totals with the region's VAT", async () => {
     seed();
     const id = await draft();
-    h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 18 } });
+    rwandaVat();
     await inv.updateInvoiceDraft(CONSOLE, id, { lines: [{ description: "Pro plan", quantity: 1, unitMinor: 30000 }, { description: "Set-up", quantity: 2, unitMinor: 5000 }], dueDate: "2026-10-20", notes: "Discount agreed in the demo", billingEmail: "Accounts@Inzu.rw" });
     expect(invoice()).toMatchObject({ subtotalMinor: 40000, taxRatePercent: 18, taxMinor: 7200, totalMinor: 47200, notes: "Discount agreed in the demo", billingEmail: "accounts@inzu.rw" });
     expect(invoice().dueDate.toISOString()).toBe("2026-10-20T00:00:00.000Z");
@@ -198,7 +207,7 @@ describe("send", () => {
     expect(invoice().billTo).toMatchObject({ businessName: "Inzu Fashion", ownerName: "Aline Uwase", phone: "+250 788 123 456", address: "M Peace Plaza, 8th floor — KN 4 Avenue, Kigali" });
     expect(invoice().seller).toMatchObject({ seller: { businessName: "BuPulse" }, payment: { details: { merchantCode: "123456" } } });
     const mail = h.sendEmail.mock.calls[0][0];
-    expect(mail.subject).toBe("Invoice BP-INV-0001 from BuPulse: 41,300 RWF due 16 October 2026");
+    expect(mail.subject).toBe("Invoice BP-INV-0001 from BuPulse: 35,000 RWF due 16 October 2026");
     expect(mail.html).toContain("https://bupulse.com/dashboard/billing?invoice=BP-INV-0001");
     expect(mail.html).toContain("16 October 2026");
     expect(mail.attachments?.[0].filename).toBe("BP-INV-0001.pdf");
@@ -239,7 +248,7 @@ describe("Mobile Money with the invoice number as the reference", () => {
     seed();
     const id = await sent();
     const pay = await momo.startInvoicePayment({ userId: USER, invoiceId: id, now: NOW });
-    expect(pay).toMatchObject({ reference: "BP-INV-0001", invoiceId: id, amountMinor: 41300, vatMinor: 6300, vatRateBps: 1800, currency: "RWF", planKey: "PRO", interval: "MONTH" });
+    expect(pay).toMatchObject({ reference: "BP-INV-0001", invoiceId: id, amountMinor: 35000, currency: "RWF", planKey: "PRO", interval: "MONTH" });
     // Starting again returns the same payment.
     expect((await momo.startInvoicePayment({ userId: USER, invoiceId: id, now: NOW })).id).toBe(pay.id);
     await momo.submitManualProof(USER, { paymentId: pay.id, transactionId: "MP99887766", payerPhone: "078 123 4567", network: "MTN" }, NOW);
@@ -248,7 +257,7 @@ describe("Mobile Money with the invoice number as the reference", () => {
     expect(invoice()).toMatchObject({ status: "paid", paidBy: `manual_payment:${pay.id}` });
     expect(h.db.subscription.rows[0]).toMatchObject({ status: "ACTIVE", plan: "PRO", provider: "MANUAL_MOMO", interval: "MONTH" });
     expect(audits("invoice_paid")).toHaveLength(1);
-    expect(h.db.billingEvent.rows[0].payload.data).toMatchObject({ id: "BP-INV-0001", invoice_id: id, amount_minor: 41300, vat_minor: 6300 });
+    expect(h.db.billingEvent.rows[0].payload.data).toMatchObject({ id: "BP-INV-0001", invoice_id: id, amount_minor: 35000 });
     // Replay: the paid invoice cannot be paid again, and the confirmed payment cannot be confirmed twice.
     expect(await msg(momo.startInvoicePayment({ userId: USER, invoiceId: id, now: NOW }))).toBe("This invoice is already paid.");
     expect(await code(momo.confirmManualPayment(CONSOLE, pay.id, NOW))).toBe("conflict");
@@ -298,7 +307,7 @@ describe("mark as paid (by hand)", () => {
     expect(r).toMatchObject({ status: "paid", number: "BP-INV-0001" });
     expect(r.periodEnd?.toISOString()).toBe("2026-11-13T08:00:00.000Z");
     const pay = h.db.manualPayment.rows[0];
-    expect(pay).toMatchObject({ status: "confirmed", reference: "BP-INV-0001", invoiceId: id, network: "BANK", transactionId: "BP-INV-0001/TRF-2026-0042", amountMinor: 41300 });
+    expect(pay).toMatchObject({ status: "confirmed", reference: "BP-INV-0001", invoiceId: id, network: "BANK", transactionId: "BP-INV-0001/TRF-2026-0042", amountMinor: 35000 });
     expect(invoice()).toMatchObject({ status: "paid", paidBy: `manual_payment:${pay.id}` });
     expect(h.db.subscription.rows[0]).toMatchObject({ status: "ACTIVE", plan: "PRO" });
     expect(audits("confirm_momo_payment")).toHaveLength(1);
@@ -399,7 +408,7 @@ describe("reminders and card", () => {
     expect(await inv.sendInvoiceReminders(new Date("2026-10-16T05:41:00Z"))).toBe(0);
     expect(invoice().reminderSentAt).toBeNull(); // a failed send gives the claim back
     expect(await inv.sendInvoiceReminders(new Date("2026-10-16T05:41:00Z"))).toBe(1);
-    expect(h.sendEmail.mock.calls.at(-1)?.[0]).toMatchObject({ to: "biz1@example.rw", subject: "Reminder: invoice BP-INV-0001 (41,300 RWF) is due 16 October 2026" });
+    expect(h.sendEmail.mock.calls.at(-1)?.[0]).toMatchObject({ to: "biz1@example.rw", subject: "Reminder: invoice BP-INV-0001 (35,000 RWF) is due 16 October 2026" });
     expect(await inv.sendInvoiceReminders(new Date("2026-10-17T05:41:00Z"))).toBe(0);
     void id;
   });

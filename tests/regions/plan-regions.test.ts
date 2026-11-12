@@ -42,6 +42,12 @@ function seed() {
   );
 }
 
+/** Rwanda's VAT switched on in Admin -> Regions (the seeds have it off until BuPulse is VAT-registered). */
+function rwandaVat(bps = 1800) {
+  h.db.pricingRegion.rows.find((r) => r.key === "RW")!.vatRateBps = bps;
+  resetRegionCache();
+}
+
 beforeEach(() => {
   h.db = createFakeDb();
   resetPlanCache();
@@ -64,11 +70,11 @@ describe("the seeded regions", () => {
     expect(seen.get("NG")).toBe("WEST_AFRICA");
   });
 
-  it("Rwanda, East Africa and the rest of the world are live; the others are coming soon; Rwanda has 18% VAT", () => {
+  it("Rwanda, East Africa and the rest of the world are live; the others are coming soon; no VAT until BuPulse is VAT-registered", () => {
     expect(REGION_SEEDS.filter((r) => r.active).map((r) => r.key)).toEqual(["RW", "EAC", "GLOBAL"]);
     expect(REGION_SEEDS.find((r) => r.key === "GLOBAL")).toMatchObject({ name: "Rest of the world", countries: [] });
-    expect(REGION_SEEDS.find((r) => r.key === "RW")?.vatRateBps).toBe(1800);
-    expect(REGION_SEEDS.filter((r) => (r.vatRateBps ?? 0) > 0).map((r) => r.key)).toEqual(["RW"]);
+    expect(REGION_SEEDS.find((r) => r.key === "RW")).toMatchObject({ vatRateBps: 0, vatLabel: "VAT" });
+    expect(REGION_SEEDS.filter((r) => (r.vatRateBps ?? 0) > 0)).toEqual([]);
   });
 
   it("the ISO list has 250 unique codes (Kosovo included) and holds every sign-up country", () => {
@@ -122,7 +128,15 @@ describe("plans per region", () => {
     expect(await getRegionPlans("WEST_AFRICA")).toEqual([]);
   });
 
-  it("Rwanda's plans carry 18% VAT on top; East Africa and the rest of the world carry none", async () => {
+  it("with VAT off (the default), Rwanda sees and pays exactly today's prices, with no VAT", async () => {
+    const [starter, business] = await getRegionPlans("RW");
+    expect([starter.monthlyPriceCents, business.monthlyPriceCents]).toEqual([15000, 50000]);
+    expect(starter.vat).toBeNull();
+    expect(business.vat).toBeNull();
+  });
+
+  it("Rwanda switched to 18%: its plans carry VAT on top; East Africa and the rest of the world carry none", async () => {
+    rwandaVat();
     const [starter, business] = await getRegionPlans("RW");
     expect(starter.monthlyPriceCents).toBe(15000); // before VAT
     expect(business.vat).toEqual({ rateBps: 1800, label: "VAT", monthly: { netMinor: 50000, vatMinor: 9000, totalMinor: 59000, rateBps: 1800, label: "VAT" }, yearly: { netMinor: 500000, vatMinor: 90000, totalMinor: 590000, rateBps: 1800, label: "VAT" } });
@@ -247,11 +261,12 @@ describe("admin: where a plan is shown", () => {
     const opts = await planRegionOptions("BUSINESS");
     expect(opts.filter((o) => o.selected).map((o) => [o.key, o.selected])).toEqual([["RW", { monthlyMinor: 50000, yearlyMinor: 500000 }]]);
     expect(opts.find((o) => o.key === "EUROPE")).toMatchObject({ status: "COMING_SOON", selected: null });
-    expect(opts.find((o) => o.key === "RW")).toMatchObject({ vatRateBps: 1800, status: "LIVE" });
+    expect(opts.find((o) => o.key === "RW")).toMatchObject({ vatRateBps: 0, status: "LIVE" });
     expect((await planRegionOptions(null)).filter((o) => o.selected).map((o) => o.key)).toEqual(["GLOBAL"]);
   });
 
   it("adds East Africa and the rest of the world to a Rwanda plan, re-prices Rwanda, and audits once", async () => {
+    rwandaVat();
     const r = await setPlanRegions(CONSOLE, "BUSINESS", [{ regionKey: "RW", monthlyMinor: 55000, yearlyMinor: 550000 }, { regionKey: "EAC", monthlyMinor: 3000, yearlyMinor: 30000 }, { regionKey: "GLOBAL" }]);
     expect(r).toEqual({ changed: true, regions: ["RW", "EAC", "GLOBAL"] });
     resetRegionPriceCache();

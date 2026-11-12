@@ -37,10 +37,12 @@ export function OfferBanner({ offer, checkingReference = null }: { offer: Client
     : offer.status === "accepted"
       ? "Your custom plan is waiting for payment."
       : "Your custom plan is ready.";
+  // The offer's price is before VAT; where the region has VAT the total is said too (lib/offers/service.ts withOfferVat).
+  const vat = offer.vat && offer.vat.vatMinor > 0 ? ` + ${offer.vat.label} = ${formatMinor(offer.vat.totalMinor, offer.currency)}` : "";
   // Added features are paid once now, prorated for the days left; the plan's own price changes only at the renewal.
   const detail = addition
-    ? `${formatMinor(offer.totalMinor, offer.currency)} paid once, for the ${addition.daysLeft} ${addition.daysLeft === 1 ? "day" : "days"} left of your ${per}. Then ${formatMinor(addition.nextRenewalMinor, offer.currency)} / ${per} from your next renewal.`
-    : `${formatMinor(offer.totalMinor, offer.currency)} / ${per}, made for your business.`;
+    ? `${formatMinor(offer.totalMinor, offer.currency)}${vat} paid once, for the ${addition.daysLeft} ${addition.daysLeft === 1 ? "day" : "days"} left of your ${per}. Then ${formatMinor(addition.nextRenewalMinor, offer.currency)} / ${per} from your next renewal.`
+    : `${formatMinor(offer.totalMinor, offer.currency)}${vat} / ${per}, made for your business.`;
   return (
     <GlassCard role="status" className="flex flex-wrap items-center justify-between gap-3 border border-pulse-violet/40 p-4">
       <p className="flex items-start gap-2.5 text-[15px]">

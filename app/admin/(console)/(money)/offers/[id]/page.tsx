@@ -12,7 +12,8 @@ import { buttonClasses, Field, Input } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
 import { dateTime } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
-import { clientViewOf, getOffer, offerEditorContext } from "@/lib/offers/service";
+import { clientViewOf, getOffer, offerEditorContext, withOfferVat } from "@/lib/offers/service";
+import { companyRegion } from "@/lib/region";
 import { formatMinor } from "@/lib/region-format";
 import { withdrawOfferAction } from "../actions";
 
@@ -76,7 +77,7 @@ export default async function OfferPage({ params, searchParams }: { params: Prom
               ))}
             </ul>
           </Panel>
-          <OfferCard offer={clientViewOf(offer)} preview />
+          <OfferCard offer={withOfferVat(clientViewOf(offer), await companyRegion(offer.businessId))} preview />
         </div>
       )}
 

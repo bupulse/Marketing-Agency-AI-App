@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { featureLabel, FEATURES, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { moneyInput, parseMoney } from "@/lib/invoices/shared";
 import { formatMinor } from "@/lib/region-format";
+import { vatOf, withVat } from "@/lib/vat";
 import {
   adjustmentText,
   featureAddonKey,
@@ -48,7 +49,7 @@ export type OfferEditorInitial = {
  * Round or discount it with a reason, choose monthly or yearly, and preview what the client will see. Save keeps a
  * draft; Save and send emails the company owner. The server prices it again with the same maths (lib/offers/shared.ts).
  */
-export function OfferEditor({ businessId, offerId, region, bases, prices, initial, addition, additionUnavailable, notSetUp = [], ownerEmail, now }: { businessId: string; offerId: string | null; region: { key: string; name: string; currency: string }; bases: OfferBase[]; prices: AddonPriceRow[]; initial: OfferEditorInitial; /** The client's running Mobile Money plan, for "Add to current plan" (null: not possible, see additionUnavailable). */ addition?: { current: CurrentPlanForAddition; interval: "MONTH" | "YEAR"; periodEnd: string } | null; additionUnavailable?: string | null; /** Built features that are not set up yet (lib/feature-setup.ts): "Coming soon", not sold. */ notSetUp?: readonly FeatureKey[]; ownerEmail: string | null; /** The page's render time (ISO), for the preview's "open until". */ now: string }) {
+export function OfferEditor({ businessId, offerId, region, bases, prices, initial, addition, additionUnavailable, notSetUp = [], ownerEmail, now }: { businessId: string; offerId: string | null; region: { key: string; name: string; currency: string; vatRateBps?: number; vatLabel?: string }; bases: OfferBase[]; prices: AddonPriceRow[]; initial: OfferEditorInitial; /** The client's running Mobile Money plan, for "Add to current plan" (null: not possible, see additionUnavailable). */ addition?: { current: CurrentPlanForAddition; interval: "MONTH" | "YEAR"; periodEnd: string } | null; additionUnavailable?: string | null; /** Built features that are not set up yet (lib/feature-setup.ts): "Coming soon", not sold. */ notSetUp?: readonly FeatureKey[]; ownerEmail: string | null; /** The page's render time (ISO), for the preview's "open until". */ now: string }) {
   const currency = region.currency;
   const [mode, setMode] = useState<"plan" | "addon">(initial.mode === "addon" && addition ? "addon" : "plan");
   const adding = mode === "addon" && addition ? addition : null;
@@ -136,7 +137,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
     requestId: initial.requestId,
     mode: adding ? "addon" : "plan",
   });
-  const preview = toClientOffer({
+  const previewBase = toClientOffer({
     id: offerId ?? "preview",
     status: "sent",
     interval: adding ? adding.interval : interval,
@@ -155,6 +156,9 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
     payMethod: null,
     invoiceId: null,
   });
+  // The price is before VAT: where the client's region has VAT, the preview shows it on top, as the client will see it.
+  const previewVat = withVat(previewBase.totalMinor, vatOf(region));
+  const preview = previewVat.vatMinor > 0 ? { ...previewBase, vat: previewVat } : previewBase;
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

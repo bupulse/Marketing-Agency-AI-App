@@ -79,7 +79,7 @@ export function RegionsView({ d, ok, bad }: { d: Data; ok?: string; bad?: string
           { key: "status", header: "Status", cell: (r) => <StatusOf r={r} /> },
           { key: "countries", header: "Countries", align: "right", cell: (r) => (r.countries.length === 0 ? <span className="text-muted">All others</span> : r.countries.length) },
           { key: "plans", header: "Plans", align: "right", cell: (r) => r.prices.length, hideOnPhone: true },
-          { key: "vat", header: "VAT", align: "right", cell: (r) => (r.vatRateBps > 0 ? formatVatRate(r.vatRateBps) : <span className="text-muted">None</span>), hideOnPhone: true },
+          { key: "vat", header: "VAT", align: "right", cell: (r) => (r.vatRateBps > 0 ? <StatusPill tone="warn" dot>{formatVatRate(r.vatRateBps)} on top</StatusPill> : <span className="text-muted">0% (off)</span>) },
           { key: "currency", header: "Currency", cell: (r) => r.currency, hideOnPhone: true },
           { key: "companies", header: "Companies", align: "right", cell: (r) => r.companies, hideOnPhone: true },
           { key: "order", header: <span className="sr-only">Order</span>, align: "right", cell: (r) => <MoveButtons r={r} first={r.key === d.regions[0]?.key} last={r.key === d.regions.at(-1)?.key} /> },
@@ -108,9 +108,12 @@ function RegionForm({ r, taken }: { r: Region | null; taken: Record<string, stri
         <Field label="Currency" required hint="The currency of its prices, e.g. RWF or USD.">
           <Input name="currency" defaultValue={r?.currency ?? "USD"} required maxLength={3} className="uppercase" />
         </Field>
-        <Field label="VAT %" hint="Added on top of this region's plan prices; 0 = no VAT. Rwanda: 18.">
+        <Field label="VAT %" hint="0 = off: clients pay the plan prices as they are. Type 18 to add 18% VAT on top of this region's prices.">
           <Input name="vatPercent" inputMode="decimal" defaultValue={r ? String((r.vatRateBps ?? 0) / 100) : "0"} className="w-28" />
         </Field>
+        <p className="rounded-2xl bg-new-bg px-3 py-2.5 text-[13px] sm:col-span-2">
+          <strong>Only charge VAT once BuPulse is VAT-registered.</strong> Payments and invoices already made keep the rate they were made with.
+        </p>
         <Field label="Tax name" hint="Shown on prices, invoices and receipts.">
           <Input name="vatLabel" defaultValue={r?.vatLabel ?? "VAT"} maxLength={20} className="w-28" />
         </Field>
@@ -173,7 +176,7 @@ export function RegionEditor({ d, r, ok, bad }: { d: Data; r: Region; ok?: strin
         icon={Globe}
         tone="green"
         title={r.name}
-        description={`${r.key} · ${catchAll ? "every country no live region lists" : `${r.countries.length} ${r.countries.length === 1 ? "country" : "countries"}`} · ${r.currency}${r.vatRateBps > 0 ? ` · ${r.vatLabel} ${formatVatRate(r.vatRateBps)}` : ""} · ${r.companies} ${r.companies === 1 ? "company" : "companies"} billed here`}
+        description={`${r.key} · ${catchAll ? "every country no live region lists" : `${r.countries.length} ${r.countries.length === 1 ? "country" : "countries"}`} · ${r.currency} · ${r.vatLabel} ${r.vatRateBps > 0 ? formatVatRate(r.vatRateBps) : "0% (off)"} · ${r.companies} ${r.companies === 1 ? "company" : "companies"} billed here`}
         back={{ href: BACK, label: "Regions" }}
         actions={<StatusOf r={r} />}
       />

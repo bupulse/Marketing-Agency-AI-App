@@ -34,10 +34,10 @@ export function assertOfferAmount(offer: Pick<OfferRow, "adjustedMinor" | "curre
  * of the offer that this payment did not pay is voided (so the client cannot pay twice), unsubmitted Mobile Money
  * payments of the offer are closed, and the request behind it is marked offered. Audited.
  */
-export async function markOfferPaidInTx(tx: Tx, ctx: AdminContext, input: { offer: OfferRow; paymentId: string; invoiceId: string | null; planKey: string; amountMinor: number; currency: string; /** Who paid it when not a Mobile Money payment ("card:<Paddle transaction>"). */ paidBy?: string }, now: Date) {
+export async function markOfferPaidInTx(tx: Tx, ctx: AdminContext, input: { offer: OfferRow; paymentId: string; invoiceId: string | null; planKey: string; amountMinor: number; currency: string; /** The VAT part of amountMinor (the offer's price is before VAT). */ vatMinor?: number; /** Who paid it when not a Mobile Money payment ("card:<Paddle transaction>"). */ paidBy?: string }, now: Date) {
   const { offer } = input;
   if (offer.customPlanKey !== input.planKey) throw new AdminError("conflict", "This payment is for a different plan than the offer's custom plan. Reject it and ask the client to pay again from Billing.");
-  assertOfferAmount(offer, input);
+  assertOfferAmount(offer, { amountMinor: input.amountMinor - Math.max(0, input.vatMinor ?? 0), currency: input.currency });
   const paidBy = input.paidBy ?? `manual_payment:${input.paymentId}`;
   const claim = await tx.planOffer.updateMany({ where: { id: offer.id, status: "accepted" }, data: { status: "paid", paidAt: now, paidBy } });
   if (claim.count !== 1) throw new AdminError("conflict", "This offer was paid or withdrawn a moment ago. Nothing was changed.");

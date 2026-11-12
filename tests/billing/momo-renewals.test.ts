@@ -56,9 +56,9 @@ describe("reminders", () => {
     expect(mails()).toEqual(["Your BuPulse Standard plan ends in 5 days", "Your BuPulse Standard plan ends tomorrow"]);
     const first = h.sendEmail.mock.calls[0][0] as unknown as { to: string; text: string };
     expect(first.to).toBe("owner@example.rw");
-    expect(first.text).toContain("17,700 RWF"); // 15,000 + Rwanda's 18% VAT
+    expect(first.text).toContain("15,000 RWF");
     expect(first.text).toContain("MoMo Pay code 123456");
-    expect(first.text).toContain("Hello BuPulse, I am renewing my Standard plan (17,700 RWF)");
+    expect(first.text).toContain("Hello BuPulse, I am renewing my Standard plan (15,000 RWF)");
     expect(first.text).toContain("/dashboard/billing");
     expect(notices()).toEqual(["5d", "1d"]);
     expect(h.db.subscription.rows[0].status).toBe("ACTIVE");

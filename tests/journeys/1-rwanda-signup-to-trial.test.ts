@@ -140,6 +140,6 @@ describe("journey: Rwanda sign-up -> start trial -> trial over", () => {
     h.db.adminSetting.rows.push({ key: MOMO_SETTING_KEY, value: { merchantCode: "123456", momoNumber: "0788000000", accountName: "BuPulse" } });
     clearMomoSettingsCache();
     const payment = await startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: new Date() });
-    expect(payment).toMatchObject({ planKey: "BUSINESS", amountMinor: 41300, vatMinor: 6300, currency: "RWF", status: "pending" });
+    expect(payment).toMatchObject({ planKey: "BUSINESS", amountMinor: 35000, currency: "RWF", status: "pending" });
   });
 });

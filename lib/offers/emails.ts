@@ -2,6 +2,7 @@ import "server-only";
 import { adminEmails } from "@/lib/admin/auth";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { formatMinor } from "@/lib/region-format";
+import { formatVatRate, type VatBreakdown } from "@/lib/vat";
 import { linkSiteUrl } from "@/lib/auth/request-site";
 import { appUrl } from "@/lib/platform/app-hosts";
 
@@ -17,10 +18,11 @@ type AdditionNote = { daysLeft: number; nextRenewalMinor: number } | null | unde
 const paidOnce = (totalMinor: number, currency: string, a: NonNullable<AdditionNote>) => `${formatMinor(totalMinor, currency)}, paid once for the ${a.daysLeft} ${a.daysLeft === 1 ? "day" : "days"} left of your period`;
 
 /** The company owner's email when an offer is sent: what is in it, the price, until when, and the Billing link. */
-export async function sendOfferEmail(to: { email: string; name: string | null }, p: { company: string; totalMinor: number; currency: string; interval: string; features: string[]; validUntil: Date; note: string | null; addition?: AdditionNote }): Promise<boolean> {
+export async function sendOfferEmail(to: { email: string; name: string | null }, p: { company: string; totalMinor: number; currency: string; interval: string; features: string[]; validUntil: Date; note: string | null; addition?: AdditionNote; /** The region's VAT on the price (before VAT); nothing is said at 0%. */ vat?: VatBreakdown | null }): Promise<boolean> {
+  const vatNote = p.vat && p.vat.vatMinor > 0 ? ` + ${p.vat.label} (${formatVatRate(p.vat.rateBps)}) = ${formatMinor(p.vat.totalMinor, p.currency)}` : "";
   const url = appUrl(`/dashboard/billing#offer`, await linkSiteUrl());
   if (p.addition) {
-    const price = paidOnce(p.totalMinor, p.currency, p.addition);
+    const price = `${paidOnce(p.totalMinor, p.currency, p.addition)}${vatNote}`;
     const added = renderEmail({
       heading: "Features for your BuPulse plan are ready",
       intro: `${first(to.name)}we have priced what you asked to add to ${p.company}'s plan: ${price}. From your next renewal your plan costs ${formatMinor(p.addition.nextRenewalMinor, p.currency)} ${per(p.interval)}. Open Billing to accept and pay. The offer is open until ${longDate(p.validUntil)}.`,
@@ -36,9 +38,9 @@ export async function sendOfferEmail(to: { email: string; name: string | null },
   }
   const { html, text } = renderEmail({
     heading: "Your custom BuPulse plan is ready",
-    intro: `${first(to.name)}we have put together a plan for ${p.company}: ${formatMinor(p.totalMinor, p.currency)} ${per(p.interval)}. Open Billing to see what is in it, accept it and pay. The offer is open until ${longDate(p.validUntil)}.`,
+    intro: `${first(to.name)}we have put together a plan for ${p.company}: ${formatMinor(p.totalMinor, p.currency)} ${per(p.interval)}${vatNote}. Open Billing to see what is in it, accept it and pay. The offer is open until ${longDate(p.validUntil)}.`,
     blocks: [
-      { label: "Price", value: `${formatMinor(p.totalMinor, p.currency)} ${per(p.interval)}` },
+      { label: "Price", value: `${formatMinor(p.totalMinor, p.currency)} ${per(p.interval)}${vatNote}` },
       { label: "Includes", value: p.features.join(", ") || "See Billing" },
       ...(p.note ? [{ label: "From the BuPulse team", value: p.note }] : []),
     ],

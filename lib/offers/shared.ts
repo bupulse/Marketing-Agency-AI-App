@@ -2,6 +2,7 @@
 // imports), so the admin editor's live total, the server's frozen total and the tests all compute the same thing.
 
 import { z } from "zod";
+import type { VatBreakdown } from "@/lib/vat";
 import { featureInRegion, featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { addMonths as addMonthsUtc } from "@/lib/billing/period";
 import { cardUsdCents } from "@/lib/region-format";
@@ -610,6 +611,11 @@ export type ClientOfferView = {
   invoiceId: string | null;
   /** Set for features added to the running plan: pay `totalMinor` now, then `nextRenewalMinor` a period from `renewsOn`. */
   addition: { addonMinor: number; nextRenewalMinor: number; renewsOn: string; daysLeft: number; periodDays: number; currentPlanName: string; selfServe: boolean } | null;
+  /**
+   * The company region's VAT on `totalMinor` (the offer's price is before VAT), or null/absent when the region has none.
+   * Mobile Money and invoices charge `vat.totalMinor`; card checkout is Paddle's, which works out tax itself.
+   */
+  vat?: VatBreakdown | null;
 };
 
 /** What the client sees, from an offer's stored fields. Pure: Billing and the admin editor's live preview share it. */

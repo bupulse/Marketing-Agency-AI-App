@@ -7,7 +7,7 @@ import {
   isReference,
   makeReference,
   momoConfigured,
-  momoPriceOf,
+  momoPriceOf, withRegionVat,
   momoSettingsProblem,
   mtnMomoPayDial,
   nextManualPeriod,
@@ -106,6 +106,11 @@ describe("money", () => {
     expect(momoPriceOf({ ...rw, vat }, "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF", vatMinor: 2700, vatRateBps: 1800 });
     expect(momoPriceOf({ ...rw, vat }, "YEAR")).toEqual({ amountMinor: 177000, currency: "RWF", vatMinor: 27000, vatRateBps: 1800 });
     expect(momoPriceOf({ ...rw, currency: "usd", paymentMethods: ["card"] }, "MONTH")).toBeNull();
+  });
+  it("a custom plan's price plus its region's VAT (offers, renewals): unchanged at 0%", () => {
+    expect(withRegionVat(73000, "rwf", { vatRateBps: 0 })).toEqual({ amountMinor: 73000, currency: "RWF", vatMinor: 0, vatRateBps: null });
+    expect(withRegionVat(73000, "RWF", null)).toEqual({ amountMinor: 73000, currency: "RWF", vatMinor: 0, vatRateBps: null });
+    expect(withRegionVat(73000, "RWF", { vatRateBps: 1800 })).toEqual({ amountMinor: 86140, currency: "RWF", vatMinor: 13140, vatRateBps: 1800 });
   });
 });
 

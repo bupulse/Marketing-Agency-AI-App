@@ -310,6 +310,68 @@ describe("accept -> pay by Mobile Money -> activate", () => {
   });
 });
 
+/** Rwanda's VAT switched on in Admin -> Regions (every region is at 0% until BuPulse is VAT-registered). */
+function rwandaVat(bps = 1800) {
+  h.db.pricingRegion.rows.push(...REGION_SEEDS.map((r) => ({ ...r, countries: [...r.countries], paymentMethods: [...r.paymentMethods], vatRateBps: r.key === "RW" ? bps : 0 })));
+  resetRegionCache();
+}
+
+describe("VAT on custom plan offers (the offer price is before VAT)", () => {
+  it("at 0% (today) nothing changes: no VAT on the offer, the client sends the offer's price", async () => {
+    seed();
+    const id = await sentOffer();
+    expect((await offers.clientOffer("biz1", NOW))?.vat ?? null).toBeNull();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    expect(r.payment).toMatchObject({ amountMinor: 73000, vatMinor: 0, vatRateBps: null });
+  });
+
+  it("at 18%: the client sees and sends price + VAT, the payment keeps the VAT, confirming activates the offer", async () => {
+    seed();
+    rwandaVat();
+    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: DRAFT });
+    await offers.sendOffer(CONSOLE, saved.id, NOW);
+    // The offer email says the total.
+    expect((h.sendEmail.mock.calls.at(-1)?.[0] as { text: string }).text).toContain("73,000 RWF a month + VAT (18%) = 86,140 RWF");
+    const id = saved.id;
+    expect((await offers.clientOffer("biz1", NOW))?.vat).toMatchObject({ netMinor: 73000, vatMinor: 13140, totalMinor: 86140, rateBps: 1800 });
+    const { accepted, confirmed } = await payByMomo(id);
+    expect(accepted.offer.vat?.totalMinor).toBe(86140);
+    expect(accepted.payment).toMatchObject({ amountMinor: 86140, vatMinor: 13140, vatRateBps: 1800 });
+    expect(confirmed).toMatchObject({ status: "confirmed" });
+    expect(offerRow(id).status).toBe("paid");
+    expect(sub()).toMatchObject({ plan: customPlanKeyFor(id), status: "ACTIVE" });
+    const data = (h.db.billingEvent.rows.at(-1)!.payload as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({ amount_minor: 86140, vat_minor: 13140, vat_rate_bps: 1800 });
+  });
+
+  it("at 18%: the offer's invoice has the VAT line, and its Mobile Money payment (total) settles the offer", async () => {
+    seed();
+    rwandaVat();
+    const id = await sentOffer();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
+    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 73000, taxRatePercent: 18, taxMinor: 13140, totalMinor: 86140 });
+    const pay = await momo.startInvoicePayment({ userId: USER, invoiceId: r.invoiceId!, now: NOW });
+    expect(pay).toMatchObject({ amountMinor: 86140, vatMinor: 13140, vatRateBps: 1800 });
+    await momo.submitManualProof(USER, { paymentId: pay.id, transactionId: "MP66666666", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+    await momo.confirmManualPayment(CONSOLE, pay.id, LATER);
+    expect(offerRow(id).status).toBe("paid");
+    expect(h.db.invoice.rows[0].status).toBe("paid");
+  });
+
+  it("at 18%: a payment of the bare offer price (VAT missing) is refused on confirm", async () => {
+    seed();
+    rwandaVat();
+    const id = await sentOffer();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    await momo.submitManualProof(USER, { paymentId: r.payment!.id, transactionId: "MP77777777", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+    // Someone edits the payment to the pre-VAT price without its VAT part: it no longer matches the offer.
+    const row = h.db.manualPayment.rows.find((p) => p.id === r.payment!.id)!;
+    row.amountMinor = 73000;
+    expect(await msg(momo.confirmManualPayment(CONSOLE, row.id, LATER))).toMatch(/custom plan offer costs/);
+    expect(offerRow(id).status).toBe("accepted");
+  });
+});
+
 describe("accept -> pay by invoice -> activate", () => {
   it("issues one sent invoice for the offer's price with the custom plan; Mark as paid switches it on and marks the offer paid", async () => {
     seed();

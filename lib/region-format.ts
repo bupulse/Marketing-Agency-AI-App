@@ -48,13 +48,13 @@ export function isCatchAll(region: Pick<RegionInfo, "key" | "countries">): boole
 const comingSoon = (key: string, name: string, sortOrder: number, countries: string[]): RegionInfo => ({ key, name, currency: "USD", countries, paymentMethods: ["card"], active: false, sortOrder });
 
 /**
- * What the migrations seed (20261010100100_regions_and_demos, then 20261112120000_region_coming_soon_vat), and the
+ * What the migrations seed (20261010100100_regions_and_demos, then 20261112120000_region_coming_soon_vat, 20261112130000_rwanda_vat_off: VAT off until BuPulse is VAT-registered), and the
  * fallback when the database cannot be read. A country is in at most one region. Every African country is in one
  * (Central Africa was added so none is left out); the few uninhabited territories (AQ, BV, GS, HM, IO, TF, UM) are in
  * none and see the catch-all.
  */
 export const REGION_SEEDS: RegionInfo[] = [
-  { key: "RW", name: "Rwanda", currency: "RWF", countries: ["RW"], paymentMethods: ["momo", "card"], active: true, sortOrder: 0, vatRateBps: 1800, vatLabel: "VAT" },
+  { key: "RW", name: "Rwanda", currency: "RWF", countries: ["RW"], paymentMethods: ["momo", "card"], active: true, sortOrder: 0, vatRateBps: 0, vatLabel: "VAT" },
   { key: "EAC", name: "East Africa", currency: "USD", countries: EAC_COUNTRY_CODES, paymentMethods: ["card"], active: true, sortOrder: 10 },
   comingSoon("WEST_AFRICA", "West Africa", 30, ["NG", "GH", "CI", "SN", "ML", "BF", "NE", "GN", "GW", "SL", "LR", "TG", "BJ", "GM", "CV", "MR", "SH"]),
   comingSoon("SOUTHERN_AFRICA", "Southern Africa", 40, ["ZA", "NA", "BW", "LS", "SZ", "ZW", "ZM", "MW", "MZ", "AO", "MG", "MU", "SC", "KM", "RE", "YT"]),

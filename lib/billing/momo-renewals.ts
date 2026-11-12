@@ -9,6 +9,8 @@ import { sendInvoiceReminders } from "@/lib/invoices/service";
 import { sendOfferReminders } from "@/lib/offers/reminders";
 import { sendPlanPausedEmail, sendRenewalReminderEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
+import { withRegionVat } from "./momo-shared";
+import { companyRegion } from "@/lib/region";
 import { sweepUnsubmittedProofs } from "./momo";
 import { retryCarryOvers } from "./carry-over";
 import { refreshEurRate } from "@/lib/money/display-server";
@@ -76,7 +78,8 @@ async function reminderInput(sub: Sub) {
   const [plan, settings, business] = await Promise.all([getPlan(sub.plan), getMomoSettings(), prisma.business.findUnique({ where: { userId: sub.userId }, select: { id: true } })]);
   // A custom plan renews at its own price (after features were added mid-period, the full new total: docs/OFFERS.md),
   // never at the last payment, which may have been only the prorated add-on.
-  const custom = plan?.isCustom ? { amountMinor: priceCents(plan, sub.interval), currency: plan.currency.toUpperCase() } : null;
+  // Priced before VAT, like its offer: the company region's VAT goes on top (none at 0%).
+  const custom = plan?.isCustom ? withRegionVat(priceCents(plan, sub.interval), plan.currency, business ? await companyRegion(business.id) : null) : null;
   const price = custom ?? (business ? await getMomoPrice(business.id, sub.plan, sub.interval) : null) ?? (await lastPaid(sub.userId));
   return { planName: plan?.name ?? sub.plan, interval: sub.interval, amountMinor: price?.amountMinor ?? 0, currency: price?.currency ?? "RWF", periodEnd: sub.currentPeriodEnd as Date, details: settings };
 }
