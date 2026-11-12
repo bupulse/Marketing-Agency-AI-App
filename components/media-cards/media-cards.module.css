@@ -1,0 +1,674 @@
+/* Media cards (components/media-cards/README.md): the effects Tailwind classes cannot say well. Re-created from the
+   owner's samples site (samples.bupulse.com/team/videos.html and images.html): the pointer-following gradient border,
+   the liquid-glass info panel, the glass play button, the lightbox. Only transform and opacity animate (60 fps). */
+
+.ease {
+  --mc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---------- The gradient border that follows the pointer (any card) ---------- */
+.lift {
+  --mx: 50%;
+  --my: 0%;
+  --mc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  isolation: isolate;
+  transition:
+    transform 0.6s var(--mc-ease),
+    box-shadow 0.5s var(--mc-ease);
+  will-change: transform;
+}
+.lift::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 6;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: radial-gradient(380px circle at var(--mx) var(--my), rgba(47, 107, 255, 0.95), rgba(123, 92, 255, 0.55) 30%, transparent 55%);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+@media (hover: hover) {
+  .lift:hover {
+    transition:
+      transform 0.18s ease-out,
+      box-shadow 0.4s;
+  }
+  .lift:hover::before {
+    opacity: 1;
+  }
+}
+.lift:focus-within::before {
+  opacity: 1;
+}
+
+/* ---------- Reveal when scrolled into view ---------- */
+.rise {
+  animation: mcRise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+@keyframes mcRise {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.97);
+  }
+}
+
+/* ---------- Video card ---------- */
+.video {
+  border-radius: 26px;
+  background: #0b0b14;
+  overflow: hidden;
+  box-shadow:
+    0 2px 6px rgba(13, 16, 32, 0.08),
+    0 26px 50px -24px rgba(20, 30, 90, 0.45);
+}
+:global(.dark) .video {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 26px 50px -24px rgba(0, 0, 0, 0.8);
+}
+.media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition:
+    opacity 0.6s var(--mc-ease, ease),
+    transform 1.2s var(--mc-ease, ease);
+}
+.mediaContain {
+  object-fit: contain;
+}
+.preview {
+  opacity: 0;
+  z-index: 1;
+}
+.previewOn {
+  opacity: 1;
+}
+@media (hover: hover) {
+  .video:hover .media,
+  .zoomHost:hover .media {
+    transform: scale(1.06);
+  }
+}
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.28) 0%, transparent 20%, transparent 52%, rgba(0, 0, 0, 0.6) 100%);
+  pointer-events: none;
+}
+
+/* The glass play button */
+.play {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  transition:
+    transform 0.4s var(--mc-ease, ease),
+    background-color 0.3s,
+    opacity 0.4s var(--mc-ease, ease);
+}
+.playHidden,
+.playIdle {
+  opacity: 0;
+  transform: scale(0.7);
+}
+/* Phones have no hover: the play button shows on the card. */
+@media (hover: none) {
+  .playIdle {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (hover: hover) {
+  .video:hover .play,
+  .playHost:hover .play:not(.playHidden) {
+    opacity: 1;
+    transform: scale(1.08);
+    background: rgba(47, 107, 255, 0.85);
+  }
+}
+.video:focus-within .play {
+  opacity: 1;
+  transform: none;
+}
+
+/* Small dark-glass badges on media (duration, count, New) */
+.chip {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 8px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* ---------- The liquid-glass panel ---------- */
+.glass {
+  --gx: 50%;
+  --gy: 100%;
+  position: relative;
+  overflow: hidden;
+  padding: 12px 14px;
+  border-radius: 18px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.07) 60%, rgba(255, 255, 255, 0.14));
+  backdrop-filter: blur(18px) saturate(1.9) brightness(1.05);
+  -webkit-backdrop-filter: blur(18px) saturate(1.9) brightness(1.05);
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -10px 24px -14px rgba(255, 255, 255, 0.35),
+    0 12px 30px -12px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
+  transition:
+    padding 0.5s var(--mc-ease, ease),
+    border-radius 0.5s var(--mc-ease, ease),
+    background 0.5s;
+}
+/* Light that follows the pointer over the glass, and a sheen that sweeps once on hover */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(220px circle at var(--gx) var(--gy), rgba(255, 255, 255, 0.35), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+.glass::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -60%;
+  width: 40%;
+  height: 200%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: rotate(18deg) translateX(-120%);
+  pointer-events: none;
+}
+.more {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    grid-template-rows 0.55s var(--mc-ease, ease),
+    opacity 0.35s ease,
+    transform 0.55s var(--mc-ease, ease);
+}
+.more > div {
+  min-height: 0;
+  overflow: hidden;
+}
+/* Hidden "more" must not be reachable by Tab: visibility follows it. */
+.more > div {
+  visibility: hidden;
+  transition: visibility 0s 0.55s;
+}
+.openGlass .glass,
+.video:focus-within .glass {
+  padding: 16px 16px 14px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1) 60%, rgba(255, 255, 255, 0.18));
+}
+.openGlass .more,
+.video:focus-within .more {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: none;
+}
+.openGlass .more > div,
+.video:focus-within .more > div {
+  visibility: visible;
+  transition: visibility 0s;
+}
+@media (hover: hover) {
+  .video:hover .glass {
+    padding: 16px 16px 14px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1) 60%, rgba(255, 255, 255, 0.18));
+  }
+  .video:hover .glass::before {
+    opacity: 1;
+  }
+  .video:hover .glass::after {
+    transition: transform 1.1s var(--mc-ease, ease);
+    transform: rotate(18deg) translateX(420%);
+  }
+  .video:hover .more {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transform: none;
+    transition-delay: 0.05s;
+  }
+  .video:hover .more > div {
+    visibility: visible;
+    transition: visibility 0s;
+  }
+}
+/* Buttons inside the glass */
+.glassBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: none;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  transition:
+    background-color 0.2s,
+    transform 0.2s;
+}
+.glassBtn:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.glassBtn:active {
+  transform: scale(0.97);
+}
+.glassBtnPrimary {
+  background: linear-gradient(135deg, #2f6bff, #7b5cff);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.glassBtnPrimary:hover {
+  background: linear-gradient(135deg, #3d77ff, #8a6dff);
+}
+/* A tap target of 44 px around the 36 px pill */
+.glassBtn {
+  position: relative;
+}
+.glassBtn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+
+/* ---------- Light glass (the post tiles' caption label, like images.html) ---------- */
+.label {
+  background: rgba(255, 255, 255, 0.9);
+  color: #1d1d1f;
+  backdrop-filter: blur(10px) saturate(1.6);
+  -webkit-backdrop-filter: blur(10px) saturate(1.6);
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.35s var(--mc-ease, ease),
+    transform 0.35s var(--mc-ease, ease);
+}
+:global(.dark) .label {
+  background: rgba(28, 28, 34, 0.86);
+  color: #f5f5f7;
+}
+@media (hover: hover) {
+  .post:hover .label {
+    opacity: 1;
+    transform: none;
+  }
+}
+.post:focus-within .label {
+  opacity: 1;
+  transform: none;
+}
+@media (hover: none) {
+  .label {
+    display: none;
+  }
+}
+
+/* ---------- Post card (feed post) ---------- */
+.post {
+  border-radius: 24px;
+}
+@media (hover: hover) {
+  .post:hover {
+    box-shadow: 0 2px 6px rgba(13, 16, 32, 0.06), 0 30px 60px -28px rgba(20, 30, 90, 0.45);
+  }
+  :global(.dark) .post:hover {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 30px 60px -28px rgba(0, 0, 0, 0.9);
+  }
+}
+.heartPop {
+  animation: mcHeart 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes mcHeart {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  60% {
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.1) translateY(-20px);
+  }
+}
+.carousel {
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+.carousel > * {
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.35;
+  transition:
+    opacity 0.3s,
+    transform 0.3s var(--mc-ease, ease);
+}
+.dotOn {
+  opacity: 1;
+  transform: scale(1.25);
+}
+.arrow {
+  opacity: 0;
+  transition:
+    opacity 0.25s,
+    transform 0.25s;
+}
+@media (hover: hover) {
+  .post:hover .arrow,
+  .stage:hover .arrow {
+    opacity: 1;
+  }
+}
+.arrow:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .arrow {
+    display: none;
+  }
+}
+
+/* ---------- Status pill: the live dot pings ---------- */
+.ping {
+  position: relative;
+}
+.ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: mcPing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes mcPing {
+  75%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* ---------- Product / campaign cards ---------- */
+.productGlass {
+  transform: translateY(calc(100% + 12px));
+  transition: transform 0.5s var(--mc-ease, ease);
+}
+@media (hover: hover) {
+  .zoomHost:hover .productGlass {
+    transform: none;
+  }
+}
+.zoomHost:focus-within .productGlass {
+  transform: none;
+}
+@media (hover: none) {
+  .productGlass {
+    display: none;
+  }
+}
+.ring {
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.2s;
+}
+.bar {
+  transform-origin: 0 50%;
+  transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1) 0.2s;
+}
+
+/* ---------- The full player and the opened post (lightbox) ---------- */
+.backdrop {
+  animation: mcFade 0.28s ease both;
+}
+.backdropOut {
+  animation: mcFadeOut 0.22s ease both;
+}
+@keyframes mcFade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes mcFadeOut {
+  to {
+    opacity: 0;
+  }
+}
+.bgBlur {
+  position: absolute;
+  inset: -60px;
+  background-position: center;
+  background-size: cover;
+  filter: blur(48px) brightness(0.35) saturate(1.4);
+  transform: scale(1.1);
+  transition: background-image 0.4s;
+}
+.stageIn {
+  animation: mcStage 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stageNext {
+  animation: mcFromRight 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagePrev {
+  animation: mcFromLeft 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes mcStage {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@keyframes mcFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(60px) scale(0.97);
+  }
+}
+@keyframes mcFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-60px) scale(0.97);
+  }
+}
+.sheetIn {
+  animation: mcSheet 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes mcSheet {
+  from {
+    transform: translateY(100%);
+  }
+}
+@media (min-width: 768px) {
+  .sheetIn {
+    animation-name: mcStage;
+  }
+}
+/* Round glass buttons on dark (close, previous, next, mute) */
+.fbtn {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition:
+    background-color 0.2s,
+    transform 0.2s,
+    opacity 0.2s;
+}
+.fbtn:hover {
+  background: rgba(255, 255, 255, 0.24);
+  transform: scale(1.06);
+}
+.fbtn:disabled {
+  opacity: 0.3;
+  transform: none;
+  cursor: default;
+}
+@media (max-width: 767px) {
+  .fbtn {
+    width: 44px;
+    height: 44px;
+  }
+}
+/* The controls bar: liquid glass on the video */
+.controls {
+  transition:
+    opacity 0.3s,
+    transform 0.3s var(--mc-ease, ease);
+}
+.controlsIdle {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 24px;
+  background: transparent;
+  cursor: pointer;
+  --p: 0%;
+}
+.scrub::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #fff var(--p), rgba(255, 255, 255, 0.3) var(--p));
+}
+.scrub::-moz-range-track {
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #fff var(--p), rgba(255, 255, 255, 0.3) var(--p));
+}
+.scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s;
+}
+.scrub::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+}
+.scrub:hover::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+.hint {
+  animation: mcHint 3.2s ease 0.8s both;
+}
+@keyframes mcHint {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  15%,
+  80% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- Reduced motion: nothing moves, panels show at once ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .lift,
+  .media,
+  .glass,
+  .more,
+  .more > div,
+  .play,
+  .label,
+  .productGlass,
+  .ring,
+  .bar,
+  .controls,
+  .dot {
+    transition: none !important;
+  }
+  .rise,
+  .stageIn,
+  .stageNext,
+  .stagePrev,
+  .sheetIn,
+  .backdrop,
+  .backdropOut,
+  .heartPop,
+  .hint {
+    animation: none !important;
+  }
+  .ping::after {
+    animation: none;
+  }
+  .lift {
+    transform: none !important;
+  }
+  .video:hover .media,
+  .zoomHost:hover .media {
+    transform: none;
+  }
+  .glass::after {
+    display: none;
+  }
+}
