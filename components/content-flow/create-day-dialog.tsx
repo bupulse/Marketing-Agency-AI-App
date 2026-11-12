@@ -207,8 +207,8 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
               setMode(v === "manual" ? "describe" : "ai");
             }}
             items={[
-              { value: "ai", label: "AI makes it for me", hint: "A caption for each app from your Business info, then pictures and videos (your own Photos first).", icon: Wand2 },
-              { value: "manual", label: "I'll create it", hint: "Say what to post today, or bring your own photos and caption.", icon: PenLine, tone: "violet" },
+              { value: "ai", label: "AI makes it for me", hint: "Captions for each app from your Business info, with pictures or videos.", icon: Wand2 },
+              { value: "manual", label: "I'll create it", hint: "Say what to post, or bring your own photos.", icon: PenLine, tone: "violet" },
             ]}
           />
 
@@ -296,8 +296,8 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
               value={design}
               onChange={(v) => setDesign(v)}
               items={[
-                { value: "ai", label: "Unique AI pictures", hint: allowance.aiPhotos ? "A new finished ad for every post. Uses AI image credits (your own photos when they run out)." : "No AI image credits left this month, or not in your plan.", icon: Sparkles, disabled: !allowance.aiPhotos },
-                { value: "free", label: "Your own photos", hint: "Your product photos as they are. No credits used.", icon: ImagePlus, tone: "violet" },
+                { value: "ai", label: "Unique AI pictures", hint: allowance.aiPhotos ? "A new ad for every post. Uses AI image credits, then your photos." : "No AI image credits left this month, or not in your plan.", icon: Sparkles, disabled: !allowance.aiPhotos },
+                { value: "free", label: "Your own photos", hint: "Your photos as they are. No credits.", icon: ImagePlus, tone: "violet" },
               ]}
             />
           )}
