@@ -1,6 +1,7 @@
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
+import { Images } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { GalleryView } from "@/components/media/gallery-view";
 import { filterKey, parseFilter } from "@/lib/media/destinations";
 import { galleryOverview, listMedia } from "@/lib/media/service";
@@ -28,7 +29,7 @@ export default async function GalleryPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageHeader title="Photos" description="Your own photos, in folders and in the albums of your products. Use them in posts and designs for free, no image credits needed." />
+      <PageHeader icon={Images} tone="blue" title="Photos" description="Your own photos and videos, in folders and product albums. Free to use in posts and designs." />
       <GalleryView key={folder} folder={folder} overview={overview} initialItems={items} initialCursor={nextCursor} />
     </>
   );

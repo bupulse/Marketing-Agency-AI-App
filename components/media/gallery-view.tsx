@@ -35,6 +35,12 @@ const HOME = "/dashboard/gallery";
  * "none", a folder id, or "product:<id>" / "campaign:<id>" for an album (lib/media/destinations.ts parseFilter).
  * Uploads go to the open folder or album; from "All photos" or "Not in a folder" the person picks a destination first.
  */
+/** Folder and album chips, in the kit's look (components/admin/kit FilterChips): a ring and a tick when chosen. */
+const FOLDER_CHIP =
+  "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border-2 px-4 text-[14px] font-semibold whitespace-nowrap no-underline transition-[border-color,background-color,transform] duration-200 hover:-translate-y-px motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30";
+const FOLDER_ON = "border-pulse-blue bg-pulse-blue/[0.08] text-text dark:bg-pulse-blue/15";
+const FOLDER_OFF = "border-line bg-surface text-muted hover:border-pulse-blue/40 hover:text-text dark:bg-white/[0.03]";
+
 export function GalleryView({ folder, overview, initialItems, initialCursor }: { folder: string; overview: GalleryOverview; initialItems: MediaItem[]; initialCursor: string | null }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -234,19 +240,17 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
             key={c.href}
             href={c.href}
             aria-current={c.active ? "page" : undefined}
-            className={cn(
-              "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-[15px] font-medium whitespace-nowrap transition-[background-color,transform] duration-300 hover:-translate-y-0.5 motion-reduce:hover:translate-y-0",
-              c.active ? "bg-brand-gradient text-white" : "glass text-text",
-            )}
+            className={cn(FOLDER_CHIP, c.active ? FOLDER_ON : FOLDER_OFF)}
           >
+            {c.active && <Check aria-hidden className="kit-pop size-3.5 text-pulse-blue" strokeWidth={3} />}
             {c.label}
-            <span className={cn("text-[13px]", c.active ? "text-white/80" : "text-muted")}>{c.count}</span>
+            <span className={cn("rounded-full px-1.5 text-[12px] tabular-nums", c.active ? "bg-pulse-blue text-white" : "bg-soft text-muted")}>{c.count}</span>
           </Link>
         ))}
         <button
           type="button"
           onClick={() => setDialog({ kind: "newFolder" })}
-          className="inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-dashed border-line px-4 text-[15px] font-medium text-muted hover:bg-soft hover:text-text"
+          className="inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full border-2 border-dashed border-line px-4 text-[14px] font-semibold text-muted hover:border-pulse-blue/40 hover:text-text"
         >
           <FolderPlus aria-hidden className="size-4" />
           New folder
@@ -260,14 +264,11 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
               key={c.href}
               href={c.href}
               aria-current={c.active ? "page" : undefined}
-              className={cn(
-                "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-[15px] font-medium whitespace-nowrap",
-                c.active ? "bg-brand-gradient text-white" : "border border-line text-text hover:bg-soft",
-              )}
+              className={cn(FOLDER_CHIP, c.active ? FOLDER_ON : FOLDER_OFF)}
             >
-              <Package aria-hidden className="size-4" />
+              {c.active ? <Check aria-hidden className="kit-pop size-3.5 text-pulse-blue" strokeWidth={3} /> : <Package aria-hidden className="size-4" />}
               {c.label}
-              <span className={cn("text-[13px]", c.active ? "text-white/80" : "text-muted")}>{c.count}</span>
+              <span className={cn("rounded-full px-1.5 text-[12px] tabular-nums", c.active ? "bg-pulse-blue text-white" : "bg-soft text-muted")}>{c.count}</span>
             </Link>
           ))}
         </nav>

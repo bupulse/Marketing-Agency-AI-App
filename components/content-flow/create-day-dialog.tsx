@@ -10,7 +10,7 @@
  *     Bring my own               the owner's photos or videos and one caption, adapted per app
  */
 
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ImagePlus, PenLine, SlidersHorizontal, Sparkles, Upload, Wand2, X } from "lucide-react";
 import { createDayContentAction } from "@/app/dashboard/content/day-actions";

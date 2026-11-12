@@ -10,7 +10,7 @@
  *   ChoiceChips  small round chips for short answers (1 / 2 / 3, Auto / With price / No price)
  */
 
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { Check, type LucideIcon } from "lucide-react";
 import { IconBadge } from "@/components/admin/kit/icon-badge";
 import type { KitTone } from "@/components/admin/kit/tones";
@@ -21,9 +21,8 @@ export type ChoiceItem<T extends string> = { value: T; label: ReactNode; hint?: 
 const RING = "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30";
 
 /** Arrow keys move to the next enabled option and choose it, like native radio buttons. */
-function useRadioKeys<T extends string>(items: ChoiceItem<T>[], value: T, onChange: (v: T) => void) {
-  const ref = useRef<HTMLDivElement>(null);
-  const onKeyDown = (e: KeyboardEvent) => {
+function radioKeys<T extends string>(items: ChoiceItem<T>[], value: T, onChange: (v: T) => void) {
+  return (e: KeyboardEvent<HTMLDivElement>) => {
     const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
     if (!step) return;
     e.preventDefault();
@@ -32,9 +31,8 @@ function useRadioKeys<T extends string>(items: ChoiceItem<T>[], value: T, onChan
     const at = Math.max(0, enabled.findIndex((i) => i.value === value));
     const next = enabled[(at + step + enabled.length) % enabled.length];
     onChange(next.value);
-    ref.current?.querySelector<HTMLElement>(`[data-value="${CSS.escape(next.value)}"]`)?.focus();
+    e.currentTarget.querySelector<HTMLElement>(`[data-value="${CSS.escape(next.value)}"]`)?.focus();
   };
-  return { ref, onKeyDown };
 }
 
 export function ChoiceCards<T extends string>({
@@ -54,9 +52,8 @@ export function ChoiceCards<T extends string>({
   columns?: 2 | 3;
   className?: string;
 }) {
-  const keys = useRadioKeys(items, value, onChange);
   return (
-    <div ref={keys.ref} role="radiogroup" aria-label={label} onKeyDown={keys.onKeyDown} className={cn("grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2", columns === 3 && "lg:grid-cols-3", className)}>
+    <div role="radiogroup" aria-label={label} onKeyDown={radioKeys(items, value, onChange)} className={cn("grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2", columns === 3 && "lg:grid-cols-3", className)}>
       {items.map((o) => {
         const on = o.value === value;
         return (
@@ -114,11 +111,10 @@ export function ChoiceChips<T extends string>({
   showLabel?: boolean;
   className?: string;
 }) {
-  const keys = useRadioKeys(items, value, onChange);
   return (
     <div className={cn("flex min-w-0 flex-col gap-2", className)}>
       {showLabel && <p className="text-[14px] font-medium">{label}</p>}
-      <div ref={keys.ref} role="radiogroup" aria-label={label} onKeyDown={keys.onKeyDown} className="flex flex-wrap gap-2">
+      <div role="radiogroup" aria-label={label} onKeyDown={radioKeys(items, value, onChange)} className="flex flex-wrap gap-2">
         {items.map((o) => {
           const on = o.value === value;
           return (
