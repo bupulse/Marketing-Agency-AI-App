@@ -52,4 +52,10 @@ export const SAMPLE_BIO_SOURCE = {
 };
 export const SAMPLE_BIO_DAYS = Array.from({ length: 30 }, (_, i) => ({ date: new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10), views: (i * 7) % 23, whatsapp: (i * 3) % 5, calls: i % 3 === 0 ? 1 : 0 }));
 
+export const SAMPLE_AUTOMATIONS = [
+  { id: "a1", name: "Comment PRICE, get the price in DM", status: "LIVE" as const, trigger: "comment_keyword" as string | null, keywords: ["price", "how much"], channels: ["INSTAGRAM"], updatedAt: ago(60 * 30), changed: false, runs: { started: 48, finished: 45, waiting: 2, failed: 1 } },
+  { id: "a2", name: "Welcome menu", status: "LIVE" as const, trigger: "keyword" as string | null, keywords: [], channels: ["WEBSITE", "INSTAGRAM"], updatedAt: ago(60 * 24 * 3), changed: true, runs: { started: 120, finished: 118, waiting: 0, failed: 0 } },
+  { id: "a3", name: "Follow up the next day", status: "DRAFT" as const, trigger: null as string | null, keywords: [], channels: [], updatedAt: ago(60 * 2), changed: false, runs: { started: 0, finished: 0, waiting: 0, failed: 0 } },
+];
+
 export const SAMPLE_FIELDS = [{ id: "f1", key: "district", label: "District", type: "choice", options: ["Gasabo", "Kicukiro", "Nyarugenge"] }];
