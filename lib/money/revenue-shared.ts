@@ -3,6 +3,8 @@
 //
 // - Card: Paddle "transaction.completed" (net of tax and Paddle's fee, USD), refunds from approved refund adjustments.
 // - Mobile Money: "manual_payment.confirmed" paid with MTN or Airtel (RWF, its USD value fixed at confirmation).
+// - Every amount is BEFORE VAT (owner, 12 Nov 2026): an RWF payment records its VAT (vat_minor), which goes to RRA and
+//   is left out here, so the Revenue page, the 9M goal and partner commissions count only what BuPulse keeps.
 // - Invoice: a payment of an invoice (the invoice number as reference, or a bank or cash payment the admin recorded),
 //   and "invoice.paid_manual" (a plain invoice marked paid by hand).
 import { INVOICE_PAID_EVENT, MANUAL_PAYMENT_EVENT, parseMoneyEvent } from "@/lib/analytics/math";
@@ -48,7 +50,10 @@ export function toRevenueEntry(row: Row): RevenueEntry | null {
   if (row.type === MANUAL_PAYMENT_EVENT || row.type === INVOICE_PAID_EVENT) {
     const network = str(data.network)?.toUpperCase();
     method = row.type === INVOICE_PAID_EVENT || str(data.invoice_id) || (network && network !== "MTN" && network !== "AIRTEL") ? "invoice" : "momo";
-    localMinor = int(data.amount_minor);
+    // Before VAT (owner, 12 Nov 2026): the VAT in an RWF payment goes to RRA. Payments from before VAT have no vat_minor.
+    const amount = int(data.amount_minor);
+    const vat = int(data.vat_minor) ?? 0;
+    localMinor = amount === null ? null : vat > 0 && vat < amount ? amount - vat : amount;
     currency = str(data.currency)?.toUpperCase() ?? "RWF";
     plan = str(data.plan);
     partial = data.period_mode === "keep";

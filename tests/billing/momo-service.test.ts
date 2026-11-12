@@ -314,7 +314,8 @@ describe("confirming", () => {
     expect(h.db.billingEvent.rows[0]).toMatchObject({ provider: "MANUAL_MOMO", type: "manual_payment.confirmed", eventId: p.id, userId: USER });
     expect((h.db.billingEvent.rows[0].payload as { data: { usd_cents: number; amount_minor: number; id: string } }).data).toMatchObject({ usd_cents: 1221, amount_minor: 17700, vat_minor: 2700, id: p.reference });
     const { parseMoneyEvent } = await import("@/lib/analytics/math");
-    expect(parseMoneyEvent("manual_payment.confirmed", h.db.billingEvent.rows[0].payload, NOW)).toMatchObject({ kind: "payment", cents: 1221, id: p.reference });
+    // Revenue is counted before VAT (owner, 12 Nov 2026): 1,221 US cents x 15,000 / 17,700 = 1,035.
+    expect(parseMoneyEvent("manual_payment.confirmed", h.db.billingEvent.rows[0].payload, NOW)).toMatchObject({ kind: "payment", cents: 1035, id: p.reference });
     expect(lastAudit()).toMatchObject({ actor: "admin", action: "confirm_momo_payment", target: `payment:${p.id}`, ip: "198.51.100.1" });
     expect(lastAudit().before).toMatchObject({ status: "pending", subscription: { plan: "TRIAL" } });
     expect(lastAudit().after).toMatchObject({ status: "confirmed", subscription: { plan: "STANDARD", status: "ACTIVE" } });

@@ -91,6 +91,17 @@ const minor = (v: unknown) => {
   return Number.isFinite(n) ? n : null;
 };
 
+/**
+ * The share of a manual payment that is before VAT: (amount - VAT) / amount. 1 when no VAT was recorded (card payments,
+ * USD, and every payment confirmed before VAT started on 12 Nov 2026).
+ */
+export function netShare(amountMinor: unknown, vatMinor: unknown): number {
+  const amount = minor(amountMinor);
+  const vat = minor(vatMinor);
+  if (amount === null || amount <= 0 || vat === null || vat <= 0 || vat >= amount) return 1;
+  return (amount - vat) / amount;
+}
+
 type PaddleTotals = { currency_code?: string; earnings?: unknown; total?: unknown; tax?: unknown; fee?: unknown } | undefined;
 
 /** What BuPulse keeps from a Paddle totals block, in USD cents: `earnings` (after tax and Paddle's fee) when given, else total - tax - fee. */
@@ -114,10 +125,12 @@ export function parseMoneyEvent(type: string, payload: unknown, fallbackAt: Date
   const data = (event.data ?? {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   const at = event.occurred_at && !Number.isNaN(Date.parse(event.occurred_at)) ? new Date(event.occurred_at) : fallbackAt;
   // A Mobile Money payment confirmed in the admin console (lib/billing/momo.ts), or a plain invoice marked paid by hand
-  // (lib/invoices/service.ts): the USD value was fixed at that moment.
+  // (lib/invoices/service.ts): the USD value was fixed at that moment. Revenue is counted before VAT (owner, 12 Nov
+  // 2026): the VAT in an RWF payment (vat_minor) goes to RRA, so only the share before VAT counts.
   if (type === MANUAL_PAYMENT_EVENT || type === INVOICE_PAID_EVENT) {
-    const cents = minor(data.usd_cents);
-    return cents === null ? null : { kind: "payment", cents, id: String(data.id ?? ""), at };
+    const usd = minor(data.usd_cents);
+    if (usd === null) return null;
+    return { kind: "payment", cents: Math.round(usd * netShare(data.amount_minor, data.vat_minor)), id: String(data.id ?? ""), at };
   }
   if (type === "transaction.completed") {
     const cents = netUsd(data.details?.payout_totals) ?? netUsd(data.details?.totals, data.currency_code);

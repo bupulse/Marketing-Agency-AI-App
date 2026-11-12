@@ -94,3 +94,26 @@ describe("MRR", () => {
     expect(totalCents).toBe(4500);
   });
 });
+
+describe("revenue before VAT (owner, 12 Nov 2026)", () => {
+  const at = new Date("2026-11-20T10:00:00Z");
+  const momo = (data: Record<string, unknown>) => toRevenueEntry({ eventId: "e1", type: "manual_payment.confirmed", createdAt: at, userId: "u1", payload: { event_type: "manual_payment.confirmed", occurred_at: at.toISOString(), data: { id: "MM-1", network: "MTN", currency: "RWF", plan: "business", ...data } } });
+
+  it("leaves the VAT out of a Mobile Money payment, in RWF and in USD", () => {
+    const e = momo({ amount_minor: 59000, vat_minor: 9000, usd_cents: 4069 })!;
+    expect(e.localMinor).toBe(50000);
+    expect(e.usdCents).toBe(Math.round((4069 * 50000) / 59000));
+  });
+
+  it("counts a payment from before VAT (no vat_minor) in full", () => {
+    const e = momo({ amount_minor: 50000, usd_cents: 3448 })!;
+    expect(e.localMinor).toBe(50000);
+    expect(e.usdCents).toBe(3448);
+  });
+
+  it("leaves the VAT out of an invoice marked paid by hand", () => {
+    const e = toRevenueEntry({ eventId: "invoice:1", type: "invoice.paid_manual", createdAt: at, userId: "u1", payload: { event_type: "invoice.paid_manual", occurred_at: at.toISOString(), data: { id: "INV-1", invoice_id: "1", amount_minor: 17700, vat_minor: 2700, currency: "RWF", method: "bank", usd_cents: 1221, plan: "starter" } } })!;
+    expect(e.localMinor).toBe(15000);
+    expect(e.usdCents).toBe(Math.round((1221 * 15000) / 17700));
+  });
+});

@@ -426,7 +426,7 @@ export async function markInvoicePaid(ctx: AdminContext, id: string, input: { me
             type: INVOICE_PAID_EVENT,
             userId: payer,
             processedAt: now,
-            payload: { event_type: INVOICE_PAID_EVENT, occurred_at: now.toISOString(), data: { id: row.number, invoice_id: id, amount_minor: row.totalMinor, currency: row.currency, method, usd_cents: usdCents, plan: row.planKey } },
+            payload: { event_type: INVOICE_PAID_EVENT, occurred_at: now.toISOString(), data: { id: row.number, invoice_id: id, amount_minor: row.totalMinor, currency: row.currency, method, usd_cents: usdCents, vat_minor: row.taxMinor ?? 0, plan: row.planKey } },
           },
         });
       }
