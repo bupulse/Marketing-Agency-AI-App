@@ -1,6 +1,7 @@
 import { ArrowRight, CircleCheck, Circle, Image as ImageIcon, Package, Palette, PenLine, Users } from "lucide-react";
 import Link from "next/link";
 import { getAppContext } from "@/components/app/context";
+import { PageHeader } from "@/components/app/page-header";
 import { EssentialsBanner } from "@/components/business-info/essentials-banner";
 import { QuizCard } from "@/components/knowledge/quiz-card";
 import { Badge, GlassCard, Meter } from "@/components/ui";
@@ -85,17 +86,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <header className="flex flex-col gap-1 px-1">
-        <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.03em] sm:text-[30px]">
-          Welcome, {firstName}
-        </h1>
-        <p className="text-[15px] text-muted">Here is how your marketing is doing.</p>
-        <div
-          aria-hidden
-          className="mt-2 h-1 w-24 rounded-full"
-          style={{ background: "linear-gradient(90deg, var(--brand-1), var(--brand-2))" }}
-        />
-      </header>
+      <PageHeader title={`Welcome, ${firstName}`} description="Here is how your marketing is doing." />
 
       {showQuiz && quiz && (
         <QuizCard
@@ -146,8 +137,10 @@ export default async function DashboardPage() {
         {stats.map(({ label, value, note, icon: Icon }) => (
           <GlassCard key={label} className="flex flex-col gap-1.5 rounded-card p-5">
             <div className="flex items-center justify-between">
-              <span className="text-[13px] text-muted">{label}</span>
-              <Icon aria-hidden className="size-4 text-pulse-blue" />
+              <span className="text-[13px] font-medium text-muted">{label}</span>
+              <span aria-hidden className="inline-flex size-8 items-center justify-center rounded-[10px] bg-pulse-blue/10 text-[#1f55d6] dark:bg-pulse-blue/20 dark:text-[#8db0ff]">
+                <Icon className="size-4" />
+              </span>
             </div>
             <strong className="text-[32px] font-semibold leading-none tracking-[-0.03em]">{value}</strong>
             <span className="text-xs text-muted">{note}</span>
