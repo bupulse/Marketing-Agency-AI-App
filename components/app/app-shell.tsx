@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppPath, useHostHref } from "@/components/platform/hosts";
 import { ServiceSwitcher, type SwitcherProps } from "@/components/platform/service-switcher";
-import { Bell, ChevronDown, Clapperboard, ExternalLink, LogOut, Menu, Plus, Search, Settings, X } from "lucide-react";
+import { Bell, ChevronDown, ChevronRight, Clapperboard, ExternalLink, LogOut, Menu, Plus, Search, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { MarketingLogo } from "@/components/brand";
+import Image from "next/image";
 import { ThemeToggle } from "@/components/theme";
-import { Avatar, Button, Meter, useToast } from "@/components/ui";
+import { Avatar, Button, useToast } from "@/components/ui";
 import { readableTextColor } from "@/lib/color-contrast";
 import { cn } from "@/lib/cn";
 import { FEATURES, type FeatureKey } from "@/lib/features";
@@ -16,6 +16,7 @@ import { BottomBar, badgeText } from "./bottom-bar";
 import { CreateMenu } from "./create-menu";
 import { activeGroup, bottomBarItems, createActions, FEATURE_ICONS, finderEntries, FOLDED_GROUP, isActive, navFor, type CreateAction, type NavGroup, type StudioLink } from "./nav";
 import { PageFinder } from "./page-finder";
+import { RAIL, RAIL_CREATE, RAIL_OFF, RAIL_ON, RAIL_PANEL, RAIL_ROW, RAIL_TITLE } from "./rail";
 import { can, type Role } from "@/lib/team/roles";
 
 export type ShellPlan = {
@@ -157,21 +158,13 @@ function NavLink({ href, label, icon: Icon, pathname, badge, onNavigate }: { hre
       href={toHref(href)}
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
-      className={cn(
-        "relative flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium no-underline transition-colors duration-200",
-        active ? "bg-soft text-text" : "text-muted hover:bg-soft hover:text-text",
-      )}
+      className={cn(RAIL_ROW, active ? RAIL_ON : RAIL_OFF)}
     >
-      {active && (
-        <span
-          aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-full"
-          style={{ background: "linear-gradient(180deg, var(--brand-1), var(--brand-2))" }}
-        />
-      )}
-      <Icon aria-hidden className={cn("size-[18px] shrink-0", active && "text-pulse-blue")} />
+      {active && <span aria-hidden className="bp-rail-bar absolute -left-3 top-2 bottom-2 w-1 rounded-r-full bg-white" />}
+      <Icon aria-hidden className="size-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110 motion-reduce:transform-none" />
       {label}
       {badge ? (
-        <span className="ml-auto inline-flex min-w-[22px] items-center justify-center rounded-full bg-danger px-1.5 text-[12px] leading-[22px] font-bold text-white">
+        <span className="ml-auto inline-flex min-w-[22px] items-center justify-center rounded-full bg-[#c81e3a] px-1.5 text-[12px] leading-[22px] font-bold text-white shadow-sm">
           {badgeText(badge)}
           <span className="sr-only"> unread</span>
         </span>
@@ -183,11 +176,11 @@ function NavLink({ href, label, icon: Icon, pathname, badge, onNavigate }: { hre
 /** A menu page whose feature is "Coming soon" (lib/features.ts): listed, not a link. */
 function SoonItem({ label, icon: Icon }: { label: string; icon: NavGroup["items"][number]["icon"] }) {
   return (
-    <div aria-disabled="true" className="flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium text-muted opacity-70">
+    <div aria-disabled="true" className={cn(RAIL_ROW, "font-medium text-white/85 dark:text-white/60")}>
       <Icon aria-hidden className="size-[18px] shrink-0" />
       <span className="flex min-w-0 flex-col py-1 leading-tight">
         {label}
-        <span className="text-[12px] font-semibold text-new">Coming soon</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-white/85 dark:text-[#b7a6ff]">Coming soon</span>
       </span>
     </div>
   );
@@ -261,20 +254,45 @@ function FoldedGroup({ group, pathname, children }: { group: NavGroup; pathname:
     }
   };
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-0.5">
       <button
         type="button"
         onClick={toggle}
         aria-expanded={open}
         aria-controls={`${uid}-items`}
-        className="flex min-h-11 cursor-pointer items-center justify-between gap-2 rounded-2xl px-3.5 text-xs font-semibold uppercase tracking-wide text-muted hover:bg-soft hover:text-text"
+        className={cn(RAIL_TITLE, "flex min-h-10 cursor-pointer items-center justify-between gap-2 rounded-xl pb-0 hover:bg-white/12 hover:text-white dark:hover:bg-white/[0.07]")}
       >
         {group.title}
         <ChevronDown aria-hidden className={cn("size-4 transition-transform", open && "rotate-180")} />
       </button>
-      <div id={`${uid}-items`} hidden={!open} className="flex flex-col gap-1">
+      <div id={`${uid}-items`} hidden={!open} className="flex flex-col gap-0.5">
         {children}
       </div>
+    </div>
+  );
+}
+
+/**
+ * BuPulse Marketing's logo on the rail: the real logo (public/brand/marketing-logo*.png), drawn all white on the light
+ * rail's gradient (a CSS filter on the dark-text logo keeps its exact shape), and the white logo with the gradient
+ * "MARKETING" on the dark rail. Both are in the DOM; `dark:` shows the right one, so the theme never flashes.
+ */
+function RailLogo({ height = 34 }: { height?: number }) {
+  const width = Math.round((height * 2000) / 640);
+  return (
+    <span className="inline-flex items-center">
+      <Image src="/brand/marketing-logo.png" alt="BuPulse Marketing" width={width} height={height} loading="eager" className="block brightness-0 invert dark:hidden" style={{ width, height }} />
+      <Image src="/brand/marketing-logo-white.png" alt="BuPulse Marketing" width={width} height={height} loading="eager" className="hidden dark:block" style={{ width, height }} />
+    </span>
+  );
+}
+
+/** The plan box's usage bar on the rail: white on the gradient (the shared Meter's gradient fill would vanish there). */
+function RailMeter({ value, max, label }: { value: number; max: number; label: string }) {
+  const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+  return (
+    <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={Math.min(value, max)} className="h-1.5 overflow-hidden rounded-full bg-white/25 dark:bg-white/10">
+      <span className={cn("bp-meter-fill block h-full rounded-full", pct >= 90 ? "bg-[#ffb3c0] dark:bg-danger" : "bg-white dark:bg-[linear-gradient(90deg,#2f6bff,#7b5cff)]")} style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -288,18 +306,18 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
   const toHref = useHostHref();
   const brandRow = (
     <>
-      <BrandMark name={businessName} brand={brand} size={36} />
-      <span className="min-w-0 truncate text-sm font-semibold">{businessName}</span>
+      <BrandMark name={businessName} brand={brand} size={34} />
+      <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">{businessName}</span>
     </>
   );
-  const quiet = "flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium text-muted no-underline transition-colors duration-200 hover:bg-soft hover:text-text";
+  const quiet = cn(RAIL_ROW, RAIL_OFF);
   const studioLink =
     studio === "open" ? (
       // A plain link, not next/link: it must never be prefetched (each visit writes a sign-in ticket).
       <a href={toHref("/dashboard/video/open")} target="_blank" rel="noopener" onClick={onNavigate} className={quiet}>
         <Clapperboard aria-hidden className="size-[18px] shrink-0" />
         Video Studio
-        <ExternalLink aria-hidden className="ml-auto size-4 shrink-0" />
+        <ExternalLink aria-hidden className="ml-auto size-4 shrink-0 opacity-80" />
         <span className="sr-only">(opens in a new tab)</span>
       </a>
     ) : studio === "upgrade" ? (
@@ -318,10 +336,10 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
     );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="px-2 pt-1">
-        <Link href={toHref("/dashboard")} onClick={onNavigate} aria-label="BuPulse Marketing home" className="inline-flex min-h-11 items-center">
-          <MarketingLogo height={36} />
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="px-1.5 pt-1">
+        <Link href={toHref("/dashboard")} onClick={onNavigate} aria-label="BuPulse Marketing home" className="inline-flex min-h-11 items-center rounded-lg">
+          <RailLogo height={38} />
         </Link>
       </div>
       {/* At the top, so any page is one search away (owner's request). */}
@@ -329,12 +347,12 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
         type="button"
         onClick={(e) => onFind(e.currentTarget)}
         aria-haspopup="dialog"
-        className="glass -mt-1 flex min-h-11 cursor-pointer items-center gap-2.5 rounded-2xl px-3.5 text-left text-[15px] text-muted hover:text-text"
+        className={cn(RAIL_PANEL, "flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl px-3 text-left text-[14px] text-white ring-1 ring-inset ring-white/15 transition-colors hover:bg-white/18 dark:text-white/80 dark:ring-white/10 dark:hover:bg-white/[0.08]")}
       >
         <Search aria-hidden className="size-[18px] shrink-0" />
         <span className="flex-1">Find a page</span>
         {hint && (
-          <kbd aria-hidden className="hidden rounded-md border border-line px-1.5 py-0.5 font-sans text-[11px] lg:inline">
+          <kbd aria-hidden className="hidden rounded-md border border-white/30 px-1.5 py-0.5 font-sans text-[11px] lg:inline dark:border-white/15">
             {hint}
           </kbd>
         )}
@@ -343,12 +361,13 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
         <Link
           href={toHref("/dashboard/brand")}
           onClick={onNavigate}
-          className="flex min-h-12 items-center gap-2.5 rounded-2xl bg-soft px-2.5 py-1.5 no-underline"
+          className={cn(RAIL_PANEL, "flex min-h-14 items-center gap-2.5 rounded-2xl px-2.5 py-2 text-white no-underline transition-colors hover:bg-white/18 dark:hover:bg-white/[0.08]")}
         >
           {brandRow}
+          <ChevronRight aria-hidden className="size-4 shrink-0 opacity-80" />
         </Link>
       ) : (
-        <div className="flex min-h-12 items-center gap-2.5 rounded-2xl bg-soft px-2.5 py-1.5">{brandRow}</div>
+        <div className={cn(RAIL_PANEL, "flex min-h-14 items-center gap-2.5 rounded-2xl px-2.5 py-2 text-white")}>{brandRow}</div>
       )}
       {actions.length > 0 && (
         <button
@@ -356,22 +375,22 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
           onClick={(e) => onCreate(e.currentTarget)}
           aria-haspopup="menu"
           aria-expanded={createOpen}
-          className="-my-1 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl bg-brand-gradient px-4 text-[15px] font-semibold text-white shadow-glow transition-shadow hover:shadow-glow-hover"
+          className={cn(RAIL_CREATE, "inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold transition-[background-color,filter]")}
         >
           <Plus aria-hidden className="size-5" />
           Create
         </button>
       )}
-      <nav aria-label="App" className="flex flex-col gap-3">
+      <nav aria-label="App" className="flex flex-col gap-4 pt-1">
         {groups.map((g) =>
           g.id === FOLDED_GROUP ? (
             <FoldedGroup key={g.id} group={g} pathname={pathname}>
               {links(g)}
             </FoldedGroup>
           ) : (
-            <div key={g.id} role={g.title ? "group" : undefined} aria-labelledby={g.title ? `${uid}-${g.id}` : undefined} className="flex flex-col gap-1">
+            <div key={g.id} role={g.title ? "group" : undefined} aria-labelledby={g.title ? `${uid}-${g.id}` : undefined} className="flex flex-col gap-0.5">
               {g.title && (
-                <p id={`${uid}-${g.id}`} className="px-3.5 pb-0.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                <p id={`${uid}-${g.id}`} className={RAIL_TITLE}>
                   {g.title}
                 </p>
               )}
@@ -382,33 +401,29 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
         )}
       </nav>
       {missing.length > 0 && (
-        <nav aria-label="Add to your plan" className="flex flex-col gap-1">
-          <p className="px-3.5 pb-1 text-xs font-semibold uppercase tracking-wide text-muted">Add to your plan</p>
+        <nav aria-label="Add to your plan" className="flex flex-col gap-0.5">
+          <p className={RAIL_TITLE}>Add to your plan</p>
           {missing.map(({ key, label }) => {
             const Icon = FEATURE_ICONS[key];
             const href = toHref(`/dashboard/upgrade?feature=${key}`);
             return (
-              <Link
-                key={key}
-                href={href}
-                onClick={onNavigate}
-                className="flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[14px] font-medium text-muted no-underline transition-colors duration-200 hover:bg-soft hover:text-text"
-              >
+              <Link key={key} href={href} onClick={onNavigate} className={quiet}>
                 <Icon aria-hidden className="size-[18px] shrink-0" />
                 {label}
+                <Plus aria-hidden className="ml-auto size-4 shrink-0 opacity-80" />
               </Link>
             );
           })}
         </nav>
       )}
-      <div className="mt-auto flex flex-col gap-3">
-        <div className="glass-strong flex flex-col gap-2.5 rounded-[20px] p-4">
+      <div className="mt-auto flex flex-col gap-3 pt-2">
+        <div className={cn(RAIL_PANEL, "flex flex-col gap-2.5 rounded-2xl p-3.5 text-white")}>
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px]">
-            <strong>{plan.name}</strong>
-            {plan.trialLabel && <span className="text-muted">{plan.trialLabel}</span>}
+            <strong className="font-semibold">{plan.name}</strong>
+            {plan.trialLabel && <span className="text-white/85 dark:text-white/60">{plan.trialLabel}</span>}
           </div>
-          <Meter value={plan.used} max={plan.max} label="Text generations used" />
-          <span className="text-xs text-muted">
+          <RailMeter value={plan.used} max={plan.max} label="Text generations used" />
+          <span className="text-xs text-white/85 dark:text-white/60">
             {plan.used} of {plan.max} generations used
           </span>
         </div>
@@ -517,19 +532,22 @@ function Drawer({ onClose, ...sidebar }: Omit<SidebarProps, "onNavigate"> & { on
 
   return (
     <div className="fixed inset-0 z-50 lg:hidden" onKeyDown={onKeyDown}>
-      <div aria-hidden onClick={onClose} className="bp-fade-in absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div aria-hidden onClick={onClose} className="bp-fade-in absolute inset-0 bg-[rgba(11,11,15,0.45)] backdrop-blur-[2px]" />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Menu"
-        className="glass-strong bp-drawer-in absolute inset-y-3 left-3 flex w-[min(86vw,300px)] flex-col gap-3 overflow-y-auto rounded-[28px] p-3.5"
+        className={cn(
+          RAIL,
+          "bp-drawer-in absolute inset-y-0 left-0 flex w-[min(86vw,300px)] flex-col overflow-y-auto rounded-r-[28px] px-3 pb-[max(env(safe-area-inset-bottom),16px)] pt-[max(env(safe-area-inset-top),12px)] shadow-2xl dark:border-r dark:border-white/10",
+        )}
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Close menu"
-          className="absolute right-3 top-3 z-10 inline-flex size-11 cursor-pointer items-center justify-center rounded-full hover:bg-soft"
+          className="absolute right-3 top-[max(env(safe-area-inset-top),12px)] z-10 inline-flex size-11 cursor-pointer items-center justify-center rounded-full text-white hover:bg-white/12 dark:hover:bg-white/[0.07]"
         >
           <X aria-hidden className="size-5" />
         </button>
@@ -598,7 +616,7 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
 
   return (
     <div
-      className="relative flex min-h-dvh w-full flex-wrap items-start gap-5 p-3 max-lg:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:p-5 sm:max-lg:pb-[calc(6.5rem+env(safe-area-inset-bottom))]"
+      className="bp-app relative flex min-h-dvh w-full items-start"
       style={
         {
           "--brand-1": brand.colors[0],
@@ -617,19 +635,19 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
         Skip to content
       </a>
 
-      <aside
-        aria-label="Sidebar"
-        className="glass-strong hidden w-[248px] shrink-0 flex-col rounded-[28px] p-3.5 lg:sticky lg:top-5 lg:flex lg:max-h-[calc(100dvh-2.5rem)] lg:self-start lg:overflow-y-auto"
-      >
-        <Sidebar {...sidebar} />
+      {/* The rail fills the page's whole height on the left edge (however long the page); its contents stay put. */}
+      <aside aria-label="Sidebar" className={cn(RAIL, "hidden w-[264px] shrink-0 self-stretch lg:block dark:border-r dark:border-white/10")}>
+        <div className="sticky top-0 flex h-dvh flex-col overflow-y-auto px-3 py-5">
+          <Sidebar {...sidebar} />
+        </div>
       </aside>
 
       {drawerOpen && <Drawer {...sidebar} onClose={closeDrawer} />}
       {create && <CreateMenu actions={actions} anchor={create.anchor} onClose={closeCreate} />}
       <PageFinder open={finding} onOpenChange={onFinding} entries={entries} />
 
-      <div className="flex min-w-0 flex-1 basis-[min(100%,560px)] flex-col gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+      <div className="mx-auto flex w-full min-w-0 max-w-[1320px] flex-1 flex-col gap-6 px-4 pt-3 pb-10 max-lg:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-5 sm:max-lg:pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:px-10 lg:pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
               ref={menuButtonRef}
@@ -637,14 +655,15 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
               onClick={(e) => openDrawer(e.currentTarget)}
               aria-label="Open menu"
               aria-expanded={drawerOpen}
-              className="glass inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full lg:hidden"
+              className="glass inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-text lg:hidden"
             >
               <Menu aria-hidden className="size-5" />
             </button>
             <div className="flex min-w-0 items-center gap-2.5">
               <BrandMark name={businessName} brand={brand} size={36} />
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate text-[15px] font-semibold">Welcome back, {firstName}</span>
+              {/* On a phone the bar keeps to one row: the greeting shows from the small breakpoint up. */}
+              <div className="hidden min-w-0 flex-col sm:flex">
+                <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">Welcome back, {firstName}</span>
                 <span className="truncate text-[13px] text-muted">{businessName}</span>
               </div>
             </div>
@@ -653,14 +672,19 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
             {switcher && <ServiceSwitcher {...switcher} />}
             <ThemeToggle />
             <NoticesBell notices={notices} />
-            <Button href={toHref("/dashboard/knowledge/products/new")} size="sm" leading={<Plus aria-hidden className="size-[18px]" />}>
-              Add product
+            <Button
+              href={toHref("/dashboard/knowledge/products/new")}
+              size="sm"
+              className="max-sm:size-11 max-sm:px-0"
+              leading={<Plus aria-hidden className="size-[18px]" />}
+            >
+              <span className="max-sm:sr-only">Add product</span>
             </Button>
             <UserMenu displayName={displayName} email={email} />
           </div>
         </div>
 
-        <main id="main" className="flex min-w-0 flex-col gap-5 outline-none">
+        <main id="main" className="flex min-w-0 flex-col gap-6 outline-none">
           {children}
         </main>
       </div>
