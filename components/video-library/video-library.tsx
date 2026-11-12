@@ -6,6 +6,8 @@
  * click through /dashboard/video/open) or uploaded here ("Upload a video", components/video-library/upload-dialog.tsx);
  * here they are watched, downloaded, scheduled (studio and uploaded videos) and deleted (the same; a post's slideshow
  * video is managed from its post).
+ * Each video is a media card (components/media-cards VideoCard: the liquid-glass panel with its actions rises on hover or
+ * focus) and opens in the full player (MediaPlayer, the same actions in its side panel); Schedule opens a dialog.
  *
  * Props:
  *   initialVideos  lib/video-library/service.ts listLibraryVideos
@@ -19,8 +21,10 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { CalendarClock, Clapperboard, Download, ExternalLink, Film, Loader2, Trash2, Upload } from "lucide-react";
-import { Badge, Button, buttonClasses, Field, GlassCard, Input, Meter, Textarea, useToast } from "@/components/ui";
+import { Badge, Button, buttonClasses, Dialog, Field, GlassCard, Input, Meter, Textarea, useToast } from "@/components/ui";
+import { durationLabel, glassButtonClass, libraryPlayerItem, libraryVideoCard, MediaPlayer, VideoCard, type PlayerItem } from "@/components/media-cards";
 import { deleteLibraryVideo, loadLibrary, loadScheduleOptions, scheduleStudioVideo } from "@/app/dashboard/video/actions";
 import { WhatsAppShare } from "@/components/share/whatsapp-share";
 import { UploadVideoDialog } from "./upload-dialog";
@@ -51,9 +55,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "slideshow", label: "Post videos" },
 ];
 
-const ENGINE_LABEL: Record<string, string> = { motion: "Motion", premium3d: "Premium 3D", seedance: "AI video", upload: "Uploaded" };
 const NETWORK_LABEL: Record<Network, string> = { instagram: "Instagram Reels", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube Shorts", linkedin: "LinkedIn", twitter: "X (Twitter)" };
-const ASPECT: Record<string, string> = { "9:16": "aspect-[9/16]", "4:5": "aspect-[4/5]", "1:1": "aspect-square", "16:9": "aspect-video" };
 
 const REASON_TEXT: Record<string, string> = {
   off: "The Video Studio is not open yet. Your videos are all here, and you will see the button as soon as it opens.",
@@ -61,8 +63,6 @@ const REASON_TEXT: Record<string, string> = {
   plan: "Your plan has no video credits, so the Video Studio cannot open. Add video credits to your plan to make videos.",
   error: "The Video Studio could not open just now. Please try again.",
 };
-
-const seconds = (ms: number | null) => (ms ? `${Math.round(ms / 1000)} s` : null);
 
 function Pills<T extends string>({ label, options, value, onChange }: { label: string; options: { id: T; label: string }[]; value: T; onChange: (v: T) => void }) {
   return (
@@ -133,13 +133,13 @@ function StudioBar({ studio, credits, canBuy, timeZone }: Pick<Props, "studio" |
 }
 
 /**
- * "Schedule" on a studio video: one post per chosen account (createPosts, like the composer), each network with its own
- * caption (the video's for its platform, else the Brain's), which the owner can change. Every caption must pass the
- * caption check, done again when scheduling. TikTok and YouTube get the reminder email with the video at the time.
+ * "Schedule" on a studio video, in a dialog: one post per chosen account (createPosts, like the composer), each network
+ * with its own caption (the video's for its platform, else the Brain's), which the owner can change. Every caption must
+ * pass the caption check, done again when scheduling. TikTok and YouTube get the reminder email with the video at the
+ * time.
  */
-function SchedulePanel({ video, timeZone, onScheduled }: { video: LibraryVideo; timeZone: string; onScheduled: (count: number, next: string | null) => void }) {
+function ScheduleForm({ video, timeZone, onScheduled, onCancel }: { video: LibraryVideo; timeZone: string; onScheduled: (count: number, next: string | null) => void; onCancel: () => void }) {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<ScheduleOptions | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
@@ -148,16 +148,21 @@ function SchedulePanel({ video, timeZone, onScheduled }: { video: LibraryVideo; 
   const [local, setLocal] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
-    setOpen(true);
-    if (options) return;
-    const res = await loadScheduleOptions(video.id);
-    if (!res.ok) return setProblem(res.error);
-    const o: ScheduleOptions = { accounts: res.accounts, captions: res.captions, credit: res.credit, timezone: res.timezone };
-    setOptions(o);
-    setPicked(o.accounts.filter((a) => a.usable).map((a) => a.id));
-    setCaptions(Object.fromEntries(Object.entries(o.captions).map(([n, c]) => [n, { text: c!.text, tags: c!.hashtags.join(" ") }])));
-  };
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const res = await loadScheduleOptions(video.id);
+      if (!live) return;
+      if (!res.ok) return setProblem(res.error);
+      const o: ScheduleOptions = { accounts: res.accounts, captions: res.captions, credit: res.credit, timezone: res.timezone };
+      setOptions(o);
+      setPicked(o.accounts.filter((a) => a.usable).map((a) => a.id));
+      setCaptions(Object.fromEntries(Object.entries(o.captions).map(([n, c]) => [n, { text: c!.text, tags: c!.hashtags.join(" ") }])));
+    })();
+    return () => {
+      live = false;
+    };
+  }, [video.id]);
 
   const schedule = async () => {
     if (!options || saving) return;
@@ -169,22 +174,14 @@ function SchedulePanel({ video, timeZone, onScheduled }: { video: LibraryVideo; 
     setSaving(false);
     if (!res.ok) return setProblem(res.error);
     onScheduled(res.postIds.length, res.scheduledAt);
-    setOpen(false);
     const at = res.scheduledAt ? new Date(res.scheduledAt).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone }) : "";
     toast(`Scheduled on ${res.postIds.length} ${res.postIds.length === 1 ? "account" : "accounts"}${at ? ` for ${at}` : ""}. It is in your calendar.`, "success");
   };
 
-  if (!open) {
-    return (
-      <Button size="sm" onClick={load} leading={<CalendarClock className="size-4" aria-hidden />}>
-        Schedule
-      </Button>
-    );
-  }
   const networks = options ? [...new Set(options.accounts.filter((a) => picked.includes(a.id)).map((a) => a.network))] : [];
   return (
-    <div className="flex w-full flex-col gap-3 rounded-xl border border-line p-3 text-sm">
-      {!options && !problem && <Loader2 className="size-4 animate-spin" aria-label="Loading" />}
+    <div className="flex w-full flex-col gap-3 text-sm">
+      {!options && !problem && <Loader2 className="size-5 animate-spin text-pulse-blue" aria-label="Loading" />}
       {options && options.accounts.length === 0 && <p className="text-muted">Connect Instagram, Facebook, TikTok or YouTube in Channels first.</p>}
       {options && options.accounts.length > 0 && (
         <>
@@ -225,7 +222,7 @@ function SchedulePanel({ video, timeZone, onScheduled }: { video: LibraryVideo; 
             <Button size="sm" onClick={schedule} disabled={saving || picked.length === 0 || (mode === "schedule" && !local)} leading={saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <CalendarClock className="size-4" aria-hidden />}>
               Schedule
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            <Button size="sm" variant="ghost" onClick={onCancel}>
               Cancel
             </Button>
           </div>
@@ -236,8 +233,12 @@ function SchedulePanel({ video, timeZone, onScheduled }: { video: LibraryVideo; 
   );
 }
 
-/** Delete with a confirmation step in the card (the viewer never shows confirm dialogs). */
-function DeleteButton({ video, onDeleted }: { video: LibraryVideo; onDeleted: () => void }) {
+/**
+ * A video's actions on dark glass (the card's panel and the player's panel): Schedule (studio and uploaded videos),
+ * Download, Share to WhatsApp, Open its post (a post's slideshow video) and Delete, with its confirmation step in place
+ * (the viewer never shows confirm dialogs).
+ */
+function VideoActions({ video, onSchedule, onDeleted }: { video: LibraryVideo; onSchedule: () => void; onDeleted: () => void }) {
   const { toast } = useToast();
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -250,62 +251,73 @@ function DeleteButton({ video, onDeleted }: { video: LibraryVideo; onDeleted: ()
     toast("Video deleted.", "success");
     onDeleted();
   };
-  if (!asking) {
+  if (asking)
     return (
-      <Button size="sm" variant="ghost" onClick={() => setAsking(true)} leading={<Trash2 className="size-4" aria-hidden />}>
-        Delete
-      </Button>
+      <span className="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-white">
+        Delete this video for good?
+        <button type="button" onClick={remove} disabled={busy} className={glassButtonClass("danger")}>
+          {busy && <Loader2 aria-hidden className="size-4 animate-spin" />}
+          Yes, delete
+        </button>
+        <button type="button" onClick={() => setAsking(false)} className={glassButtonClass()}>
+          Keep it
+        </button>
+      </span>
     );
-  }
   return (
-    <span className="flex flex-wrap items-center gap-2 text-sm">
-      Delete this video for good?
-      <Button size="sm" variant="outline" onClick={remove} disabled={busy} leading={busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : undefined}>
-        Yes, delete
-      </Button>
-      <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
-        Keep it
-      </Button>
-    </span>
+    <>
+      {video.source !== "slideshow" && (
+        <button type="button" onClick={onSchedule} className={glassButtonClass("primary")}>
+          <CalendarClock aria-hidden className="size-4" />
+          Schedule
+        </button>
+      )}
+      {video.downloadUrl && (
+        <a href={video.downloadUrl} className={glassButtonClass()}>
+          <Download aria-hidden className="size-4" />
+          Download
+        </a>
+      )}
+      {/* The share button and its notes in the dark theme's colours, readable on the glass. */}
+      <span className="dark contents [&_button]:!border-white/30 [&_button]:!bg-white/15 [&_button]:!text-white [&_p]:!text-white/85">
+        <WhatsAppShare media={[{ path: video.videoUrl, url: video.videoUrl }]} caption={whatsappCaption({ text: video.caption })} what="video" />
+      </span>
+      {video.source === "slideshow" && video.postHref && (
+        <Link href={video.postHref} className={glassButtonClass()}>
+          Open its post
+        </Link>
+      )}
+      {video.source !== "slideshow" && (
+        <button type="button" onClick={() => setAsking(true)} aria-label={`Delete ${video.title}`} className={glassButtonClass("danger")}>
+          <Trash2 aria-hidden className="size-4" />
+          Delete
+        </button>
+      )}
+    </>
   );
 }
 
-function VideoCard({ video, focused, timeZone, onChange, onDeleted }: { video: LibraryVideo; focused: boolean; timeZone: string; onChange: (v: LibraryVideo) => void; onDeleted: () => void }) {
-  const length = seconds(video.durationMs);
-  const made = new Date(video.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone });
+/** What the player's side panel says about a video. */
+function VideoFacts({ video, timeZone }: { video: LibraryVideo; timeZone: string }) {
   const next = video.posts.next ? new Date(video.posts.next).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone }) : null;
+  const rows: [string, string][] = [
+    ["Made", new Date(video.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone })],
+    ["Length", durationLabel(video.durationMs) ?? "—"],
+    ["Shape", video.ratio],
+    ["Posts", video.posts.count > 0 ? `In ${video.posts.count} ${video.posts.count === 1 ? "post" : "posts"}${next ? `, next ${next}` : ""}` : "Not posted yet"],
+  ];
   return (
-    <GlassCard id={`video-${video.id}`} padding="sm" className={cn("flex min-w-0 flex-col gap-3", focused && "ring-2 ring-pulse-blue")}>
-      <div className={cn("mx-auto w-full max-w-[22rem] overflow-hidden rounded-2xl bg-black", ASPECT[video.ratio] ?? "aspect-[9/16]")}>
-        <video src={video.videoUrl} poster={video.posterUrl ?? undefined} controls playsInline preload="metadata" className="size-full object-contain" aria-label={video.title} />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-semibold">{video.title}</span>
-        {video.isNew && <Badge tone="violet">New</Badge>}
-        <Badge tone="neutral">{video.source === "slideshow" ? "Post video" : video.source === "upload" ? "Uploaded" : (ENGINE_LABEL[video.engine ?? ""] ?? "Studio")}</Badge>
-      </div>
-      <p className="text-sm text-muted">
-        {[made, length, video.ratio].filter(Boolean).join(" · ")}
-        <br />
-        {video.posts.count > 0 ? `In ${video.posts.count} ${video.posts.count === 1 ? "post" : "posts"}${next ? `, next ${next}` : ""}.` : "Not posted yet."}
-      </p>
-      <div className="flex flex-wrap items-start gap-2">
-        {video.source !== "slideshow" && <SchedulePanel video={video} timeZone={timeZone} onScheduled={(n, at) => onChange({ ...video, posts: { count: video.posts.count + n, next: video.posts.next && at && video.posts.next < at ? video.posts.next : (at ?? video.posts.next) } })} />}
-        {video.downloadUrl && (
-          <a href={video.downloadUrl} className={buttonClasses({ size: "sm", variant: "ghost" })}>
-            <Download aria-hidden className="size-4" />
-            Download
-          </a>
-        )}
-        <WhatsAppShare media={[{ path: video.videoUrl, url: video.videoUrl }]} caption={whatsappCaption({ text: video.caption })} what="video" />
-        {video.source === "slideshow" && video.postHref && (
-          <Button size="sm" variant="ghost" href={video.postHref}>
-            Open its post
-          </Button>
-        )}
-        {video.source !== "slideshow" && <DeleteButton video={video} onDeleted={onDeleted} />}
-      </div>
-    </GlassCard>
+    <>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13.5px]">
+        {rows.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className="text-[#a3a6c2]">{k}</dt>
+            <dd className="text-right text-white">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {video.caption && <p className="rounded-xl border border-white/10 bg-white/5 p-3 text-[13.5px] leading-relaxed whitespace-pre-line text-white/90">{video.caption}</p>}
+    </>
   );
 }
 
@@ -315,6 +327,17 @@ export function VideoLibrary({ initialVideos, studio, credits, canBuy, reason, f
   const [uploading, setUploading] = useState(false);
   const [videoBytes, setVideoBytes] = useState(upload.storage.used);
   const shown = useMemo(() => (filter === "all" ? videos : videos.filter((v) => v.source === filter)), [videos, filter]);
+  // The full player (an index into `shown`) and the video being scheduled (a dialog, from a card or the player).
+  const [playing, setPlaying] = useState<number | null>(null);
+  const [scheduling, setScheduling] = useState<LibraryVideo | null>(null);
+
+  const update = (next: LibraryVideo) => setVideos((list) => list.map((x) => (x.key === next.key ? next : x)));
+  const removed = (key: string) => {
+    setPlaying(null);
+    setVideos((list) => list.filter((x) => x.key !== key));
+  };
+  const actionsOf = (v: LibraryVideo) => <VideoActions video={v} onSchedule={() => setScheduling(v)} onDeleted={() => removed(v.key)} />;
+  const items: PlayerItem[] = shown.map((v) => ({ ...libraryPlayerItem(v), info: <VideoFacts video={v} timeZone={timeZone} />, actions: actionsOf(v) }));
 
   // The "Your video is ready" email opens on its video.
   useEffect(() => {
@@ -368,21 +391,38 @@ export function VideoLibrary({ initialVideos, studio, credits, canBuy, reason, f
           {shown.length === 0 ? (
             <p className="text-sm text-muted">No videos of this kind yet.</p>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-4">
-              {shown.map((v) => (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,15rem),1fr))] gap-4 sm:gap-5">
+              {shown.map((v, i) => (
                 <VideoCard
                   key={v.key}
-                  video={v}
+                  {...libraryVideoCard(v, timeZone)}
+                  index={i}
                   focused={v.source === "studio" && v.id === focus}
-                  timeZone={timeZone}
-                  onChange={(next) => setVideos((list) => list.map((x) => (x.key === next.key ? next : x)))}
-                  onDeleted={() => setVideos((list) => list.filter((x) => x.key !== v.key))}
+                  badge={v.isNew ? <span className="rounded-full bg-pulse-violet px-2 py-1 text-[11.5px] leading-none font-semibold text-white">New</span> : undefined}
+                  onOpen={() => setPlaying(i)}
+                  actions={actionsOf(v)}
                 />
               ))}
             </div>
           )}
         </>
       )}
+      <MediaPlayer items={items} index={playing} onIndexChange={setPlaying} onClose={() => setPlaying(null)} />
+      <Dialog open={scheduling != null} onOpenChange={(o) => !o && setScheduling(null)} title="Schedule this video" description={scheduling?.title} className="max-w-xl">
+        {scheduling && (
+          <ScheduleForm
+            key={scheduling.key}
+            video={scheduling}
+            timeZone={timeZone}
+            onCancel={() => setScheduling(null)}
+            onScheduled={(n, at) => {
+              const v = videos.find((x) => x.key === scheduling.key) ?? scheduling;
+              update({ ...v, posts: { count: v.posts.count + n, next: v.posts.next && at && v.posts.next < at ? v.posts.next : (at ?? v.posts.next) } });
+              setScheduling(null);
+            }}
+          />
+        )}
+      </Dialog>
     </div>
   );
 }
