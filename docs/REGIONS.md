@@ -4,15 +4,36 @@ Built 10 October 2026 (R1 of `docs/RWANDA_LAUNCH_PLAN.md`, plus section 12's dem
 
 ## Regions
 
-Regions are data: the `PricingRegion` table (`key`, `name`, `currency`, `countries[]` as ISO codes, `paymentMethods[]` = `momo` | `card`, `active`, `sortOrder`), managed at **Admin → Regions and prices** and read through `lib/region.ts` (`getRegions()`, cached 30 s, seeds in `lib/region-format.ts` as the fallback).
+Regions are data: the `PricingRegion` table (`key`, `name`, `currency`, `countries[]` as ISO codes, `paymentMethods[]` = `momo` | `card`, `active`, `sortOrder`), managed at **Admin → Money → Regions** and read through `lib/region.ts` (`getRegions()`, cached 30 s, seeds in `lib/region-format.ts` as the fallback).
 
 | Key | Countries | Currency | Payment |
 |---|---|---|---|
 | `RW` | RW | RWF | Mobile Money (R4) and card (Paddle, charged in USD) |
-| `EAC` | KE, UG, TZ, BI, SS, CD, SO | USD | Card |
-| `GLOBAL` | everything else (no country list) | USD | Card |
+| `EAC` | KE, UG, TZ, BI, SS, CD, SO, ET, DJ, ER | USD | Card |
+| `GLOBAL` "Rest of the world" | everything else (no country list) | USD | Card |
 
-A country belongs to exactly one active region; the region with no countries takes the rest and cannot be switched off.
+### Live and coming soon (12 November 2026, migration `20261112120000_region_coming_soon_vat`)
+
+A region is **Live** or **Coming soon** (stored as `PricingRegion.active`, which every build already reads: true = Live). Only live regions are matched: a visitor or sign-up whose country is listed only by a coming-soon region (or by none) gets the catch-all, Rest of the world, and the pricing page says "BuPulse is coming soon to West Africa". No plan can be newly offered in a coming-soon region (the plan form shows it disabled with a badge; a plan already priced there may keep it). Seeded coming soon (USD, card, no VAT): West Africa (NG GH CI SN ML BF NE GN GW SL LR TG BJ GM CV MR SH), Southern Africa (ZA NA BW LS SZ ZW ZM MW MZ AO MG MU SC KM RE YT), Northern Africa (EG LY TN DZ MA SD EH), Central Africa (CM CF TD CG GQ GA ST, added so every African country is in a region), Europe, Asia, Australia and Oceania, North America (with Central America and the Caribbean), South America; the lists are `REGION_SEEDS` in `lib/region-format.ts`. Only AQ, BV, GS, HM, IO, TF and UM are in no region.
+
+**A country belongs to at most one region**, live or coming soon (`saveRegion` refuses a clash; the editor's "Move here" moves a country from its old region in the same transaction, audited `move_region_countries`, and refuses to leave that region empty). Precedence, for older data where two live regions list one country: the region with the fewest countries wins, then the lower order (`regionForCountryCode`). A region companies are billed in cannot be made coming soon or deleted; a region cannot be deleted while a plan is offered only there.
+
+**Admin → Money → Regions** (`/admin/settings/regions`, permission `plans.manage`, linked from Plans): the list (status, countries, plans, VAT, currency, companies, up/down order, audited `reorder_regions`), `/new` and `/[key]` (name, status, currency, payment methods, VAT %, tax name, the countries with a searchable picker over every ISO code in `lib/iso-countries.ts`, the plans offered there, delete, audited `create_region` / `update_region` / `delete_region`).
+
+**Which regions a plan is shown in** is set on the plan form ("Where it is shown"): one tick per region, the price before VAT in the region's currency for every ticked region but Rest of the world (its price is the plan's own), and a live line per region with VAT. It writes `PlanRegionPrice` rows (`setPlanRegions`, one audit row `update_plan_regions`); at least one region. The migration gave every plan with no row at all an explicit Rest of the world row (the old implicit rule), so existing plans show where they did: STARTER, BUSINESS, BUSINESS_PRO in Rwanda; STANDARD and PRO in East Africa and Rest of the world.
+
+**Local testing:** with `REGION_OVERRIDE=1`, `?region=` takes a live region key (`EAC`) or a country code (`KE`, `NG`, `US`): the region a visitor from there would get.
+
+## VAT (12 November 2026)
+
+VAT is per region: `PricingRegion.vatRateBps` (basis points, 1800 = 18%) and `vatLabel` ("VAT"), edited on the region page. Rwanda starts at 18%, every other region at 0 (off). **Prices are typed before VAT**; where the region has VAT it goes on top (`lib/vat.ts`, rounded half up to the currency's smallest unit, whole francs for RWF): a 50,000 RWF plan is shown as "50,000 RWF / month, + VAT (18%) = 59,000 RWF total" (pricing page, home plan cards, Billing's plan picker) and costs 59,000.
+
+- **Mobile Money**: `momoPriceOf` / `getMomoPrice` return the total; `ManualPayment.amountMinor` is what the client sends (VAT included) and the new `vatMinor` / `vatRateBps` keep the VAT part and its rate, so a later rate change never rewrites a payment. An invoice payment takes the invoice's own VAT. Custom plan offers are final prices and get no VAT (as their invoices already did); renewals of a custom plan neither.
+- **Invoices**: the tax rate is the company region's VAT (`invoiceVatPercent`), stored on the invoice (`taxRatePercent`, `taxMinor`) when it is written; the PDF and preview show Subtotal, VAT (18%), Total. The old "VAT rate %" invoice setting is no longer used (Invoice settings points to Regions).
+- **Revenue**: VAT is not revenue. A confirmed Mobile Money payment or a hand-marked invoice stores `usd_cents` before VAT and `vat_minor`, `vat_rate_bps`, `vat_usd_cents` beside it; Revenue and profit shows "VAT collected" per month. Older events have no VAT fields and are unchanged.
+- **Card (Paddle)**: Rwanda card prices are not in Paddle yet (checkout says to pay by Mobile Money). Paddle is the merchant of record and works out tax itself, so nothing is added for card payments, and card revenue is already counted net of tax.
+
+A country belongs to exactly one region; the region with no countries takes the rest and cannot be switched off.
 
 **Which region someone is in**
 

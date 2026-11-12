@@ -14,6 +14,9 @@ import { logError } from "@/lib/errors";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { getPlan } from "@/lib/plan-catalog";
 import { companyPlans, planForAnyPriceId } from "@/lib/region-prices";
+import { companyRegion, getRegion } from "@/lib/region";
+import { RWANDA_REGION_KEY } from "@/lib/region-format";
+import { vatPercentOf } from "@/lib/vat";
 import { sendInvoiceEmail, sendInvoiceReminderEmail } from "./emails";
 import { renderInvoicePdf } from "./pdf";
 import { getInvoiceSettings, loadInvoiceLogo, paymentInstructionsFor } from "./settings";
@@ -197,9 +200,9 @@ export async function createActivationInvoice(ctx: AdminContext, input: { busine
   if (!plan) throw new AdminError("conflict", `That plan is not offered in ${region.name} (${region.key}), the company's region. Pick one of: ${plans.map((p) => p.name).join(", ") || "none (add a price for this region first)"}.`);
   const unitMinor = interval === "YEAR" ? plan.yearlyPriceCents : plan.monthlyPriceCents;
   if (!unitMinor || unitMinor <= 0) throw new AdminError("conflict", `The ${plan.name} plan has no ${intervalLabel(interval)} price in ${region.name}.`);
-  const settings = await getInvoiceSettings();
+  const vatPercent = vatPercentOf(region.vatRateBps);
   const lines: InvoiceLine[] = [{ description: `BuPulse ${plan.name} plan, ${interval === "YEAR" ? "yearly (12 months)" : "monthly (1 month)"}`, quantity: 1, unitMinor }];
-  const totals = computeTotals(lines, settings.vatRatePercent);
+  const totals = computeTotals(lines, vatPercent);
   const today = invoiceToday(now);
   const number = await nextInvoiceNumber();
   try {
@@ -212,7 +215,7 @@ export async function createActivationInvoice(ctx: AdminContext, input: { busine
           currency: plan.currency.toUpperCase(),
           lines: lines as Prisma.InputJsonValue,
           ...totals,
-          taxRatePercent: settings.vatRatePercent,
+          taxRatePercent: vatPercent,
           issueDate: dateOfYmd(today),
           dueDate: dateOfYmd(addDaysYmd(today, DEFAULT_DUE_DAYS)),
           planKey: plan.key,
@@ -235,17 +238,25 @@ export async function createActivationInvoice(ctx: AdminContext, input: { busine
   }
 }
 
+/**
+ * The VAT rate (percent) of a company's invoices: its billing region's VAT (Admin -> Regions; Rwanda 18%), null when
+ * the region has none. Written on the invoice with the amounts, so a later rate change never rewrites one.
+ */
+export async function invoiceVatPercent(businessId: string): Promise<number | null> {
+  return vatPercentOf((await companyRegion(businessId)).vatRateBps);
+}
+
 /** Saves the editor: lines, due date, notes and the billing contact. Drafts only; totals are recomputed here. */
 export async function updateInvoiceDraft(ctx: AdminContext, id: string, raw: unknown) {
   requireConsole(ctx);
   const row = await prisma.invoice.findUnique({ where: { id } });
   if (!row) throw new AdminError("not_found", "No invoice with that id.");
   if (row.status !== "draft") throw new AdminError("conflict", `Invoice ${row.number} is ${row.status}: only drafts can be edited.`);
-  const settings = await getInvoiceSettings();
-  const checked = validateDraft(raw, ymdOf(row.issueDate), settings.vatRatePercent);
+  const vatPercent = await invoiceVatPercent(row.businessId);
+  const checked = validateDraft(raw, ymdOf(row.issueDate), vatPercent);
   if (!checked.ok) throw new AdminError("invalid", Object.values(checked.errors)[0] ?? "Check the invoice and try again.");
   const { lines, dueDate, notes, billingEmail } = checked.data;
-  const data = { lines: lines as Prisma.InputJsonValue, ...checked.totals, taxRatePercent: settings.vatRatePercent, dueDate: dateOfYmd(dueDate), notes, billingEmail };
+  const data = { lines: lines as Prisma.InputJsonValue, ...checked.totals, taxRatePercent: vatPercent, dueDate: dateOfYmd(dueDate), notes, billingEmail };
   await prisma.$transaction(async (tx) => {
     const { count } = await tx.invoice.updateMany({ where: { id, status: "draft" }, data });
     if (count !== 1) throw new AdminError("conflict", "The invoice was sent or voided a moment ago. Nothing was changed.");
@@ -401,7 +412,11 @@ export async function markInvoicePaid(ctx: AdminContext, id: string, input: { me
     // Money pages, in USD at today's rate. Kept after the account is deleted (BillingEvent has no foreign key).
     // Only USD and RWF have a rate here; an invoice in another currency is left out rather than counted at 0.
     const currency = row.currency.toUpperCase();
-    const usdCents = first || (currency !== "USD" && currency !== "RWF") ? null : usdCentsOf(row.totalMinor, currency, await getSetting("usdToRwf"));
+    // VAT is not revenue: usd_cents is the part before VAT (the invoice's own taxMinor), the VAT is kept beside it.
+    const usdRate = currency === "USD" || currency === "RWF" ? await getSetting("usdToRwf") : 0;
+    const vatMinor = Math.max(0, row.taxMinor ?? 0);
+    const usdCents = first || (currency !== "USD" && currency !== "RWF") ? null : usdCentsOf(row.totalMinor - vatMinor, currency, usdRate);
+    const vatPart = vatMinor > 0 && usdCents !== null ? { vat_minor: vatMinor, vat_rate_bps: row.taxRatePercent ? Math.round(row.taxRatePercent * 100) : null, vat_usd_cents: usdCentsOf(vatMinor, currency, usdRate) } : {};
     const payer = first ? null : ((await prisma.business.findUnique({ where: { id: row.businessId }, select: { userId: true } }))?.userId ?? null);
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.invoice.updateMany({ where: { id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });
@@ -415,7 +430,7 @@ export async function markInvoicePaid(ctx: AdminContext, id: string, input: { me
             type: INVOICE_PAID_EVENT,
             userId: payer,
             processedAt: now,
-            payload: { event_type: INVOICE_PAID_EVENT, occurred_at: now.toISOString(), data: { id: row.number, invoice_id: id, amount_minor: row.totalMinor, currency: row.currency, method, usd_cents: usdCents, plan: row.planKey } },
+            payload: { event_type: INVOICE_PAID_EVENT, occurred_at: now.toISOString(), data: { id: row.number, invoice_id: id, amount_minor: row.totalMinor, currency: row.currency, method, usd_cents: usdCents, ...vatPart, plan: row.planKey } },
           },
         });
       }
@@ -675,9 +690,11 @@ export async function openInvoiceOf(businessId: string): Promise<Row | null> {
 
 /** A made-up invoice drawn with the current settings, for the settings page preview. */
 export async function sampleInvoiceDocument(now: Date = new Date()): Promise<{ doc: InvoiceDocument; logo: { path: string; type: string } }> {
-  const [snap, settings] = await Promise.all([sellerSnapshot(), getInvoiceSettings()]);
+  const [snap, rw] = await Promise.all([sellerSnapshot(), getRegion(RWANDA_REGION_KEY)]);
+  // The sample is a Rwanda invoice, so it shows Rwanda's VAT as set in Regions.
+  const samplePercent = vatPercentOf(rw?.vatRateBps);
   const lines: InvoiceLine[] = [{ description: "BuPulse Business plan, monthly (1 month)", quantity: 1, unitMinor: 50000 }];
-  const totals = computeTotals(lines, settings.vatRatePercent);
+  const totals = computeTotals(lines, samplePercent);
   const today = invoiceToday(now);
   return {
     doc: {
@@ -688,7 +705,7 @@ export async function sampleInvoiceDocument(now: Date = new Date()): Promise<{ d
       dueDate: addDaysYmd(today, DEFAULT_DUE_DAYS),
       lines,
       ...totals,
-      taxRatePercent: settings.vatRatePercent,
+      taxRatePercent: samplePercent,
       notes: null,
       planLabel: "Business, monthly",
       seller: snap.seller,

@@ -3,7 +3,7 @@ import { param } from "@/lib/admin/format";
 import { listRegionsAdmin } from "@/lib/admin/regions-service";
 import { RegionsView } from "@/components/admin/system/regions-view";
 
-export const metadata = { title: "Regions and prices" };
+export const metadata = { title: "Regions" };
 export const dynamic = "force-dynamic";
 
 export default async function RegionsPage({ searchParams }: PageProps<"/admin/settings/regions">) {

@@ -3,6 +3,7 @@ import { Layers } from "lucide-react";
 import { PageHeader } from "@/components/admin/kit";
 import { PlanForm } from "@/components/admin/plan-form";
 import { paddleConnected } from "@/lib/billing/paddle-catalog";
+import { planRegionOptions } from "@/lib/admin/regions-service";
 
 export const metadata = { title: "New plan" };
 
@@ -15,6 +16,7 @@ export default async function NewPlanPage() {
         mode="create"
         paddleConnected={await paddleConnected()}
         subscribers={0}
+        regions={await planRegionOptions(null)}
         initial={{
           key: "",
           name: "",

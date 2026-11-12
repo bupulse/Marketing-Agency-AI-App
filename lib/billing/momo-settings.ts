@@ -5,7 +5,7 @@ import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { companyPlans } from "@/lib/region-prices";
 import { sendPayDetailsChangedEmail } from "./momo-emails";
-import { cleanMomoSettings, momoPriceOf, momoSettingsProblem, MOMO_SETTING_KEY, type MomoSettings } from "./momo-shared";
+import { cleanMomoSettings, momoPriceOf, momoSettingsProblem, MOMO_SETTING_KEY, type MomoPrice, type MomoSettings } from "./momo-shared";
 
 // The owner's Mobile Money details (where clients pay), one AdminSetting row (key "billing.momo"). Read on every pay
 // screen, so it is cached briefly per isolate like the plan catalog; the writer clears its own cache. Prices are NOT
@@ -32,9 +32,9 @@ export async function getMomoSettings(): Promise<MomoSettings> {
 
 /**
  * What a company pays by Mobile Money for a plan and interval: the plan's price in the company's region (never the
- * visitor's IP). Null when the plan is not offered there or the region does not take Mobile Money (docs/REGIONS.md).
+ * visitor's IP), plus the region's VAT (lib/vat.ts). Null when the plan is not offered there or the region does not take Mobile Money (docs/REGIONS.md).
  */
-export async function getMomoPrice(businessId: string, planKey: string, interval: BillingInterval): Promise<{ amountMinor: number; currency: string } | null> {
+export async function getMomoPrice(businessId: string, planKey: string, interval: BillingInterval): Promise<MomoPrice | null> {
   const { plans } = await companyPlans(businessId);
   const plan = plans.find((p) => p.key === planKey);
   return plan ? momoPriceOf(plan, interval) : null;

@@ -4,9 +4,12 @@ import { CtaButton } from "@/components/marketing/quote/cta";
 import type { PublicPlan } from "@/lib/plan-catalog";
 import { cn } from "@/lib/cn";
 import { formatPrice } from "@/components/billing/helpers";
+import { formatVatRate } from "@/lib/vat";
+
+type VatPart = { vatMinor: number; totalMinor: number };
 
 /** Static plan cards (monthly price only). The plans come from the database via the page. */
-export function PlanCards({ plans }: { plans: PublicPlan[] }) {
+export function PlanCards({ plans }: { plans: (PublicPlan & { vat?: { rateBps: number; label: string; monthly: VatPart } | null })[] }) {
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-6 md:grid-cols-2">
       {plans.map((plan) => (
@@ -29,6 +32,11 @@ export function PlanCards({ plans }: { plans: PublicPlan[] }) {
             <span className="text-5xl font-bold tracking-[-0.04em]">{formatPrice(plan.monthlyPriceCents, plan.currency)}</span>
             <span className="text-muted">/ month</span>
           </p>
+          {plan.vat && plan.vat.monthly.vatMinor > 0 && (
+            <p className="-mt-4 text-sm text-muted">
+              + {plan.vat.label} ({formatVatRate(plan.vat.rateBps)}) = <strong className="font-semibold text-text">{formatPrice(plan.vat.monthly.totalMinor, plan.currency)}</strong> total
+            </p>
+          )}
           <ul className="flex flex-1 flex-col gap-3">
             {plan.highlights.map((feature) => (
               <li key={feature} className="flex items-start gap-3">

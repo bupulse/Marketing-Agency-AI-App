@@ -86,6 +86,8 @@ async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promis
     interval: row.interval,
     amountMinor: row.amountMinor,
     currency: row.currency,
+    vatMinor: row.vatMinor ?? 0,
+    vatRateBps: row.vatRateBps ?? null,
     reference: row.reference,
     invoiceId: row.invoiceId ?? null,
     offerId: row.offerId ?? null,
@@ -172,7 +174,7 @@ export async function startManualPayment(input: { userId: string; plan: string; 
   // not offered there, cannot be paid this way. Checked before anything is written.
   const price = ownCustom ? await customPlanMomoPrice(business.id, plan, input.interval) : await getMomoPrice(business.id, plan.key, input.interval);
   if (!price || price.amountMinor <= 0) throw new ManualPaymentError("Mobile Money is not available for this plan where your business is. Choose one of the plans shown, pay by card, or contact support.");
-  return openPayment(input.userId, sub, { planKey: plan.key, interval: input.interval, amountMinor: price.amountMinor, currency: price.currency, invoiceId: null, offerId: null, reference: null }, now);
+  return openPayment(input.userId, sub, { planKey: plan.key, interval: input.interval, amountMinor: price.amountMinor, currency: price.currency, vatMinor: price.vatMinor, vatRateBps: price.vatRateBps, invoiceId: null, offerId: null, reference: null }, now);
 }
 
 /**
@@ -201,14 +203,15 @@ export async function startInvoicePayment(input: { userId: string; invoiceId: st
   }
   const { region } = await companyPlans(business.id);
   if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Pay by card, or contact support.");
-  return openPayment(input.userId, sub, { planKey: invoice.planKey, interval: invoice.interval, amountMinor: invoice.totalMinor, currency: invoice.currency, invoiceId: invoice.id, offerId: null, reference: invoice.number }, now);
+  // The invoice's own VAT (taxMinor at the rate it was written with) is the payment's VAT: never worked out again.
+  return openPayment(input.userId, sub, { planKey: invoice.planKey, interval: invoice.interval, amountMinor: invoice.totalMinor, currency: invoice.currency, vatMinor: invoice.taxMinor ?? 0, vatRateBps: invoice.taxRatePercent && invoice.taxMinor > 0 ? Math.round(invoice.taxRatePercent * 100) : null, invoiceId: invoice.id, offerId: null, reference: invoice.number }, now);
 }
 
 /** A custom plan's Mobile Money price: its own amount in its own currency, when the company's region takes Mobile Money. */
 async function customPlanMomoPrice(businessId: string, plan: { monthlyPriceCents: number; yearlyPriceCents: number; currency: string }, interval: BillingInterval) {
   const { region } = await companyPlans(businessId);
   if (!region.paymentMethods.includes("momo") || plan.currency.toUpperCase() !== region.currency.toUpperCase()) return null;
-  return { amountMinor: priceCents(plan, interval), currency: plan.currency.toUpperCase() };
+  return { amountMinor: priceCents(plan, interval), currency: plan.currency.toUpperCase(), vatMinor: 0, vatRateBps: null };
 }
 
 /**
@@ -233,10 +236,10 @@ export async function startOfferPayment(input: { userId: string; offerId: string
   }
   const { region } = await companyPlans(business.id);
   if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Choose Pay by invoice, or contact support.");
-  return openPayment(input.userId, sub, { planKey: offer.customPlanKey, interval: offer.interval, amountMinor: offer.adjustedMinor, currency: offer.currency, invoiceId: null, offerId: offer.id, reference: null }, now);
+  return openPayment(input.userId, sub, { planKey: offer.customPlanKey, interval: offer.interval, amountMinor: offer.adjustedMinor, currency: offer.currency, vatMinor: 0, vatRateBps: null, invoiceId: null, offerId: offer.id, reference: null }, now);
 }
 
-type PaymentTarget = { planKey: string; interval: BillingInterval; amountMinor: number; currency: string; invoiceId: string | null; offerId: string | null; reference: string | null };
+type PaymentTarget = { planKey: string; interval: BillingInterval; amountMinor: number; currency: string; vatMinor: number; vatRateBps: number | null; invoiceId: string | null; offerId: string | null; reference: string | null };
 
 /** The open payment for this target, or a new one (replacing an unsubmitted payment of something else). */
 async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now: Date): Promise<ManualPaymentView> {
@@ -249,7 +252,7 @@ async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now:
   if (open) {
     if (open.submittedAt) return toView(open, sub, now);
     // Not paid yet: the client may still change their mind about the plan. Same plan, period and invoice: keep the reference.
-    if (open.planKey === target.planKey && open.interval === target.interval && (open.invoiceId ?? null) === target.invoiceId && (open.offerId ?? null) === target.offerId) return toView(open, sub, now);
+    if (open.planKey === target.planKey && open.interval === target.interval && (open.invoiceId ?? null) === target.invoiceId && (open.offerId ?? null) === target.offerId && open.amountMinor === target.amountMinor) return toView(open, sub, now);
     const { count } = await prisma.manualPayment.updateMany({ where: { id: open.id, status: "pending", submittedAt: null }, data: { status: "expired", decidedAt: now, decidedBy: "client" } });
     // Submitted or replaced from another tab meanwhile: whatever is open now is the payment.
     if (count !== 1) {
@@ -264,7 +267,7 @@ async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now:
   for (let attempt = 0; attempt < REFERENCE_TRIES; attempt++) {
     try {
       const row = await prisma.manualPayment.create({
-        data: { userId, planKey: target.planKey, interval: target.interval, amountMinor: target.amountMinor, currency: target.currency, invoiceId: target.invoiceId, offerId: target.offerId, reference: target.reference ?? makeReference(attempt < 3 ? 4 : 6) },
+        data: { userId, planKey: target.planKey, interval: target.interval, amountMinor: target.amountMinor, currency: target.currency, vatMinor: target.vatMinor, vatRateBps: target.vatRateBps, invoiceId: target.invoiceId, offerId: target.offerId, reference: target.reference ?? makeReference(attempt < 3 ? 4 : 6) },
       });
       return toView(row, sub, now);
     } catch (error) {
@@ -445,8 +448,12 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
     const invoice = await prisma.invoice.findUnique({ where: { id: payment.invoiceId }, select: { status: true } });
     if (invoice?.status !== "sent") throw new AdminError("conflict", `Invoice ${payment.reference} is ${invoice ? `already ${invoice.status}` : "gone"}. Reject this payment (and refund it if the money arrived) instead.`);
   }
-  // The revenue roll-up is in USD: the one USD->RWF rate of Admin -> Settings (also used for card prices).
-  const usdCents = usdCentsOf(payment.amountMinor, payment.currency, await getSetting("usdToRwf"));
+  // The revenue roll-up is in USD: the one USD->RWF rate of Admin -> Settings (also used for card prices). VAT is not
+  // revenue (it is owed to the tax office): usd_cents is the part before VAT, the VAT is kept beside it.
+  const usdRate = await getSetting("usdToRwf");
+  const vatMinor = Math.max(0, payment.vatMinor ?? 0);
+  const usdCents = usdCentsOf(payment.amountMinor - vatMinor, payment.currency, usdRate);
+  const vatUsdCents = vatMinor > 0 ? usdCentsOf(vatMinor, payment.currency, usdRate) : 0;
 
   for (let attempt = 0; ; attempt++) {
     let flagged: { invoice: { id: string; number: string; totalMinor: number; currency: string }; company: string; second: boolean } | null = null;
@@ -540,7 +547,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
             payload: {
               event_type: "manual_payment.confirmed",
               occurred_at: now.toISOString(),
-              data: { id: payment.reference, invoice_id: payment.invoiceId, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, plan: plan.key, interval: payment.interval, transaction_id: transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
+              data: { id: payment.reference, invoice_id: payment.invoiceId, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, ...(vatMinor > 0 ? { vat_minor: vatMinor, vat_rate_bps: payment.vatRateBps, vat_usd_cents: vatUsdCents } : {}), plan: plan.key, interval: payment.interval, transaction_id: transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
             },
           },
         });

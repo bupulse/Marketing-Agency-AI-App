@@ -5,6 +5,7 @@ import type { Plan } from "@/lib/plans";
 import { getPlans, planForPriceId, priceIdFor, toPublic, type PlanView, type PublicPlan } from "@/lib/plan-catalog";
 import { DEFAULT_REGION_KEY, type PaymentMethod, type RegionInfo } from "@/lib/region-format";
 import { companyRegion, getRegion } from "@/lib/region";
+import { vatOf, withVat, type VatBreakdown } from "@/lib/vat";
 
 // What a region's clients can buy, with the region's prices (PlanRegionPrice). A plan is offered in a region only
 // when it has a price there. GLOBAL is special: its prices ARE the plan's own prices from the plan builder (the
@@ -30,7 +31,17 @@ export type RegionalPlan = PublicPlan & {
   paymentMethods: PaymentMethod[];
   /** The card (USD) price of a local-currency plan, or null when the price is already in USD. */
   card: { monthlyUsdCents: number; yearlyUsdCents: number } | null;
+  /**
+   * The region's VAT on top of the (before-VAT) prices above, or null when the region has none. What a client pays by
+   * Mobile Money or invoice is the total. Card payments go through Paddle, which works out tax itself (not added here).
+   */
+  vat?: { rateBps: number; label: string; monthly: VatBreakdown; yearly: VatBreakdown } | null;
 };
+
+function vatFor(region: RegionInfo, monthlyMinor: number, yearlyMinor: number): RegionalPlan["vat"] {
+  const vat = vatOf(region);
+  return vat ? { rateBps: vat.rateBps, label: vat.label, monthly: withVat(monthlyMinor, vat), yearly: withVat(yearlyMinor, vat) } : null;
+}
 
 const TTL_MS = 30_000;
 let lastGood: RegionPriceRow[] | null = null;
@@ -82,7 +93,7 @@ export function regionalPlansFor(plans: PlanView[], prices: RegionPriceRow[], re
     if (isGlobal) {
       const pricedAnywhere = prices.some((p) => p.planKey === plan.key);
       if (!row && pricedAnywhere) continue;
-      out.push({ ...toPublic(plan), currency: plan.currency, regionKey: region.key, paymentMethods: region.paymentMethods, card: null });
+      out.push({ ...toPublic(plan), currency: plan.currency, regionKey: region.key, paymentMethods: region.paymentMethods, card: null, vat: vatFor(region, plan.monthlyPriceCents, plan.yearlyPriceCents) });
       continue;
     }
     if (!row) continue;
@@ -95,6 +106,7 @@ export function regionalPlansFor(plans: PlanView[], prices: RegionPriceRow[], re
       regionKey: region.key,
       paymentMethods: region.paymentMethods,
       card: local && row.cardMonthlyUsdCents != null && row.cardYearlyUsdCents != null ? { monthlyUsdCents: row.cardMonthlyUsdCents, yearlyUsdCents: row.cardYearlyUsdCents } : null,
+      vat: vatFor(region, row.monthlyMinor, row.yearlyMinor),
     });
   }
   return out;

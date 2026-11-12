@@ -1,12 +1,19 @@
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { cn } from "@/lib/cn";
+import { formatVatRate } from "@/lib/vat";
 import { formatPlanPrice, formatPrice, intervalWord, yearlyDiscountPercent, type PlanPrices } from "./helpers";
+
+type VatPart = { vatMinor: number; totalMinor: number };
+/** The region's VAT on the plan (lib/region-prices.ts RegionalPlan.vat): the price above is before VAT. */
+type PlanVat = { rateBps: number; label: string; monthly: VatPart; yearly: VatPart } | null | undefined;
 
 /**
  * A plan's price. Yearly shows what 12 monthly payments would cost crossed out, the yearly
- * price, and the discount (e.g. "17% off"). Used on the pricing page and the billing page.
+ * price, and the discount (e.g. "17% off"). Used on the pricing page and the billing page. Where the region has VAT
+ * (Rwanda, 18%) the price is before VAT and a line under it says so with the total: "+ VAT (18%) = 59,000 RWF total".
  */
-export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices; interval: BillingInterval; size?: "lg" | "md" | "sm" }) {
+export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices & { vat?: PlanVat }; interval: BillingInterval; size?: "lg" | "md" | "sm" }) {
+  const vat = plan.vat ? (interval === "YEAR" ? plan.vat.yearly : plan.vat.monthly) : null;
   const yearly = interval === "YEAR";
   const fullYear = plan.monthlyPriceCents * 12;
   return (
@@ -31,6 +38,11 @@ export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices; in
         </span>
         <span className={cn("text-muted", size === "sm" && "text-sm")}>/ {intervalWord(interval)}</span>
       </p>
+      {plan.vat && vat && vat.vatMinor > 0 && (
+        <p className="text-sm text-muted">
+          + {plan.vat.label} ({formatVatRate(plan.vat.rateBps)}) = <strong className="font-semibold text-text">{formatPrice(vat.totalMinor, plan.currency)}</strong> total
+        </p>
+      )}
     </div>
   );
 }

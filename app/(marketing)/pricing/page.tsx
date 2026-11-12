@@ -12,7 +12,8 @@ import { UseMyLocation } from "./use-my-location";
 import { faqs, fillFaq } from "@/lib/content/site";
 import { getSetting } from "@/lib/admin/settings";
 import { geoLookupAvailable } from "@/lib/geo/availability";
-import { displayRegionWithOverride } from "@/lib/region";
+import { displayRegionDetails } from "@/lib/region";
+import { formatVatRate, vatOf } from "@/lib/vat";
 import { currencyNote, paymentBadges } from "@/lib/region-format";
 import { getRegionPlans } from "@/lib/region-prices";
 import { CtaButton } from "@/components/marketing/quote/cta";
@@ -31,7 +32,8 @@ export const metadata = pageMetadata({
 export default async function PricingPage({ searchParams }: { searchParams: Promise<{ region?: string | string[] }> }) {
   const sp = await searchParams;
   // ?region= only counts when REGION_OVERRIDE=1 (local development); see lib/region.ts.
-  const region = await displayRegionWithOverride(sp.region);
+  const { region, comingSoon } = await displayRegionDetails(sp.region);
+  const vat = vatOf(region);
   const [plans, trialDays, canLocate] = await Promise.all([getRegionPlans(region.key), getSetting("trialDays"), geoLookupAvailable()]);
   const days = `${trialDays} ${trialDays === 1 ? "day" : "days"}`;
   // Rwanda visitors ask for a free quote instead of starting a trial (lib/quote/cta.ts): the steps, the custom plan
@@ -53,6 +55,11 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       {/* Wider than the rest of the page: four plan cards side by side (lg screens and up). */}
       <Container size="wide" className="pb-16 xl:max-w-[88rem]">
         {canLocate && <UseMyLocation />}
+        {comingSoon && (
+          <p role="status" className="mx-auto mb-6 max-w-2xl rounded-2xl bg-soft px-4 py-3 text-center text-[15px]">
+            <strong>BuPulse is coming soon to {comingSoon.name}.</strong> Until then, you can use our worldwide plans below.
+          </p>
+        )}
         {paymentBadges(region.paymentMethods).length > 0 && (
           <ul aria-label="Ways to pay" className="m-0 mb-6 flex list-none flex-wrap items-center justify-center gap-2 p-0">
             {paymentBadges(region.paymentMethods).map((name) => (
@@ -64,7 +71,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
         )}
         <PricingPlans plans={plans} custom />
         <p className="mx-auto mt-6 max-w-2xl text-center text-sm text-muted">
-          {currencyNote(region.currency, region.paymentMethods)} Cancel any time; your plan stays active until the end of the period you paid for. See our{" "}
+          {currencyNote(region.currency, region.paymentMethods)}{vat ? ` Prices are before ${vat.label}: ${formatVatRate(vat.rateBps)} ${vat.label} is added when you pay, and your receipt shows it.` : ""} Cancel any time; your plan stays active until the end of the period you paid for. See our{" "}
           <Link href="/refund-policy" className="font-semibold text-[color:var(--bp-link)] underline">refund policy</Link>.
         </p>
       </Container>

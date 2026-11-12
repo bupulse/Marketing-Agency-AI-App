@@ -7,6 +7,8 @@ import { formatPrice } from "@/components/billing/helpers";
 import { Badge, Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FEATURES, dependentsOf, featureLabel, withPrerequisites, type FeatureKey } from "@/lib/features";
+import type { PlanRegionOption } from "@/lib/admin/regions-service";
+import { initialPicks, PlanRegionPicker, type RegionPicks } from "./plan-regions";
 import { USAGE_METRICS, type PlanLimits, type PlanStatus, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY, CREATORS_PER_CAMPAIGN_MAX, creatorsPerCampaignLimit, LIVE_CAMPAIGNS_MAX, liveCampaignsLimit, DAILY_POST_APPS_MAX, dailyPostAppsLimit, SKITS_PER_WEEK_MAX, skitsPerWeekLimit } from "@/lib/plans";
 
 export type PlanFormInitial = {
@@ -120,7 +122,7 @@ function CardPreview({ name, description, monthly, yearly, currency, features, h
   );
 }
 
-export function PlanForm({ mode, initial, paddleConnected, subscribers, version }: { mode: "create" | "edit"; initial: PlanFormInitial; paddleConnected: boolean; subscribers: number; version?: string }) {
+export function PlanForm({ mode, initial, paddleConnected, subscribers, version, regions = [] }: { mode: "create" | "edit"; initial: PlanFormInitial; paddleConnected: boolean; subscribers: number; version?: string; /** Every region with this plan's prices (lib/admin/regions-service.ts planRegionOptions); none = no region section. */ regions?: PlanRegionOption[] }) {
   const [state, action, pending] = useActionState<PlanFormState, FormData>(savePlanAction, {});
   const [name, setName] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
@@ -131,6 +133,8 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
   const [highlight, setHighlight] = useState(initial.highlight);
   const [status, setStatus] = useState<PlanStatus>(initial.status);
   const [trialDays, setTrialDays] = useState(String(initial.trialDays ?? 7));
+  const [picks, setPicks] = useState<RegionPicks>(() => initialPicks(regions));
+  const showRegions = !initial.isTrial && !initial.isCustom && regions.length > 0;
   // Every field is controlled, so nothing is lost when the form action finishes (React resets uncontrolled fields).
   const [key, setKey] = useState(initial.key);
   const [sortOrder, setSortOrder] = useState(String(initial.sortOrder));
@@ -215,6 +219,13 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
                     ? `Changing the price creates new Paddle prices. ${subscribers} current ${subscribers === 1 ? "client moves" : "clients move"} at their next renewal (increases after a 30-day email notice).`
                     : "Changing a price creates new Paddle prices; existing clients move at their next renewal."}
             </p>
+          </GlassCard>
+        )}
+
+        {showRegions && (
+          <GlassCard className="flex flex-col gap-4 p-5 sm:p-6">
+            <h2 className="text-lg font-semibold tracking-[-0.02em]">Where it is shown</h2>
+            <PlanRegionPicker regions={regions} picks={picks} onChange={setPicks} planMonthlyMinor={monthlyMinor} planCurrency={currency} />
           </GlassCard>
         )}
 

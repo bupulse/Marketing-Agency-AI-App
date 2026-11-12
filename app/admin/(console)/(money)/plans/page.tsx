@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Layers, Plus, Repeat, Users } from "lucide-react";
+import { Globe, Layers, Plus, Repeat, Users } from "lucide-react";
 import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader, StatGrid, StatTile } from "@/components/admin/kit";
 import { PlansGrid } from "@/components/admin/business/money-plans";
@@ -26,9 +26,14 @@ export default async function PlansPage({ searchParams }: PageProps<"/admin/plan
         title="Plans"
         description="What clients can buy. The pricing page, checkout, limits and Jarvis all read these plans. Open one to change it."
         actions={
-          <Link href="/admin/plans/new" className={buttonClasses({ size: "md" })}>
-            <Plus aria-hidden className="size-4" /> New plan
-          </Link>
+          <>
+            <Link href="/admin/settings/regions" className={buttonClasses({ size: "md", variant: "outline" })}>
+              <Globe aria-hidden className="size-4" /> Regions
+            </Link>
+            <Link href="/admin/plans/new" className={buttonClasses({ size: "md" })}>
+              <Plus aria-hidden className="size-4" /> New plan
+            </Link>
+          </>
         }
       />
       <MoneyNotices sp={sp} />

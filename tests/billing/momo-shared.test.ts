@@ -99,8 +99,12 @@ describe("money", () => {
   });
   it("a plan's Mobile Money price is its regional price, and only where the region takes Mobile Money", () => {
     const rw = { monthlyPriceCents: 15000, yearlyPriceCents: 150000, currency: "RWF", paymentMethods: ["momo", "card"] };
-    expect(momoPriceOf(rw, "MONTH")).toEqual({ amountMinor: 15000, currency: "RWF" });
-    expect(momoPriceOf(rw, "YEAR")).toEqual({ amountMinor: 150000, currency: "RWF" });
+    expect(momoPriceOf(rw, "MONTH")).toEqual({ amountMinor: 15000, currency: "RWF", vatMinor: 0, vatRateBps: null });
+    expect(momoPriceOf(rw, "YEAR")).toEqual({ amountMinor: 150000, currency: "RWF", vatMinor: 0, vatRateBps: null });
+    // With the region's VAT (lib/region-prices.ts RegionalPlan.vat) the client sends the total.
+    const vat = { rateBps: 1800, monthly: { vatMinor: 2700, totalMinor: 17700 }, yearly: { vatMinor: 27000, totalMinor: 177000 } };
+    expect(momoPriceOf({ ...rw, vat }, "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF", vatMinor: 2700, vatRateBps: 1800 });
+    expect(momoPriceOf({ ...rw, vat }, "YEAR")).toEqual({ amountMinor: 177000, currency: "RWF", vatMinor: 27000, vatRateBps: 1800 });
     expect(momoPriceOf({ ...rw, currency: "usd", paymentMethods: ["card"] }, "MONTH")).toBeNull();
   });
 });

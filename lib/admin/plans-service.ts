@@ -22,6 +22,8 @@ import {
 } from "@/lib/plan-catalog";
 import { comingSoonIn, validateFeatureSet, type FeatureKey } from "@/lib/features";
 import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY, CREATORS_PER_CAMPAIGN, CREATORS_PER_CAMPAIGN_MAX, LIVE_CAMPAIGNS, LIVE_CAMPAIGNS_MAX, DAILY_POST_APPS_MAX, SKITS_PER_WEEK_MAX } from "@/lib/plans";
+import { getRegions } from "@/lib/region";
+import { getRegionPrices } from "@/lib/region-prices";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -206,6 +208,8 @@ export type AdminPlanRow = PlanView & {
   payingSubscribers: number;
   mrrCents: number;
   paddleReady: boolean;
+  /** The regions it is shown in, in region order ("Rwanda", or "East Africa", "Rest of the world"); none for the trial. */
+  regionNames: string[];
   latestChange: { id: string; direction: string; status: string; subscribers: number; notifiedCount: number; appliedCount: number; failedCount: number; createdAt: Date } | null;
 };
 
@@ -234,6 +238,13 @@ export function planCounts(plan: Pick<PlanView, "key" | "isTrial" | "monthlyPric
 export async function listAdminPlans(): Promise<{ plans: AdminPlanRow[]; paddleConnected: boolean }> {
   const plans = (await getPlans({ force: true })).filter((p) => !p.isCustom);
   const groups = await prisma.subscription.groupBy({ by: ["plan", "interval", "status"], _count: { _all: true } });
+  const [regions, regionPrices] = await Promise.all([getRegions({ force: true }), getRegionPrices({ force: true })]);
+  const ordered = [...regions].sort((a, b) => a.sortOrder - b.sortOrder);
+  const regionNamesOf = (key: string) => {
+    const mine = regionPrices.filter((p) => p.planKey === key);
+    // No row at all: the old rule, offered in the catch-all at the plan's own price.
+    return ordered.filter((r) => (mine.length === 0 ? r.countries.length === 0 : mine.some((p) => p.regionKey === r.key))).map((r) => r.name);
+  };
   const rows: AdminPlanRow[] = [];
   for (const plan of plans) {
     const latest = await prisma.planPriceChange.findFirst({ where: { planKey: plan.key }, orderBy: { createdAt: "desc" } });
@@ -241,6 +252,7 @@ export async function listAdminPlans(): Promise<{ plans: AdminPlanRow[]; paddleC
       ...plan,
       ...planCounts(plan, groups),
       paddleReady: Boolean(currentPriceId("PADDLE", plan, "MONTH") && currentPriceId("PADDLE", plan, "YEAR")),
+      regionNames: plan.isTrial ? [] : regionNamesOf(plan.key),
       latestChange: latest
         ? { id: latest.id, direction: latest.direction, status: latest.status, subscribers: latest.subscribers, notifiedCount: latest.notifiedCount, appliedCount: latest.appliedCount, failedCount: latest.failedCount, createdAt: latest.createdAt }
         : null,

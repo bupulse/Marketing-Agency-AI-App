@@ -117,9 +117,27 @@ export function usdCentsOf(amountMinor: number, currency: string, usdToRwf: numb
  * in the region's currency. Null when the region does not take Mobile Money. One source of truth: the same amount
  * the pricing page and Billing show.
  */
-export function momoPriceOf(plan: { monthlyPriceCents: number; yearlyPriceCents: number; currency: string; paymentMethods: readonly string[] }, interval: BillingInterval): { amountMinor: number; currency: string } | null {
+export type MomoPrice = {
+  /** What the client sends: the price plus the region's VAT. */
+  amountMinor: number;
+  currency: string;
+  /** The VAT part of amountMinor (0 without VAT) and its rate in basis points (null without VAT). */
+  vatMinor: number;
+  vatRateBps: number | null;
+};
+
+type VatPart = { vatMinor: number; totalMinor: number };
+
+/**
+ * The price is typed before VAT; a region with VAT (Rwanda, 18%) adds it on top, so a 50,000 RWF plan is sent as
+ * 59,000 RWF (lib/vat.ts). `plan.vat` is the region's VAT from lib/region-prices.ts.
+ */
+export function momoPriceOf(plan: { monthlyPriceCents: number; yearlyPriceCents: number; currency: string; paymentMethods: readonly string[]; vat?: { rateBps: number; monthly: VatPart; yearly: VatPart } | null }, interval: BillingInterval): MomoPrice | null {
   if (!plan.paymentMethods.includes("momo")) return null;
-  return { amountMinor: interval === "YEAR" ? plan.yearlyPriceCents : plan.monthlyPriceCents, currency: plan.currency.toUpperCase() };
+  const net = interval === "YEAR" ? plan.yearlyPriceCents : plan.monthlyPriceCents;
+  const vat = plan.vat ? (interval === "YEAR" ? plan.vat.yearly : plan.vat.monthly) : null;
+  if (vat && vat.vatMinor > 0) return { amountMinor: vat.totalMinor, currency: plan.currency.toUpperCase(), vatMinor: vat.vatMinor, vatRateBps: plan.vat!.rateBps };
+  return { amountMinor: net, currency: plan.currency.toUpperCase(), vatMinor: 0, vatRateBps: null };
 }
 
 // ---- owner settings (AdminSetting "billing.momo") ----------------------------------------------------------
@@ -304,6 +322,9 @@ export type ManualPaymentView = {
   interval: BillingInterval;
   amountMinor: number;
   currency: string;
+  /** The VAT part of amountMinor, and its rate in basis points (null: no VAT). */
+  vatMinor?: number;
+  vatRateBps?: number | null;
   reference: string;
   /** The invoice this payment settles (its number is the reference), or null for a plain plan payment. */
   invoiceId: string | null;

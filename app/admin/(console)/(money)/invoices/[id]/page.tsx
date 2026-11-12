@@ -12,8 +12,8 @@ import { buttonClasses, Field, Input, Select, Textarea } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
 import { dateTime } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
-import { getInvoiceSettings, logoDataUrl } from "@/lib/invoices/settings";
-import { getInvoiceRow, invoiceDocument, invoicePayments, MANUAL_PAY_LABEL, MANUAL_PAY_METHODS } from "@/lib/invoices/service";
+import { logoDataUrl } from "@/lib/invoices/settings";
+import { getInvoiceRow, invoiceDocument, invoicePayments, invoiceVatPercent, MANUAL_PAY_LABEL, MANUAL_PAY_METHODS } from "@/lib/invoices/service";
 import { formatInvoiceMoney, INVOICE_STATUS_LABEL, isOverdue, longInvoiceDate, readPaymentReviews, ymdOf } from "@/lib/invoices/shared";
 import { prisma } from "@/lib/db";
 import { markInvoicePaidAction, resendInvoiceAction, voidInvoiceAction } from "../actions";
@@ -33,17 +33,17 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
     if (e instanceof AdminError && e.code === "not_found") notFound();
     throw e;
   }
-  const [{ doc, logo }, payments, settings, owner] = await Promise.all([
+  const [{ doc, logo }, payments, vatPercent, owner] = await Promise.all([
     invoiceDocument(row),
     invoicePayments(row.id),
-    getInvoiceSettings(),
+    invoiceVatPercent(row.businessId),
     prisma.business.findUnique({ where: { id: row.businessId }, select: { name: true, user: { select: { email: true } } } }),
   ]);
   const logoSrc = await logoDataUrl(logo.path, logo.type);
   const overdue = isOverdue(row);
   const total = formatInvoiceMoney(row.totalMinor, row.currency);
-  // A draft is priced with the current VAT setting (saving applies it); the preview shows the same.
-  const draftDoc = row.status === "draft" ? { ...doc, taxRatePercent: settings.vatRatePercent } : doc;
+  // A draft is priced with the company region's current VAT (Admin -> Regions; saving applies it); the preview shows the same.
+  const draftDoc = row.status === "draft" ? { ...doc, taxRatePercent: vatPercent } : doc;
   const received = row.status === "sent" ? readPaymentReviews(row.paymentReview) : [];
   const pdfHref = `/admin/invoices/${row.id}/pdf`;
 

@@ -5,6 +5,8 @@
 // - Mobile Money: "manual_payment.confirmed" paid with MTN or Airtel (RWF, its USD value fixed at confirmation).
 // - Invoice: a payment of an invoice (the invoice number as reference, or a bank or cash payment the admin recorded),
 //   and "invoice.paid_manual" (a plain invoice marked paid by hand).
+// VAT is never revenue: a Mobile Money or invoice payment with VAT (Rwanda) stores usd_cents before VAT and the VAT
+// beside it (vat_minor, vat_usd_cents), shown as "VAT collected"; Paddle's card figures are already net of tax.
 import { INVOICE_PAID_EVENT, MANUAL_PAYMENT_EVENT, parseMoneyEvent } from "@/lib/analytics/math";
 import { kigaliMonthOf } from "@/lib/time/kigali";
 
@@ -26,6 +28,9 @@ export type RevenueEntry = {
   priceId: string | null;
   /** A Mobile Money payment for features added to a running period (prorated; period_mode "keep"), not a full period. */
   partial: boolean;
+  /** VAT collected with this payment (owed to the tax office, not revenue): USD value and amount in `currency`. */
+  vatUsdCents?: number;
+  vatLocalMinor?: number;
 };
 
 type Row = { eventId: string; type: string; payload: unknown; createdAt: Date; userId: string | null };
@@ -45,10 +50,16 @@ export function toRevenueEntry(row: Row): RevenueEntry | null {
   let plan: string | null = null;
   let priceId: string | null = null;
   let partial = false;
+  let vatUsdCents = 0;
+  let vatLocalMinor = 0;
   if (row.type === MANUAL_PAYMENT_EVENT || row.type === INVOICE_PAID_EVENT) {
     const network = str(data.network)?.toUpperCase();
     method = row.type === INVOICE_PAID_EVENT || str(data.invoice_id) || (network && network !== "MTN" && network !== "AIRTEL") ? "invoice" : "momo";
-    localMinor = int(data.amount_minor);
+    vatLocalMinor = Math.max(0, int(data.vat_minor) ?? 0);
+    vatUsdCents = Math.max(0, int(data.vat_usd_cents) ?? 0);
+    // What the client paid before VAT (amount_minor includes it).
+    const paid = int(data.amount_minor);
+    localMinor = paid === null ? null : paid - vatLocalMinor;
     currency = str(data.currency)?.toUpperCase() ?? "RWF";
     plan = str(data.plan);
     partial = data.period_mode === "keep";
@@ -71,7 +82,7 @@ export function toRevenueEntry(row: Row): RevenueEntry | null {
   const sign = m.kind === "refund" ? -1 : 1;
   // One key per payment or refund, whatever event carried it (a refund can arrive as adjustment.created and
   // adjustment.updated): pay:<id> or refund:<id>.
-  return { id: `${m.kind === "refund" ? "refund" : "pay"}:${m.id || row.eventId}`, at: m.at, month: kigaliMonthOf(m.at), userId: row.userId, kind: m.kind, usdCents: sign * m.cents, method, localMinor: localMinor === null ? null : sign * localMinor, currency, plan, priceId, partial };
+  return { id: `${m.kind === "refund" ? "refund" : "pay"}:${m.id || row.eventId}`, at: m.at, month: kigaliMonthOf(m.at), userId: row.userId, kind: m.kind, usdCents: sign * m.cents, method, localMinor: localMinor === null ? null : sign * localMinor, currency, plan, priceId, partial, vatUsdCents: sign * vatUsdCents, vatLocalMinor: sign * vatLocalMinor };
 }
 
 /** Each payment or refund once (a provider may send the same transaction or refund in more than one event). */
@@ -90,6 +101,9 @@ export type RevenueMonth = {
   rwfMinor: number;
   rwfUsdCents: number;
   payingClients: number;
+  /** VAT collected this month (not in the revenue above): USD value, and the RWF part exactly. */
+  vatCents?: number;
+  vatRwfMinor?: number;
 };
 
 export function revenueByMonth(entries: RevenueEntry[], months: string[]): RevenueMonth[] {
@@ -100,7 +114,11 @@ export function revenueByMonth(entries: RevenueEntry[], months: string[]): Reven
     let refunds = 0;
     let rwfMinor = 0;
     let rwfUsdCents = 0;
+    let vatCents = 0;
+    let vatRwfMinor = 0;
     for (const e of list) {
+      vatCents += e.vatUsdCents ?? 0;
+      if (e.currency === "RWF") vatRwfMinor += e.vatLocalMinor ?? 0;
       byMethod[e.method] += e.usdCents;
       if (e.kind === "payment") gross += e.usdCents;
       else refunds += -e.usdCents;
@@ -109,7 +127,7 @@ export function revenueByMonth(entries: RevenueEntry[], months: string[]): Reven
         rwfUsdCents += e.usdCents;
       }
     }
-    return { month, netCents: gross - refunds, grossCents: gross, refundsCents: refunds, byMethod, rwfMinor, rwfUsdCents, payingClients: new Set(list.filter((e) => e.kind === "payment").map((e) => e.userId ?? e.id)).size };
+    return { month, netCents: gross - refunds, grossCents: gross, refundsCents: refunds, byMethod, rwfMinor, rwfUsdCents, payingClients: new Set(list.filter((e) => e.kind === "payment").map((e) => e.userId ?? e.id)).size, vatCents, vatRwfMinor };
   });
 }
 

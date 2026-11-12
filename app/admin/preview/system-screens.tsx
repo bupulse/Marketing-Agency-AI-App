@@ -18,7 +18,8 @@ import { HealthView } from "@/components/admin/system/health-view";
 import { AuditView, ErrorsView } from "@/components/admin/system/logs-view";
 import { FlagsView } from "@/components/admin/system/flags-view";
 import { UpdatesView } from "@/components/admin/system/updates-view";
-import { RegionsView } from "@/components/admin/system/regions-view";
+import { NewRegionView, RegionEditor, RegionsView } from "@/components/admin/system/regions-view";
+import { REGION_SEEDS, regionStatus } from "@/lib/region-format";
 import { StaffView } from "@/components/admin/organisation/staff-view";
 import { RolesView } from "@/components/admin/organisation/roles-view";
 import { ScreenView } from "@/components/admin/organisation/screen-view";
@@ -27,7 +28,7 @@ import type { RoleView } from "@/lib/staff/service";
 import type { Permission } from "@/lib/staff/permissions";
 import { changeStaffRoleAction, deleteRoleAction, inviteStaffAction, removeStaffAction, saveRoleAction, setStaffDisabledAction } from "@/app/admin/(console)/(organisation)/organisation/actions";
 
-export const SYSTEM_SCREENS = ["settings", "settings-area", "services", "service", "service-more", "health", "errors", "audit", "flags", "updates", "regions", "staff", "roles", "screen"] as const;
+export const SYSTEM_SCREENS = ["settings", "settings-area", "services", "service", "service-more", "health", "errors", "audit", "flags", "updates", "regions", "region", "region-new", "staff", "roles", "screen"] as const;
 export type SystemScreen = (typeof SYSTEM_SCREENS)[number];
 export const isSystemScreen = (s: string): s is SystemScreen => (SYSTEM_SCREENS as readonly string[]).includes(s);
 
@@ -40,7 +41,7 @@ const at = (hoursAgo: number) => new Date(NOW.getTime() - hoursAgo * HOUR).toISO
 export function systemPreviewPath(which: SystemScreen, sp: SearchParamsLike): string {
   if (which === "settings") return "/admin/settings";
   if (which === "settings-area") return `/admin/settings/${first(sp.area) || "momo"}`;
-  const paths: Partial<Record<SystemScreen, string>> = { health: "/admin/health", errors: "/admin/errors", audit: "/admin/audit", flags: "/admin/flags", updates: "/admin/settings/updates", regions: "/admin/settings/regions", staff: "/admin/organisation", roles: "/admin/organisation/roles", screen: "/admin/organisation/screen" };
+  const paths: Partial<Record<SystemScreen, string>> = { health: "/admin/health", errors: "/admin/errors", audit: "/admin/audit", flags: "/admin/flags", updates: "/admin/settings/updates", regions: "/admin/settings/regions", region: `/admin/settings/regions/${first(sp.key) || "RW"}`, "region-new": "/admin/settings/regions/new", staff: "/admin/organisation", roles: "/admin/organisation/roles", screen: "/admin/organisation/screen" };
   return paths[which] ?? "/admin/services";
 }
 
@@ -66,9 +67,45 @@ const PADDLE = {
   config: { source: { environment: "settings", apiKey: "settings", clientToken: "env", webhookSecret: null }, last4: { apiKey: "4f2a", clientToken: "91bc", webhookSecret: null } },
   regions: [
     { key: "RW", name: "Rwanda", priced: 0, total: 3 },
-    { key: "GLOBAL", name: "Everywhere else", priced: 0, total: 3 },
+    { key: "GLOBAL", name: "Rest of the world", priced: 0, total: 3 },
   ],
 } as unknown as Parameters<typeof PaddleArea>[0]["paddle"];
+
+/** The seeded regions (what the migration leaves on TEST) with TEST's plans and prices, for the Regions previews. */
+const PREVIEW_PRICES: Record<string, { planKey: string; planName: string; currency: string; monthlyMinor: number; fromPlan: boolean }[]> = {
+  RW: [
+    { planKey: "STARTER", planName: "Starter", currency: "RWF", monthlyMinor: 15000, fromPlan: false },
+    { planKey: "BUSINESS", planName: "Business", currency: "RWF", monthlyMinor: 50000, fromPlan: false },
+    { planKey: "BUSINESS_PRO", planName: "Business Pro", currency: "RWF", monthlyMinor: 80000, fromPlan: false },
+  ],
+  EAC: [
+    { planKey: "STANDARD", planName: "Standard", currency: "USD", monthlyMinor: 2500, fromPlan: false },
+    { planKey: "PRO", planName: "Pro", currency: "USD", monthlyMinor: 4900, fromPlan: false },
+  ],
+  GLOBAL: [
+    { planKey: "STANDARD", planName: "Standard", currency: "USD", monthlyMinor: 4900, fromPlan: true },
+    { planKey: "PRO", planName: "Pro", currency: "USD", monthlyMinor: 9900, fromPlan: true },
+  ],
+};
+const PREVIEW_REGIONS = {
+  settings: { usdToRwf: 1450, cardMarginPercent: 12 },
+  plans: [
+    { key: "STARTER", name: "Starter", status: "active" },
+    { key: "BUSINESS", name: "Business", status: "active" },
+    { key: "BUSINESS_PRO", name: "Business Pro", status: "active" },
+    { key: "STANDARD", name: "Standard", status: "active" },
+    { key: "PRO", name: "Pro", status: "active" },
+  ],
+  regions: REGION_SEEDS.map((r) => ({
+    ...r,
+    countries: [...r.countries],
+    vatRateBps: r.vatRateBps ?? 0,
+    vatLabel: r.vatLabel ?? "VAT",
+    status: regionStatus(r),
+    companies: r.key === "RW" ? 9 : r.key === "GLOBAL" ? 1 : 0,
+    prices: (PREVIEW_PRICES[r.key] ?? []).map((p) => ({ ...p, planStatus: "active", yearlyMinor: p.monthlyMinor * 10, cardMonthlyUsdCents: p.currency === "USD" ? p.monthlyMinor : Math.ceil(p.monthlyMinor / 1450 * 1.12) * 100, cardYearlyUsdCents: null, paddleMonthlyPriceId: null, paddleYearlyPriceId: null })),
+  })),
+} as unknown as Parameters<typeof RegionsView>[0]["d"];
 
 function SettingsAreaPreview({ slug, ok }: { slug: SettingsSlug; ok?: string }) {
   const tz = "Africa/Kigali".replace("_", " ");
@@ -258,37 +295,13 @@ function MorePreview({ which, sp, ok }: { which: SystemScreen; sp: SearchParamsL
         />
       );
     case "regions":
-      return (
-        <RegionsView
-          ok={ok}
-          d={
-            {
-              settings: { usdToRwf: 1450, cardMarginPercent: 8 },
-              plans: [
-                { key: "starter", name: "Starter", status: "active" },
-                { key: "business", name: "Business", status: "active" },
-                { key: "pro", name: "Business Pro", status: "active" },
-              ],
-              regions: [
-                {
-                  key: "RW",
-                  name: "Rwanda",
-                  currency: "RWF",
-                  countries: ["RW"],
-                  paymentMethods: ["momo", "card"],
-                  active: true,
-                  sortOrder: 10,
-                  prices: [
-                    { planKey: "starter", planName: "Starter", planStatus: "active", currency: "RWF", monthlyMinor: 15000, yearlyMinor: 150000, cardMonthlyUsdCents: 1200, cardYearlyUsdCents: 11200, paddleMonthlyPriceId: null, paddleYearlyPriceId: null, fromPlan: false },
-                    { planKey: "business", planName: "Business", planStatus: "active", currency: "RWF", monthlyMinor: 50000, yearlyMinor: 500000, cardMonthlyUsdCents: 3800, cardYearlyUsdCents: 37300, paddleMonthlyPriceId: "pri_1", paddleYearlyPriceId: "pri_2", fromPlan: false },
-                  ],
-                },
-                { key: "GLOBAL", name: "Everywhere else", currency: "USD", countries: [], paymentMethods: ["card"], active: true, sortOrder: 99, prices: [{ planKey: "pro", planName: "Business Pro", planStatus: "active", currency: "USD", monthlyMinor: 4900, yearlyMinor: 49000, cardMonthlyUsdCents: 4900, cardYearlyUsdCents: 49000, paddleMonthlyPriceId: "pri_3", paddleYearlyPriceId: "pri_4", fromPlan: true }] },
-              ],
-            } as unknown as Parameters<typeof RegionsView>[0]["d"]
-          }
-        />
-      );
+      return <RegionsView ok={ok} d={PREVIEW_REGIONS} />;
+    case "region": {
+      const r = PREVIEW_REGIONS.regions.find((x) => x.key === (first(sp.key) || "RW").toUpperCase()) ?? PREVIEW_REGIONS.regions[0];
+      return <RegionEditor d={PREVIEW_REGIONS} r={r} ok={ok} />;
+    }
+    case "region-new":
+      return <NewRegionView d={PREVIEW_REGIONS} />;
     case "staff":
       return (
         <StaffView

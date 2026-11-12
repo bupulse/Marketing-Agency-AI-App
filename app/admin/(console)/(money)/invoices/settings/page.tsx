@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Image as ImageIcon, PenLine, Settings2 } from "lucide-react";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { PageHeader } from "@/components/admin/kit";
@@ -56,7 +57,10 @@ export default async function InvoiceSettingsPage({ searchParams }: { searchPara
                 <PhoneInput name="phone" label="Phone" defaultValue={s.phone} />
                 <Field label="Website"><Input name="website" defaultValue={s.website} maxLength={L.website} placeholder="https://bupulse.com" /></Field>
                 <Field label="TIN (optional)" hint="Printed when filled in."><Input name="tin" defaultValue={s.tin} maxLength={L.tin} /></Field>
-                <Field label="VAT rate % (optional)" hint="Empty = no tax line (the default). 18 adds an 18% VAT line."><Input name="vatRatePercent" defaultValue={s.vatRatePercent ?? ""} inputMode="decimal" placeholder="None" /></Field>
+                <div className="flex flex-col gap-1 text-[14px]">
+                  <span className="font-semibold">VAT</span>
+                  <span className="text-muted">Set per region in <Link href="/admin/settings/regions" className="underline">Regions</Link> (Rwanda 18%). An invoice uses its company&apos;s region and keeps the rate it was written with.</span>
+                </div>
                 <Field label="Accent colour" hint="Headings, the total and the top band.">
                   <Input name="accentColor" type="color" defaultValue={s.accentColor} className="h-11 w-24 p-1" />
                 </Field>
