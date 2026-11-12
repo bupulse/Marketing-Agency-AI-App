@@ -12,3 +12,18 @@ export const SAMPLE_LEADS: InboxLead[] = [
 ];
 
 export const SAMPLE_LEAD_COUNTS = { ALL: 5, NEW: 2, CONTACTED: 1, WON: 1, LOST: 1 };
+
+type Ch = "WEBSITE" | "WHATSAPP" | "INSTAGRAM" | "FACEBOOK";
+export const SAMPLE_CONTACTS = [
+  { id: "c1", name: "Eric Mugisha", email: "eric@example.com", phone: "+250 700 000 001", channels: ["WEBSITE", "WHATSAPP"] as Ch[], tags: ["wedding", "big order"], lastSeenAt: ago(12) },
+  { id: "c2", name: "Claudine Uwimana", email: null, phone: "+250 700 000 002", channels: ["INSTAGRAM"] as Ch[], tags: ["delivery"], lastSeenAt: ago(95) },
+  { id: "c3", name: "Jean Bosco", email: "jb@example.com", phone: null, channels: ["FACEBOOK"] as Ch[], tags: [], lastSeenAt: ago(60 * 30) },
+  { id: "c4", name: "@diane.rw", email: null, phone: null, channels: ["INSTAGRAM"] as Ch[], tags: ["regular"], lastSeenAt: ago(60 * 24 * 4) },
+];
+export const SAMPLE_TAGS = [
+  { id: "t1", name: "wedding", count: 4 },
+  { id: "t2", name: "delivery", count: 9 },
+  { id: "t3", name: "regular", count: 15 },
+  { id: "t4", name: "big order", count: 2 },
+];
+export const SAMPLE_FIELDS = [{ id: "f1", key: "district", label: "District", type: "choice", options: ["Gasabo", "Kicukiro", "Nyarugenge"] }];

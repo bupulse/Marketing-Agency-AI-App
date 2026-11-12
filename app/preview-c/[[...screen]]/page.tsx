@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import { LeadAlertsScreen } from "@/components/leads/lead-alerts-screen";
 import { LeadsScreen } from "@/components/leads/leads-screen";
 import { previewAllowed } from "@/lib/support/preview";
-import { SAMPLE_LEAD_COUNTS, SAMPLE_LEADS } from "../sample-data";
+import { ContactsScreen } from "@/components/contacts/contacts-screen";
+import { SAMPLE_CONTACTS, SAMPLE_FIELDS, SAMPLE_LEAD_COUNTS, SAMPLE_LEADS, SAMPLE_TAGS } from "../sample-data";
 
 export const metadata = { title: "Client preview" };
 
@@ -25,6 +26,7 @@ const SCREENS: Record<string, (sp: SP) => ReactNode | Promise<ReactNode>> = {
   "leads-alerts": () => (
     <LeadAlertsScreen backHref="/preview-c/leads" push={{ publicKey: "BPreviewKeyOnly", registered: [] }} notifications={{ initial: { notifyInstant: true, notifyDaily: true }, email: "aline@example.com", whatsapp: { enabled: false, number: null, fallback: "+250 700 000 000" } }} />
   ),
+  contacts: () => <ContactsScreen contacts={SAMPLE_CONTACTS} total={4} hasMore={false} q="" tag={null} channel={null} tags={SAMPLE_TAGS} fields={SAMPLE_FIELDS} canManage />,
 };
 
 export default async function ClientPreviewPage({ params, searchParams }: PageProps<"/preview-c/[[...screen]]">) {
