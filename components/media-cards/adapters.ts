@@ -1,6 +1,6 @@
 // From today's data shapes to the media cards' props (components/media-cards/README.md). Pure and client-safe: the
 // imports below are types only (tests/media-cards/adapters.test.ts).
-import type { ContentPost } from "@/lib/content-board/queries";
+import type { CalendarPost } from "@/lib/publishing/types";
 import type { LibraryVideo } from "@/lib/video-library/service";
 import type { Network } from "@/lib/social/types";
 import { postStatusKey, timeLabel } from "./helpers";
@@ -48,21 +48,26 @@ export function libraryPlayerItem(v: LibraryVideo): Omit<PlayerItem, "info" | "a
   return { id: v.key, src: v.videoUrl, poster: v.posterUrl, title: v.title, eyebrow: libraryEyebrow(v), ratio: v.ratio };
 }
 
-/** The fields of a Content board / Calendar post (lib/content-board/queries.ts ContentPost) the cards use. */
-export type ContentPostLike = Pick<ContentPost, "id" | "network" | "accountName" | "accountAvatar" | "notify" | "status" | "text" | "hashtags" | "media" | "poster" | "kind" | "scheduledAt" | "publishedAt" | "title" | "link"> & {
-  subject?: ContentPost["subject"];
+/**
+ * The fields of a post the cards use: a Calendar post (lib/publishing/types.ts CalendarPost), or a Content board post
+ * (lib/content-board/queries.ts ContentPost) with its kind, still, subject and card caption.
+ */
+export type ContentPostLike = Pick<CalendarPost, "id" | "network" | "accountName" | "accountAvatar" | "notify" | "status" | "text" | "hashtags" | "media" | "scheduledAt" | "publishedAt" | "title" | "link"> & {
+  kind?: string;
+  poster?: string | null;
+  subject?: { kind: "product" | "campaign"; name: string } | null;
   excerpt?: string;
 };
 
 /** A post's media: its pictures, or its video with the post's still as the poster. */
-export function postMedia(post: Pick<ContentPostLike, "media" | "poster" | "kind">): MediaItem[] {
+export function postMedia(post: Pick<ContentPostLike, "media" | "poster">): MediaItem[] {
   const videos = post.media.filter((m) => VIDEO_FILE.test(m.path));
   const images = post.media.filter((m) => !VIDEO_FILE.test(m.path));
   if (videos.length > 0) return videos.map((m) => ({ kind: "video", url: m.url, poster: post.poster ?? images[0]?.url ?? null }));
   return images.map((m) => ({ kind: "image", url: m.url }));
 }
 
-/** ContentPost (Content board, Calendar, Posts) as PostCard / PostModal data. */
+/** A Content board or Calendar post as PostCard / PostModal data. `now` only matters for relative times. */
 export function contentPostView(post: ContentPostLike, timeZone: string, now: Date = new Date()): PostView {
   const when = post.status === "PUBLISHED" ? post.publishedAt : post.scheduledAt;
   // A video idea's text is its script: the card shows the caption the board made for it.

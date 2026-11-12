@@ -96,14 +96,30 @@ export type PostCardProps = {
   post: PostView;
   /** Our real actions instead of the platform's like/comment row (Edit, Schedule, Approve, Delete). */
   actions?: MediaAction[];
-  /** Anything else under the card (Share to WhatsApp...). */
+  /** Anything else under the card (Use again, Share to WhatsApp...). */
   footer?: ReactNode;
-  /** Opens the post (PostModal). */
+  /** Opens the post (PostModal). In select mode the page passes its toggle instead. */
   onOpen?: (slide?: number) => void;
+  /** The words on the hover label and the open button ("Open", or "Select" in select mode). */
+  openLabel?: string;
   /** Overrides the platform's media shape. */
   ratio?: Ratio;
   /** Select mode: the card is outlined. */
   selected?: boolean;
+  /** First thing in the card, positioned by itself (a select checkbox). */
+  topSlot?: ReactNode;
+  /** Over the media (the "being made" screen). */
+  mediaOverlay?: ReactNode;
+  /** Shown in the media's frame when the post has no media yet ("No picture yet"); none: no frame. */
+  placeholder?: ReactNode;
+  /** On the media's top right, under the status (Auto). */
+  mediaBadges?: ReactNode;
+  /** Chips under the caption (the idea, a contest, "Moved from a missed day"). */
+  badges?: ReactNode;
+  /** A small line under them ("Created 12 Nov · Autopilot"). */
+  meta?: ReactNode;
+  /** Full-width notes above the footer ("Not posted yet · …"). */
+  notes?: ReactNode;
   /** Position in its grid, for the staggered rise-in. */
   index?: number;
   className?: string;
@@ -114,9 +130,10 @@ export type PostCardProps = {
  * samples.bupulse.com/team/images.html: a rounded card that lifts and tilts a little under the pointer with the
  * gradient border, the picture settling in, a glass label on hover. Inside: the account row, the media (one picture, a
  * carousel with dots, or a video that plays in place), the platform's icon row (or our actions), the caption with
- * "… more" and blue hashtags, and the status pill.
+ * "… more" and blue hashtags, and the status pill. The slots carry what a page adds (select box, making screen, chips,
+ * notes, buttons).
  */
-export function PostCard({ post, actions, footer, onOpen, ratio, selected, index = 0, className }: PostCardProps) {
+export function PostCard({ post, actions, footer, onOpen, openLabel = "Open", ratio, selected, topSlot, mediaOverlay, placeholder, mediaBadges, badges, meta, notes, index = 0, className }: PostCardProps) {
   const card = useRef<HTMLElement>(null);
   const { seen } = useInView(card);
   usePointerFx(card, undefined, { tilt: 2.5, lift: 4 });
@@ -125,42 +142,62 @@ export function PostCard({ post, actions, footer, onOpen, ratio, selected, index
   const title = post.title || post.caption.slice(0, 60) || `${networkName(post.platform)} post`;
   const style = { "--i": Math.min(index, 8) } as CSSProperties;
   const shown = (actions ?? []).filter((a) => !a.modalOnly);
+  const hasMedia = post.media.length > 0;
   const shell = cn(
     s.lift,
     s.post,
-    "flex min-w-0 flex-col overflow-hidden border border-line bg-surface shadow-[0_1px_2px_rgba(13,16,32,0.04),0_18px_40px_-28px_rgba(20,30,90,0.35)] dark:bg-[#141419]",
+    "relative flex min-w-0 flex-col overflow-hidden border border-line bg-surface shadow-[0_1px_2px_rgba(13,16,32,0.04),0_18px_40px_-28px_rgba(20,30,90,0.35)] dark:bg-[#141419]",
     seen ? s.rise : "opacity-0",
-    selected && "outline-[3px] outline-offset-[3px] outline-pulse-blue outline-solid",
+    selected && "outline-[3px] outline-offset-[3px] outline-pulse-blue outline-solid dark:outline-[#8db0ff]",
     className,
   );
   const openButton = onOpen && (
-    <button type="button" onClick={() => onOpen()} aria-label={`Open post: ${title}`} title="Open" className="-mr-2 grid size-11 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition-colors hover:bg-soft hover:text-text">
+    <button type="button" onClick={() => onOpen()} aria-label={`${openLabel}: ${title}`} title={openLabel} className="-mr-2 grid size-11 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition-colors hover:bg-soft hover:text-text">
       <Maximize2 aria-hidden className="size-[18px]" />
     </button>
   );
-  const status = post.status ? <StatusPill status={post.status} label={post.statusLabel} /> : null;
-  const label = onOpen && post.media.length > 0 && post.media[0].kind === "image" && (
+  const label = onOpen && hasMedia && post.media[0].kind === "image" && (
     <span aria-hidden className={cn(s.label, "pointer-events-none absolute inset-x-2.5 bottom-2.5 z-[3] flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-[12.5px] font-semibold")}>
       <span className="truncate">{post.subject ? `${post.subject.kind === "product" ? "Product" : "Campaign"} · ${post.subject.name}` : networkName(post.platform)}</span>
-      <span className="shrink-0 text-pulse-blue">Open →</span>
+      <span className="shrink-0 text-pulse-blue">{openLabel} →</span>
     </span>
+  );
+  // Top right: designs put the brand name at the top left, which these must not cover.
+  const corner = (post.status || mediaBadges) && (
+    <span className="pointer-events-none absolute top-3 right-3 z-[3] flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-1.5">
+      {post.status && <StatusPill status={post.status} label={post.statusLabel} glass />}
+      {mediaBadges}
+    </span>
+  );
+  const extras = (badges || meta) && (
+    <div className="flex flex-col gap-2 px-4 pt-2.5">
+      {badges && <div className="flex flex-wrap gap-1.5">{badges}</div>}
+      {meta && <div className="flex flex-wrap gap-x-2 text-[12.5px] text-muted">{meta}</div>}
+    </div>
+  );
+  const bottom = (
+    <>
+      {notes && <div className="mt-3">{notes}</div>}
+      {footer ? <div className="flex flex-wrap items-center gap-2 border-t border-line px-3.5 py-3 mt-3">{footer}</div> : <div className="pb-3.5" />}
+    </>
   );
 
   // TikTok and YouTube Shorts: the video is the post, with everything on it.
   if (look.full) {
     return (
       <article ref={card} style={style} className={shell}>
-        <div className="relative" style={{ aspectRatio: shape }}>
-          <MediaStage media={post.media} title={title} onOpen={onOpen} dots="over" className="absolute inset-0" />
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-[3] flex items-center gap-2 bg-gradient-to-b from-black/50 to-transparent p-3 text-white">
+        {topSlot}
+        <div className="relative overflow-hidden bg-soft" style={{ aspectRatio: shape }}>
+          {hasMedia ? <MediaStage media={post.media} title={title} onOpen={onOpen} dots="over" count="bottom" className="absolute inset-0" /> : placeholder && <div className="absolute inset-0">{placeholder}</div>}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-[3] flex items-center gap-2 bg-gradient-to-b from-black/50 to-transparent p-3 pr-36 text-white">
             <AccountPicture account={post.account} platform={post.platform} size={32} ring={false} />
             <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold [text-shadow:0_1px_6px_rgba(0,0,0,.4)]">
               {post.account.handle || post.account.name}
               {post.timeLabel && <span className="font-normal text-white/80"> · {post.timeLabel}</span>}
             </span>
-            {post.status && <StatusPill status={post.status} label={post.statusLabel} glass />}
           </div>
-          {shown.length === 0 && (
+          {corner}
+          {shown.length === 0 && hasMedia && (
             <div aria-hidden className="pointer-events-none absolute right-2.5 bottom-24 z-[3] flex flex-col items-center gap-4 text-white [filter:drop-shadow(0_1px_4px_rgba(0,0,0,.5))]">
               <Heart className="size-7 fill-white/90" />
               <MessageCircle className="size-7 fill-white/90" />
@@ -168,20 +205,24 @@ export function PostCard({ post, actions, footer, onOpen, ratio, selected, index
               <Share className="size-7" />
             </div>
           )}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[3] bg-gradient-to-t from-black/70 via-black/30 to-transparent p-3 pt-10 pr-14 text-white">
-            <p className="line-clamp-2 text-[13.5px] leading-snug [text-shadow:0_1px_6px_rgba(0,0,0,.45)] [&_span]:!text-white [&_span.font-medium]:font-semibold">
-              <CaptionText text={post.caption} hashtags={post.hashtags} />
-            </p>
-            {post.subject && <span className="mt-1.5 inline-block rounded-md bg-white/20 px-2 py-0.5 text-[11.5px] font-semibold backdrop-blur-md">{post.subject.name}</span>}
-          </div>
+          {(post.caption.trim() || post.subject) && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[3] bg-gradient-to-t from-black/70 via-black/30 to-transparent p-3 pt-10 pr-14 text-white">
+              <p className="line-clamp-2 text-[13.5px] leading-snug [text-shadow:0_1px_6px_rgba(0,0,0,.45)] [&_span]:!text-white [&_span.font-medium]:font-semibold">
+                <CaptionText text={post.caption} hashtags={post.hashtags} />
+              </p>
+              {post.subject && <span className="mt-1.5 inline-block rounded-md bg-white/20 px-2 py-0.5 text-[11.5px] font-semibold backdrop-blur-md">{post.subject.name}</span>}
+            </div>
+          )}
+          {mediaOverlay && <div className="absolute inset-0 z-[4]">{mediaOverlay}</div>}
         </div>
-        {(shown.length > 0 || footer || onOpen) && (
-          <div className="flex flex-wrap items-center gap-2 p-3">
+        {shown.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 px-3.5 pt-3">
             <ActionRow actions={shown} compact className="flex-1" />
-            {footer}
-            {openButton}
           </div>
         )}
+        {extras}
+        {onOpen && !footer && <div className="flex justify-end px-3.5 pt-1">{openButton}</div>}
+        {bottom}
       </article>
     );
   }
@@ -193,30 +234,31 @@ export function PostCard({ post, actions, footer, onOpen, ratio, selected, index
         <div className="flex min-w-0 items-baseline gap-1 text-[14px]">
           <span className="truncate font-semibold text-text">{post.account.name}</span>
           {post.platform === "twitter" && post.account.handle && <span className="truncate text-muted">{post.account.handle}</span>}
-          {post.timeLabel && <span className="shrink-0 text-muted">· {post.timeLabel}</span>}
+          {post.timeLabel && (
+            <span className="shrink-0 text-muted" suppressHydrationWarning>
+              · {post.timeLabel}
+            </span>
+          )}
         </div>
         <span className="block truncate text-[12px] text-muted">{post.subject ? post.subject.name : networkName(post.platform)}</span>
       </div>
-      {post.media.length === 0 && status}
+      {!hasMedia && !placeholder && post.status && <StatusPill status={post.status} label={post.statusLabel} />}
       {openButton}
     </header>
   );
 
-  const mediaBlock = post.media.length > 0 && (
-    <div className={cn("relative", post.platform === "twitter" && "mx-3.5 overflow-hidden rounded-2xl border border-line")} style={{ aspectRatio: shape }}>
-      <MediaStage media={post.media} title={title} onOpen={onOpen} dots={post.platform === "instagram" ? "below" : "over"} className="absolute inset-0" />
+  const mediaBlock = (hasMedia || placeholder) && (
+    <div className={cn("relative overflow-hidden bg-soft", post.platform === "twitter" && "mx-3.5 rounded-2xl border border-line")} style={{ aspectRatio: shape }}>
+      {hasMedia ? <MediaStage media={post.media} title={title} onOpen={onOpen} dots={post.platform === "instagram" ? "below" : "over"} count="bottom" className="absolute inset-0" /> : <div className="absolute inset-0">{placeholder}</div>}
       {label}
-      {/* The status sits on the picture (glass), so the account row keeps room for the name. */}
-      {post.status && (
-        <span className="pointer-events-none absolute top-3 left-3 z-[3] max-w-[calc(100%-5rem)]">
-          <StatusPill status={post.status} label={post.statusLabel} glass />
-        </span>
-      )}
+      {corner}
+      {mediaOverlay && <div className="absolute inset-0 z-[4]">{mediaOverlay}</div>}
     </div>
   );
 
   return (
     <article ref={card} style={style} className={shell}>
+      {topSlot}
       {header}
       {look.captionFirst && <Caption post={post} look={look} className="px-3.5 pb-3" />}
       {mediaBlock}
@@ -241,8 +283,9 @@ export function PostCard({ post, actions, footer, onOpen, ratio, selected, index
           }
         />
       )}
+      {extras}
       <div className="flex-1" />
-      {footer ? <div className="px-3.5 pt-2 pb-3.5">{footer}</div> : <div className="pb-3.5" />}
+      {bottom}
     </article>
   );
 }

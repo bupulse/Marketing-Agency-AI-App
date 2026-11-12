@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { NetworkIcon, networkName } from "@/components/publishing/network-icon";
@@ -24,6 +24,10 @@ export type PostModalProps = {
   actionsFor?: (post: PostDetailView) => MediaAction[];
   /** The slide to open on (from PostCard's onOpen). */
   startSlide?: number;
+  /** More in the right column, under the caption and details (notes, a move form, results...). */
+  renderBody?: (post: PostDetailView, index: number) => ReactNode;
+  /** The bottom of the right column instead of the action row (a page's own buttons). */
+  renderFooter?: (post: PostDetailView, index: number) => ReactNode;
 };
 
 /**
@@ -39,7 +43,7 @@ export function PostModal(props: PostModalProps) {
   return createPortal(<Modal key={props.posts[props.index].id} {...props} index={props.index} />, document.body);
 }
 
-function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 0 }: PostModalProps & { index: number }) {
+function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 0, renderBody, renderFooter }: PostModalProps & { index: number }) {
   const post = posts[index];
   const root = useRef<HTMLDivElement>(null);
   const media = useRef<HTMLDivElement>(null);
@@ -206,10 +210,13 @@ function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 
                 ))}
               </dl>
             )}
+            {renderBody && <div className="mt-5 flex flex-col gap-4">{renderBody(post, index)}</div>}
           </div>
 
-          <footer className="border-t border-line px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] max-md:sticky max-md:bottom-0 max-md:bg-surface/95 max-md:backdrop-blur-xl max-md:dark:bg-[#141419]/95">
-            {actions.length > 0 ? (
+          <footer className="shrink-0 border-t border-line px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] md:max-h-[45%] md:overflow-y-auto max-md:max-h-[42svh] max-md:overflow-y-auto max-md:sticky max-md:bottom-0 max-md:bg-surface/95 max-md:backdrop-blur-xl max-md:dark:bg-[#141419]/95">
+            {renderFooter ? (
+              renderFooter(post, index)
+            ) : actions.length > 0 ? (
               <ActionRow actions={actions} />
             ) : (
               <div className="-mx-4 [&>div]:pt-0">

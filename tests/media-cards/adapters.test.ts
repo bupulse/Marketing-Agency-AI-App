@@ -75,7 +75,7 @@ describe("content post adapter", () => {
     expect(contentPostView(post({ notify: true }), "Africa/Kigali", now).status).toBe("reminder");
   });
   it("keeps a video with its still as the poster", () => {
-    const media = postMedia({ kind: "video", poster: null, media: [{ path: "a/still.webp", url: "s" }, { path: "a/reel.mp4", url: "v" }] });
+    const media = postMedia({ poster: null, media: [{ path: "a/still.webp", url: "s" }, { path: "a/reel.mp4", url: "v" }] });
     expect(media).toEqual([{ kind: "video", url: "v", poster: "s" }]);
   });
   it("shows a video idea's caption, not its script", () => {

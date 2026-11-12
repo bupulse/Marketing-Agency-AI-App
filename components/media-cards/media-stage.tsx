@@ -40,6 +40,8 @@ export type MediaStageProps = {
   /** Where the dots go: under the picture (Instagram) or on it. */
   dots?: "below" | "over" | "none";
   className?: string;
+  /** Where the "2/4" count sits (bottom right when the top right holds the status). */
+  count?: "top" | "bottom";
   /** The slide shown, for a parent that keeps it (PostModal). */
   slide?: number;
   onSlide?: (slide: number) => void;
@@ -49,7 +51,7 @@ export type MediaStageProps = {
  * A post's media: one picture, one video (plays inline) or a carousel of up to 10 that swipes on phones, with arrows on
  * computers, a "2/4" count and dots.
  */
-export function MediaStage({ media, title, fit = "cover", onOpen, autoPlay = false, dots = "below", className, slide, onSlide }: MediaStageProps) {
+export function MediaStage({ media, title, fit = "cover", onOpen, autoPlay = false, dots = "below", count = "top", className, slide, onSlide }: MediaStageProps) {
   const track = useRef<HTMLDivElement>(null);
   const [own, setOwn] = useState(0);
   const at = slide ?? own;
@@ -114,7 +116,7 @@ export function MediaStage({ media, title, fit = "cover", onOpen, autoPlay = fal
 
         {many && (
           <>
-            <span className="pointer-events-none absolute top-3 right-3 z-[3] rounded-full bg-black/55 px-2 py-0.5 font-mono text-[11.5px] font-semibold text-white backdrop-blur-md">
+            <span className={cn("pointer-events-none absolute right-3 z-[3] rounded-full bg-black/55 px-2 py-0.5 font-mono text-[11.5px] font-semibold text-white backdrop-blur-md", count === "top" ? "top-3" : dots === "over" ? "bottom-8" : "bottom-3")}>
               {at + 1}/{media.length}
             </span>
             {at > 0 && (
