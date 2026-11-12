@@ -11,7 +11,7 @@
 // cron-secret.txt (readable by this Windows user only, written by install.ps1), so Netlify's old scheduled functions
 // and the Mac's loop are refused here.
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, mkdirSync, openSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, openSync, realpathSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -26,7 +26,10 @@ if (mode === "tool" && !/^[a-z0-9-]+$/.test(tool ?? "")) {
   console.error("usage: node scripts/self-host/windows/server.mjs tool <name> [args] (a file in scripts/self-host/tools)");
   process.exit(1);
 }
-const dir = resolve(import.meta.dirname, "../../..");
+// The folder's real letter case (C:\Users\WECPC015\BuPulse), whatever case the window typed: started from a lowercase
+// path (Chrome Remote Desktop drops Shift), Next.js loaded its modules twice and every build failed with "Invariant:
+// Expected workStore to be initialized" (12 November 2026, the site was down for hours).
+const dir = realpathSync.native(resolve(import.meta.dirname, "../../.."));
 const logs = join(homedir(), "bupulse-prod");
 mkdirSync(logs, { recursive: true });
 
