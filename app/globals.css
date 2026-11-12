@@ -578,6 +578,13 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+/* Gradient buttons keep their colour but lose most of the glow: a soft, short shadow, a little deeper on hover. */
+:root:has(.bp-app) .shadow-glow {
+  --tw-shadow: 0 6px 16px -8px rgba(47, 107, 255, 0.55);
+}
+:root:has(.bp-app) .shadow-glow:hover {
+  --tw-shadow: 0 10px 22px -10px rgba(91, 63, 217, 0.6);
+}
 /* Brand-blue text on the dark page: the lighter brand blue, so links and accents pass AA contrast (4.5:1). */
 .dark:has(.bp-app) .text-pulse-blue {
   color: #8db0ff;
