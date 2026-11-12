@@ -21,22 +21,22 @@ export default async function WidgetPage() {
 
   return (
     <WidgetScreen
-        initial={{
-          enabled: widget.enabled,
-          greeting: widget.greeting ?? "",
-          position: widget.position === "left" ? "left" : "right",
-          accentColor: widget.accentColor ?? "",
-          allowedDomains: widget.allowedDomains,
-        }}
-        defaultGreeting={defaultGreeting(business.contentLanguage, business.name)}
-        defaultAccent={resolveAccent(null, business.brandColors)}
-        brandColors={business.brandColors.filter(isHexColor)}
-        lockedBySupport={Boolean(widget.disabledByAdminAt)}
-        widgetKey={business.widgetKey}
-        baseUrl={publicSiteUrl()}
-        usage={{ used: usage.used.chat, limit: usage.limits.chat }}
-        greetingIdeas={greetingIdeasFor(business.contentLanguage)}
-        suggestedDomains={defaultAllowedDomains(business.website)}
-      />
+      initial={{
+        enabled: widget.enabled,
+        greeting: widget.greeting ?? "",
+        position: widget.position === "left" ? "left" : "right",
+        accentColor: widget.accentColor ?? "",
+        allowedDomains: widget.allowedDomains,
+      }}
+      defaultGreeting={defaultGreeting(business.contentLanguage, business.name)}
+      defaultAccent={resolveAccent(null, business.brandColors)}
+      brandColors={business.brandColors.filter(isHexColor)}
+      lockedBySupport={Boolean(widget.disabledByAdminAt)}
+      widgetKey={business.widgetKey}
+      baseUrl={publicSiteUrl()}
+      usage={{ used: usage.used.chat, limit: usage.limits.chat }}
+      greetingIdeas={greetingIdeasFor(business.contentLanguage)}
+      suggestedDomains={defaultAllowedDomains(business.website)}
+    />
   );
 }
