@@ -16,7 +16,7 @@ import { settingsBackFor, settingsHref } from "@/components/admin/system/setting
 // Settings is a hub of small pages (components/admin/system/settings-areas.ts): each action returns to the page its
 // form is on, so the notice shows there.
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates", "demoDailyCap", "pageLoader", "displayCurrency", "usdToEur", "revenueGoalRwf", "goalStartMonth", "vatRatePercent", "vatTin"];
+const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates", "demoDailyCap", "pageLoader", "displayCurrency", "usdToEur", "revenueGoalRwf", "goalStartMonth", "vatTin"];
 
 // Each action re-checks the admin (adminAction: allow-listed email, AAL2). Every saved setting is audited.
 
@@ -33,9 +33,8 @@ export async function saveSettingsAction(f: FormData) {
     if (f.has("dailyPanel")) await setSetting(ctx, "dailyPosts", f.get("dailyPosts") === "on");
     // Talking skit videos (paid Higgsfield calls): off until the owner's lip-sync test.
     if (f.has("skitPanel")) await setSetting(ctx, "skitVideos", f.get("skitVideos") === "on");
-    // VAT on RWF prices: the panel carries the on/off switch. Prices everywhere use the new values at once.
-    if (f.has("vatPanel")) await setSetting(ctx, "vatEnabled", f.get("vatEnabled") === "on");
-    if (f.has("vatPanel") || f.has("vatRatePercent") || f.has("vatTin")) clearVatSettingsCache();
+    // BuPulse's TIN (the VAT rate itself is per region, Admin -> Regions). Receipts use the new TIN at once.
+    if (f.has("vatPanel") || f.has("vatTin")) clearVatSettingsCache();
   });
 }
 

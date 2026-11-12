@@ -310,6 +310,69 @@ describe("accept -> pay by Mobile Money -> activate", () => {
   });
 });
 
+/** Rwanda's VAT % in Admin -> Regions (18% by default: BuPulse is VAT-registered; every other region 0%). */
+function rwandaVat(bps = 1800) {
+  h.db.pricingRegion.rows.push(...REGION_SEEDS.map((r) => ({ ...r, countries: [...r.countries], paymentMethods: [...r.paymentMethods], vatRateBps: r.key === "RW" ? bps : 0 })));
+  resetRegionCache();
+}
+
+describe("VAT on custom plan offers (the offer price is before VAT)", () => {
+  it("at 0% (Admin -> Regions) nothing is added: no VAT on the offer, the client sends the offer's price", async () => {
+    seed();
+    rwandaVat(0);
+    const id = await sentOffer();
+    expect((await offers.clientOffer("biz1", NOW))?.vatRatePercent ?? null).toBeNull();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    expect(r.payment).toMatchObject({ amountMinor: 73000, vatMinor: 0, vatRateBps: null });
+  });
+
+  it("at 18%: the client sees and sends price + VAT (rounded to 100 RWF), the payment keeps the VAT, confirming activates the offer", async () => {
+    seed();
+    rwandaVat();
+    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: DRAFT });
+    await offers.sendOffer(CONSOLE, saved.id, NOW);
+    // The offer email says the total.
+    expect((h.sendEmail.mock.calls.at(-1)?.[0] as { text: string }).text).toContain("86,100 RWF a month (VAT included)");
+    const id = saved.id;
+    expect(await offers.clientOffer("biz1", NOW)).toMatchObject({ netTotalMinor: 73000, totalMinor: 86100, vatRatePercent: 18 });
+    const { accepted, confirmed } = await payByMomo(id);
+    expect(accepted.offer.totalMinor).toBe(86100);
+    expect(accepted.payment).toMatchObject({ amountMinor: 86100, vatMinor: 13134, vatRateBps: 1800 });
+    expect(confirmed).toMatchObject({ status: "confirmed" });
+    expect(offerRow(id).status).toBe("paid");
+    expect(sub()).toMatchObject({ plan: customPlanKeyFor(id), status: "ACTIVE" });
+    const data = (h.db.billingEvent.rows.at(-1)!.payload as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({ amount_minor: 86100, vat_minor: 13134, vat_rate_bps: 1800 });
+  });
+
+  it("at 18%: the offer's invoice has the VAT line, and its Mobile Money payment (total) settles the offer", async () => {
+    seed();
+    rwandaVat();
+    const id = await sentOffer();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
+    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 72966, taxRatePercent: 18, taxMinor: 13134, totalMinor: 86100 });
+    const pay = await momo.startInvoicePayment({ userId: USER, invoiceId: r.invoiceId!, now: NOW });
+    expect(pay).toMatchObject({ amountMinor: 86100, vatMinor: 13134, vatRateBps: 1800 });
+    await momo.submitManualProof(USER, { paymentId: pay.id, transactionId: "MP66666666", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+    await momo.confirmManualPayment(CONSOLE, pay.id, LATER);
+    expect(offerRow(id).status).toBe("paid");
+    expect(h.db.invoice.rows[0].status).toBe("paid");
+  });
+
+  it("at 18%: a payment of the bare offer price (VAT missing) is refused on confirm", async () => {
+    seed();
+    rwandaVat();
+    const id = await sentOffer();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    await momo.submitManualProof(USER, { paymentId: r.payment!.id, transactionId: "MP77777777", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+    // Someone edits the payment to the pre-VAT price without its VAT part: it no longer matches the offer.
+    const row = h.db.manualPayment.rows.find((p) => p.id === r.payment!.id)!;
+    row.amountMinor = 73000;
+    expect(await msg(momo.confirmManualPayment(CONSOLE, row.id, LATER))).toMatch(/custom plan offer costs/);
+    expect(offerRow(id).status).toBe("accepted");
+  });
+});
+
 describe("accept -> pay by invoice -> activate", () => {
   it("issues one sent invoice for the offer's price with the custom plan; Mark as paid switches it on and marks the offer paid", async () => {
     seed();
@@ -317,7 +380,7 @@ describe("accept -> pay by invoice -> activate", () => {
     const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
     const invoice = h.db.invoice.rows[0];
     expect(r.invoiceId).toBe(invoice.id);
-    expect(invoice).toMatchObject({ status: "sent", currency: "RWF", subtotalMinor: 73000, taxRatePercent: 18, totalMinor: 86100, planKey: customPlanKeyFor(id), interval: "MONTH", createdBy: `client:${USER}` });
+    expect(invoice).toMatchObject({ status: "sent", currency: "RWF", subtotalMinor: 72966, taxRatePercent: 18, totalMinor: 86100, planKey: customPlanKeyFor(id), interval: "MONTH", createdBy: `client:${USER}` });
     expect(offerRow(id)).toMatchObject({ status: "accepted", payMethod: "invoice", invoiceId: invoice.id });
     expect(h.sendEmail).toHaveBeenCalled(); // the invoice email
     // Asking again returns the same invoice.
@@ -433,12 +496,12 @@ describe("review fixes", () => {
   const DAY = 86_400_000;
   const at = (days: number) => new Date(NOW.getTime() + days * DAY);
 
-  it("an RWF offer invoice: the offer's price before VAT, plus VAT (Settings, VAT), so its total is the Mobile Money amount; the old invoice VAT rate is ignored", async () => {
+  it("an RWF offer invoice: the offer's price before VAT, plus Rwanda's VAT (Regions), so its total is the Mobile Money amount; the old invoice VAT rate is ignored", async () => {
     seed();
     h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 5 } });
     const id = await sentOffer();
     await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
-    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 73000, taxMinor: 13100, totalMinor: 86100, taxRatePercent: 18 });
+    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 72966, taxMinor: 13134, totalMinor: 86100, taxRatePercent: 18 }); // VAT = the receipt split of the total
   });
 
   it("confirming refuses a payment whose amount or currency is not the offer's price; nothing changes", async () => {

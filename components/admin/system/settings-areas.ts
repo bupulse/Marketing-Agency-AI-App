@@ -69,7 +69,7 @@ export function settingsBackFor(has: (field: string) => boolean): string {
   if (has("dailyPanel")) return settingsHref("content", "daily-posts");
   if (has("skitPanel")) return settingsHref("content", "skit-videos");
   if (has("previewPanel")) return settingsHref("content", "first-post-preview");
-  if (has("vatPanel") || has("vatRatePercent") || has("vatTin")) return settingsHref("vat");
+  if (has("vatPanel") || has("vatTin")) return settingsHref("vat");
   if (has("currencyPanel") || has("usdToRwf") || has("cardMarginPercent") || has("displayCurrency") || has("usdToEur")) return settingsHref("currency");
   if (has("revenueGoalRwf") || has("goalStartMonth")) return settingsHref("goal");
   if (has("meetingLink") || has("organizerEmail") || has("slotMinutes") || has("bufferMinutes") || has("demoDailyCap") || has("blockedDates")) return settingsHref("calls");

@@ -7,8 +7,7 @@ import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { featureLabel } from "@/lib/features";
-import { offerEditorContext } from "@/lib/offers/service";
-import { getVatSettings } from "@/lib/billing/vat-server";
+import { offerEditorContext, offerVat } from "@/lib/offers/service";
 import { budgetLabel } from "@/lib/offers/shared";
 
 export const metadata = { title: "Customise plan" };
@@ -46,7 +45,7 @@ export default async function NewOfferPage({ searchParams }: { searchParams: Pro
           </dl>
         </Panel>
       )}
-      <OfferEditor businessId={ctx.business.id} offerId={null} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} notSetUp={ctx.notSetUp} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} vat={await getVatSettings()} />
+      <OfferEditor businessId={ctx.business.id} offerId={null} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} notSetUp={ctx.notSetUp} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} vat={await offerVat(ctx.business.id)} />
     </>
   );
 }

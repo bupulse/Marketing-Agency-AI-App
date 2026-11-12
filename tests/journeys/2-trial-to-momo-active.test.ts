@@ -117,7 +117,7 @@ describe("journey: trial -> Mobile Money -> ACTIVE -> renewal -> grace -> read-o
     const revenue = h.db.billingEvent.rows.filter((r) => r.type === "manual_payment.confirmed");
     expect(revenue).toHaveLength(1);
     expect(revenue[0]).toMatchObject({ provider: "MANUAL_MOMO", eventId: payment.id, userId });
-    expect(revenue[0].payload.data).toMatchObject({ amount_minor: 41300, currency: "RWF", usd_cents: Math.round((41300 / 1450) * 100), vat_minor: 6300 });
+    expect(revenue[0].payload.data).toMatchObject({ amount_minor: 41300, currency: "RWF", usd_cents: Math.round((35000 / 1450) * 100), vat_minor: 6300, vat_usd_cents: Math.round((6300 / 1450) * 100) }); // usd_cents before VAT, the VAT beside it
     // Entitlements: the paid plan's limits now (Business: 200 texts), not the trial's 10.
     expect((await companyEntitlements(businessId)).block).toBeNull();
     for (let i = 0; i < 12; i++) await consumeUsage(userId, "text");

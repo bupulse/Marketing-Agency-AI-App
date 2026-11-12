@@ -40,6 +40,13 @@ import { MOMO_SETTING_KEY } from "@/lib/billing/momo-shared";
 import { cardPaymentOf, INVOICE_SETTING_KEY, invoiceForCardPayment, matchInvoicePayment, type CardPayment } from "@/lib/invoices/shared";
 import * as inv from "@/lib/invoices/service";
 import { resetRegionCache } from "@/lib/region";
+import { REGION_SEEDS } from "@/lib/region-format";
+
+/** The regions with Rwanda's VAT switched on (Admin -> Regions): the seeds have it off until BuPulse is VAT-registered. */
+function rwandaVat(bps = 1800) {
+  h.db.pricingRegion.rows.push(...REGION_SEEDS.map((r) => ({ ...r, countries: [...r.countries], paymentMethods: [...r.paymentMethods], vatRateBps: r.key === "RW" ? bps : 0 })));
+  resetRegionCache();
+}
 import { resetRegionPriceCache } from "@/lib/region-prices";
 
 const CONSOLE = consoleContext("198.51.100.1");
@@ -138,9 +145,11 @@ describe("activation: No trial, send invoice", () => {
     expect(h.db.subscription.rows[0].status).toBe("PENDING_DEMO"); // nothing opens until it is paid
   });
 
-  it("yearly; VAT (Settings, VAT) on RWF only, never USD; the old invoice VAT rate is ignored", async () => {
+  it("yearly, VAT from the company's region (Rwanda switched to 18%), USD outside Rwanda without VAT", async () => {
     seed();
+    // The old invoice VAT setting is no longer read: only the region's rate counts.
     h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 5 } });
+    rwandaVat();
     await inv.createActivationInvoice(CONSOLE, { businessId: "biz1", interval: "YEAR" }, NOW);
     expect(invoice()).toMatchObject({ interval: "YEAR", subtotalMinor: 350000, taxRatePercent: 18, taxMinor: 63000, totalMinor: 413000 });
     company("bizG", OTHER, { region: "GLOBAL" });
@@ -162,10 +171,10 @@ describe("activation: No trial, send invoice", () => {
 });
 
 describe("the editor", () => {
-  it("saves lines, due date, notes and billing contact, and recomputes the totals with VAT (RWF: total rounded to 100 RWF)", async () => {
+  it("saves lines, due date, notes and billing contact, and recomputes the totals with the region's VAT", async () => {
     seed();
     const id = await draft();
-    h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 5 } });
+    rwandaVat();
     await inv.updateInvoiceDraft(CONSOLE, id, { lines: [{ description: "Pro plan", quantity: 1, unitMinor: 30000 }, { description: "Set-up", quantity: 2, unitMinor: 5000 }], dueDate: "2026-10-20", notes: "Discount agreed in the demo", billingEmail: "Accounts@Inzu.rw" });
     expect(invoice()).toMatchObject({ subtotalMinor: 40000, taxRatePercent: 18, taxMinor: 7200, totalMinor: 47200, notes: "Discount agreed in the demo", billingEmail: "accounts@inzu.rw" });
     expect(invoice().dueDate.toISOString()).toBe("2026-10-20T00:00:00.000Z");

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   adminVatPreview,
-  cleanVatSettings,
+  cleanVatTin,
   clientPrice,
   DEFAULT_VAT_SETTINGS,
   grossRwf,
@@ -11,20 +11,25 @@ import {
   vatPart,
   vatRateFor,
   vatReceiptLines,
+  vatRatesFromRegions,
   vatTinProblem,
   type VatSettings,
 } from "@/lib/billing/vat";
-import { withVat, regionalPlansFor, type RegionalPlan } from "@/lib/region-prices";
+import { withVat, regionalPlansFor, vatFor, type RegionalPlan } from "@/lib/region-prices";
+import { REGION_SEEDS } from "@/lib/region-format";
 import { toClientOffer } from "@/lib/offers/shared";
 import { computeTotals } from "@/lib/invoices/shared";
 import { assertOfferAmount } from "@/lib/offers/activate";
 
-const ON: VatSettings = { enabled: true, ratePercent: 18, tin: "" };
-const OFF: VatSettings = { ...ON, enabled: false };
+// The rate now comes from the regions (PricingRegion.vatRateBps): ON is Rwanda at 18%, OFF is every region at 0%.
+const ON: VatSettings = { rates: { RWF: 18 }, tin: "" };
+const OFF: VatSettings = { ...ON, rates: {} };
 
 describe("VAT on Rwandan prices (lib/billing/vat.ts)", () => {
-  it("is on, 18% and without a TIN by default", () => {
-    expect(DEFAULT_VAT_SETTINGS).toEqual({ enabled: true, ratePercent: 18, tin: "" });
+  it("Rwanda is 18% (the region seeds), every other region 0%; no TIN by default", () => {
+    expect(DEFAULT_VAT_SETTINGS).toEqual({ rates: {}, tin: "" });
+    expect(vatRatesFromRegions(REGION_SEEDS)).toEqual({ RWF: 18 });
+    expect(vatRatesFromRegions([{ currency: "USD", vatRateBps: 1600 }])).toEqual({}); // never on USD
   });
 
   it("the owner's examples: price before VAT x 1.18, rounded to the nearest 100 RWF", () => {
@@ -65,7 +70,7 @@ describe("VAT on Rwandan prices (lib/billing/vat.ts)", () => {
     expect(vatApplies("EUR", ON)).toBe(false);
     expect(vatApplies(null, ON)).toBe(false);
     expect(vatApplies("RWF", OFF)).toBe(false);
-    expect(vatApplies("RWF", { ...ON, ratePercent: 0 })).toBe(false);
+    expect(vatApplies("RWF", { ...ON, rates: { RWF: 0 } })).toBe(false);
     expect(vatRateFor("RWF", ON)).toBe(18);
     expect(vatRateFor("USD", ON)).toBeNull();
     expect(vatRateFor("RWF", OFF)).toBeNull();
@@ -75,7 +80,7 @@ describe("VAT on Rwandan prices (lib/billing/vat.ts)", () => {
     expect(clientPrice(50_000, "RWF", ON)).toBe(59_000);
     expect(clientPrice(4_900, "USD", ON)).toBe(4_900);
     expect(clientPrice(50_000, "RWF", OFF)).toBe(50_000);
-    expect(clientPrice(50_000, "RWF", { ...ON, ratePercent: 16 })).toBe(58_000);
+    expect(clientPrice(50_000, "RWF", { ...ON, rates: { RWF: 16 } })).toBe(58_000);
   });
 
   it("a receipt splits the total paid, with the TIN when there is one", () => {
@@ -100,11 +105,11 @@ describe("VAT on Rwandan prices (lib/billing/vat.ts)", () => {
     expect(adminVatPreview(0, "RWF", ON)).toBeNull();
   });
 
-  it("stored settings: malformed values fall back to the defaults", () => {
-    expect(cleanVatSettings({})).toEqual(DEFAULT_VAT_SETTINGS);
-    expect(cleanVatSettings({ enabled: false, ratePercent: 16, tin: " 100200300 " })).toEqual({ enabled: false, ratePercent: 16, tin: "100200300" });
-    expect(cleanVatSettings({ enabled: "yes", ratePercent: -1, tin: "<script>" })).toEqual(DEFAULT_VAT_SETTINGS);
-    expect(cleanVatSettings({ ratePercent: "18" }).ratePercent).toBe(18);
+  it("the stored TIN (the only VAT setting left): malformed values fall back to none", () => {
+    expect(cleanVatTin(undefined)).toBe(DEFAULT_VAT_SETTINGS.tin);
+    expect(cleanVatTin(" 100200300 ")).toBe("100200300");
+    expect(cleanVatTin("<script>")).toBe("");
+    expect(cleanVatTin(18)).toBe("");
     expect(vatTinProblem("")).toBeNull();
     expect(vatTinProblem("TIN 123-456/7")).toBeNull();
     expect(vatTinProblem("bad<")).toMatch(/letters, digits/);
@@ -131,9 +136,13 @@ const plan = (key: string, currency: string, monthly: number, yearly: number): R
   vatRatePercent: null,
 });
 
+/** The rate now comes from each plan's region (RegionalPlan.vat, lib/region-prices.ts vatFor): give the plans their region's VAT at these settings, then show it. */
+const withVatAt = (plans: RegionalPlan[], s: VatSettings) =>
+  withVat(plans.map((p) => (p.vatRatePercent ? p : { ...p, vat: vatFor({ ...REGION_SEEDS[0], currency: p.currency, vatRateBps: Math.round((s.rates[p.currency] ?? 0) * 100) }, p.monthlyPriceCents, p.yearlyPriceCents) })));
+
 describe("regional plans with VAT (lib/region-prices.ts withVat)", () => {
   it("RWF prices go up by the VAT; the card (USD) price and USD plans stay as they are", () => {
-    const [starter, business, pro, global] = withVat([plan("STARTER", "RWF", 15_000, 150_000), plan("BUSINESS", "RWF", 50_000, 500_000), plan("PRO", "RWF", 80_000, 800_000), plan("GLOBAL", "USD", 4_900, 49_000)], ON);
+    const [starter, business, pro, global] = withVatAt([plan("STARTER", "RWF", 15_000, 150_000), plan("BUSINESS", "RWF", 50_000, 500_000), plan("PRO", "RWF", 80_000, 800_000), plan("GLOBAL", "USD", 4_900, 49_000)], ON);
     expect([starter.monthlyPriceCents, starter.yearlyPriceCents, starter.vatRatePercent]).toEqual([17_700, 177_000, 18]);
     expect(business.monthlyPriceCents).toBe(59_000);
     expect(pro.monthlyPriceCents).toBe(94_400);
@@ -141,10 +150,10 @@ describe("regional plans with VAT (lib/region-prices.ts withVat)", () => {
     expect([global.monthlyPriceCents, global.vatRatePercent]).toEqual([4_900, null]);
   });
 
-  it("is applied once, and not at all with the switch off", () => {
-    const once = withVat([plan("STARTER", "RWF", 15_000, 150_000)], ON);
-    expect(withVat(once, ON)[0].monthlyPriceCents).toBe(17_700);
-    expect(withVat([plan("STARTER", "RWF", 15_000, 150_000)], OFF)[0]).toMatchObject({ monthlyPriceCents: 15_000, vatRatePercent: null });
+  it("is applied once, and not at all with the region at 0%", () => {
+    const once = withVatAt([plan("STARTER", "RWF", 15_000, 150_000)], ON);
+    expect(withVatAt(once, ON)[0].monthlyPriceCents).toBe(17_700);
+    expect(withVatAt([plan("STARTER", "RWF", 15_000, 150_000)], OFF)[0]).toMatchObject({ monthlyPriceCents: 15_000, vatRatePercent: null });
   });
 
   it("regionalPlansFor itself keeps the stored prices (before VAT): offers, invoices and Paddle price from them", () => {

@@ -145,7 +145,7 @@ describe("journey: the billing region is fixed at sign-up", () => {
     expect((await companyRegion(rw.businessId)).key).toBe("RW");
     const rwPlans = (await companyPlans(rw.businessId)).plans;
     expect(rwPlans.map((p) => [p.key, p.currency, p.monthlyPriceCents])).toEqual([["STARTER", "RWF", 15000], ["BUSINESS", "RWF", 35000]]);
-    expect(await getMomoPrice(rw.businessId, "BUSINESS", "MONTH")).toEqual({ amountMinor: 41300, currency: "RWF" });
+    expect(await getMomoPrice(rw.businessId, "BUSINESS", "MONTH")).toEqual({ amountMinor: 41300, currency: "RWF", vatMinor: 6300, vatRateBps: 1800 });
     actAs(rw, "owner1@example.com");
     const stillRwf = await startManualPayment({ userId: rw.userId, plan: "BUSINESS", interval: "MONTH", now: NOW });
     expect(stillRwf).toMatchObject({ amountMinor: 41300, currency: "RWF" });
@@ -197,7 +197,7 @@ describe("journey: the billing region is fixed at sign-up", () => {
     expect(c.business.pricingRegion).toBe("RW");
     resetRegionPriceCache();
     expect((await companyPlans(c.businessId)).plans.map((p) => p.key)).toEqual(["STARTER", "BUSINESS"]);
-    expect(await getMomoPrice(c.businessId, "STARTER", "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF" });
+    expect(await getMomoPrice(c.businessId, "STARTER", "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF", vatMinor: 2700, vatRateBps: 1800 });
     expect(await code(setCompanyRegion(CONSOLE, { businessId: c.businessId, regionKey: "NOPE" }))).toMatch(/^not_found/);
   });
 });

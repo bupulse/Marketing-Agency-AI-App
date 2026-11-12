@@ -8,6 +8,7 @@ import { PlanForm } from "@/components/admin/plan-form";
 import { getVatSettings } from "@/lib/billing/vat-server";
 import { money } from "@/lib/admin/format";
 import { getAdminPlan } from "@/lib/admin/plans-service";
+import { planRegionOptions } from "@/lib/admin/regions-service";
 import { AdminError } from "@/lib/admin/types";
 
 export const metadata = { title: "Plan" };
@@ -30,6 +31,7 @@ export default async function PlanPage({ params, searchParams }: PageProps<"/adm
   const { subscribers } = counts;
   // A custom plan is priced in its offer's currency (98,000 RWF), never in dollars.
   const cur = plan.currency;
+  const regions = plan.isTrial || plan.isCustom ? [] : await planRegionOptions(plan.key);
 
   return (
     <>
@@ -51,6 +53,7 @@ export default async function PlanPage({ params, searchParams }: PageProps<"/adm
         version={plan.updatedAt?.toISOString()}
         subscribers={counts.payingSubscribers}
         vat={vat}
+        regions={regions}
         initial={{
           key: plan.key,
           name: plan.name,

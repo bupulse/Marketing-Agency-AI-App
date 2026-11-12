@@ -37,6 +37,7 @@ export function OfferBanner({ offer, checkingReference = null }: { offer: Client
     : offer.status === "accepted"
       ? "Your custom plan is waiting for payment."
       : "Your custom plan is ready.";
+  // The amounts include the company region's VAT where it has one (lib/offers/service.ts offerVat).
   // Added features are paid once now, prorated for the days left; the plan's own price changes only at the renewal.
   const detail = addition
     ? `${formatMinor(offer.totalMinor, offer.currency)}${offer.vatRatePercent ? " (VAT included)" : ""} paid once, for the ${addition.daysLeft} ${addition.daysLeft === 1 ? "day" : "days"} left of your ${per}. Then ${formatMinor(addition.nextRenewalMinor, offer.currency)} / ${per} from your next renewal.`

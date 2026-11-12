@@ -10,7 +10,7 @@ export function vatHintText(netMinor: number | null | undefined, currency: strin
 
 /**
  * Beside a price an admin set (before VAT): what the VAT is and what the client pays (lib/billing/vat.ts). Shows
- * nothing for a currency without VAT (USD, card prices) or with the VAT switch off.
+ * nothing for a currency without VAT (USD, card prices) or whose region is at 0%.
  */
 export function VatHint({ minor, currency, vat, className }: { minor: number | null | undefined; currency: string; vat: VatSettings; className?: string }) {
   const text = vatHintText(minor, currency, vat);

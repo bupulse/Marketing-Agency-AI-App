@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Archive, ArrowRight, Layers, RefreshCcw, Star, TrendingUp } from "lucide-react";
+import { Archive, ArrowRight, Globe, Layers, RefreshCcw, Star, TrendingUp } from "lucide-react";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { CARD, DataList, EmptyState, ExpandCard, FOCUS, IconBadge, LIFT, StatusPill, type PillTone } from "@/components/admin/kit";
 import { notice } from "@/components/admin/ui";
@@ -44,6 +44,12 @@ export function PlansGrid({ plans }: { plans: AdminPlanRow[] }) {
               {p.isTrial ? "Free" : money(p.monthlyPriceCents)}
               {!p.isTrial && <span className="ml-1 text-[13px] font-semibold text-muted">a month · {money(p.yearlyPriceCents)} a year</span>}
             </p>
+            {!p.isTrial && (
+              <p className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
+                <Globe aria-hidden className="size-3.5" />
+                {p.regionNames?.length ? p.regionNames.join(" · ") : <span className="font-semibold text-danger">Shown in no region</span>}
+              </p>
+            )}
             <dl className="grid grid-cols-2 gap-2 rounded-2xl bg-soft/70 p-3 text-[13px]">
               <div className="flex flex-col"><dt className="text-[11.5px] font-semibold uppercase tracking-[0.04em] text-muted">Clients</dt><dd className="font-bold tabular-nums">{num(p.subscribers)}</dd></div>
               <div className="flex flex-col"><dt className="text-[11.5px] font-semibold uppercase tracking-[0.04em] text-muted">MRR</dt><dd className="font-bold tabular-nums">{p.isTrial ? "-" : money(p.mrrCents)}</dd></div>

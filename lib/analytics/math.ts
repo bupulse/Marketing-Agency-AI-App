@@ -126,11 +126,14 @@ export function parseMoneyEvent(type: string, payload: unknown, fallbackAt: Date
   const at = event.occurred_at && !Number.isNaN(Date.parse(event.occurred_at)) ? new Date(event.occurred_at) : fallbackAt;
   // A Mobile Money payment confirmed in the admin console (lib/billing/momo.ts), or a plain invoice marked paid by hand
   // (lib/invoices/service.ts): the USD value was fixed at that moment. Revenue is counted before VAT (owner, 12 Nov
-  // 2026): the VAT in an RWF payment (vat_minor) goes to RRA, so only the share before VAT counts.
+  // 2026): the VAT in an RWF payment (vat_minor) goes to RRA, so only the share before VAT counts. Events written now
+  // carry usd_cents already before VAT, with vat_usd_cents beside it; an event with vat_minor but no vat_usd_cents
+  // (written before that) has usd_cents with the VAT in it, so only its share before VAT is kept.
   if (type === MANUAL_PAYMENT_EVENT || type === INVOICE_PAID_EVENT) {
     const usd = minor(data.usd_cents);
     if (usd === null) return null;
-    return { kind: "payment", cents: Math.round(usd * netShare(data.amount_minor, data.vat_minor)), id: String(data.id ?? ""), at };
+    const net = data.vat_usd_cents !== undefined ? usd : Math.round(usd * netShare(data.amount_minor, data.vat_minor));
+    return { kind: "payment", cents: net, id: String(data.id ?? ""), at };
   }
   if (type === "transaction.completed") {
     const cents = netUsd(data.details?.payout_totals) ?? netUsd(data.details?.totals, data.currency_code);

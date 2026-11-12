@@ -14,6 +14,16 @@ import { OFFER_FILTERS, OffersList } from "@/components/admin/business/money-off
 import { PlanExtras, PlansGrid } from "@/components/admin/business/money-plans";
 import { AddonPricesView } from "@/components/admin/business/money-addons";
 import { PlanForm } from "@/components/admin/plan-form";
+import type { PlanRegionOption } from "@/lib/admin/regions-service";
+import { InvoicePreview } from "@/components/invoices/invoice-preview";
+import { computeTotals, DEFAULT_INVOICE_SETTINGS, type InvoiceDocument } from "@/lib/invoices/shared";
+import { vatPercentOf } from "@/lib/billing/vat";
+import { REGION_SEEDS, regionStatus } from "@/lib/region-format";
+
+/** The seeded regions as the plan form sees them, with this plan's prices in `picked` (minor units; 0 for Rest of the world). */
+function previewPlanRegions(picked: Record<string, [number, number]>): PlanRegionOption[] {
+  return [...REGION_SEEDS].sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ key: r.key, name: r.name, currency: r.currency, status: regionStatus(r), catchAll: r.countries.length === 0, countryCount: r.countries.length, vatRateBps: r.vatRateBps ?? 0, vatLabel: r.vatLabel ?? "VAT", selected: picked[r.key] ? { monthlyMinor: picked[r.key][0], yearlyMinor: picked[r.key][1] } : null }));
+}
 import { notice } from "@/components/admin/ui";
 import { goalProgress } from "@/lib/money/goal";
 import { COST_PRESETS } from "@/lib/money/costs-shared";
@@ -171,14 +181,48 @@ export const MONEY_SCREENS: Record<string, PreviewScreen> = {
       </>
     ),
   },
+  invoice: {
+    path: "/admin/invoices",
+    // A Rwanda invoice for the Business plan with Rwanda's VAT (Regions): subtotal 50,000, VAT 18% 9,000, total 59,000.
+    render: () => {
+      const lines = [{ description: "BuPulse Business plan, monthly (1 month)", quantity: 1, unitMinor: 50000 }];
+      const rate = vatPercentOf(REGION_SEEDS.find((r) => r.key === "RW")?.vatRateBps);
+      const { businessName, email, phone, website, address, tin, accentColor, footer } = DEFAULT_INVOICE_SETTINGS;
+      const doc: InvoiceDocument = {
+        number: "BP-INV-0042",
+        status: "sent",
+        currency: "RWF",
+        issueDate: "2026-11-12",
+        dueDate: "2026-11-15",
+        lines,
+        ...computeTotals(lines, rate),
+        taxRatePercent: rate,
+        notes: null,
+        planLabel: "Business, monthly",
+        seller: { businessName, email, phone, website, address, tin, accentColor, footer, hasLogo: false } as InvoiceDocument["seller"],
+        billTo: { businessName: "Example Shop Ltd", ownerName: "Aline Uwase", email: "owner@example.rw", phone: "+250 788 000 000", address: "KN 4 Avenue, Kigali", country: "Rwanda" },
+        payment: { instructions: "Pay by MTN MoMo or Airtel Money with the invoice number as the reference.", details: { merchantCode: "000000", momoNumber: "", airtelNumber: "", accountName: "BuPulse" }, reference: "BP-INV-0042", payUrl: "https://bupulse.com/dashboard/billing?invoice=BP-INV-0042" },
+        paidAt: null,
+      };
+      return (
+        <>
+          <PageHeader icon={FileText} tone="green" title="Invoice BP-INV-0042" description={`Example Shop Ltd · ${money(doc.totalMinor, "RWF")} · due 15 November 2026`} back={{ href: "/admin/preview/invoices", label: "All invoices" }} />
+          <div className="max-w-3xl"><InvoicePreview doc={doc} /></div>
+        </>
+      );
+    },
+  },
   plan: {
     path: "/admin/plans/STANDARD",
-    render: () => {
+    render: (sp) => {
       const { plan } = PREVIEW_PLAN_DETAIL;
+      // ?regions=rw shows the plan sold in Rwanda (with its VAT line) and East Africa; the default is the seed state.
+      const rw = chosen(sp, "regions", ["seed", "rw"] as const, "seed") === "rw";
+      const regions = previewPlanRegions(rw ? { RW: [50000, 500000], EAC: [2500, 25000] } : { EAC: [2500, 25000], GLOBAL: [0, 0] });
       return (
         <>
           <PageHeader icon={Layers} tone="green" title={plan.name} description={`${plan.key} · 13 clients · ${money(26000)} MRR`} back={{ href: "/admin/preview/plans", label: "All plans" }} />
-          <PlanForm mode="edit" paddleConnected subscribers={13} initial={{ key: plan.key, name: plan.name, description: plan.description, isTrial: false, isCustom: false, currency: "USD", trialDays: null, status: plan.status, sortOrder: plan.sortOrder, highlight: plan.highlight, monthlyPriceCents: plan.monthlyPriceCents, yearlyPriceCents: plan.yearlyPriceCents, limits: plan.limits, highlights: plan.highlights, features: plan.features }} />
+          <PlanForm mode="edit" paddleConnected subscribers={13} regions={regions} initial={{ key: plan.key, name: plan.name, description: plan.description, isTrial: false, isCustom: false, currency: "USD", trialDays: null, status: plan.status, sortOrder: plan.sortOrder, highlight: plan.highlight, monthlyPriceCents: plan.monthlyPriceCents, yearlyPriceCents: plan.yearlyPriceCents, limits: plan.limits, highlights: plan.highlights, features: plan.features }} />
           <PlanExtras d={PREVIEW_PLAN_DETAIL} />
         </>
       );

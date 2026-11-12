@@ -63,11 +63,7 @@ export type Settings = {
   dailyPosts: boolean;
   /** Talking skit videos made with Seedance 2.0 on Higgsfield (lib/skits). Off by default until the owner's lip-sync test: skits then wait as "Voice received". */
   skitVideos: boolean;
-  /** VAT on RWF prices (lib/billing/vat.ts). On by default: BuPulse is VAT-registered with RRA. */
-  vatEnabled: boolean;
-  /** The VAT rate in percent (18 in Rwanda). */
-  vatRatePercent: number;
-  /** BuPulse's TIN at RRA, printed on receipts and invoices. Empty until the owner fills it in. */
+  /** BuPulse's TIN at RRA, printed on receipts and invoices. Empty until the owner fills it in. (The VAT rate is per region: PricingRegion.vatRateBps.) */
   vatTin: string;
 };
 export type SettingName = keyof Settings;
@@ -91,8 +87,6 @@ const KEYS: Record<SettingName, string> = {
   firstPostPreview: "sales.firstPostPreview",
   dailyPosts: "content.dailyPosts",
   skitVideos: "content.skitVideos",
-  vatEnabled: VAT_SETTING_KEYS.enabled,
-  vatRatePercent: VAT_SETTING_KEYS.ratePercent,
   vatTin: VAT_SETTING_KEYS.tin,
 };
 
@@ -115,8 +109,6 @@ export const DEFAULT_SETTINGS: Settings = {
   firstPostPreview: false,
   dailyPosts: true,
   skitVideos: false,
-  vatEnabled: DEFAULT_VAT_SETTINGS.enabled,
-  vatRatePercent: DEFAULT_VAT_SETTINGS.ratePercent,
   vatTin: DEFAULT_VAT_SETTINGS.tin,
 };
 
@@ -173,12 +165,6 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   firstPostPreview: (value) => value === true || value === "on" || value === "true" || value === "1",
   dailyPosts: (value) => value === true || value === "on" || value === "true" || value === "1",
   skitVideos: (value) => value === true || value === "on" || value === "true" || value === "1",
-  vatEnabled: (value) => value === true || value === "on" || value === "true" || value === "1",
-  vatRatePercent: (value) => {
-    const n = number("The VAT rate (%)", 0, 100, false)(value);
-    if (n <= 0) throw new AdminError("invalid", "The VAT rate must be above 0. To stop adding VAT, turn the switch off.");
-    return n;
-  },
   vatTin: (value) => {
     const v = String(value ?? "").trim();
     const problem = vatTinProblem(v);

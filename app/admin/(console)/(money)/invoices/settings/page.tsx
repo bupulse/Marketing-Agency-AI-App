@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Image as ImageIcon, PenLine, Settings2 } from "lucide-react";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { PageHeader } from "@/components/admin/kit";
@@ -6,9 +7,9 @@ import { Panel } from "@/components/admin/ui";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
 import { Button, Field, Input, PhoneInput, Textarea } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
-import Link from "next/link";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { getVatSettings } from "@/lib/billing/vat-server";
+import { vatRateFor } from "@/lib/billing/vat";
 import { sampleInvoiceDocument } from "@/lib/invoices/service";
 import { getInvoiceSettings, logoDataUrl } from "@/lib/invoices/settings";
 import { defaultPaymentInstructions, INVOICE_SETTING_LIMITS as L } from "@/lib/invoices/shared";
@@ -60,9 +61,10 @@ export default async function InvoiceSettingsPage({ searchParams }: { searchPara
                 <div className="flex flex-col gap-1 rounded-2xl bg-soft px-4 py-3 text-[14px] sm:col-span-2">
                   <span className="font-semibold">TIN and VAT</span>
                   <span className="text-muted">
-                    {vat.enabled ? `RWF invoices add ${vat.ratePercent}% VAT to the prices you type.` : "VAT is off: invoices have no VAT line."} USD invoices never get VAT.{" "}
+                    {vatRateFor("RWF", vat) ? `Rwanda (RWF) invoices add ${vatRateFor("RWF", vat)}% VAT to the prices you type.` : "No region has VAT: invoices have no VAT line."} The rate is set per region in{" "}
+                    <Link href="/admin/settings/regions" className="font-semibold underline">Regions</Link>; an invoice keeps the rate it was written with. USD invoices never get VAT.{" "}
                     {vat.tin || s.tin ? `TIN printed: ${vat.tin || s.tin}.` : "No TIN yet: invoices are printed without one."}{" "}
-                    <Link href="/admin/settings/vat" className="font-semibold underline">Change in Settings, VAT</Link>
+                    <Link href="/admin/settings/vat" className="font-semibold underline">Change the TIN in Settings, VAT</Link>
                   </span>
                 </div>
                 <Field label="Accent colour" hint="Headings, the total and the top band.">

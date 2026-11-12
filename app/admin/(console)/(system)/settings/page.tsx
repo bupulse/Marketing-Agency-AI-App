@@ -9,6 +9,7 @@ import { APPROVAL_LANGUAGES } from "@/lib/content-languages/voice";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured } from "@/lib/billing/momo-shared";
 import { paddleStatus } from "@/lib/billing/paddle-setup";
+import { getVatSettings } from "@/lib/billing/vat-server";
 import { SettingsHub } from "@/components/admin/system/settings/settings-hub";
 
 export const metadata = { title: "Settings" };
@@ -21,7 +22,9 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({ searchParams }: PageProps<"/admin/settings">) {
   const me = await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const [s, windows, google, momo, paddle, telegram, voices] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus(), telegramStatus(), approvedVoices()]);
+  const [s, windows, google, momo, paddle, telegram, voices, vat] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus(), telegramStatus(), approvedVoices(), getVatSettings()]);
+  // The VAT rate is per region (Admin -> Regions); the card shows Rwanda's (RWF), the TIN is the setting.
+  const vatRatePercent = vat.rates.RWF ?? 0;
   return (
     <SettingsHub
       ok={param(sp.notice)}
@@ -30,9 +33,9 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
         momoReady: momoConfigured(momo),
         paddleReady: paddle.ready,
         paddleLive: paddle.environment === "production",
-        vatEnabled: s.vatEnabled,
-        vatRatePercent: s.vatRatePercent,
-        vatTin: s.vatTin,
+        vatEnabled: vatRatePercent > 0,
+        vatRatePercent,
+        vatTin: vat.tin,
         usdToRwf: s.usdToRwf,
         displayCurrency: s.displayCurrency,
         revenueGoalRwf: s.revenueGoalRwf,

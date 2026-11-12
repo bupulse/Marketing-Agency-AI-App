@@ -31,8 +31,8 @@ export async function getAttention(): Promise<AttentionItem[]> {
   const items: AttentionItem[] = [];
   if (payments > 0) items.push({ level: "warning", key: "payments", text: `${payments} Mobile Money payment${payments === 1 ? " is" : "s are"} waiting for you to check.`, href: "/admin/payments" });
   if (approvals > 0) items.push({ level: "warning", key: "approvals", text: `${approvals} money request${approvals === 1 ? " is" : "s are"} waiting for your approval.`, href: "/admin/approvals" });
-  // VAT is added to RWF prices (lib/billing/vat.ts) but receipts cannot show BuPulse's TIN until it is filled in.
-  if (vat.enabled && !vat.tin) items.push({ level: "warning", key: "vat-tin", text: "BuPulse's TIN is missing: receipts and invoices show VAT but no TIN. Add it in Settings, VAT.", href: "/admin/settings/vat" });
+  // A region adds VAT (lib/billing/vat.ts) but receipts cannot show BuPulse's TIN until it is filled in.
+  if (Object.keys(vat.rates).length > 0 && !vat.tin) items.push({ level: "warning", key: "vat-tin", text: "BuPulse's TIN is missing: receipts and invoices show VAT but no TIN. Add it in Settings, VAT.", href: "/admin/settings/vat" });
   if (staleOffers > 0) items.push({ level: "warning", key: "offers", text: `${staleOffers} accepted custom plan offer${staleOffers === 1 ? " has" : "s have"} been waiting for payment for ${OFFER_STALE_DAYS} days or more. Call the client, or withdraw it.`, href: "/admin/offers?status=accepted" });
   // The soft region check (lib/region-check.ts): paid from a dearer region than the one signed up in. Never blocked.
   for (const m of mismatches) items.push({ level: "warning", key: `region:${m.businessId}`, text: `${m.name} signed up in ${m.pricingRegion} but was seen from ${m.flag.country} (${m.flag.ipRegion} prices) at ${m.flag.source === "signup" ? "sign-up" : m.flag.source === "momo" ? "a Mobile Money payment" : "a card checkout"}. Check the region and Change region if needed.`, href: `/admin/companies/${m.businessId}` });

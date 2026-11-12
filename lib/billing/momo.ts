@@ -14,7 +14,8 @@ import { companyPlans } from "@/lib/region-prices";
 import { matchInvoicePayment, readPaymentReviews, withPaymentReview, type PaymentReview } from "@/lib/invoices/shared";
 import { sendInvoiceReviewAlertEmail, sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
-import { clientPrice, vatBreakdown } from "./vat";
+import { withRegionVat } from "./momo-shared";
+import { paymentVat, vatPercentOf, vatSettingsAt } from "./vat";
 import { getVatSettings } from "./vat-server";
 import { earlyRenewalMessage, tooEarlyToRenew } from "./renewal";
 import { checkProofObject, createProofUpload, ProofFileError, removeProofObjects, verifiedProofPath } from "./momo-proofs";
@@ -88,6 +89,8 @@ async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promis
     interval: row.interval,
     amountMinor: row.amountMinor,
     currency: row.currency,
+    vatMinor: row.vatMinor ?? 0,
+    vatRateBps: row.vatRateBps ?? null,
     reference: row.reference,
     invoiceId: row.invoiceId ?? null,
     offerId: row.offerId ?? null,
@@ -174,7 +177,7 @@ export async function startManualPayment(input: { userId: string; plan: string; 
   // not offered there, cannot be paid this way. Checked before anything is written.
   const price = ownCustom ? await customPlanMomoPrice(business.id, plan, input.interval) : await getMomoPrice(business.id, plan.key, input.interval);
   if (!price || price.amountMinor <= 0) throw new ManualPaymentError("Mobile Money is not available for this plan where your business is. Choose one of the plans shown, pay by card, or contact support.");
-  return openPayment(input.userId, sub, { planKey: plan.key, interval: input.interval, amountMinor: price.amountMinor, currency: price.currency, invoiceId: null, offerId: null, reference: null }, now);
+  return openPayment(input.userId, sub, { planKey: plan.key, interval: input.interval, amountMinor: price.amountMinor, currency: price.currency, vatMinor: price.vatMinor, vatRateBps: price.vatRateBps, invoiceId: null, offerId: null, reference: null }, now);
 }
 
 /**
@@ -203,17 +206,21 @@ export async function startInvoicePayment(input: { userId: string; invoiceId: st
   }
   const { region } = await companyPlans(business.id);
   if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Pay by card, or contact support.");
-  return openPayment(input.userId, sub, { planKey: invoice.planKey, interval: invoice.interval, amountMinor: invoice.totalMinor, currency: invoice.currency, invoiceId: invoice.id, offerId: null, reference: invoice.number }, now);
+  // The invoice's own rate (the one it was written with) is the payment's: never the region's current one. The VAT kept
+  // on the payment is the receipt split of the total (lib/billing/vat.ts paymentVat), like every Mobile Money payment.
+  const invoiceVat = paymentVat(invoice.totalMinor, invoice.taxRatePercent && invoice.taxMinor > 0 ? Math.round(invoice.taxRatePercent * 100) : null);
+  return openPayment(input.userId, sub, { planKey: invoice.planKey, interval: invoice.interval, amountMinor: invoice.totalMinor, currency: invoice.currency, ...invoiceVat, invoiceId: invoice.id, offerId: null, reference: invoice.number }, now);
 }
 
 /**
- * A custom plan's Mobile Money price: its own amount (stored before VAT) in its own currency, with VAT when it is RWF
+ * A custom plan's Mobile Money price: its own amount (stored before VAT) in its own currency, plus the region's VAT
  * (lib/billing/vat.ts), when the company's region takes Mobile Money.
  */
 async function customPlanMomoPrice(businessId: string, plan: { monthlyPriceCents: number; yearlyPriceCents: number; currency: string }, interval: BillingInterval) {
-  const [{ region }, vat] = await Promise.all([companyPlans(businessId), getVatSettings()]);
+  const { region } = await companyPlans(businessId);
   if (!region.paymentMethods.includes("momo") || plan.currency.toUpperCase() !== region.currency.toUpperCase()) return null;
-  return { amountMinor: clientPrice(priceCents(plan, interval), plan.currency, vat), currency: plan.currency.toUpperCase() };
+  // Priced before VAT like the offer it came from: the region's VAT goes on top (none at 0%).
+  return withRegionVat(priceCents(plan, interval), plan.currency, region);
 }
 
 /**
@@ -238,12 +245,12 @@ export async function startOfferPayment(input: { userId: string; offerId: string
   }
   const { region } = await companyPlans(business.id);
   if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Choose Pay by invoice, or contact support.");
-  // The offer's price is before VAT; the client pays it with VAT when it is in RWF (lib/billing/vat.ts).
-  const amountMinor = clientPrice(offer.adjustedMinor, offer.currency, await getVatSettings());
-  return openPayment(input.userId, sub, { planKey: offer.customPlanKey, interval: offer.interval, amountMinor, currency: offer.currency, invoiceId: null, offerId: offer.id, reference: null }, now);
+  // The offer's price is before VAT: the region's VAT goes on top, like a plan's (none at 0%; lib/billing/vat.ts).
+  const price = withRegionVat(offer.adjustedMinor, offer.currency, region);
+  return openPayment(input.userId, sub, { planKey: offer.customPlanKey, interval: offer.interval, amountMinor: price.amountMinor, currency: price.currency, vatMinor: price.vatMinor, vatRateBps: price.vatRateBps, invoiceId: null, offerId: offer.id, reference: null }, now);
 }
 
-type PaymentTarget = { planKey: string; interval: BillingInterval; amountMinor: number; currency: string; invoiceId: string | null; offerId: string | null; reference: string | null };
+type PaymentTarget = { planKey: string; interval: BillingInterval; amountMinor: number; currency: string; vatMinor: number; vatRateBps: number | null; invoiceId: string | null; offerId: string | null; reference: string | null };
 
 /** The open payment for this target, or a new one (replacing an unsubmitted payment of something else). */
 async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now: Date): Promise<ManualPaymentView> {
@@ -256,7 +263,7 @@ async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now:
   if (open) {
     if (open.submittedAt) return toView(open, sub, now);
     // Not paid yet: the client may still change their mind about the plan. Same plan, period and invoice: keep the reference.
-    if (open.planKey === target.planKey && open.interval === target.interval && (open.invoiceId ?? null) === target.invoiceId && (open.offerId ?? null) === target.offerId) return toView(open, sub, now);
+    if (open.planKey === target.planKey && open.interval === target.interval && (open.invoiceId ?? null) === target.invoiceId && (open.offerId ?? null) === target.offerId && open.amountMinor === target.amountMinor) return toView(open, sub, now);
     const { count } = await prisma.manualPayment.updateMany({ where: { id: open.id, status: "pending", submittedAt: null }, data: { status: "expired", decidedAt: now, decidedBy: "client" } });
     // Submitted or replaced from another tab meanwhile: whatever is open now is the payment.
     if (count !== 1) {
@@ -271,7 +278,7 @@ async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now:
   for (let attempt = 0; attempt < REFERENCE_TRIES; attempt++) {
     try {
       const row = await prisma.manualPayment.create({
-        data: { userId, planKey: target.planKey, interval: target.interval, amountMinor: target.amountMinor, currency: target.currency, invoiceId: target.invoiceId, offerId: target.offerId, reference: target.reference ?? makeReference(attempt < 3 ? 4 : 6) },
+        data: { userId, planKey: target.planKey, interval: target.interval, amountMinor: target.amountMinor, currency: target.currency, vatMinor: target.vatMinor, vatRateBps: target.vatRateBps, invoiceId: target.invoiceId, offerId: target.offerId, reference: target.reference ?? makeReference(attempt < 3 ? 4 : 6) },
       });
       return toView(row, sub, now);
     } catch (error) {
@@ -444,8 +451,10 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
   // A payment of a custom plan offer (directly, or through the invoice made from it) also settles the offer.
   const offer = await offerForPayment(payment);
   if (offer && offer.status !== "accepted") throw new AdminError("conflict", `The custom plan offer this payment is for is ${offer.status}. Reject this payment (and refund it if the money arrived) instead.`);
-  const vat = await getVatSettings();
-  if (offer) assertOfferAmount(offer, payment, vat);
+  // The offer's price is before VAT: the payment must be that price with VAT at the rate the payment was opened with
+  // (its vatRateBps snapshot, never the region's current rate), or the price itself (no VAT). TIN for the receipt.
+  const vat = vatSettingsAt(payment.currency, payment.vatRateBps, (await getVatSettings()).tin);
+  if (offer) assertOfferAmount(offer, payment, vat, Boolean(payment.vatRateBps));
   // Features added to the running plan (docs/OFFERS.md): the plan they were priced on must still be the one running;
   // the subscription moves to the new custom plan and its period does not change.
   const addition = offer ? readAddition(offer.options) : null;
@@ -453,8 +462,12 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
     const invoice = await prisma.invoice.findUnique({ where: { id: payment.invoiceId }, select: { status: true } });
     if (invoice?.status !== "sent") throw new AdminError("conflict", `Invoice ${payment.reference} is ${invoice ? `already ${invoice.status}` : "gone"}. Reject this payment (and refund it if the money arrived) instead.`);
   }
-  // The revenue roll-up is in USD: the one USD->RWF rate of Admin -> Settings (also used for card prices).
-  const usdCents = usdCentsOf(payment.amountMinor, payment.currency, await getSetting("usdToRwf"));
+  // The revenue roll-up is in USD: the one USD->RWF rate of Admin -> Settings (also used for card prices). VAT is not
+  // revenue (it is owed to the tax office): usd_cents is the part before VAT, the VAT is kept beside it.
+  const usdRate = await getSetting("usdToRwf");
+  const vatMinor = Math.max(0, payment.vatMinor ?? 0);
+  const usdCents = usdCentsOf(payment.amountMinor - vatMinor, payment.currency, usdRate);
+  const vatUsdCents = vatMinor > 0 ? usdCentsOf(vatMinor, payment.currency, usdRate) : 0;
 
   for (let attempt = 0; ; attempt++) {
     let flagged: { invoice: { id: string; number: string; totalMinor: number; currency: string }; company: string; second: boolean } | null = null;
@@ -548,7 +561,9 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
             payload: {
               event_type: "manual_payment.confirmed",
               occurred_at: now.toISOString(),
-              data: { id: payment.reference, invoice_id: payment.invoiceId, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, vat_minor: vatBreakdown(payment.amountMinor, payment.currency, vat)?.vatMinor ?? 0, plan: plan.key, interval: payment.interval, transaction_id: transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
+              // usd_cents is BEFORE VAT; the VAT (the payment's stored receipt split) is kept beside it (vat_minor,
+              // vat_usd_cents), so revenue counts without it and "VAT collected" is shown apart (lib/money/revenue-shared.ts).
+              data: { id: payment.reference, invoice_id: payment.invoiceId, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, ...(vatMinor > 0 ? { vat_minor: vatMinor, vat_rate_bps: payment.vatRateBps, vat_usd_cents: vatUsdCents } : {}), plan: plan.key, interval: payment.interval, transaction_id: transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
             },
           },
         });
@@ -572,7 +587,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
     }
     let emailed = false;
     if (client.email) {
-      emailed = await sendPlanActiveEmail({ email: client.email, name: client.name }, { planName: plan.name, interval: payment.interval, amountMinor: payment.amountMinor, currency: payment.currency, reference: payment.reference, periodEnd: period.end, vat: vatBreakdown(payment.amountMinor, payment.currency, vat) }).catch(() => false);
+      emailed = await sendPlanActiveEmail({ email: client.email, name: client.name }, { planName: plan.name, interval: payment.interval, amountMinor: payment.amountMinor, currency: payment.currency, reference: payment.reference, periodEnd: period.end, vat: vatMinor > 0 ? { totalMinor: payment.amountMinor, vatMinor, netMinor: payment.amountMinor - vatMinor, ratePercent: vatPercentOf(payment.vatRateBps) ?? 0, tin: vat.tin } : null }).catch(() => false);
     }
     return { id: paymentId, status: "confirmed" as const, plan: plan.key, periodMode: period.mode, periodStart: period.start, periodEnd: period.end, emailed };
   }

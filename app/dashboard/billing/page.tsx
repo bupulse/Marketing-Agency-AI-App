@@ -21,8 +21,8 @@ import { cardCheckoutConfigured, cardPricedPlans, invoicePayMethods } from "@/li
 import { methodState } from "@/lib/billing/pay-methods";
 import { momoConfigured, momoPriceOf, offerCheckingReference } from "@/lib/billing/momo-shared";
 import { getPlan, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
-import { companyPlans, withVat, type RegionalPlan } from "@/lib/region-prices";
-import { vatRateFor } from "@/lib/billing/vat";
+import { companyPlans, vatFor, withVat, type RegionalPlan } from "@/lib/region-prices";
+import { vatPercentOf } from "@/lib/billing/vat";
 import { getVatSettings } from "@/lib/billing/vat-server";
 import { currencyNote } from "@/lib/region-format";
 import { clientInvoices, openInvoiceOf, payableView } from "@/lib/invoices/service";
@@ -61,7 +61,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const trialEnd = formatDate(subscription.trialEndsAt);
   const cancelling = paid && subscription.cancelAtPeriodEnd;
   // The plans and prices of the company's region (never the visitor's IP), plus the plan the client chose at sign-up.
-  // Prices are what the client pays: RWF with VAT (lib/billing/vat.ts); card (USD) prices as they are.
+  // Prices are what the client pays: with the region's VAT (Rwanda 18%, lib/billing/vat.ts); card (USD) prices as they are.
   const [{ region, plans: regional }, currentPlan, chosen, momoSettings, momoPayment, offer, planCall, vat] = await Promise.all([
     companyPlans(business.id, { withVat: true }),
     getPlan(subscription.plan),
@@ -77,8 +77,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   // Retired and hidden plans stay listed for the clients already on them, so "Your current plan" is still shown.
   const pickable: RegionalPlan[] = withVat([
     ...regional,
-    ...(currentPlan && !currentPlan.isTrial && !regional.some((p) => p.key === currentPlan.key) ? [{ ...toPublic(currentPlan), regionKey: region.key, paymentMethods: region.paymentMethods, card: null, vatRatePercent: null }] : []),
-  ], vat);
+    // A custom or retired plan: its own prices (before VAT) with the region's VAT when they are in the region's currency.
+    ...(currentPlan && !currentPlan.isTrial && !regional.some((p) => p.key === currentPlan.key) ? [{ ...toPublic(currentPlan), regionKey: region.key, paymentMethods: region.paymentMethods, card: null, vat: currentPlan.currency.toUpperCase() === region.currency.toUpperCase() ? vatFor(region, currentPlan.monthlyPriceCents, currentPlan.yearlyPriceCents) : null, vatRatePercent: null }] : []),
+  ]);
   // Can card checkout open, and for which plans (a region's card prices must be in Paddle: docs/BILLING.md)?
   const [cardOn, cardPriced] = await Promise.all([cardCheckoutConfigured(), cardPricedPlans(region.key, pickable.map((p) => p.key))]);
   const momoReady = momoConfigured(momoSettings);
@@ -92,7 +93,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const price =
     paid && currentPlan && !currentPlan.isTrial
       ? momoPlan
-        ? `${momoPrice ? `${formatPrice(momoPrice.amountMinor, momoPrice.currency)}${vatRateFor(momoPrice.currency, vat) ? " (VAT included)" : ""}` : "Paid"} per ${intervalWord(subscription.interval)}, by Mobile Money`
+        ? `${momoPrice ? `${formatPrice(momoPrice.amountMinor, momoPrice.currency)}${momoPrice.vatRateBps ? " (VAT included)" : ""}` : "Paid"} per ${intervalWord(subscription.interval)}, by Mobile Money`
         : `${formatUsd((cardPlanUsdCents ?? 0) / 100)} per ${intervalWord(subscription.interval)}${planAddons ? `: ${basePlan?.name ?? "your plan"} plus ${planAddons.labels.join(", ")}` : ""}`
       : null;
 
@@ -202,7 +203,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
 
       {payable && invoiceMethods && <InvoicePay invoice={payable} methods={invoiceMethods} highlight={highlighted === payable.number} cardReason={payableCustom || !payable.planKey ? `Card is not available for this invoice yet: pay it by Mobile Money, or write to us at ${site.email} and we will help.` : null} />}
 
-      {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} vatRatePercent={vatRateFor(momoPayment.currency, vat)} />}
+      {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} vatRatePercent={vatPercentOf(momoPayment.vatRateBps)} />}
 
       <GlassCard as="section" aria-labelledby="current-plan" className="flex flex-col gap-5 p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">

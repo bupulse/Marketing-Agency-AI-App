@@ -14,7 +14,7 @@ show **Activate account** where **Start trial** used to be. The dialog offers:
 - **No trial, send invoice**, monthly or yearly (default monthly). `createActivationInvoice` (`lib/invoices/service.ts`)
   creates a **draft** for the client's chosen plan (`Subscription.chosenPlan`) at the company region's price
   (`companyPlans`, the same amounts as Billing: RWF in Rwanda, USD elsewhere), one line ("BuPulse Pro plan, monthly
-  (1 month)"), issued today (Kigali) and due in 3 days, VAT from the settings. The live demo booking is marked done.
+  (1 month)"), issued today (Kigali) and due in 3 days, VAT from the company's region. The live demo booking is marked done.
   The admin lands in the editor. Only for a company still waiting for its demo (like Start trial), and refused for a
   plan the region does not sell. Clicked twice (or by two admins) it opens the same draft: one draft per company
   (`Invoice_one_draft_per_business`). The subscription stays `PENDING_DEMO` until the invoice is paid.
@@ -40,9 +40,9 @@ Both go through `adminAction()` (allow-listed email, AAL2) and are audited (`sta
 invoices created at the same instant never share a number and no lock is needed. A number is never reused: a voided
 invoice keeps its number, and a create that fails leaves a gap. `BP-INV-0001` … `BP-INV-9999`, then `BP-INV-10000`.
 
-**Totals**: subtotal = Σ quantity × unit price (prices typed before VAT). An RWF invoice gets VAT from Admin → Settings →
-VAT (default on, 18%; docs/BILLING.md, "VAT"): total = subtotal × 1.18 rounded to the nearest 100 RWF (the same amount
-Billing and Mobile Money ask for), VAT = total − subtotal. Other currencies never get VAT. Recomputed on the server on
+**Totals**: the lines are Σ quantity × unit price (prices typed before VAT). An invoice gets the company region's VAT
+(Admin → Regions; Rwanda 18%, docs/BILLING.md "VAT"): total = lines × 1.18 rounded to the nearest 100 RWF (the same amount
+Billing and Mobile Money ask for), VAT = round(total × 18 / 118), "Amount before VAT" (subtotal) = total − VAT. USD never gets VAT. Recomputed on the server on
 every save.
 
 ### Lifecycle (Admin → Invoices, `/admin/invoices`)

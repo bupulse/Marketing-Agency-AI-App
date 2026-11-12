@@ -4,8 +4,8 @@ import { isServiceEnabled } from "@/lib/admin/switch";
 import { logError } from "@/lib/errors";
 import { sendOfferReminderEmail } from "./emails";
 import { DAY_MS, readAddition } from "./shared";
-import { clientPrice, vatRateFor } from "@/lib/billing/vat";
-import { getVatSettings } from "@/lib/billing/vat-server";
+import { clientPrice, vatRateFor, vatSettingsOfRegion } from "@/lib/billing/vat";
+import { companyRegion } from "@/lib/region";
 
 // Accepted offers that are not paid (docs/OFFERS.md): one reminder to the company owner 3 days after accepting and one
 // after 7, from the daily Mobile Money renewals job. Each is claimed before sending (reminder3SentAt / reminder7SentAt,
@@ -31,8 +31,8 @@ export async function sendOfferReminders(now: Date = new Date(), limit = 100): P
       const release = () => prisma.planOffer.updateMany({ where: { id: offer.id, [field]: now }, data: { [field]: null, ...(day === 7 && !offer.reminder3SentAt ? { reminder3SentAt: null } : {}) } }).catch(() => undefined);
       try {
         const owner = await prisma.business.findUnique({ where: { id: offer.businessId }, select: { ceoName: true, user: { select: { email: true, name: true } } } });
-        // The offer's price is before VAT; the reminder says what the client pays (with VAT on RWF, lib/billing/vat.ts).
-        const vat = await getVatSettings();
+        // The offer's price is before VAT; the reminder says what the client pays (with the company region's VAT, lib/billing/vat.ts).
+        const vat = vatSettingsOfRegion(await companyRegion(offer.businessId));
         const pay = (minor: number) => clientPrice(minor, offer.currency, vat);
         const addition = readAddition(offer.options);
         const ok = owner?.user?.email

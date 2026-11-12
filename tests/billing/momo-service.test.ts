@@ -24,6 +24,7 @@ import * as momo from "@/lib/billing/momo";
 import { clearMomoSettingsCache, getMomoPrice, getMomoSettings, saveMomoSettings } from "@/lib/billing/momo-settings";
 import { MOMO_SETTING_KEY } from "@/lib/billing/momo-shared";
 import { resetRegionCache } from "@/lib/region";
+import { REGION_SEEDS } from "@/lib/region-format";
 import { resetRegionPriceCache } from "@/lib/region-prices";
 import { clearVatSettingsCache } from "@/lib/billing/vat-server";
 
@@ -75,21 +76,22 @@ describe("prices and settings", () => {
   it("the Mobile Money price is the plan's price in the company's region; nothing where the region has no Mobile Money", async () => {
     seed();
     prices();
-    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF" });
-    expect(await getMomoPrice("biz1", "PRO", "YEAR")).toEqual({ amountMinor: 413000, currency: "RWF" });
+    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF", vatMinor: 2700, vatRateBps: 1800 });
+    expect(await getMomoPrice("biz1", "PRO", "YEAR")).toEqual({ amountMinor: 413000, currency: "RWF", vatMinor: 63000, vatRateBps: 1800 });
     expect(await getMomoPrice("biz1", "NOPE", "MONTH")).toBeNull();
     // The same company moved to the catch-all region (card only): no Mobile Money price, whatever the plan.
     h.db.business.rows[0].pricingRegion = "GLOBAL";
     expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toBeNull();
   });
 
-  it("the price is with 18% VAT (rounded to 100 RWF); with VAT switched off it is the stored price", async () => {
+  it("the price is with Rwanda's 18% VAT (rounded to 100 RWF); with the region at 0% it is the stored price", async () => {
     seed();
     prices();
-    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF" });
-    h.db.adminSetting.rows.push({ key: "billing.vat.enabled", value: false });
-    clearVatSettingsCache();
-    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 15000, currency: "RWF" });
+    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 17700, currency: "RWF", vatMinor: 2700, vatRateBps: 1800 });
+    // Admin -> Regions: Rwanda's VAT % set to 0 (the fake database has no region rows: the seeds, with RW at 0).
+    h.db.pricingRegion.rows.push(...REGION_SEEDS.map((r) => ({ ...r, countries: [...r.countries], paymentMethods: [...r.paymentMethods], vatRateBps: 0 })));
+    resetRegionCache();
+    expect(await getMomoPrice("biz1", "STANDARD", "MONTH")).toEqual({ amountMinor: 15000, currency: "RWF", vatMinor: 0, vatRateBps: null });
   });
 
   it("saving the settings is console-only, refuses malformed codes and numbers, and is audited with before and after", async () => {
@@ -287,6 +289,23 @@ describe("confirming", () => {
     return p;
   }
 
+  it("with Rwanda's VAT switched on (18%): the client sends price + VAT, the payment keeps the VAT and its rate, revenue counts it before VAT", async () => {
+    seed();
+    settings();
+    h.db.pricingRegion.rows.push(...REGION_SEEDS.map((r) => ({ ...r, countries: [...r.countries], paymentMethods: [...r.paymentMethods], vatRateBps: r.key === "RW" ? 1800 : 0 })));
+    resetRegionCache();
+    const p = await start();
+    expect(p).toMatchObject({ amountMinor: 17700, vatMinor: 2700, vatRateBps: 1800, currency: "RWF" });
+    await proof(p.id);
+    // The rate changing afterwards does not touch the payment: it keeps what the client was asked for.
+    h.db.pricingRegion.rows.find((r) => r.key === "RW")!.vatRateBps = 0;
+    resetRegionCache();
+    await momo.confirmManualPayment(CONSOLE, p.id, NOW);
+    expect(h.db.manualPayment.rows[0]).toMatchObject({ status: "confirmed", amountMinor: 17700, vatMinor: 2700, vatRateBps: 1800 });
+    const data = (h.db.billingEvent.rows[0].payload as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({ amount_minor: 17700, usd_cents: 1034, vat_minor: 2700, vat_rate_bps: 1800, vat_usd_cents: 186 });
+  });
+
   it("is the owner's own decision: console only, and only for a submitted pending payment", async () => {
     seed();
     settings();
@@ -312,10 +331,10 @@ describe("confirming", () => {
     // Money for the roll-up: one BillingEvent in USD cents at the owner's rate.
     expect(h.db.billingEvent.rows).toHaveLength(1);
     expect(h.db.billingEvent.rows[0]).toMatchObject({ provider: "MANUAL_MOMO", type: "manual_payment.confirmed", eventId: p.id, userId: USER });
-    expect((h.db.billingEvent.rows[0].payload as { data: { usd_cents: number; amount_minor: number; id: string } }).data).toMatchObject({ usd_cents: 1221, amount_minor: 17700, vat_minor: 2700, id: p.reference });
+    expect((h.db.billingEvent.rows[0].payload as { data: { usd_cents: number; amount_minor: number; id: string } }).data).toMatchObject({ usd_cents: 1034, amount_minor: 17700, vat_minor: 2700, vat_rate_bps: 1800, vat_usd_cents: 186, id: p.reference });
     const { parseMoneyEvent } = await import("@/lib/analytics/math");
-    // Revenue is counted before VAT (owner, 12 Nov 2026): 1,221 US cents x 15,000 / 17,700 = 1,035.
-    expect(parseMoneyEvent("manual_payment.confirmed", h.db.billingEvent.rows[0].payload, NOW)).toMatchObject({ kind: "payment", cents: 1035, id: p.reference });
+    // Revenue is counted before VAT (owner, 12 Nov 2026): usd_cents is already the part before VAT (15,000 RWF = 1,034 US cents).
+    expect(parseMoneyEvent("manual_payment.confirmed", h.db.billingEvent.rows[0].payload, NOW)).toMatchObject({ kind: "payment", cents: 1034, id: p.reference });
     expect(lastAudit()).toMatchObject({ actor: "admin", action: "confirm_momo_payment", target: `payment:${p.id}`, ip: "198.51.100.1" });
     expect(lastAudit().before).toMatchObject({ status: "pending", subscription: { plan: "TRIAL" } });
     expect(lastAudit().after).toMatchObject({ status: "confirmed", subscription: { plan: "STANDARD", status: "ACTIVE" } });

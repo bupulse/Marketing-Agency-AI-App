@@ -1,13 +1,20 @@
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { cn } from "@/lib/cn";
-import { VAT_INCLUDED_NOTE } from "@/lib/billing/vat";
+import { formatVatRate, VAT_INCLUDED_NOTE } from "@/lib/billing/vat";
 import { formatPlanPrice, formatPrice, intervalWord, yearlyDiscountPercent, type PlanPrices } from "./helpers";
+
+type VatPart = { netMinor: number; vatMinor: number; totalMinor: number };
+/** The region's VAT on the plan (lib/region-prices.ts RegionalPlan.vat): the price before VAT, the VAT and the total. */
+type PlanVat = { rateBps: number; label: string; monthly: VatPart; yearly: VatPart } | null | undefined;
 
 /**
  * A plan's price. Yearly shows what 12 monthly payments would cost crossed out, the yearly
- * price, and the discount (e.g. "17% off"). Used on the pricing page and the billing page.
+ * price, and the discount (e.g. "17% off"). Used on the pricing page and the billing page. Where the region has VAT
+ * (Rwanda, 18%) the big price is what the client pays, VAT included (lib/region-prices.ts withVat), and a line under it
+ * splits it: "VAT included (18%): 50,000 RWF + 9,000 RWF VAT".
  */
-export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices; interval: BillingInterval; size?: "lg" | "md" | "sm" }) {
+export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices & { vat?: PlanVat }; interval: BillingInterval; size?: "lg" | "md" | "sm" }) {
+  const vat = plan.vatRatePercent && plan.vat ? (interval === "YEAR" ? plan.vat.yearly : plan.vat.monthly) : null;
   const yearly = interval === "YEAR";
   const fullYear = plan.monthlyPriceCents * 12;
   return (
@@ -32,7 +39,11 @@ export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices; in
         </span>
         <span className={cn("text-muted", size === "sm" && "text-sm")}>/ {intervalWord(interval)}</span>
       </p>
-      {plan.vatRatePercent ? <p className="text-xs text-muted">{VAT_INCLUDED_NOTE}</p> : null}
+      {plan.vatRatePercent ? (
+        <p className="text-xs text-muted">
+          {vat && plan.vat && vat.vatMinor > 0 ? `${plan.vat.label} included (${formatVatRate(plan.vat.rateBps)}): ${formatPrice(vat.netMinor, plan.currency)} + ${formatPrice(vat.vatMinor, plan.currency)} ${plan.vat.label}` : VAT_INCLUDED_NOTE}
+        </p>
+      ) : null}
     </div>
   );
 }

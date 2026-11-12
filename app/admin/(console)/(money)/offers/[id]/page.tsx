@@ -12,9 +12,8 @@ import { buttonClasses, Field, Input } from "@/components/ui";
 import { requirePermission } from "@/lib/admin/auth";
 import { dateTime } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
-import { clientViewOf, getOffer, offerEditorContext } from "@/lib/offers/service";
+import { clientViewOf, getOffer, offerEditorContext, offerVat } from "@/lib/offers/service";
 import { formatMinor } from "@/lib/region-format";
-import { getVatSettings } from "@/lib/billing/vat-server";
 import { vatHintText } from "@/components/admin/vat-hint";
 import { withdrawOfferAction } from "../actions";
 
@@ -32,7 +31,7 @@ export default async function OfferPage({ params, searchParams }: { params: Prom
     throw e;
   }
   const editing = offer.status === "draft";
-  const [ctx, vat] = await Promise.all([editing ? offerEditorContext({ businessId: offer.businessId, offerId: offer.id }) : Promise.resolve(null), getVatSettings()]);
+  const [ctx, vat] = await Promise.all([editing ? offerEditorContext({ businessId: offer.businessId, offerId: offer.id }) : Promise.resolve(null), offerVat(offer.businessId)]);
   const vatText = vatHintText(offer.adjustedMinor, offer.currency, vat);
   const facts: [string, string | null][] = [
     ["Created", `${dateTime(offer.createdAt)} by ${offer.createdBy}`],

@@ -6,7 +6,7 @@ import { moneyInput } from "@/lib/invoices/shared";
 import type { addonPriceTable } from "@/lib/offers/addon-prices";
 import { ADDONS } from "@/lib/offers/shared";
 import { saveAddonPricesAction } from "@/app/admin/(console)/(money)/addon-prices/actions";
-import { vatApplies, type VatSettings } from "@/lib/billing/vat";
+import { vatApplies, vatRateFor, type VatSettings } from "@/lib/billing/vat";
 import { VatHint } from "@/components/admin/vat-hint";
 
 export type AddonTable = Awaited<ReturnType<typeof addonPriceTable>>;
@@ -36,7 +36,7 @@ export function AddonPricesView({ table, regionKey, sp, vat = null }: { table: A
         allValue={table[0].region.key}
         options={table.map((t) => ({ value: t.region.key, label: `${t.region.name}`, hint: `${t.region.currency} · ${priced(t)} of ${ADDONS.length} priced`, icon: Globe, tone: priced(t) < ADDONS.length ? "orange" : "green" }))}
       />
-      <Panel icon={Tags} tone="green" title={`${region.name} (${region.key})`} description={`Prices in ${region.currency} a month${vat && vatApplies(region.currency, vat) ? `, before VAT (clients pay them with ${vat.ratePercent}% VAT)` : ""}. Leave a field empty for "no price here": the offer editor then warns and prices it at 0.`} id={`prices-${region.key}`}>
+      <Panel icon={Tags} tone="green" title={`${region.name} (${region.key})`} description={`Prices in ${region.currency} a month${vat && vatApplies(region.currency, vat) ? `, before VAT (clients pay them with ${vatRateFor(region.currency, vat)}% VAT)` : ""}. Leave a field empty for "no price here": the offer editor then warns and prices it at 0.`} id={`prices-${region.key}`}>
         <form action={saveAddonPricesAction} id={`region-${region.key}`} className="flex scroll-mt-24 flex-col gap-4">
           <input type="hidden" name="regionKey" value={region.key} />
           <ul aria-label={`Add-on prices in ${region.name}`} className="flex flex-col divide-y divide-line">
