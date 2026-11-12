@@ -5,7 +5,9 @@ import { LeadAlertsScreen } from "@/components/leads/lead-alerts-screen";
 import { LeadsScreen } from "@/components/leads/leads-screen";
 import { previewAllowed } from "@/lib/support/preview";
 import { ContactsScreen } from "@/components/contacts/contacts-screen";
-import { SAMPLE_CONTACTS, SAMPLE_FIELDS, SAMPLE_LEAD_COUNTS, SAMPLE_LEADS, SAMPLE_TAGS } from "../sample-data";
+import { InboxScreen } from "@/components/inbox/inbox-screen";
+import { WidgetScreen, greetingIdeasFor } from "@/components/widget/widget-screen";
+import { SAMPLE_CONTACTS, SAMPLE_CONVERSATIONS,SAMPLE_FIELDS, SAMPLE_LEAD_COUNTS, SAMPLE_LEADS, SAMPLE_TAGS } from "../sample-data";
 
 export const metadata = { title: "Client preview" };
 
@@ -25,6 +27,24 @@ const SCREENS: Record<string, (sp: SP) => ReactNode | Promise<ReactNode>> = {
   ),
   "leads-alerts": () => (
     <LeadAlertsScreen backHref="/preview-c/leads" push={{ publicKey: "BPreviewKeyOnly", registered: [] }} notifications={{ initial: { notifyInstant: true, notifyDaily: true }, email: "aline@example.com", whatsapp: { enabled: false, number: null, fallback: "+250 700 000 000" } }} />
+  ),
+  inbox: (sp) => (
+    <InboxScreen
+      view={sp.empty ? null : { items: SAMPLE_CONVERSATIONS, hasMore: false, counts: { open: 3, mine: 1, unassigned: 2, closed: 0, all: 2 }, view: "open", channel: null, q: "", channels: ["WEBSITE", "INSTAGRAM", "FACEBOOK"], team: [{ id: "me", name: "Aline" }], actorId: "me", initialOpenId: null }}
+    />
+  ),
+  widget: (sp) => (
+    <WidgetScreen
+      initial={{ enabled: true, greeting: "", position: "right", accentColor: "", allowedDomains: sp.empty ? [] : ["inzozi.example.com"] }}
+      defaultGreeting="Hi! Welcome to Inzozi Juice Bar. How can we help?"
+      defaultAccent="#2f6bff"
+      brandColors={["#2f6bff", "#16a34a"]}
+      widgetKey="preview"
+      baseUrl="https://bupulse.com"
+      usage={{ used: 140, limit: 500 }}
+      greetingIdeas={greetingIdeasFor("English")}
+      suggestedDomains={["inzozi.example.com"]}
+    />
   ),
   contacts: () => <ContactsScreen contacts={SAMPLE_CONTACTS} total={4} hasMore={false} q="" tag={null} channel={null} tags={SAMPLE_TAGS} fields={SAMPLE_FIELDS} canManage />,
 };

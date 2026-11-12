@@ -21,19 +21,23 @@ const ICONS: Record<PlatformId, LucideIcon> = {
   gtm: Tags,
 };
 
-export function InstallGuide({ baseUrl, widgetKey, accent }: { baseUrl: string; widgetKey: string; accent: string }) {
+/** `bare`: without its own card and heading, for a page that already puts it in a card (the Website chat tabs). */
+export function InstallGuide({ baseUrl, widgetKey, accent, bare = false }: { baseUrl: string; widgetKey: string; accent: string; bare?: boolean }) {
   const platforms = useMemo(() => buildPlatforms({ baseUrl, key: widgetKey }), [baseUrl, widgetKey]);
   const [openId, setOpenId] = useState<PlatformId | null>(null);
   const [variantId, setVariantId] = useState<string | null>(null);
   const platform = platforms.find((p) => p.id === openId) ?? null;
   const variant = platform ? (platform.variants.find((v) => v.id === variantId) ?? platform.variants[0]) : null;
+  const Wrap = bare ? Plain : GlassCard;
 
   return (
-    <GlassCard as="section" aria-labelledby="w-install" className="flex flex-col gap-5 p-5 sm:p-6">
-      <div>
-        <h2 id="w-install" className="text-lg font-semibold tracking-[-0.02em]">Add it to your website</h2>
-        <p className="text-[14px] text-muted">Choose where your website is built. You get the exact code and an animated, step-by-step guide.</p>
-      </div>
+    <Wrap as="section" aria-labelledby={bare ? undefined : "w-install"} aria-label={bare ? "Add it to your website" : undefined} className={bare ? "flex flex-col gap-5" : "flex flex-col gap-5 p-5 sm:p-6"}>
+      {!bare && (
+        <div>
+          <h2 id="w-install" className="text-lg font-semibold tracking-[-0.02em]">Add it to your website</h2>
+          <p className="text-[14px] text-muted">Choose where your website is built. You get the exact code and an animated, step-by-step guide.</p>
+        </div>
+      )}
 
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {platforms.map((p) => {
@@ -105,6 +109,10 @@ export function InstallGuide({ baseUrl, widgetKey, accent }: { baseUrl: string; 
           </div>
         )}
       </Dialog>
-    </GlassCard>
+    </Wrap>
   );
+}
+
+function Plain({ as: Tag = "div", ...props }: { as?: "section" | "div" } & React.HTMLAttributes<HTMLElement>) {
+  return <Tag {...props} />;
 }

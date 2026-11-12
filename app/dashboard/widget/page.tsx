@@ -1,7 +1,6 @@
 import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
-import { PageHeader } from "@/components/app/page-header";
-import { WidgetSettings } from "@/components/widget/widget-settings";
+import { WidgetScreen, greetingIdeasFor } from "@/components/widget/widget-screen";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { prisma } from "@/lib/db";
 import { resolveAccent } from "@/lib/widget/config";
@@ -21,9 +20,7 @@ export default async function WidgetPage() {
   const widget = await prisma.chatWidget.upsert({ where: { businessId: business.id }, create: { businessId: business.id, allowedDomains: defaultAllowedDomains(business.website) }, update: {} });
 
   return (
-    <>
-      <PageHeader title="Website chat" description="A chat bubble for your website that answers visitors from your business facts and collects their details as leads." />
-      <WidgetSettings
+    <WidgetScreen
         initial={{
           enabled: widget.enabled,
           greeting: widget.greeting ?? "",
@@ -38,7 +35,8 @@ export default async function WidgetPage() {
         widgetKey={business.widgetKey}
         baseUrl={publicSiteUrl()}
         usage={{ used: usage.used.chat, limit: usage.limits.chat }}
+        greetingIdeas={greetingIdeasFor(business.contentLanguage)}
+        suggestedDomains={defaultAllowedDomains(business.website)}
       />
-    </>
   );
 }

@@ -26,4 +26,10 @@ export const SAMPLE_TAGS = [
   { id: "t3", name: "regular", count: 15 },
   { id: "t4", name: "big order", count: 2 },
 ];
-export const SAMPLE_FIELDS = [{ id: "f1", key: "district", label: "District", type: "choice", options: ["Gasabo", "Kicukiro", "Nyarugenge"] }];
+export const SAMPLE_CONVERSATIONS = [
+  { id: "v1", channel: "INSTAGRAM" as const, status: "OPEN" as const, unread: 2, preview: "How much is the 1 litre passion juice?", lastMessageAt: ago(4), botPaused: false, assignee: null, contact: { id: "c2", name: "Claudine Uwimana", avatarUrl: null } },
+  { id: "v2", channel: "WEBSITE" as const, status: "OPEN" as const, unread: 0, preview: "Thank you, see you on Saturday!", lastMessageAt: ago(50), botPaused: true, assignee: { id: "me", name: "Aline" }, contact: { id: "c1", name: "Eric Mugisha", avatarUrl: null } },
+  { id: "v3", channel: "FACEBOOK" as const, status: "OPEN" as const, unread: 1, preview: "Do you deliver to Kicukiro?", lastMessageAt: ago(60 * 5), botPaused: false, assignee: null, contact: { id: "c3", name: "Jean Bosco", avatarUrl: null } },
+];
+
+export const SAMPLE_FIELDS =[{ id: "f1", key: "district", label: "District", type: "choice", options: ["Gasabo", "Kicukiro", "Nyarugenge"] }];
