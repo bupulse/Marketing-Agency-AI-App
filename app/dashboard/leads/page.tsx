@@ -1,13 +1,7 @@
-import { Users } from "lucide-react";
-import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
-import { LeadsInbox } from "@/components/leads/leads-inbox";
+import { LeadsScreen, alertsSummary } from "@/components/leads/leads-screen";
 import { can } from "@/lib/team/roles";
-import { NotificationsCard } from "@/components/leads/notifications-card";
-import { PushToggle } from "@/components/leads/push-toggle";
-import { Button, GlassCard } from "@/components/ui";
 import { blockReason, upgradeHref } from "@/lib/entitlements";
 import { PAGE_SIZE, MAX_PAGE_SIZE, parseFilters, type LeadStatusValue } from "@/lib/leads/filters";
 import { hasAnyLead, leadSources, listLeads, statusCounts } from "@/lib/leads/service";
@@ -20,7 +14,7 @@ export const metadata = { title: "Leads" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function LeadsPage({ searchParams }: { searchParams: SearchParams }) {
-  const { business, email, role, entitlements, actorId } = await getAppContext();
+  const { business, role, entitlements, actorId } = await getAppContext();
   // Website chat is a plan feature, but the leads a company already has are its own data: without the feature the
   // inbox stays open read-only (look, export, delete) with a note on how to add it. Only an empty inbox is replaced.
   const chatOn = entitlements.usable.has("websiteChat");
@@ -32,61 +26,40 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
   const limit = Number.isFinite(requested) && requested > 0 ? Math.min(Math.ceil(requested), MAX_PAGE_SIZE) : PAGE_SIZE;
   const lead = Array.isArray(params.lead) ? params.lead[0] : params.lead;
 
-  const settings = chatOn ? await getNotificationSettings(business.id) : null;
-  // Push needs VAPID keys (hidden without them); WhatsApp needs the admin to offer it (Admin -> Services).
+  const canSettings = can(role, "settings");
+  const settings = chatOn && canSettings ? await getNotificationSettings(business.id) : null;
+  // Push needs VAPID keys; WhatsApp needs the admin to offer it (Admin -> Services). Both are set on the alerts page.
   const pushKey = chatOn ? pushPublicKey() : null;
-  const [devices, whatsappOn] = await Promise.all([pushKey ? deviceEndpoints(business.id, actorId) : [], settings && can(role, "settings") ? whatsappAlertsAvailable() : false]);
+  const [devices, whatsappOn] = await Promise.all([pushKey ? deviceEndpoints(business.id, actorId) : [], settings ? whatsappAlertsAvailable() : false]);
   const [list, counts, sources] = any
     ? await Promise.all([listLeads(business.id, filters, limit), statusCounts(business.id, filters), leadSources(business.id)])
     : [null, null, null];
-  const inPlan = entitlements.inPlan.has("websiteChat");
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Leads" description="People who got in touch through your website chat. New ones appear here within seconds." />
-      {!chatOn && (
-        <GlassCard role="note" className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <p className="text-[14px]">
-            {inPlan
-              ? "Website chat is paused for a short while. Your leads stay here to look at, export or delete; status and notes can be changed again once it is back."
-              : "Website chat is not part of your plan. Your leads stay here to look at, export or delete; add website chat to collect new ones and work them."}
-          </p>
-          {!inPlan && (
-            <Button href={upgradeHref("websiteChat", blockReason(entitlements, "websiteChat"))} size="sm">
-              Add website chat
-            </Button>
-          )}
-        </GlassCard>
-      )}
-      {list && counts && sources ? (
-        <LeadsInbox
-          readOnly={!chatOn}
-          leads={list.leads.map((l) => ({ ...l, status: l.status as LeadStatusValue, createdAt: l.createdAt.toISOString() }))}
-          total={list.total}
-          hasMore={list.hasMore}
-          limit={limit}
-          counts={counts}
-          sources={sources}
-          filters={filters}
-          initialOpenId={lead ?? null}
-        />
-      ) : (
-        <EmptyState
-          icon={Users}
-          title="No leads yet"
-          text="Leads arrive when a visitor chats with the BuPulse widget on your website and leaves their details. Each one shows up here and in your email."
-          points={["Add the chat widget to your website", "It answers from the facts you gave it, then asks for contact details", "You get an email, and can follow up from this page"]}
-          action={<Button href="/dashboard/widget">Set up website chat</Button>}
-        />
-      )}
-      {pushKey && <PushToggle publicKey={pushKey} registered={devices} />}
-      {settings && can(role, "settings") && (
-        <NotificationsCard
-          initial={settings}
-          email={email}
-          whatsapp={whatsappOn ? { enabled: settings.notifyWhatsapp, number: settings.whatsappNumber, fallback: business.phone } : null}
-        />
-      )}
-    </div>
+    <LeadsScreen
+      chatOn={chatOn}
+      inPlan={entitlements.inPlan.has("websiteChat")}
+      addChatHref={upgradeHref("websiteChat", blockReason(entitlements, "websiteChat"))}
+      inbox={
+        list && counts && sources
+          ? {
+              readOnly: !chatOn,
+              leads: list.leads.map((l) => ({ ...l, status: l.status as LeadStatusValue, createdAt: l.createdAt.toISOString() })),
+              total: list.total,
+              hasMore: list.hasMore,
+              limit,
+              counts,
+              sources,
+              filters,
+              initialOpenId: lead ?? null,
+            }
+          : null
+      }
+      alerts={
+        settings || (pushKey && chatOn)
+          ? { summary: alertsSummary({ instant: settings?.notifyInstant ?? false, daily: settings?.notifyDaily ?? false, whatsapp: whatsappOn && (settings?.notifyWhatsapp ?? false), devices: devices.length }) }
+          : null
+      }
+    />
   );
 }

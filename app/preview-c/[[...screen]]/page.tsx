@@ -1,0 +1,47 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
+import { LeadAlertsScreen } from "@/components/leads/lead-alerts-screen";
+import { LeadsScreen } from "@/components/leads/leads-screen";
+import { previewAllowed } from "@/lib/support/preview";
+import { SAMPLE_LEAD_COUNTS, SAMPLE_LEADS } from "../sample-data";
+
+export const metadata = { title: "Client preview" };
+
+type SP = Record<string, string | string[] | undefined>;
+
+/** Each screen with made-up data. `?empty=1` shows a screen's empty state where it has one. */
+const SCREENS: Record<string, (sp: SP) => ReactNode | Promise<ReactNode>> = {
+  leads: (sp) => (
+    <LeadsScreen
+      chatOn
+      inPlan
+      addChatHref="#"
+      alertsHref="/preview-c/leads-alerts"
+      alerts={{ summary: "Email and daily summary" }}
+      inbox={sp.empty ? null : { leads: SAMPLE_LEADS, total: 5, hasMore: false, limit: 50, counts: SAMPLE_LEAD_COUNTS, sources: ["website_chat", "instagram", "contact_form"], filters: {}, initialOpenId: typeof sp.lead === "string" ? sp.lead : null }}
+    />
+  ),
+  "leads-alerts": () => (
+    <LeadAlertsScreen backHref="/preview-c/leads" push={{ publicKey: "BPreviewKeyOnly", registered: [] }} notifications={{ initial: { notifyInstant: true, notifyDaily: true }, email: "aline@example.com", whatsapp: { enabled: false, number: null, fallback: "+250 700 000 000" } }} />
+  ),
+};
+
+export default async function ClientPreviewPage({ params, searchParams }: PageProps<"/preview-c/[[...screen]]">) {
+  if (!previewAllowed()) notFound();
+  const [{ screen }, sp] = await Promise.all([params, searchParams]);
+  const which = screen?.[0];
+  if (!which) {
+    return (
+      <ul className="flex flex-col gap-2 p-4">
+        {Object.keys(SCREENS).map((k) => (
+          <li key={k}>
+            <Link href={`/preview-c/${k}`}>{k}</Link>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (!Object.hasOwn(SCREENS, which) || (screen?.length ?? 0) > 1) notFound();
+  return SCREENS[which](sp);
+}
