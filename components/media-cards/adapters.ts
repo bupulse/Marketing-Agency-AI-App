@@ -16,7 +16,9 @@ const ENGINE_LABEL: Record<string, string> = { motion: "Motion", premium3d: "Pre
 export function libraryEyebrow(v: Pick<LibraryVideo, "source" | "engine">): string {
   if (v.source === "slideshow") return "Post video";
   if (v.source === "upload") return "Uploaded";
-  return `Video Studio · ${ENGINE_LABEL[v.engine ?? ""] ?? "Studio"}`;
+  // An engine without a name of its own is just "Video Studio" (it read "Video Studio · Studio").
+  const engine = ENGINE_LABEL[v.engine ?? ""];
+  return engine ? `Video Studio · ${engine}` : "Video Studio";
 }
 
 /** A library video's pill: scheduled (a post is coming), posted (in posts already) or ready (not posted yet). */
