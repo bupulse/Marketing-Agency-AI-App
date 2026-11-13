@@ -9,7 +9,7 @@ import { DayVisuals } from "@/components/content-flow/day-visuals";
 import { ContestConfirm } from "@/components/content-flow/contest-confirm";
 import { Button } from "@/components/ui";
 import { activeFilterCount, contentQuery, MAX_PAGE_SIZE, parseContentFilters, PAGE_SIZE, type ContentScope } from "@/lib/content-board/filters";
-import { dayHeading, groupByDay, periodContains, periodLabel, periodOf, type PeriodView } from "@/lib/content-board/period";
+import { dayHeading, emptyPeriodAction, groupByDay, periodContains, periodLabel, periodOf, type PeriodView } from "@/lib/content-board/period";
 import { loadOnePost, loadSubjectInfo } from "@/lib/content-board/queries";
 import { loadDayContents, loadDayPosts, loadPeriodPosts } from "@/lib/content-flow/queries";
 import { ANGLES, isAngleId } from "@/lib/studio/angles";
@@ -83,6 +83,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
   const sections = groupDay(list.posts, day, zone);
   const days = view === "day" ? [] : groupByDay(list.posts, period, zone);
   const span = view === "week" ? "week" : "month";
+  const emptyAction = emptyPeriodAction(period, today, span);
   const visuals = contents
     .filter((c) => c.image || c.video)
     .map((c) => ({ id: c.id, label: c.network && isNetwork(c.network) ? NETWORK_STYLE[c.network].label : "Post", angle: isAngleId(c.angle) ? ANGLES[c.angle].label : null, image: c.image, video: c.video, hasScript: c.hasScript, groupId: c.groupId }));
@@ -97,7 +98,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
       icon={Icon}
       title={period.end < today ? `Nothing was made or posted this ${span}` : `Nothing is planned for this ${span} yet`}
       text={`Pick another ${span}, or look at one day at a time.`}
-      action={<Button href={`${path}${contentQuery({ ...base, view: span, limit: undefined })}`}>{`Back to this ${span}`}</Button>}
+      action={<Button href={emptyAction.today ? path : `${path}${contentQuery({ ...base, view: span, limit: undefined })}`}>{emptyAction.label}</Button>}
     />
   ) : day === today ? (
     <EmptyState

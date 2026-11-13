@@ -46,6 +46,14 @@ export function periodContains(period: Pick<Period, "start" | "end">, day: strin
   return day >= period.start && day <= period.end;
 }
 
+/**
+ * The button of an empty week or month: back to the current one, or, when this already is the current one ("Back to
+ * this month" went nowhere, QA 13 Nov), today's posts.
+ */
+export function emptyPeriodAction(period: Pick<Period, "start" | "end">, today: string, span: "week" | "month"): { label: string; today: boolean } {
+  return periodContains(period, today) ? { label: "See today", today: true } : { label: `Back to this ${span}`, today: false };
+}
+
 /** Every day of the period, in order. */
 export function periodDays(period: Pick<Period, "start" | "end">): string[] {
   const out: string[] = [];
