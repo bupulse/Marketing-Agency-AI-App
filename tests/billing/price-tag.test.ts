@@ -32,4 +32,12 @@ describe("PriceTag", () => {
     const monthly = renderToStaticMarkup(createElement(PriceTag, { plan: starter, interval: "MONTH" }));
     expect(monthly).toContain("min-h-6");
   });
+
+  it("never breaks the price itself: '/ month' wraps under it in narrow cards", () => {
+    for (const size of ["lg", "md", "sm"] as const) {
+      const html = renderToStaticMarkup(createElement(PriceTag, { plan: starter, interval: "MONTH", size }));
+      expect(html).toMatch(/<p class="flex flex-wrap items-baseline[^"]*"><span class="[^"]*whitespace-nowrap/);
+      expect(html).toMatch(/<span class="whitespace-nowrap text-muted[^"]*">\/ month/);
+    }
+  });
 });
