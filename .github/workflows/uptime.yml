@@ -8,6 +8,10 @@ name: Uptime check
 #   UPTIME_SECRET       records each check on the server (the same value as UPTIME_SECRET on the server)
 #   TELEGRAM_BOT_TOKEN  and TELEGRAM_CHAT_ID: the "down" alert on Telegram
 #   RESEND_API_KEY      the "down" alert by email to admin@bupulse.com
+# The "down" alert from here is OFF unless the repository VARIABLE UPTIME_DOWN_ALERT is "on" (Settings -> Secrets and
+# variables -> Actions -> Variables). Since 13 November 2026 the server PC sends the "down" message itself after 2 minutes
+# while it is on (docs/SELF_HOST.md, "Down alert"); switch this on to also hear when the whole PC is off (then a
+# tunnel-only outage can bring two "down" messages). The checks are recorded either way.
 # Runs stay green even when the site is down (no GitHub failure emails). A down run uploads a tiny "site-down" artifact
 # (kept 1 day); the next run reads the previous run's artifacts, so a long outage sends one alert, not one every 5 min.
 
@@ -41,6 +45,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          UPTIME_DOWN_ALERT: ${{ vars.UPTIME_DOWN_ALERT }}
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/monitor/uptime-check.mjs
       - name: Remember that the site is down (for the next run)

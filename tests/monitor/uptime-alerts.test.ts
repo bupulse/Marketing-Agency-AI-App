@@ -84,6 +84,19 @@ describe("recordUptimeCheck: the back-up alert goes out once per outage", () => 
     expect(alert).toHaveBeenCalledTimes(1);
   });
 
+  it("an outage the PC's minute-by-minute watch already told about is recorded but sends no second back-up message", async () => {
+    const covers = vi.fn(async () => true);
+    const r = (input: UptimeCheckInput, min: number) => recordUptimeCheck(input, at(min), { db: f.db as never, alert: alert as never, random: () => 1, watchCovers: covers });
+    await r(good(), 0);
+    await r(bad(), 5);
+    const back = await r(good({ afterFailure: true }), 20);
+    expect(back.outage?.minutes).toBe(20);
+    expect(back.alerted).toBe(false);
+    expect(alert).not.toHaveBeenCalled();
+    expect(f.incidents).toHaveLength(1);
+    expect(covers).toHaveBeenCalledWith(expect.objectContaining({ startedAt: at(0), endedAt: at(20) }), at(20));
+  });
+
   it("the same outage seen twice (a check posted twice at once) never alerts twice", async () => {
     await run(good(), 0);
     // Both requests read the same last good check before either is written.
@@ -262,13 +275,13 @@ describe("workflow: one down alert per outage, runs stay green", () => {
       return null; // bupulse.com does not answer
     });
   }
-  const env = { SITE_URL: "https://bupulse.com", GITHUB_REPOSITORY: "bupulse/app", GITHUB_RUN_ID: "3", GITHUB_TOKEN: "t", TELEGRAM_BOT_TOKEN: "1:x", TELEGRAM_CHAT_ID: "42", RESEND_API_KEY: "re_x", UPTIME_SECRET: "u" } as unknown as NodeJS.ProcessEnv;
+  const env = { SITE_URL: "https://bupulse.com", GITHUB_REPOSITORY: "bupulse/app", GITHUB_RUN_ID: "3", GITHUB_TOKEN: "t", TELEGRAM_BOT_TOKEN: "1:x", TELEGRAM_CHAT_ID: "42", RESEND_API_KEY: "re_x", UPTIME_SECRET: "u", UPTIME_DOWN_ALERT: "on" } as unknown as NodeJS.ProcessEnv;
 
-  async function runMain(fn: typeof fetch) {
+  async function runMain(fn: typeof fetch, extra: Record<string, string | undefined> = {}) {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const mark = vi.fn(async () => {});
-    const done = main(env, fn, { mark });
+    const done = main({ ...env, ...extra } as NodeJS.ProcessEnv, fn, { mark });
     await vi.runAllTimersAsync();
     const code = await done;
     const printed = log.mock.calls.flat().join(" ");
@@ -286,6 +299,15 @@ describe("workflow: one down alert per outage, runs stay green", () => {
     expect(calls.filter((c) => c.url.startsWith("https://api.resend.com/"))).toHaveLength(1);
     // The public log never shows a secret.
     expect(printed).not.toMatch(/re_x|1:x|Bearer/);
+  });
+
+  it("GitHub's down alert is off unless UPTIME_DOWN_ALERT is on (the server PC sends it); the marker is still left", async () => {
+    const { fn, calls } = siteDown(false);
+    const { code, mark, printed } = await runMain(fn, { UPTIME_DOWN_ALERT: undefined });
+    expect(code).toBe(0);
+    expect(mark).toHaveBeenCalledTimes(1);
+    expect(calls.some((c) => c.url.startsWith("https://api.telegram.org/") || c.url.startsWith("https://api.resend.com/"))).toBe(false);
+    expect(printed).toContain("switched off");
   });
 
   it("still down (the previous run left site-down): no second alert, marker left again, still green", async () => {
