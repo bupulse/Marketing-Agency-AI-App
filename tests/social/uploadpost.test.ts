@@ -6,6 +6,7 @@ const logError = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/errors", () => ({ logError }));
 
 import { connectLink, ensureProfile, linkedinPages, UploadPostError } from "@/lib/social/uploadpost/client";
+import { resetServiceFaultsForTests } from "@/lib/admin/service-faults";
 import { accountsFrom, linkedinAccounts, publishLinkedIn, shortTitle, statusOutcome, timing } from "@/lib/social/uploadpost/linkedin";
 import { pageTarget, profileScope, profileUsername, scopeProfile, viaUploadPost } from "@/lib/social/uploadpost/ways";
 import { getProvider } from "@/lib/social/registry";
@@ -30,6 +31,7 @@ beforeEach(() => {
   timing.pollMs = 0;
   timing.polls = 3;
   logError.mockReset();
+  resetServiceFaultsForTests();
 });
 
 afterEach(() => {
@@ -199,7 +201,9 @@ describe("publishing", () => {
     expect(error.stage).toBe("before");
     expect(error.message).toContain("10 of 10 this month");
     expect(error.retryAfter).toBeGreaterThanOrEqual(3600);
-    expect(logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "social.uploadpost" }));
+    expect(logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "service-fault.uploadpost:plan-limit" }));
+    // One Admin -> Health item: the error itself is marked, so the callers' logError leaves it out.
+    expect(error.serviceFault).toBe("uploadpost:plan-limit");
   });
 
   it("asks for a reconnect when the profile has no LinkedIn any more", async () => {

@@ -13,9 +13,9 @@ vi.mock("@/lib/admin/auth", () => ({ adminEmails: m.adminEmails }));
 vi.mock("@/lib/admin/switch", () => ({ isServiceEnabled: m.isServiceEnabled }));
 vi.mock("@/lib/errors", () => ({ logError: m.logError }));
 vi.mock("@/lib/publishing/email", async (orig) => ({ ...(await orig<typeof import("@/lib/publishing/email")>()), sendEmail: m.sendEmail }));
-vi.mock("@/lib/lead-alerts/telegram-settings", () => ({ readTelegramChat: m.readTelegramChat }));
+vi.mock("@/lib/lead-alerts/telegram-settings", () => ({ readTelegramChat: m.readTelegramChat, resolveTelegramToken: async () => process.env.TELEGRAM_BOT_TOKEN?.trim() || null }));
 
-import { emailChannel, sendLeadAlert, telegramChannel, type AlertChannel } from "@/lib/lead-alerts/channels";
+import { emailChannel, resetSetupWarnings, sendLeadAlert, telegramChannel, type AlertChannel } from "@/lib/lead-alerts/channels";
 import type { LeadAlert } from "@/lib/lead-alerts/format";
 
 const TOKEN = "123456789:AAtest_placeholder_token_000000000000";
@@ -34,6 +34,7 @@ const alert: LeadAlert = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetSetupWarnings();
   vi.unstubAllGlobals();
   process.env.RESEND_API_KEY = "re_placeholder";
   delete process.env.TELEGRAM_BOT_TOKEN;
@@ -141,6 +142,22 @@ describe("nothing is skipped quietly", () => {
     m.readTelegramChat.mockResolvedValueOnce(null);
     expect(await telegramChannel.send(alert)).toBe("skipped");
     expect(m.logError).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining("No Telegram chat is connected") }), expect.anything());
+  });
+
+  it("the missing-token warning is written once, not on every alert (production wrote one per quote and chat)", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    for (let i = 0; i < 5; i++) expect(await telegramChannel.send(alert)).toBe("skipped");
+    expect(m.logError).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("a token saved in Admin -> Services is used (not only the environment's)", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    // resolveTelegramToken (mocked here as the loaded keys) gives the saved token.
+    process.env.TELEGRAM_BOT_TOKEN = TOKEN;
+    expect(await telegramChannel.send(alert)).toBe("sent");
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toContain("/sendMessage");
   });
 
   it("a channel switched off on purpose stays quiet", async () => {

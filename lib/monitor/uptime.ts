@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { sendBackUpAlert, type AlertOutcome } from "./alerts";
+import { watchCoversOutage } from "./watch";
 import { gapOutage, longestGapMs, PC_SILENT_MS, type Outage, type UptimeCheckInput } from "./uptime-rules";
 
 // Stores one check (POST /api/monitor/uptime: GitHub's outside check, or the server PC's own 5-minute check) and, when it is a good check after an outage, records the outage
@@ -11,7 +12,7 @@ import { gapOutage, longestGapMs, PC_SILENT_MS, type Outage, type UptimeCheckInp
 export const CHECKS_KEEP_DAYS = 35;
 
 type Db = Pick<typeof prisma, "uptimeCheck" | "uptimeIncident" | "monitorHeartbeat">;
-type Deps = { db?: Db; alert?: (o: Outage) => Promise<Record<string, AlertOutcome>>; random?: () => number };
+type Deps = { db?: Db; alert?: (o: Outage) => Promise<Record<string, AlertOutcome>>; random?: () => number; watchCovers?: (o: Outage, now: Date) => Promise<boolean> };
 
 const isUniqueViolation = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 
@@ -59,6 +60,13 @@ export async function recordUptimeCheck(input: UptimeCheckInput, now = new Date(
     throw e;
   }
   try {
+    // The server PC's minute-by-minute watch (lib/monitor/watch.ts) saw this outage from its start and already sent its
+    // own "down" and "back up" messages (or none, for a blip under 2 minutes): no second "back up" from here.
+    const covered = deps.watchCovers ?? ((o: Outage, at: Date) => watchCoversOutage(o, at, db as Partial<Pick<typeof prisma, "adminSetting">>));
+    if (await covered(outage, now)) {
+      await db.uptimeIncident.update({ where: { id: incidentId }, data: { alertedAt: new Date(), alerts: { by: "pc-watch" } } });
+      return { stored: true, outage, alerted: false };
+    }
     const alerts = await alert(outage);
     await db.uptimeIncident.update({ where: { id: incidentId }, data: { alertedAt: new Date(), alerts } });
   } catch (error) {

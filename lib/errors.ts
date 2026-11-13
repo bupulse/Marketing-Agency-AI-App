@@ -31,11 +31,15 @@ export function redact(value: unknown, depth = 0): unknown {
   );
 }
 
-// Writes to ErrorLog. Never throws: if the database write fails it falls back to the console.
+// Writes to ErrorLog. Never throws: if the database write fails it falls back to the console. Errors marked with
+// `serviceFault` are skipped (see below).
 export async function logError(
   error: unknown,
   context: ErrorContext,
 ): Promise<void> {
+  // A partner fault already recorded once (lib/admin/service-faults.ts: a refused API key, a plan limit) is one item on
+  // Admin -> Health, not one row here per call.
+  if (error && typeof error === "object" && typeof (error as { serviceFault?: unknown }).serviceFault === "string") return;
   const { source, level = "error", userId, businessId, ...rest } = context;
   const message = error instanceof Error ? error.message : String(error);
   const stack = error instanceof Error ? error.stack : undefined;

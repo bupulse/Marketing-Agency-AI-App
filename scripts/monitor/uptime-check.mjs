@@ -4,7 +4,8 @@
 // 1. GET /api/status (up = 200 with status "ok"), and time /, /pricing and /login. Down: wait 60 s and try once more.
 // 2. Up: POST the result to /api/monitor/uptime (Bearer UPTIME_SECRET); the server records it, finds outages from the
 //    gaps between good checks, and sends the "back up" alert itself.
-// 3. Down: send the "down" alert from here (Telegram, and email through Resend), but only when this workflow's previous
+// 3. Down: send the "down" alert from here (Telegram, and email through Resend) unless the repository variable
+//    UPTIME_DOWN_ALERT is "off" (the server PC also sends one, lib/monitor/watch.ts), and only when this workflow's previous
 //    completed run did not find it down too, so a long outage sends one alert, not one every 5 minutes. A down run
 //    leaves a tiny "site-down" artifact (kept 1 day) that the next run reads through the GitHub API; the run itself
 //    stays green, so GitHub sends no failure emails. A channel whose secret is missing is skipped, never a failure.
@@ -84,6 +85,15 @@ export async function previousState({ repo, runId, token, workflow = "uptime.yml
   } catch {
     return null;
   }
+}
+
+/**
+ * GitHub's own "down" alert is ON unless the repository variable UPTIME_DOWN_ALERT is "off" (docs/SELF_HOST.md, "Down
+ * alert"). It is the only one that can tell when the whole PC is off; while the PC is on its watch sends one too, so a
+ * tunnel-only outage can bring two "down" messages (one from each), which is accepted.
+ */
+export function downAlertsOn(env) {
+  return !/^(off|0|false|no)$/i.test(String(env.UPTIME_DOWN_ALERT ?? "").trim());
 }
 
 /**
@@ -181,7 +191,10 @@ export async function main(env = process.env, fetchImpl = fetch, { mark = markDo
   console.log(`Check ${await report(site, env.UPTIME_SECRET, { ...result, afterFailure: previous === "down" }, fetchImpl)}.`);
   if (result.ok) return 0;
   await mark(env);
-  if (shouldAlertDown(previous)) {
+  if (!downAlertsOn(env)) {
+    // Switched off with the repository variable UPTIME_DOWN_ALERT=off: the server PC's watch still sends it while it is on.
+    console.log("Down alert from GitHub is switched off (repository variable UPTIME_DOWN_ALERT=off); the server PC sends it while it is on.");
+  } else if (shouldAlertDown(previous)) {
     const sent = await sendDownAlerts(env, downMessage(site, result), fetchImpl);
     console.log(`Down alert: Telegram ${sent.telegram}, email ${sent.email}.`);
   } else {

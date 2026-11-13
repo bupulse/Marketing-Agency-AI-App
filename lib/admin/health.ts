@@ -1,11 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { CRON_JOBS, cronStatus, type CronStatus, type LastRun } from "./cron";
+import { CATCH_UP_JOB, readCatchUpSummary } from "@/lib/cron/catch-up";
 import { APPROVAL_TTL_MS } from "./service";
 import { scrubSecrets } from "./scrub";
 import { disabledNetworks } from "./switch";
 import { NEEDS_RECONNECT_PREFIX } from "@/lib/social/connections";
 import { alertSetupIssues, loadAlertSetup, type AlertSetup } from "@/lib/lead-alerts/setup";
+import { loadServiceFaultIssues } from "./service-faults";
 
 export type HealthStatus = "ok" | "warning" | "problem";
 export type HealthIssue = { level: "warning" | "problem"; key: string; text: string; href: string };
@@ -52,10 +54,12 @@ type EvalInput = {
   db: Pick<DbHealth, "sizeBytes" | "limitBytes"> | null;
   /** The owner's alert channels (lib/lead-alerts/setup.ts); null or left out: not checked. */
   alerts?: AlertSetup | null;
+  /** Partners refusing BuPulse itself (a refused API key, a plan limit), one item each (lib/admin/service-faults.ts). */
+  faults?: HealthIssue[] | null;
 };
 
 /** The one overall status and the reasons for it. Pure: the rules are the contract (tests/admin-health.test.ts). */
-export function evaluateHealth({ crons, queues, errors, db, alerts }: EvalInput): { status: HealthStatus; issues: HealthIssue[] } {
+export function evaluateHealth({ crons, queues, errors, db, alerts, faults }: EvalInput): { status: HealthStatus; issues: HealthIssue[] } {
   const issues: HealthIssue[] = [];
   const add = (level: HealthIssue["level"], key: string, text: string, href = "/admin/health") => issues.push({ level, key, text, href });
 
@@ -78,6 +82,7 @@ export function evaluateHealth({ crons, queues, errors, db, alerts }: EvalInput)
   }
   // A lead alert channel that is on but cannot send (no bot token, no connected chat, no Resend key).
   if (alerts) issues.push(...alertSetupIssues(alerts));
+  if (faults) issues.push(...faults);
   const status: HealthStatus = issues.some((i) => i.level === "problem") ? "problem" : issues.length ? "warning" : "ok";
   return { status, issues };
 }
@@ -123,16 +128,20 @@ async function loadStorage(): Promise<StorageHealth | null> {
 
 export async function loadCrons(now = new Date()): Promise<CronStatus[]> {
   const since = new Date(now.getTime() - 24 * 3_600_000);
-  const [last, counts] = await Promise.all([
+  const [last, counts, catchUps] = await Promise.all([
     prisma.$queryRaw<{ job: string; startedAt: Date; finishedAt: Date; ok: boolean; summary: string | null; error: string | null }[]>`
       select distinct on (job) job, "startedAt", "finishedAt", ok, summary, error from "CronRun" order by job, "startedAt" desc`,
-    prisma.cronRun.groupBy({ by: ["job", "ok"], where: { startedAt: { gte: since } }, _count: { _all: true } }),
+    prisma.cronRun.groupBy({ by: ["job", "ok"], where: { startedAt: { gte: since }, job: { not: CATCH_UP_JOB } }, _count: { _all: true } }),
+    // The tick's catch-ups of missed times (lib/cron/catch-up.ts) in the last day: the jobs they ran show "Caught up".
+    prisma.cronRun.findMany({ where: { job: CATCH_UP_JOB, startedAt: { gte: since } }, orderBy: { startedAt: "desc" }, take: 50, select: { startedAt: true, summary: true } }).catch(() => []),
   ]);
+  const caughtUp = new Map<string, { at: Date; missed: string }>();
+  for (const c of catchUps) for (const j of readCatchUpSummary(c.summary)) if (!caughtUp.has(j.job)) caughtUp.set(j.job, { at: new Date(c.startedAt), missed: j.slot });
   return CRON_JOBS.map((job) => {
     const l = last.find((r) => r.job === job.job);
     const lastRun: LastRun = l ? { startedAt: new Date(l.startedAt), finishedAt: new Date(l.finishedAt), ok: l.ok, summary: l.summary, error: l.error } : null;
     const mine = counts.filter((c) => c.job === job.job);
-    return cronStatus(job, lastRun, { failures24h: mine.filter((c) => !c.ok).reduce((s, c) => s + c._count._all, 0), runs24h: mine.reduce((s, c) => s + c._count._all, 0) }, now);
+    return cronStatus(job, lastRun, { failures24h: mine.filter((c) => !c.ok).reduce((s, c) => s + c._count._all, 0), runs24h: mine.reduce((s, c) => s + c._count._all, 0) }, now, caughtUp.get(job.job) ?? null);
   });
 }
 
@@ -191,15 +200,16 @@ async function loadErrors(now: Date): Promise<ErrorsHealth> {
 }
 
 export async function getSystemHealth(now = new Date()): Promise<SystemHealth> {
-  const [crons, queues, errors, db, storage, alerts] = await Promise.all([
+  const [crons, queues, errors, db, storage, alerts, faults] = await Promise.all([
     loadCrons(now),
     loadQueues(now),
     loadErrors(now),
     cached("db", 5 * 60_000, loadDb),
     cached("storage", 10 * 60_000, loadStorage),
     loadAlertSetup(),
+    loadServiceFaultIssues(now),
   ]);
-  const { status, issues } = evaluateHealth({ crons, queues, errors, db, alerts });
+  const { status, issues } = evaluateHealth({ crons, queues, errors, db, alerts, faults });
   return { generatedAt: now.toISOString(), status, issues, crons, queues, errors, db, storage };
 }
 

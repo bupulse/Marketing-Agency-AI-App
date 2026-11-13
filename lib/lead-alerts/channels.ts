@@ -7,7 +7,7 @@ import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { alertFields, alertIntro, alertSubject, telegramButtons, telegramText, type LeadAlert } from "./format";
 import { sendTelegramMessage } from "./telegram";
-import { readTelegramChat } from "./telegram-settings";
+import { readTelegramChat, resolveTelegramToken } from "./telegram-settings";
 
 // Instant alerts to the owner about a new lead (a quote request, a contact form, a help chat on the marketing site, a
 // chat waiting for a person), on every channel that is set up: email to the admin addresses (free, always on) and
@@ -16,8 +16,8 @@ import { readTelegramChat } from "./telegram-settings";
 // after the response (runInBackground: the host's waitUntil; under `next start` on the self-hosted PC a promise that
 // keeps running in the server process), never slow the form, and a failing channel is logged, never thrown.
 // Nothing is skipped quietly: a channel that is on but not set up (no bot token, no connected chat, no admin address)
-// writes a warning to Admin -> Errors, an alert that reached nobody writes an error, and Admin -> Health lists what is
-// missing (setup.ts).
+// writes a warning to Admin -> Errors (once a day per server, not on every alert: Admin -> Health keeps listing what is
+// missing until it is fixed, setup.ts), and an alert that reached nobody writes an error.
 
 export type ChannelOutcome = "sent" | "skipped";
 
@@ -27,9 +27,26 @@ export type AlertChannel = {
   send: (alert: LeadAlert) => Promise<ChannelOutcome>;
 };
 
-/** A channel that is switched on but cannot send: written to Admin -> Errors as a warning, never thrown. */
-async function notSetUp(channel: string, alert: LeadAlert, why: string): Promise<"skipped"> {
-  await logError(new Error(`${alert.kind} alert not sent by ${channel}: ${why}`), { source: `lead-alerts.${channel}`, level: "warn", kind: alert.kind });
+/** The same "not set up" warning is written at most once in this long per server process. */
+export const SETUP_WARNING_EVERY_MS = 24 * 3_600_000;
+const warnedAt = new Map<string, number>();
+
+/** Tests: forget which warnings were written. */
+export function resetSetupWarnings() {
+  warnedAt.clear();
+}
+
+/**
+ * A channel that is switched on but cannot send: written to Admin -> Errors as a warning, once a day per reason (a
+ * missing bot token used to write one warning per quote request and per chat). Never thrown.
+ */
+async function notSetUp(channel: string, alert: LeadAlert, why: string, now = Date.now()): Promise<"skipped"> {
+  const key = `${channel}:${why}`;
+  const last = warnedAt.get(key);
+  if (last === undefined || now - last >= SETUP_WARNING_EVERY_MS) {
+    warnedAt.set(key, now);
+    await logError(new Error(`${alert.kind} alert not sent by ${channel}: ${why} (written once a day; Admin -> Health lists it until it is set up)`), { source: `lead-alerts.${channel}`, level: "warn", kind: alert.kind });
+  }
   return "skipped";
 }
 
@@ -69,10 +86,12 @@ export const emailChannel: AlertChannel = {
 export const telegramChannel: AlertChannel = {
   id: "telegram",
   async send(alert) {
-    // Switched off in Admin -> Services on purpose: quiet. The switch check also loads the token saved there.
+    // Switched off in Admin -> Services on purpose: quiet.
     if (!(await isServiceEnabled("telegram"))) return "skipped";
+    // The token saved in Admin -> Services, else the environment's (resolveTelegramToken), like every other key.
+    const token = await resolveTelegramToken();
     const chat = await readTelegramChat();
-    const r = await sendTelegramMessage({ chatId: chat?.chatId, text: telegramText(alert), buttons: telegramButtons(alert, publicSiteUrl()) });
+    const r = await sendTelegramMessage({ token, chatId: chat?.chatId, text: telegramText(alert), buttons: telegramButtons(alert, publicSiteUrl()) });
     if (r.ok) return "sent";
     // No token, or no chat connected: say so (Admin -> Services, Telegram card; Admin -> Settings, Lead alerts).
     if (r.skipped) return notSetUp("telegram", alert, r.error);

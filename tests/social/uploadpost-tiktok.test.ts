@@ -6,6 +6,7 @@ const logError = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/errors", () => ({ logError }));
 
 import { connectLink } from "@/lib/social/uploadpost/client";
+import { resetServiceFaultsForTests } from "@/lib/admin/service-faults";
 import { timing } from "@/lib/social/uploadpost/upload";
 import { failure, privacyFor, publishTikTok, tiktokAccountFrom, tiktokAccounts } from "@/lib/social/uploadpost/tiktok";
 import { tiktokViaUploadPost, viaUploadPost } from "@/lib/social/uploadpost/ways";
@@ -29,6 +30,7 @@ beforeEach(() => {
   timing.pollMs = 0;
   timing.polls = 3;
   logError.mockReset();
+  resetServiceFaultsForTests();
 });
 
 afterEach(() => {
@@ -192,7 +194,7 @@ describe("publishing", () => {
     const error = await publishTikTok(creds(), video()).catch((e) => e);
     expect(error.kind).toBe("rate_limit");
     expect(error.retryAfter).toBeGreaterThanOrEqual(3600);
-    expect(logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "social.uploadpost", network: "tiktok" }));
+    expect(logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "service-fault.uploadpost:plan-limit" }));
   });
 
   it("never resends after a timeout on the upload itself", async () => {

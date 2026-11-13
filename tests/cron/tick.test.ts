@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cronMatches, dueRoutes, tickMinute } from "@/lib/cron/schedule";
 import { JOB_BUDGET_MS, MAX_CURSOR_CALLS, ROUTE_TIMEOUT_MS, runTick, runTickJob, TICK_BUDGET_MS } from "@/lib/cron/tick";
 import { CRON_ROUTES } from "@/worker-crons";
+
+const { runCatchUp } = vi.hoisted(() => ({ runCatchUp: vi.fn(async () => [] as unknown[]) }));
+vi.mock("@/lib/cron/catch-up-run", () => ({ runCatchUp }));
 import { POST } from "@/app/api/cron/tick/route";
 
 const at = (iso: string) => new Date(iso);
@@ -201,6 +204,16 @@ describe("POST /api/cron/tick", () => {
     vi.stubGlobal("fetch", fetchSpy);
     expect((await call("Bearer s3cret")).status).toBe(200);
     expect(fetchSpy.mock.calls[0][0]).toBe("https://bupulse.test/api/cron/publish");
+  });
+
+  it("then catches up missed jobs and lists them in the summary", async () => {
+    vi.stubEnv("CRON_SECRET", "s3cret");
+    vi.stubEnv("PLATFORM", "node");
+    vi.stubGlobal("fetch", vi.fn(async () => ok()));
+    runCatchUp.mockResolvedValueOnce([{ job: "store-sync", slot: "2026-11-13T03:47:00.000Z", ok: true, calls: 1 }]);
+    const body = (await (await call("Bearer s3cret")).json()) as { caughtUp?: { job: string }[] };
+    expect(body.caughtUp).toEqual([expect.objectContaining({ job: "store-sync" })]);
+    expect(runCatchUp).toHaveBeenLastCalledWith(expect.any(Date), expect.objectContaining({ origin: "https://bupulse.test", secret: "s3cret" }));
   });
 
   it("answers 200 with the failure in the summary when a job fails (no Cloud Scheduler retry)", async () => {

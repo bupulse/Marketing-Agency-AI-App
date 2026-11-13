@@ -478,10 +478,10 @@ function Setup({ m }: { m: ServerMonitor }) {
         {m.site.kind === "never" && (
           <li>
             Outside check: make a long random password, save it as <strong>UPTIME_SECRET</strong> in Admin → Services (custom key) and as a GitHub repository secret with the same name. Add TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID and RESEND_API_KEY there too for the
-            &quot;site is down&quot; alerts.
+            &quot;site is down&quot; alerts when the whole PC is off (the server PC sends its own while it is on).
           </li>
         )}
-        {m.pc.state === "never" && <li>Server PC: after the next update on the PC, restart the &quot;BuPulse jobs&quot; task (update.ps1 does it), and the PC starts reporting every minute.</li>}
+        {m.pc.state === "never" && <li>Server PC: after the next update on the PC (update.ps1, which restarts the jobs loop), the PC starts reporting every minute.</li>}
       </ol>
     </Card>
   );
