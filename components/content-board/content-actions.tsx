@@ -40,7 +40,7 @@ export function SwitchToAutoBanner({ postIds }: { postIds: string[] }) {
   return (
     <GlassCard role="status" className="flex flex-wrap items-center gap-3 p-4">
       <PlugZap aria-hidden className="size-5 shrink-0 text-pulse-blue" />
-      <p className="min-w-0 flex-1 text-[15px]">
+      <p className="min-w-0 flex-1 basis-56 text-[15px]">
         {n === 1 ? "1 post was made" : `${n} posts were made`} as a reminder to post yourself, and {n === 1 ? "its app is" : "their apps are"} connected now.
       </p>
       <Button

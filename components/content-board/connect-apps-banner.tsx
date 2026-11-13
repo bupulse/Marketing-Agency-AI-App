@@ -28,7 +28,8 @@ export function ConnectAppsBanner({ apps, canConnect }: { apps: readonly string[
   return (
     <GlassCard role="region" aria-label="Connect your apps" className="flex flex-wrap items-center gap-3 border-2 border-amber-500 p-4 dark:border-amber-400">
       <Plug aria-hidden className="size-5 shrink-0 text-amber-700 dark:text-amber-300" />
-      <div className="min-w-0 flex-1">
+      {/* basis-56: on a phone the button wraps under the words instead of squeezing them to a word a line. */}
+      <div className="min-w-0 flex-1 basis-56">
         <p className="text-[15px] font-semibold">Connect your apps so we can post for you</p>
         <p className="text-[14px] text-muted">
           {list} {names.length === 1 ? "is" : "are"} not connected. Until then, their posts come to you as reminders to post yourself.
