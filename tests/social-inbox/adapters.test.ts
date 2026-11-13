@@ -185,7 +185,7 @@ describe("transport switch", () => {
     expect(inboxScopesFor("facebook", undefined, "composio")).toEqual([]);
     expect(inboxScopesFor("instagram", "instagram", "meta")).toEqual(["instagram_business_manage_messages", "instagram_business_manage_comments"]);
     expect(inboxScopesFor("instagram", "facebook", "meta")).toContain("pages_messaging");
-    expect(inboxScopesFor("facebook", undefined, "meta")).toEqual(["pages_messaging", "pages_manage_metadata"]);
+    expect(inboxScopesFor("facebook", undefined, "meta")).toEqual(["pages_messaging", "pages_manage_metadata", "pages_read_user_content", "pages_manage_engagement"]);
   });
 
   it("keeps today's sign-in URLs exactly as they are when no extra scopes are passed", () => {
@@ -196,7 +196,7 @@ describe("transport switch", () => {
     expect(scopeOf(instagramProvider.authorizeUrl({ state: "s", redirectUri: "https://x/cb" }))).toBe("instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights");
     expect(scopeOf(facebookProvider.authorizeUrl({ state: "s", redirectUri: "https://x/cb" }))).toBe("pages_show_list,pages_read_engagement,pages_manage_posts");
     expect(scopeOf(facebookProvider.authorizeUrl({ state: "s", redirectUri: "https://x/cb", extraScopes: inboxScopesFor("facebook", undefined, "meta") }))).toBe(
-      "pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,pages_manage_metadata",
+      "pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,pages_manage_metadata,pages_read_user_content,pages_manage_engagement",
     );
   });
 });

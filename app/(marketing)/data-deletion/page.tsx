@@ -37,7 +37,7 @@ export default async function DataDeletionPage({ searchParams }: PageProps<"/dat
   );
 
   return (
-    <LegalPage title="Data deletion" intro="How to delete your BuPulse account and the data we hold about you.">
+    <LegalPage updated="13 November 2026" title="Data deletion" intro="How to delete your BuPulse account and the data we hold about you.">
       {code && (
         <GlassCard strong padding="md" role="status" className="flex gap-3">
           <CircleCheck aria-hidden className="mt-1 size-6 shrink-0 text-success" />
@@ -77,7 +77,7 @@ export default async function DataDeletionPage({ searchParams }: PageProps<"/dat
         <LegalList
           items={[
             "In BuPulse, open Channels and choose Disconnect next to the account. We delete the stored tokens straight away.",
-            "Or remove BuPulse in the network's own settings: Facebook and Instagram under Settings → Business integrations, TikTok under Settings → Security → Manage app permissions, LinkedIn under Settings → Data privacy → Permitted services, and Google or YouTube in your Google Account security settings.",
+            "Or remove BuPulse in the network's own settings: Facebook under Settings & privacy → Settings → Business integrations, Instagram under Settings → Website permissions → Apps and websites (or Business integrations), TikTok under Settings → Security → Manage app permissions, LinkedIn under Settings → Data privacy → Permitted services, and Google or YouTube in your Google Account security settings.",
           ]}
         />
       </LegalSection>
