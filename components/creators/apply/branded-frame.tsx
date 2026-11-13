@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/theme";
 import { buttonClasses } from "@/components/ui";
+import { afterSignInPath } from "@/lib/platform/app-hosts";
 import { CompanyLogo } from "@/components/creators/marketplace/campaign-card";
 import type { HeaderViewer } from "@/components/creators/marketplace/header";
 import { brandVars, type BrandLook } from "@/lib/creators/brand-look";
@@ -25,7 +26,7 @@ export function BrandedFrame({ look, company, cover, viewer, back, children }: {
           {viewer === "creator" ? (
             <Link href="/creator" className={buttonClasses({ size: "sm", variant: "ghost", className: "whitespace-nowrap px-3" })}>My campaigns</Link>
           ) : viewer === "company" ? (
-            <Link href="/dashboard" className={buttonClasses({ size: "sm", variant: "ghost", className: "whitespace-nowrap px-3" })}>Dashboard</Link>
+            <Link href={afterSignInPath()} className={buttonClasses({ size: "sm", variant: "ghost", className: "whitespace-nowrap px-3" })}>Dashboard</Link>
           ) : (
             <Link href={`/login?next=${encodeURIComponent(back)}`} className="inline-flex min-h-11 items-center px-2 text-sm font-semibold no-underline">Sign in</Link>
           )}
