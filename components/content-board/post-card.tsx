@@ -90,12 +90,15 @@ export function PostCard({
         ) : undefined
       }
       // Its set is still being made: the same loading screen as the day's set, over whatever the card has.
+      // Select mode: a tap anywhere on the media picks the card (a video without a poster used to start playing).
       mediaOverlay={
-        isMaking && (
+        isMaking ? (
           <div className={cn("size-full", hasMedia ? "bg-[var(--bp-dialog)]/85 backdrop-blur-sm" : "bg-soft")}>
             <MakingScreen size="sm" progress={making!} />
           </div>
-        )
+        ) : selection && hasMedia ? (
+          <button type="button" tabIndex={-1} aria-hidden onClick={selection.onToggle} className="size-full cursor-pointer" />
+        ) : null
       }
       mediaBadges={
         post.autoScheduledAt && post.status !== "PENDING_APPROVAL" ? (
