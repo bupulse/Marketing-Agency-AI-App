@@ -1,8 +1,9 @@
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CampaignCard } from "@/components/media-cards/campaign-card";
 import { ProductCard } from "@/components/media-cards/product-card";
+import { HostsProvider } from "@/components/platform/hosts";
 
 // The whole card opens it, photo included (QA 13 Nov: only the name, or the text under the photo, was a tap target).
 describe("media cards open from anywhere on the card", () => {
@@ -28,5 +29,15 @@ describe("media cards open from anywhere on the card", () => {
   it("campaign card with onOpen and no link: the layer calls it", () => {
     const html = renderToStaticMarkup(createElement(CampaignCard, { name: "Spring offer", onOpen: () => {}, status: "draft" }));
     expect(html).toMatch(/<span aria-hidden="true" class="absolute inset-0 z-\[1\] cursor-pointer/);
+  });
+
+  it("on the Marketing host the cards link to clean addresses (no /dashboard redirect hop)", () => {
+    const hosts = { marketing: "https://marketing.bupulse.com", admin: null, front: "https://bupulse.com" };
+    const html = renderToStaticMarkup(
+      createElement(HostsProvider, { kind: "marketing", hosts } as ComponentProps<typeof HostsProvider>, createElement(CampaignCard, { name: "Holiday views", href: "/dashboard/creators/c1", status: "live" }), createElement(ProductCard, { name: "Hydro Tower", href: "/dashboard/knowledge/products/p1" })),
+    );
+    expect(html).toContain('href="/creators/c1"');
+    expect(html).toContain('href="/knowledge/products/p1"');
+    expect(html).not.toContain('href="/dashboard/');
   });
 });
