@@ -11,7 +11,7 @@ import { Button } from "@/components/ui";
 import { activeFilterCount, contentQuery, MAX_PAGE_SIZE, parseContentFilters, PAGE_SIZE, type ContentScope } from "@/lib/content-board/filters";
 import { dayHeading, emptyPeriodAction, groupByDay, periodContains, periodLabel, periodOf, type PeriodView } from "@/lib/content-board/period";
 import { loadOnePost, loadSubjectInfo } from "@/lib/content-board/queries";
-import { loadDayContents, loadDayPosts, loadPeriodPosts } from "@/lib/content-flow/queries";
+import { latestPostDay, loadDayContents, loadDayPosts, loadPeriodPosts } from "@/lib/content-flow/queries";
 import { ANGLES, isAngleId } from "@/lib/studio/angles";
 import { DAY_SECTION_LABEL, dayLabel, groupDay, parseDay, todayIn, type DaySection } from "@/lib/content-flow/day";
 import { NETWORK_STYLE } from "@/lib/content-flow/networks";
@@ -91,8 +91,27 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
   // Today's header button opens by itself on ?create=1 (+ Create → New post); the empty state's copy never does.
   const createHere = periodContains(period, today) ? <CreateDayContent scope={scope} path={path} subjectName={info.name} networks={networks} allowance={allowance} album={album} openOnAsk /> : create;
 
+  // Filtered and empty (e.g. "24 to review" on All posts opens today): where the newest matching post is, if elsewhere.
+  const latest = filtered && list.posts.length === 0 ? await latestPostDay(business.id, scope, filters, zone, now).catch(() => null) : null;
+  const jumpTo = latest && !periodContains(period, latest) ? latest : null;
   const empty = filtered ? (
-    <EmptyState icon={Icon} title={`No posts match these filters this ${view}`} text="Try another app or type, or clear the filters." action={<Button href={`${path}${withDay("")}`}>Clear filters</Button>} />
+    <EmptyState
+      icon={Icon}
+      title={`No posts match these filters this ${view}`}
+      text={jumpTo ? `The latest one is on ${dayHeading(jumpTo, today)}.` : "Try another app or type, or clear the filters."}
+      action={
+        jumpTo ? (
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button href={`${path}${contentQuery({ ...base, limit: undefined, day: jumpTo })}`}>{`Go to ${dayHeading(jumpTo, today)}`}</Button>
+            <Button href={`${path}${withDay("")}`} variant="outline">
+              Clear filters
+            </Button>
+          </div>
+        ) : (
+          <Button href={`${path}${withDay("")}`}>Clear filters</Button>
+        )
+      }
+    />
   ) : view !== "day" ? (
     <EmptyState
       icon={Icon}
