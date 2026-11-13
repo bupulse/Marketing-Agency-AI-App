@@ -1,5 +1,5 @@
 import "server-only";
-import { logError } from "@/lib/errors";
+import { activeServiceFault, asFault, clearServiceFault, reportServiceFault, type FaultKey } from "@/lib/admin/service-faults";
 import { SocialError, type Network } from "../types";
 import { uploadPostLabel } from "./ways";
 
@@ -37,17 +37,30 @@ type Answer = { success?: boolean; message?: string; error?: string | { message?
  * `final`: the call creates the post, so a timeout or a 5xx leaves it unknown whether it went out (stage "final":
  * never resent). `timeoutMs`: a longer wait than 30 seconds.
  */
-export type CallOptions = { final?: boolean; timeoutMs?: number };
+export type CallOptions = { final?: boolean; timeoutMs?: number; /** Creating a profile: a 403 is the profile limit, which ensureProfile judges. */ profileCreate?: boolean };
 
 const messageOf = (a: Answer) => (typeof a.error === "object" ? a.error?.message : a.error) || a.message || "";
 
-/** Upload-Post's own limits and key problems are for the owner to fix: they go to Admin -> Errors too. */
-async function tellOwner(network: Network, status: number, detail: string) {
-  try {
-    await logError(new Error(`Upload-Post ${status}: ${detail}`.slice(0, 300)), { source: "social.uploadpost", network, level: "warn" });
-  } catch {
-    // Logging never stops the answer.
+/**
+ * Upload-Post's own limits and key problems are for the owner to fix: each is ONE item on Admin -> Health (and one
+ * warning in Admin -> Errors when it starts), not an error per call (lib/admin/service-faults.ts). The errors thrown for
+ * them are marked, so the callers' logError leaves them out.
+ */
+async function tellOwner(key: FaultKey, detail: string, opts: { apiKey?: string; untilMs?: number } = {}) {
+  await reportServiceFault(key, detail, opts);
+}
+
+const KEY_RETRY_MS = 15 * 60_000;
+let lastKeyRetryAt = 0;
+
+/** Is this key one Upload-Post refused (and not due for its 15-minute retry)? A new key goes through at once. */
+async function keyRefused(key: string): Promise<boolean> {
+  if (!(await activeServiceFault("uploadpost:key", { apiKey: key }))) return false;
+  if (Date.now() - lastKeyRetryAt >= KEY_RETRY_MS) {
+    lastKeyRetryAt = Date.now();
+    return false;
   }
+  return true;
 }
 
 /**
@@ -58,6 +71,7 @@ export async function uploadPostApi<T>(network: Network, method: "GET" | "POST" 
   const key = process.env.UPLOAD_POST_API_KEY?.trim();
   const label = uploadPostLabel(network);
   if (!key) throw new UploadPostError(`${label} through Upload-Post is not set up yet`, "temporary", network, 0);
+  if (await keyRefused(key)) throw asFault(new UploadPostError(KEY_REFUSED, "temporary", network, 401), "uploadpost:key");
   const form = body instanceof FormData;
   const stage = options.final ? ("final" as const) : ("before" as const);
   let response: Response;
@@ -73,23 +87,33 @@ export async function uploadPostApi<T>(network: Network, method: "GET" | "POST" 
     throw new UploadPostError(`Could not reach Upload-Post, BuPulse's ${label} partner`, "temporary", network, 0, undefined, undefined, stage);
   }
   const json = (await response.json().catch(() => ({}))) as T & Answer;
-  if (response.ok) return json;
+  if (response.ok) {
+    // A good answer: a refused key recorded before is fixed (a cached read when there is none).
+    await clearServiceFault("uploadpost:key");
+    return json;
+  }
 
   const detail = messageOf(json);
   const code = json.error_code;
   const status = response.status;
   if (status === 401) {
-    await tellOwner(network, status, detail || "the API key was refused");
-    throw new UploadPostError("Upload-Post did not accept BuPulse's key. BuPulse support has been told.", "temporary", network, status, code);
+    await tellOwner("uploadpost:key", detail || "the API key was refused", { apiKey: key });
+    lastKeyRetryAt = Date.now();
+    throw asFault(new UploadPostError(KEY_REFUSED, "temporary", network, status, code), "uploadpost:key");
+  }
+  if (options.profileCreate && (status === 403 || status === 429 || isProfileLimit(detail, code))) {
+    // ensureProfile decides: a profile that exists is still used; otherwise it is the profile limit.
+    throw new UploadPostError(detail || "plan restriction", "rate_limit", network, status, code, LIMIT_RETRY_SECONDS);
   }
   if (status === 429) {
-    await tellOwner(network, status, detail || "limit reached");
+    const retryAfter = Number(response.headers.get("retry-after")) || LIMIT_RETRY_SECONDS;
+    await tellOwner("uploadpost:plan-limit", detail || "limit reached", { untilMs: retryAfter * 1000 });
     const used = json.usage?.limit ? ` (${json.usage.count ?? json.usage.limit} of ${json.usage.limit} this month)` : "";
-    throw new UploadPostError(`BuPulse reached its ${label} posting limit with Upload-Post${used}. BuPulse support has been told; the post will be tried again later.`, "rate_limit", network, status, code, Number(response.headers.get("retry-after")) || LIMIT_RETRY_SECONDS);
+    throw asFault(new UploadPostError(`BuPulse reached its ${label} posting limit with Upload-Post${used}. BuPulse support has been told; the post will be tried again later.`, "rate_limit", network, status, code, retryAfter), "uploadpost:plan-limit");
   }
   if (status === 403) {
-    await tellOwner(network, status, `${code ?? ""} ${detail}`.trim() || "plan restriction");
-    throw new UploadPostError("BuPulse's Upload-Post plan does not allow this right now. BuPulse support has been told; the post will be tried again later.", "rate_limit", network, status, code, LIMIT_RETRY_SECONDS);
+    await tellOwner("uploadpost:plan-limit", `${code ?? ""} ${detail}`.trim() || "plan restriction", { untilMs: LIMIT_RETRY_SECONDS * 1000 });
+    throw asFault(new UploadPostError("BuPulse's Upload-Post plan does not allow this right now. BuPulse support has been told; the post will be tried again later.", "rate_limit", network, status, code, LIMIT_RETRY_SECONDS), "uploadpost:plan-limit");
   }
   if (status === 404) throw new UploadPostError(`This ${label} connection is no longer there. Reconnect ${label} in Channels.`, "auth", network, status, code);
   // "None of the requested platforms are valid for profile ...: no Linkedin account configured": the network was
@@ -107,16 +131,42 @@ export async function uploadPostApi<T>(network: Network, method: "GET" | "POST" 
 
 export type UploadPostProfile = { username?: string; social_accounts?: Record<string, unknown> };
 
+const KEY_REFUSED = "Upload-Post did not accept BuPulse's key. BuPulse support has been told.";
+export const PROFILE_LIMIT_MESSAGE = "BuPulse's LinkedIn and TikTok partner has no room for another company right now. BuPulse has been told; try again later.";
+/** While the profile limit is known, a new profile is asked for at most this often (the owner may have freed one). */
+const PROFILE_RETRY_MS = 30 * 60_000;
+let lastProfileTryAt = 0;
+
+/** Upload-Post's words for "your plan holds no more profiles". */
+export function isProfileLimit(detail: string, code?: string): boolean {
+  return /profile[_ ]?limit|limit.*profiles?|profiles?.*limit|maximum (number of )?profiles|max(imum)?_profiles/i.test(`${code ?? ""} ${detail}`);
+}
+
 /**
  * Makes sure the business's profile exists: created on first use, reused after (409 "already exists"). Upload-Post's
- * free plan holds 2 profiles: at the limit (403) a profile that already exists is still used.
+ * free plan holds 2 profiles: at the limit (403) a profile that already exists is still used; a new one cannot be made,
+ * which is ONE Admin -> Health item (not an error per Connect press), and while it lasts a new profile is asked for at
+ * most every 30 minutes, so pressing Connect again only costs one cheap look-up.
  */
 export async function ensureProfile(network: Network, username: string, displayName: string): Promise<void> {
+  const limitKnown = Boolean(await activeServiceFault("uploadpost:profile-limit"));
+  if (limitKnown && Date.now() - lastProfileTryAt < PROFILE_RETRY_MS) {
+    if (await getProfile(network, username).then(Boolean, () => false)) return;
+    await tellOwner("uploadpost:profile-limit", "a company could not connect (limit still reached)");
+    throw asFault(new UploadPostError(PROFILE_LIMIT_MESSAGE, "rate_limit", network, 403, "profile_limit", LIMIT_RETRY_SECONDS), "uploadpost:profile-limit");
+  }
+  lastProfileTryAt = Date.now();
   try {
-    await uploadPostApi(network, "POST", "/uploadposts/users", { username, ...(displayName.trim() ? { display_name: displayName.trim().slice(0, 100) } : {}) });
+    await uploadPostApi(network, "POST", "/uploadposts/users", { username, ...(displayName.trim() ? { display_name: displayName.trim().slice(0, 100) } : {}) }, { profileCreate: true });
+    // Made: there is room again.
+    await clearServiceFault("uploadpost:profile-limit");
   } catch (error) {
     if (error instanceof UploadPostError && error.status === 409) return;
-    if (error instanceof UploadPostError && error.status === 403 && (await getProfile(network, username).then(Boolean, () => false))) return;
+    if (error instanceof UploadPostError && (error.status === 403 || error.status === 429 || isProfileLimit(error.message, error.code))) {
+      if (await getProfile(network, username).then(Boolean, () => false)) return;
+      await tellOwner("uploadpost:profile-limit", error.message || "profile limit reached");
+      throw asFault(new UploadPostError(PROFILE_LIMIT_MESSAGE, "rate_limit", network, 403, "profile_limit", LIMIT_RETRY_SECONDS), "uploadpost:profile-limit");
+    }
     throw error;
   }
 }

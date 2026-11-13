@@ -6,6 +6,7 @@ import { SERVICES, isServiceId, networksOf, serviceInfo, type ServiceId, type Se
 import { WHATSAPP_UTILITY_USD } from "@/lib/leads/whatsapp";
 import { runProbe } from "./service-tests";
 import { scrubSecrets } from "./scrub";
+import { clearServiceFaultsOf } from "./service-faults";
 import { clearSwitchCache } from "./switch";
 import { hostValue, listSavedKeys, loadServiceKeys, type CustomKeyView } from "./service-keys";
 import { keysWhere, type KeysWhere } from "./service-keys-rules";
@@ -297,6 +298,8 @@ export async function testService(ctx: AdminContext, id: string) {
     await tx.serviceCheck.upsert({ where: { service: id }, create: { service: id, ...data }, update: data });
     await writeAudit(tx, ctx, "test_service", `service:${id}`, null, { ok: result.ok, latencyMs: result.latencyMs, message: result.message });
   });
+  // A passing test clears a refused-key item on Health (the owner pasted a new key and pressed Test now).
+  if (result.ok) await clearServiceFaultsOf(id);
   return { service: id, ok: result.ok, latencyMs: result.latencyMs, message: result.message, checkedAt: data.checkedAt.toISOString() };
 }
 

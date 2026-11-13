@@ -81,6 +81,18 @@ describe("overdue cron detection", () => {
     expect(cronStatus(j, run("2026-10-03T21:11:05Z"), none, at("2026-10-14T12:00:00Z")).state).toBe("overdue");
   });
 
+  it("after a power cut: overdue until the catch-up runs it, then on time and marked caught up", () => {
+    const j = job("store-sync"); // 03:47 daily
+    // Last ran yesterday; the PC was off at 03:47 today. At 06:30 it is overdue.
+    expect(cronStatus(j, run("2026-10-08T03:47:04Z"), none, at("2026-10-09T06:30:00Z")).state).toBe("overdue");
+    // The tick caught it up at 06:30 (the route's own run started 06:30:12).
+    const s = cronStatus(j, run("2026-10-09T06:30:12Z"), none, at("2026-10-09T06:45:00Z"), { at: at("2026-10-09T06:30:00Z"), missed: "2026-10-09T03:47:00.000Z" });
+    expect(s.state).toBe("ok");
+    expect(s.caughtUp).toEqual({ at: "2026-10-09T06:30:12.000Z", missed: "2026-10-09T03:47:00.000Z" });
+    // A normal run after it: no longer marked.
+    expect(cronStatus(j, run("2026-10-10T03:47:03Z"), none, at("2026-10-10T04:00:00Z"), { at: at("2026-10-09T06:30:00Z"), missed: "2026-10-09T03:47:00.000Z" }).caughtUp).toBeNull();
+  });
+
   it("reports a failed last run, and never for a job with no record", () => {
     expect(cronStatus(job("metrics"), run("2026-10-09T10:23:05Z", false), { failures24h: 1, runs24h: 5 }, at("2026-10-09T10:40:00Z")).state).toBe("failed");
     expect(cronStatus(job("metrics"), null, none, at("2026-10-09T10:40:00Z")).state).toBe("never");

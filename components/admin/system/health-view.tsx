@@ -19,7 +19,14 @@ const STATUS: Record<HealthStatus, { label: string; text: string; icon: typeof C
 const mb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6).toFixed(b >= 1e8 ? 0 : 1)} MB`);
 
 const JOB_PILL: Record<CronStatus["state"], (c: CronStatus) => React.ReactNode> = {
-  ok: () => <StatusPill tone="good" dot>On time</StatusPill>,
+  ok: (c) =>
+    c.caughtUp ? (
+      <span title={`Its ${dateTime(c.caughtUp.missed)} run was missed (the server was off or busy) and made up at ${dateTime(c.caughtUp.at)}.`}>
+        <StatusPill tone="good" dot>Caught up</StatusPill>
+      </span>
+    ) : (
+      <StatusPill tone="good" dot>On time</StatusPill>
+    ),
   failed: () => <StatusPill tone="bad" dot>Last run failed</StatusPill>,
   overdue: (c) => <StatusPill tone="bad" dot>Overdue {c.overdueByMinutes} min</StatusPill>,
   never: () => <StatusPill tone="muted" dot>No runs yet</StatusPill>,

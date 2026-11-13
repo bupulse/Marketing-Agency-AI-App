@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { tickMinute } from "@/lib/cron/schedule";
-import { runTick } from "@/lib/cron/tick";
+import { runCatchUp } from "@/lib/cron/catch-up-run";
+import { runTick, TICK_BUDGET_MS } from "@/lib/cron/tick";
 import { currentPlatform } from "@/lib/platform/detect";
 
 // Compares without stopping at the first different character.
@@ -32,6 +33,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const minute = tickMinute(request.headers.get("x-cloudscheduler-scheduletime"));
-  const summary = await runTick(minute, { origin: selfOrigin(request), secret });
-  return NextResponse.json(summary, { headers: { "Cache-Control": "no-store" } });
+  const startedAt = Date.now();
+  const origin = selfOrigin(request);
+  const summary = await runTick(minute, { origin, secret });
+  // Then the jobs whose time was missed (a power cut, a restart, a long tick), each once (lib/cron/catch-up.ts), inside
+  // the same time budget. The publisher is never part of it: it runs every minute above.
+  const caughtUp = await runCatchUp(new Date(), { origin, secret, stopAt: startedAt + TICK_BUDGET_MS });
+  return NextResponse.json(caughtUp.length ? { ...summary, caughtUp } : summary, { headers: { "Cache-Control": "no-store" } });
 }

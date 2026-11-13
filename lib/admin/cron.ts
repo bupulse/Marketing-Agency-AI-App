@@ -132,6 +132,8 @@ export type CronStatus = {
   runs24h: number;
   /** Minutes past the time it should have started, when overdue. */
   overdueByMinutes: number | null;
+  /** The latest run was the tick's catch-up of a missed time (lib/cron/catch-up.ts): which time it made up for. */
+  caughtUp: { at: string; missed: string } | null;
 };
 
 export type LastRun = { startedAt: Date; finishedAt: Date; ok: boolean; summary: string | null; error: string | null } | null;
@@ -140,7 +142,7 @@ export type LastRun = { startedAt: Date; finishedAt: Date; ok: boolean; summary:
  * Where a job stands. Overdue = the scheduled time after its last run has passed (plus grace) with no run started;
  * failed = the latest run reported a failure; never = nothing recorded at all.
  */
-export function cronStatus(job: CronJob, last: LastRun, counts: { failures24h: number; runs24h: number }, now: Date): CronStatus {
+export function cronStatus(job: CronJob, last: LastRun, counts: { failures24h: number; runs24h: number }, now: Date, catchUp: { at: Date; missed: string } | null = null): CronStatus {
   const next = nextRun(job.cron, now);
   let state: CronState = "ok";
   let overdueBy: number | null = null;
@@ -169,5 +171,10 @@ export function cronStatus(job: CronJob, last: LastRun, counts: { failures24h: n
     failures24h: counts.failures24h,
     runs24h: counts.runs24h,
     overdueByMinutes: overdueBy,
+    // The latest run is the catch-up's when it started within the half hour after the catch-up began.
+    caughtUp:
+      catchUp && last && last.startedAt.getTime() >= catchUp.at.getTime() - MINUTE && last.startedAt.getTime() <= catchUp.at.getTime() + 30 * MINUTE
+        ? { at: last.startedAt.toISOString(), missed: catchUp.missed }
+        : null,
   };
 }
