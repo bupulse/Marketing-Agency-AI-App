@@ -1,5 +1,6 @@
 // Database reads for the Content page (docs/CONTENT.md). Filtering, counting and paging happen in the database; every
 // read is scoped to the business; photos and covers are signed in one batched request per bucket.
+import { postSoundFields } from "@/lib/publishing/sound-fields";
 import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
@@ -77,7 +78,7 @@ export type SubjectCardView = Omit<SubjectCard, "lastActivity"> & {
 };
 
 export const postInclude = {
-  connection: { select: { displayName: true, avatarUrl: true, ...resultsConnectionSelect } },
+  connection: { select: { displayName: true, avatarUrl: true, scopes: true, ...resultsConnectionSelect } },
   product: { select: { id: true, name: true } },
   campaign: { select: { id: true, name: true } },
 } satisfies Prisma.PostInclude;
@@ -176,6 +177,7 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       reviewNote: r.reviewNote,
       autoScheduledAt: r.autoScheduledAt?.toISOString() ?? null,
       remindOnly: !r.connection && r.remindOnly,
+      ...postSoundFields(r),
       kind: isPostKind(r.mediaKind) ? r.mediaKind : "post",
       excerpt: cardExcerpt(r, r.contentId ? captions.get(r.contentId) : undefined),
       poster: poster ? (signed.get(poster) ?? null) : null,

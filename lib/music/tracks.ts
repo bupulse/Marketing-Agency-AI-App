@@ -21,6 +21,32 @@ export const isMood = (value: unknown): value is Mood => typeof value === "strin
 export const TRACK_TYPES = { "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/x-m4a": "m4a" } as const;
 export const TRACK_MAX_BYTES = 6 * 1024 * 1024;
 
+/**
+ * Apps a track can be limited to (Admin -> Music, "Only for Facebook and Instagram"). Meta's Sound Collection may be
+ * used only in videos posted on Facebook and Instagram, so such a track is never put in a video that goes anywhere else.
+ */
+export const TRACK_PLATFORMS = ["facebook", "instagram"] as const;
+export const META_ONLY_PLATFORMS: readonly string[] = ["facebook", "instagram"];
+
+/**
+ * Whether a track may be used in a video going to these apps. A track with no limit fits every video. A limited track
+ * fits only when every destination is in its list; a video whose destinations are not known gets no limited track.
+ */
+export function trackUsableFor(track: { platforms?: readonly string[] | null }, destinations?: readonly string[] | null): boolean {
+  const limits = track.platforms ?? [];
+  if (limits.length === 0) return true;
+  if (!destinations || destinations.length === 0) return false;
+  return destinations.every((d) => limits.includes(d));
+}
+
+/** "Facebook and Instagram only" for the admin's track list; null when the track has no limit. */
+export function platformLimitLabel(platforms: readonly string[] | null | undefined): string | null {
+  if (!platforms?.length) return null;
+  const names: Record<string, string> = { facebook: "Facebook", instagram: "Instagram" };
+  const list = platforms.map((p) => names[p] ?? p);
+  return `${list.length > 1 ? `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}` : list[0]} only`;
+}
+
 export const trackInputSchema = z.object({
   title: z.string().trim().min(1, "Give the track a title.").max(120),
   moods: z.array(z.enum(MOODS)).min(1, "Pick at least one mood.").max(4),
@@ -29,6 +55,8 @@ export const trackInputSchema = z.object({
   // The page the track comes from (https), or for owned music the tool it was made with ("ElevenLabs Music").
   sourceUrl: z.string().trim().min(2, "Give the page the track comes from.").max(500),
   attribution: z.string().trim().max(300).default(""),
+  // Apps the track may be used on; empty = every app. Meta Sound Collection tracks: ["facebook", "instagram"].
+  platforms: z.array(z.enum(TRACK_PLATFORMS)).max(TRACK_PLATFORMS.length).default([]),
 })
   .refine((t) => isOwnedLicence(t.licence) || /^https:\/\/\S+$/.test(t.sourceUrl), { path: ["sourceUrl"], message: "Give the https page the track comes from." })
   .refine((t) => isOwnedLicence(t.licence) || t.attribution.length >= 2, { path: ["attribution"], message: "Write the credit line the licence asks for (it can be empty only for original, owned music)." });
@@ -41,7 +69,7 @@ export function isOwnedLicence(licence: string): boolean {
 /** The licence of tracks made with ElevenLabs Music for BuPulse (owner decision, 13 October 2026). */
 export const ELEVENLABS_MUSIC_LICENCE = "Original — generated with ElevenLabs Music for BuPulse (commercial use, paid plan)";
 export const ELEVENLABS_MUSIC_SOURCE = "ElevenLabs Music";
-export type TrackInput = z.infer<typeof trackInputSchema>;
+export type TrackInput = z.input<typeof trackInputSchema>;
 
 /** The first bytes of an MP3 (ID3 tag or an MPEG frame) or an M4A ("ftyp" box). */
 export function sniffAudio(head: Uint8Array): "audio/mpeg" | "audio/mp4" | null {
@@ -59,13 +87,16 @@ export function moodFor(input: { angle?: string | null; tone?: string | null }):
   return byTone[input.tone ?? ""] ?? "upbeat";
 }
 
-export type TrackChoice = { id: string; moods: string[] };
+export type TrackChoice = { id: string; moods: string[]; platforms?: readonly string[] | null };
 
 /**
  * A track for a video: one of the active tracks with the mood, chosen by a seed (so the posts of a pack do not all get
- * the same one), else any track; null when the library is empty (videos are made without music).
+ * the same one), else any track; null when the library is empty (videos are made without music). `destinations`: the
+ * apps the video goes to (trackUsableFor); unknown means no app-limited track.
  */
-export function pickTrack<T extends TrackChoice>(tracks: readonly T[], mood: string | null | undefined, seed: string): T | null {
+export function pickTrack<T extends TrackChoice>(all: readonly T[], mood: string | null | undefined, seed: string, destinations?: readonly string[] | null): T | null {
+  // A track limited to some apps (Meta Sound Collection) only for a video that goes to those apps alone.
+  const tracks = all.filter((t) => trackUsableFor(t, destinations));
   if (tracks.length === 0) return null;
   const fitting = tracks.filter((t) => mood && t.moods.includes(mood));
   const pool = fitting.length ? fitting : tracks;

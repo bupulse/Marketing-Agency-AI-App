@@ -27,6 +27,7 @@ import type { CalendarPost, PostOutcome } from "@/lib/publishing/types";
 import { formatDateTime } from "./helpers";
 import { networkName } from "./network-icon";
 import { ResultsPanel } from "./post-results";
+import { showsSoundTip, TrendingSoundLine, TrendingSoundTip } from "./trending-sound-tip";
 
 type Props = {
   post: CalendarPost | null;
@@ -62,6 +63,7 @@ export function detailView(post: CalendarPost, zone: string, group: readonly Cal
       { label: "App", value: `${networkName(post.network)} · ${post.accountName}` },
       ...(madeBy ? [{ label: "Made by", value: madeBy }] : []),
       ...(post.autoScheduledAt && post.status !== "PENDING_APPROVAL" ? [{ label: "Scheduled", value: "On its own (no approval needed)" }] : []),
+      ...(post.trendingSound ? [{ label: "Sound", value: `Trending: ${post.trendingSound.artist ? `${post.trendingSound.title} – ${post.trendingSound.artist}` : post.trendingSound.title}` }] : []),
     ],
     dateLine: post.status === "PUBLISHED" && post.publishedAt ? `Posted ${formatDateTime(post.publishedAt, zone)}` : post.scheduledAt ? `${post.status === "SCHEDULED" ? "Goes out" : "Planned for"} ${formatDateTime(post.scheduledAt, zone)}` : null,
   };
@@ -186,6 +188,10 @@ function Body({ post, zone, ui, setUi, pending, visualHref, autoNetworks, group,
         </p>
       )}
       {post.status === "SCHEDULED" && post.lastError && <p className="rounded-2xl bg-soft p-3.5 text-[14px] text-muted">Last try: {post.lastError} We will try again automatically.</p>}
+
+      {/* Instagram reels: the trending sound attached (or to be), or the "Post manually" path with one. */}
+      <TrendingSoundLine post={post} />
+      {showsSoundTip(post) && <TrendingSoundTip post={post} caption={captionText(post)} />}
 
       {withResults && <ResultsPanel posts={withResults} zone={zone} />}
 

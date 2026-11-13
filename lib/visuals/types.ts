@@ -258,6 +258,8 @@ export interface VideoMusic {
 export interface VisualItem {
   designId?: string | null;
   path: string;
+  /** A video's second file: "no-music", its Instagram version without library music (lib/visuals/ig-variant.ts). */
+  variant?: string | null;
 }
 
 /** A visual as the content screens get it: plan, rendered items with signed URLs, and what the owner may do. */

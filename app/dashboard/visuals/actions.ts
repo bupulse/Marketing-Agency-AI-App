@@ -5,7 +5,8 @@ import { z } from "zod";
 import { knowledgeAction, type Result } from "@/lib/knowledge/guard";
 import { remakeContentVisuals } from "@/lib/visuals/content";
 import { remakeDaySetVisuals } from "@/lib/content-flow/set-remake";
-import { finalizeVideo, leaseVideoForBrowser, markVideoFailed, prepareVideoUpload, removeVisual, renderImageStep, updateImageVisual, updateVideoPlan } from "@/lib/visuals/service";
+import { finalizeVideo, leaseVideoForBrowser, markVideoFailed, prepareVideoUpload, removeVisual, renderImageStep, updateImageVisual, updateVideoPlan, wantsInstagramVariant } from "@/lib/visuals/service";
+import { prisma } from "@/lib/db";
 import { activeTracks } from "@/lib/music/service";
 import { featureStatus } from "@/lib/entitlements";
 import { getUsageSummary } from "@/lib/usage";
@@ -93,14 +94,17 @@ export async function changeVideo(visualId: string, changes: z.input<typeof vide
  * The browser is about to make the video: it holds it (unless the video robot is making it right now), its voiceover
  * is made or reused (docs/VOICE_AND_MUSIC.md), and the plan to render comes back with its photo and sound URLs.
  */
-export async function startVideoRender(visualId: string): Promise<Result<{ plan: VideoPlan | null; photoUrls: Record<string, string>; clipUrls: Record<string, string>; audioUrls: { voice?: string; music?: string } }>> {
+export async function startVideoRender(visualId: string): Promise<Result<{ plan: VideoPlan | null; photoUrls: Record<string, string>; clipUrls: Record<string, string>; audioUrls: { voice?: string; music?: string }; noMusicVariant?: boolean }>> {
   if (!id.safeParse(visualId).success) return BAD;
   return knowledgeAction({ ...GUARD, source: "visuals.video.lease" }, async ({ userId, businessId }) => {
     await leaseVideoForBrowser({ userId, businessId }, visualId);
     const voiced = await ensureVoiceover({ userId, businessId }, visualId);
     if (!voiced) return { plan: null, photoUrls: {}, clipUrls: {}, audioUrls: {} };
     // The video's AI clips (lib/visuals/ai-clips.ts), signed for an hour like the photos.
-    return { plan: voiced.plan, photoUrls: await renderPhotoUrls(userId, voiced.plan), clipUrls: await signClips(userId, voiced.plan, 60 * 60), audioUrls: await audioUrlsFor(businessId, voiced.plan, voiced.voiceDataUrl) };
+    // Also the Instagram version without music, when a post goes to an Instagram account connected through Facebook Login.
+    const row = await prisma.contentVisual.findFirst({ where: { id: visualId, businessId }, select: { groupId: true, contentId: true } });
+    const noMusicVariant = row ? await wantsInstagramVariant(businessId, { ...row, plan: voiced.plan }) : false;
+    return { plan: voiced.plan, photoUrls: await renderPhotoUrls(userId, voiced.plan), clipUrls: await signClips(userId, voiced.plan, 60 * 60), audioUrls: await audioUrlsFor(businessId, voiced.plan, voiced.voiceDataUrl), noMusicVariant };
   });
 }
 
@@ -123,15 +127,16 @@ export async function changeVideoMusic(visualId: string, trackId: string | null)
   });
 }
 
-const fileSchema = z.object({ bytes: z.number().int().positive(), mimeType: z.string().max(40), durationMs: z.number().positive().max(120_000) });
+const fileSchema = z.object({ bytes: z.number().int().positive(), mimeType: z.string().max(40), durationMs: z.number().positive().max(120_000), variant: z.boolean().optional() });
 
 /** Checks the video the browser made and gives it a place to upload to. */
-export async function startVideoUpload(visualId: string, file: z.input<typeof fileSchema>): Promise<Result<{ path: string; token: string; seconds: number }>> {
+export async function startVideoUpload(visualId: string, file: z.input<typeof fileSchema>): Promise<Result<{ path: string; token: string; seconds: number; variant?: { path: string; token: string } }>> {
   const parsed = fileSchema.safeParse(file);
   if (!id.safeParse(visualId).success || !parsed.success) return { ok: false, error: "That video could not be used." };
   return knowledgeAction({ ...GUARD, source: "visuals.video.upload" }, async ({ userId, businessId }) => {
-    const { path, token, seconds } = await prepareVideoUpload({ userId, businessId }, visualId, parsed.data);
-    return { path, token, seconds };
+    const { variant: wantsVariant, ...file } = parsed.data;
+    const { path, token, seconds, variant } = await prepareVideoUpload({ userId, businessId }, visualId, file, { variant: wantsVariant });
+    return { path, token, seconds, ...(variant ? { variant: { path: variant.path, token: variant.token } } : {}) };
   });
 }
 

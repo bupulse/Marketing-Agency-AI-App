@@ -42,7 +42,7 @@ export async function loadVisuals(businessId: string, by: { contentIds?: string[
     orderBy: { createdAt: "desc" },
     take: 400,
   });
-  const parsed = rows.map((r) => ({ row: r, items: readItems(r.items), image: r.kind === "video" ? null : readImagePlan(r.plan), video: r.kind === "video" ? readVideoPlan(r.plan) : null }));
+  const parsed = rows.map((r) => ({ row: r, items: readItems(r.items).filter((i) => !i.variant), image: r.kind === "video" ? null : readImagePlan(r.plan), video: r.kind === "video" ? readVideoPlan(r.plan) : null }));
   const paths = parsed.flatMap((p) => [...p.items.map((i) => i.path), ...(p.video?.scenes.flatMap((s) => [...(s.photoPath ? [s.photoPath] : []), ...(s.clipPath ? [s.clipPath] : [])]) ?? [])]);
   const urls = await signAll(paths);
   return parsed.map(({ row, items, image, video }) => ({

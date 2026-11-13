@@ -1,4 +1,5 @@
 import "server-only";
+import { postSoundFields } from "@/lib/publishing/sound-fields";
 import { publishTimingNote } from "@/lib/platform/limits";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
@@ -19,7 +20,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const CALENDAR_PAST_DAYS = 60;
 export const CALENDAR_FUTURE_DAYS = 240;
 
-const postInclude = { connection: { select: { displayName: true, avatarUrl: true, ...resultsConnectionSelect } } } satisfies Prisma.PostInclude;
+const postInclude = { connection: { select: { displayName: true, avatarUrl: true, scopes: true, ...resultsConnectionSelect } } } satisfies Prisma.PostInclude;
 type PostRow = Prisma.PostGetPayload<{ include: typeof postInclude }>;
 
 const FALLBACK_PROBLEM: Record<string, string> = {
@@ -103,6 +104,7 @@ export async function toCalendarPosts(businessId: string, rows: PostRow[], now =
     reviewNote: r.reviewNote,
     autoScheduledAt: r.autoScheduledAt?.toISOString() ?? null,
     remindOnly: !r.connection && r.remindOnly,
+    ...postSoundFields(r),
     ...(results.has(r.id) ? { results: results.get(r.id) } : {}),
   }));
 }

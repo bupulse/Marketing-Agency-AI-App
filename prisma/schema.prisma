@@ -920,6 +920,9 @@ model Post {
   plannedDay     DateTime?     @db.Date
   // How many times a missed post was moved to the next day. The 4th miss makes it EXPIRED; "Use again" sets it to 0.
   carryCount     Int           @default(0)
+  // The trending Instagram sound attached when the reel was published (lib/social/instagram-audio.ts):
+  // { audioId, title, artist, link?, attachedAt }. Null for every other post.
+  trendingSound  Json?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   metrics        PostMetrics[]
@@ -1132,6 +1135,9 @@ model MusicTrack {
   mimeType    String
   bytes       Int
   durationMs  Int?
+  // Apps the track may be used on (lib/music/tracks.ts trackUsableFor). Empty: every app. ["facebook","instagram"]:
+  // only videos that go to Facebook and Instagram alone (Meta Sound Collection).
+  platforms   String[] @default([])
   active      Boolean  @default(true)
   createdBy   String // AuditLog actor
   createdAt   DateTime @default(now())

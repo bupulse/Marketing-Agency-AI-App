@@ -1,6 +1,7 @@
 // Shapes shared by the publishing server code and the calendar and composer screens. Client-safe.
 import type { Network } from "@/lib/social/types";
 import type { PostResults } from "./results";
+import type { PostSoundFields } from "./sound-fields";
 import type { PostStatusName } from "./status";
 import type { PostFormatName, RuleSummary } from "./validate";
 
@@ -38,7 +39,7 @@ export type CalendarPost = {
   remindOnly?: boolean;
   /** Published posts only: views, likes and comments, or why there are none (lib/publishing/results.ts). Absent when the plan does not show them. */
   results?: PostResults;
-};
+} & PostSoundFields;
 
 export type ComposerAccount = {
   id: string;

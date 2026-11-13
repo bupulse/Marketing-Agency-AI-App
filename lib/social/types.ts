@@ -62,11 +62,19 @@ export interface PublishRequest {
   text: string;
   media: { url: string; mimeType: string; width?: number | null; height?: number | null }[];
   link?: string | null;
+  /**
+   * Instagram Reels through Facebook Login only: a trending sound to attach (lib/social/instagram-audio.ts). media[0] is
+   * then the reel without BuPulse's library music; `fallbackVideoUrl` (the reel with its music) is posted instead when
+   * Instagram refuses the sound. Every other provider ignores it.
+   */
+  sound?: { audioId: string; audioVolume: number; videoVolume: number; fallbackVideoUrl?: string; /** The caption for the fallback (with its music credit). */ fallbackText?: string };
 }
 
 export interface PublishResult {
   externalId: string;
   permalink?: string;
+  /** Instagram: the trending sound of PublishRequest.sound went out with the reel. */
+  soundAttached?: boolean;
 }
 
 export interface MetricsSnapshot {

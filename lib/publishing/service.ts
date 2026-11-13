@@ -526,11 +526,18 @@ export async function retryPost(owner: Owner, postId: string, now = new Date()):
   if (count === 0) throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
 }
 
-/** "Mark as posted": the owner posted a reminder post by hand. */
-export async function markPosted(businessId: string, postId: string, now = new Date()): Promise<void> {
+/** Posts the owner may post by hand themselves ("Post manually", e.g. an Instagram reel with a trending sound). */
+export const BY_HAND_STATUSES = ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "FAILED", "NEEDS_ACTION"] as const;
+
+/**
+ * "Mark as posted": the owner posted a reminder post by hand. `byHand`: "Post manually" on a post that was not a
+ * reminder (it waited for review, was scheduled or failed): it becomes published too, and BuPulse never sends it.
+ * A post the publisher is working on right now (PUBLISHING, locked) is never touched.
+ */
+export async function markPosted(businessId: string, postId: string, now = new Date(), options: { byHand?: boolean } = {}): Promise<void> {
   const { count } = await prisma.post.updateMany({
-    where: { id: postId, businessId, status: "NEEDS_ACTION" },
-    data: { status: "PUBLISHED", publishedAt: now, lastError: null },
+    where: options.byHand ? { id: postId, businessId, status: { in: [...BY_HAND_STATUSES] }, lockedAt: null } : { id: postId, businessId, status: "NEEDS_ACTION" },
+    data: { status: "PUBLISHED", publishedAt: now, lastError: null, ...(options.byHand ? { nextAttemptAt: null } : {}) },
   });
   if (count === 1) {
     // The owner posted a reminder by hand: a Video Studio MP4's outcome is recorded for the Brain (never fails this).

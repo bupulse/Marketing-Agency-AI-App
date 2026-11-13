@@ -172,3 +172,27 @@ The owner wants a new voice actor and asked to consider Gemini text-to-speech. T
     tracks with the Content ID shield (claims and muting on Instagram and Facebook).
   - Avoid without legal review: Mixkit (no sublicensing or stock use), Bensound free (bans use in software that makes
     videos), YouTube Audio Library (for your own YouTube videos), Uppbeat free (no client work).
+
+## Trending Instagram sounds (13 November 2026)
+
+Owner decisions: reels use sounds trending on Instagram, safely.
+
+- **Facebook Login Instagram accounts** (BuPulse's own app, "facebook" variant, tokens `EA…`): when a reel is published,
+  the account's top trending music (Meta's Instagram Audio API, `GET /ig_audio?audio_type=music&user_id=…` without
+  `search_query`, asked at most once a day per account and kept in AdminSetting `igAudio.trending:<ig user id>`) is
+  attached with `audio_configuration` (song at 40%, the reel's own audio at 100%: `IG_SOUND_VOLUME`). Code:
+  `lib/social/instagram-audio.ts`, `lib/social/trending-sounds.ts`, `lib/publishing/instagram-sound.ts`, the REELS branch
+  of `lib/social/providers/instagram.ts`. Any refusal falls back to the reel with its library music (and its credit);
+  the sound never fails a post. The sound that went out is saved on `Post.trendingSound` and shown on the post.
+- **No library music under the trending sound**: the renderer encodes the frames once and writes a second MP4 with the
+  voice-over only (`<reel>.nomusic.mp4`, the visual's second item, `variant: "no-music"`), only when the reel has
+  library music and one of its posts goes to such an Instagram account (`lib/visuals/ig-variant.ts`,
+  `wantsInstagramVariant`). Facebook, TikTok and YouTube keep the music. Video Studio MP4s get no sound (their music is
+  mixed in); the company's own uploaded videos get it as they are.
+- **Every other Instagram connection** (Instagram Login, BuPulse-Socials, Upload-Post, Zernio, reminders): the opened
+  post shows "Add a trending sound" with this week's sounds (Meta's lists kept this week, else the admin's list in
+  Admin -> Music, "Trending Instagram sounds this week") and a "Post manually" path: download, copy caption, open
+  Instagram, "I posted it" (`markPosted(..., { byHand: true })`).
+- **App-limited tracks** (`MusicTrack.platforms`, empty = everywhere): "Only for Facebook and Instagram" (Meta Sound
+  Collection) tracks are picked only for a video whose every destination is in the list (`trackUsableFor`); the day reel
+  passes its posts' apps, every other picker passes none, so they never get one. The owner's music picker never offers them.

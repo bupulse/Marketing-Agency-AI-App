@@ -4,6 +4,18 @@ import { adminAction, actionMessage, finish } from "@/lib/admin/console";
 import { deleteTrack, finishTrackUpload, generateTrack, setTrackActive, startTrackUpload } from "@/lib/music/service";
 import { isMood, type TrackInput } from "@/lib/music/tracks";
 import { generateMusicBatch } from "@/lib/music/batch";
+import { parseTrendingLines } from "@/lib/social/instagram-audio";
+import { saveAdminTrendingTips } from "@/lib/social/trending-sounds";
+
+/**
+ * "Trending Instagram sounds this week": the admin's list (one per line, "Title | Artist | Instagram link"), shown to
+ * clients in the "Post manually" tip when Meta gives no trending list.
+ */
+export async function saveTrendingSoundsAction(f: FormData) {
+  const ctx = await adminAction("content");
+  const tips = parseTrendingLines(String(f.get("sounds") ?? ""));
+  await finish("/admin/music", () => (tips.length ? `Saved ${tips.length === 1 ? "1 sound" : `${tips.length} sounds`}.` : "List cleared."), () => saveAdminTrendingTips(ctx, tips));
+}
 
 // The music library (docs/VOICE_AND_MUSIC.md). adminAction("content") re-checks the admin (allow-listed email, AAL2) on every
 // call: server actions are public POST endpoints. Uploads go straight to Storage with a signed URL, then are checked.

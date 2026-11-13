@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { CircleDashed, FileText, Sparkles } from "lucide-react";
+import { CircleDashed, FileText, Music, Sparkles } from "lucide-react";
+import { soundLabel } from "@/lib/social/instagram-audio";
 import { formatDateTime } from "@/components/publishing/helpers";
 import { PostCard as FeedPost, contentPostView, type PostView } from "@/components/media-cards";
 import { cn } from "@/lib/cn";
@@ -104,9 +105,15 @@ export function PostCard({
         ) : undefined
       }
       badges={
-        post.idea || post.contest?.pending || (post.carryCount > 0 && post.status !== "EXPIRED") ? (
+        post.idea || post.trendingSound || post.contest?.pending || (post.carryCount > 0 && post.status !== "EXPIRED") ? (
           <>
             {post.idea && <span className={cn(CHIP, "bg-soft text-text")}>{post.idea}</span>}
+            {post.trendingSound && (
+              <span className={cn(CHIP, "max-w-full gap-1 bg-soft text-text")}>
+                <Music aria-hidden className="size-3.5 shrink-0" />
+                <span className="truncate">Trending sound: {soundLabel(post.trendingSound)}</span>
+              </span>
+            )}
             {post.contest?.pending && <span className={cn(CHIP, "bg-new-bg text-new")}>Needs your confirmation: prize & rules</span>}
             {/* A missed day moved it (lib/content-board/carry-over.ts): after 3 moves, the next miss expires it. */}
             {post.carryCount > 0 && post.status !== "EXPIRED" && (

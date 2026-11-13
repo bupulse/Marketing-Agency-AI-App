@@ -198,7 +198,7 @@ async function makeOne(config, browser, page, job, format) {
   const clips = await photoDataUrls(job.clipUrls, job.upload?.url);
   const leaseLeft = new Date(job.leaseUntil).getTime() - Date.now() - 60_000;
   const result = await withTimeout(
-    page.evaluate(({ plan, photos, format, audio, clips }) => globalThis.videoRobot.render(plan, photos, format, audio, clips), { plan: job.plan, photos, format, audio, clips }),
+    page.evaluate(({ plan, photos, format, audio, clips, variant }) => globalThis.videoRobot.render(plan, photos, format, audio, clips, variant), { plan: job.plan, photos, format, audio, clips, variant: !!job.variantUpload && format === "mp4" }),
     Math.max(10_000, Math.min(config.videoTimeoutMs, leaseLeft)),
   );
   if (!result.ok) {
@@ -208,6 +208,11 @@ async function makeOne(config, browser, page, job, format) {
   if (!(await upload(job.upload, Buffer.from(result.base64, "base64")))) {
     await api(config, "fail", { job: job.job, reason: "upload_failed" }).catch(() => {});
     return { outcome: "failed", reason: "upload_failed" };
+  }
+  // The Instagram version without music (best effort: without it that post keeps the music and gets no trending sound).
+  // Only to a signed URL on the same storage origin as the video's own upload.
+  if (job.variantUpload && result.variantBase64 && allowedUrl(job.variantUpload.url) && allowedUrl(job.upload.url) && new URL(job.variantUpload.url).origin === new URL(job.upload.url).origin) {
+    await upload(job.variantUpload, Buffer.from(result.variantBase64, "base64"));
   }
   const done = await api(config, "complete", { job: job.job }).catch(() => ({ ok: false }));
   if (!done.ok) return { outcome: "failed", reason: "complete_failed" };

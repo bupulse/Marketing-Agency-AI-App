@@ -103,6 +103,11 @@ export interface RobotJob {
   audioUrls: { voice?: string; music?: string };
   /** Where to PUT the file: a signed upload URL reserved through the same checks as the browser's upload. */
   upload: { url: string; contentType: "video/mp4" | "video/webm" };
+  /**
+   * Also make the Instagram version without music (lib/visuals/ig-variant.ts) and PUT it here (MP4). Only when a post
+   * goes to an Instagram account connected through Facebook Login; a robot that skips it just gives no trending sound.
+   */
+  variantUpload?: { url: string; contentType: "video/mp4" };
   /** When the lease ends; the robot gives up on the video before then. */
   leaseUntil: string;
 }
@@ -216,8 +221,17 @@ export async function claimRobotVideos(options: { max?: number; format?: RobotFo
       // The voiceover is made (or reused) now, so the robot's video sounds like the owner's browser would make it.
       const prepared = await ensureVoiceover(owner, row.id).catch(() => null);
       const voiced = prepared?.plan ?? plan;
-      const target = await prepareVideoUpload(owner, row.id, { bytes: VIDEO_LIMITS.maxBytes, mimeType, durationMs: voiced.totalMs });
-      jobs.push({ job, plan: voiced, photoUrls: await signScenePhotos(userId, voiced), clipUrls: await signClips(userId, voiced), audioUrls: await audioUrlsFor(row.businessId, voiced, prepared?.voiceDataUrl), upload: { url: target.signedUrl, contentType: mimeType }, leaseUntil: leaseUntil.toISOString() });
+      const target = await prepareVideoUpload(owner, row.id, { bytes: VIDEO_LIMITS.maxBytes, mimeType, durationMs: voiced.totalMs }, { variant: mimeType === "video/mp4" });
+      jobs.push({
+        job,
+        plan: voiced,
+        photoUrls: await signScenePhotos(userId, voiced),
+        clipUrls: await signClips(userId, voiced),
+        audioUrls: await audioUrlsFor(row.businessId, voiced, prepared?.voiceDataUrl),
+        upload: { url: target.signedUrl, contentType: mimeType },
+        ...(target.variant ? { variantUpload: { url: target.variant.signedUrl, contentType: "video/mp4" as const } } : {}),
+        leaseUntil: leaseUntil.toISOString(),
+      });
     } catch (error) {
       await releaseLease(row.id, job, { robotAttempts: { decrement: 1 } }).catch(() => {});
       // Seconds used up, quota full, other uploads open: the owner's problem, not the robot's; tried again next run.
