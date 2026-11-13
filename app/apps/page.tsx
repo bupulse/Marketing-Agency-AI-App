@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { ensureAccount } from "@/lib/account";
 import { safeNext } from "@/lib/auth/safe-next";
 import { ServiceChooser, ServicesPage } from "@/components/platform/service-cards";
+import { prisma } from "@/lib/db";
+import { greetingFirstName } from "@/lib/platform/first-name";
 import { clientServices } from "@/lib/platform/services";
 import { getCurrentUser } from "@/lib/supabase/server";
 
@@ -26,8 +28,8 @@ export default async function AppsPage({ searchParams }: PageProps<"/apps">) {
   if (services.needsPick) redirect("/apps/start");
   if (params.all !== "1" && services.cards.length === 1 && services.waiting.length === 0) redirect(services.cards[0].href!);
 
-  const meta = user.user_metadata as { full_name?: string; name?: string; ceo_name?: string } | undefined;
-  const firstName = (meta?.full_name || meta?.name || meta?.ceo_name || "").trim().split(/\s+/)[0] || null;
+  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { name: true } }).catch(() => null);
+  const firstName = greetingFirstName(account?.name, user.user_metadata as { full_name?: string; name?: string; ceo_name?: string } | undefined);
   return (
     <ServicesPage email={user.email ?? null}>
       <ServiceChooser firstName={firstName} cards={services.cards} waiting={services.waiting} addHref={services.waiting.some((w) => w.id === "agency") ? null : "/apps/start"} />
