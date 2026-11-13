@@ -3,6 +3,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { isServiceEnabled } from "@/lib/admin/switch";
+import { loadServiceKeys } from "@/lib/admin/service-keys";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { telegramText, type LeadAlert } from "./format";
@@ -30,6 +31,17 @@ function readValue(value: unknown): Stored | null {
   return v && typeof v === "object" && typeof v.chatId === "string" && /^-?\d{1,20}$/.test(v.chatId) ? { chatId: v.chatId, name: String(v.name ?? ""), connectedAt: String(v.connectedAt ?? "") } : null;
 }
 
+/**
+ * The bot token the way every other key is read: the value saved in Admin -> Services (Telegram card) wins, else the
+ * hosting environment's TELEGRAM_BOT_TOKEN (on the PC: Netlify's production settings, passed by server.mjs). Loads the
+ * saved keys first (cached for 30 s, never throws), so a caller that did not check the service switch still finds a
+ * token saved in Admin -> Services.
+ */
+export async function resolveTelegramToken(): Promise<string | null> {
+  await loadServiceKeys();
+  return telegramToken();
+}
+
 /** The connected chat, or null. Never throws: a database blip means no Telegram alert, not a failed form. */
 export async function readTelegramChat(): Promise<Stored | null> {
   const row = await prisma.adminSetting.findUnique({ where: { key: TELEGRAM_CHAT_SETTING } }).catch(() => null);
@@ -40,13 +52,12 @@ export async function telegramStatus(): Promise<TelegramStatus> {
   // isServiceEnabled loads the keys saved in Admin -> Services into process.env first.
   const enabled = await isServiceEnabled("telegram");
   const chat = await readTelegramChat();
-  return { hasToken: !!telegramToken(), enabled, chat: chat ? { ...chat, connected: true } : null };
+  return { hasToken: !!(await resolveTelegramToken()), enabled, chat: chat ? { ...chat, connected: true } : null };
 }
 
 /** The token, or a message the admin can act on. */
 async function requireToken(): Promise<string> {
-  await isServiceEnabled("telegram"); // loads saved keys
-  const token = telegramToken();
+  const token = await resolveTelegramToken();
   if (!token) throw new AdminError("conflict", `Paste your bot's token (${TELEGRAM_TOKEN_ENV}) on the Telegram card in Admin -> Services first.`);
   return token;
 }
