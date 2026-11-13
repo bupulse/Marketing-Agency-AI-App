@@ -327,16 +327,20 @@ export function VideoLibrary({ initialVideos, studio, credits, canBuy, reason, f
   const [uploading, setUploading] = useState(false);
   const [videoBytes, setVideoBytes] = useState(upload.storage.used);
   const shown = useMemo(() => (filter === "all" ? videos : videos.filter((v) => v.source === filter)), [videos, filter]);
-  // The full player (an index into `shown`) and the video being scheduled (a dialog, from a card or the player).
-  const [playing, setPlaying] = useState<number | null>(null);
+  // The full player (the key of the video open in it) and the video being scheduled (a dialog, from a card or the
+  // player). A key, not an index: the list reloads when the person comes back from the studio tab (newest first), and
+  // an index would then point at another video.
+  const [playingKey, setPlayingKey] = useState<string | null>(null);
+  const playing = playingKey == null ? null : shown.findIndex((v) => v.key === playingKey);
   const [scheduling, setScheduling] = useState<LibraryVideo | null>(null);
 
   const update = (next: LibraryVideo) => setVideos((list) => list.map((x) => (x.key === next.key ? next : x)));
   const removed = (key: string) => {
-    setPlaying(null);
+    setPlayingKey(null);
     setVideos((list) => list.filter((x) => x.key !== key));
   };
-  const actionsOf = (v: LibraryVideo) => <VideoActions video={v} onSchedule={() => setScheduling(v)} onDeleted={() => removed(v.key)} />;
+  // Keyed by video: in the player, a "Delete this video for good?" asked on one video must not stay open on the next.
+  const actionsOf = (v: LibraryVideo) => <VideoActions key={v.key} video={v} onSchedule={() => setScheduling(v)} onDeleted={() => removed(v.key)} />;
   const items: PlayerItem[] = shown.map((v) => ({ ...libraryPlayerItem(v), info: <VideoFacts video={v} timeZone={timeZone} />, actions: actionsOf(v) }));
 
   // The "Your video is ready" email opens on its video.
@@ -399,7 +403,7 @@ export function VideoLibrary({ initialVideos, studio, credits, canBuy, reason, f
                   index={i}
                   focused={v.source === "studio" && v.id === focus}
                   badge={v.isNew ? <span className="rounded-full bg-pulse-violet px-2 py-1 text-[11.5px] leading-none font-semibold text-white">New</span> : undefined}
-                  onOpen={() => setPlaying(i)}
+                  onOpen={() => setPlayingKey(v.key)}
                   actions={actionsOf(v)}
                 />
               ))}
@@ -407,7 +411,7 @@ export function VideoLibrary({ initialVideos, studio, credits, canBuy, reason, f
           )}
         </>
       )}
-      <MediaPlayer items={items} index={playing} onIndexChange={setPlaying} onClose={() => setPlaying(null)} />
+      <MediaPlayer items={items} index={playing != null && playing >= 0 ? playing : null} onIndexChange={(i) => setPlayingKey(shown[i]?.key ?? null)} onClose={() => setPlayingKey(null)} />
       <Dialog open={scheduling != null} onOpenChange={(o) => !o && setScheduling(null)} title="Schedule this video" description={scheduling?.title} className="max-w-xl">
         {scheduling && (
           <ScheduleForm

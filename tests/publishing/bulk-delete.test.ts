@@ -25,7 +25,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 
 import { deletePostsAction } from "@/app/dashboard/calendar/actions";
-import { BULK_DELETABLE, bulkDeletable, bulkDeleteMessage, bulkSkipReason, MAX_BULK_DELETE } from "@/lib/publishing/bulk-delete";
+import { BULK_DELETABLE, bulkDeletable, bulkDeleteMessage, bulkSkipReason, MAX_BULK_DELETE, selectAllButton } from "@/lib/publishing/bulk-delete";
 import { ForbiddenError } from "@/lib/team/roles";
 
 type Row = { id: string; status: string; lockedAt: Date | null };
@@ -183,5 +183,15 @@ describe("bulk delete rules", () => {
       }),
     ).toEqual({ text: "2 posts deleted. 3 posts were kept: 2 are already posted, 1 is going out right now.", tone: "success" });
     expect(bulkDeleteMessage({ deleted: 0, skipped: [{ id: "a", reason: "not_found" }] })).toEqual({ text: "1 post was kept: 1 could not be found.", tone: "error" });
+  });
+});
+
+describe("select all button", () => {
+  it("offers all when there are few, 100 when there are more, and Clear all once the cap is picked", () => {
+    expect(selectAllButton(12, 0)).toEqual({ all: false, label: "Select all 12" });
+    expect(selectAllButton(12, 12)).toEqual({ all: true, label: "Clear all" });
+    expect(selectAllButton(140, 0)).toEqual({ all: false, label: `Select ${MAX_BULK_DELETE}` });
+    expect(selectAllButton(140, MAX_BULK_DELETE)).toEqual({ all: true, label: "Clear all" });
+    expect(selectAllButton(0, 0).all).toBe(false);
   });
 });

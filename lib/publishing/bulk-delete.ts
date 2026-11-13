@@ -36,7 +36,17 @@ export function bulkSkipReason(row: { status: string; lockedAt: Date | null } | 
   return null;
 }
 
-export type BulkDeleteResult = { deleted: number; skipped: { id: string; reason: BulkSkipReason }[] };
+/**
+ * "Select all" in select mode: at most MAX_BULK_DELETE are picked, so with more waiting the button says "Select 100"
+ * and, once those are picked, "Clear all" (it used to keep saying "Select all 140" and never offered to clear).
+ */
+export function selectAllButton(total: number, selected: number): { all: boolean; label: string } {
+  const cap = Math.min(total, MAX_BULK_DELETE);
+  const all = total > 0 && selected >= cap;
+  return { all, label: all ? "Clear all" : total > MAX_BULK_DELETE ? `Select ${MAX_BULK_DELETE}` : `Select all ${total}` };
+}
+
+export type BulkDeleteResult ={ deleted: number; skipped: { id: string; reason: BulkSkipReason }[] };
 
 /** The toast after a bulk delete: how many went and, in plain words, why any stayed. */
 export function bulkDeleteMessage(res: BulkDeleteResult): { text: string; tone: "success" | "error" } {

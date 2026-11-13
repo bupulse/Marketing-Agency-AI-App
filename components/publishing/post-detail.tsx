@@ -120,7 +120,7 @@ export function PostDetail({ post, zone, onClose, onEdit, visualHref, autoNetwor
       index={index >= 0 ? index : null}
       onIndexChange={(i) => posts[i] && onNavigate?.(posts[i])}
       onClose={onClose}
-      renderBody={(_, i) => posts[i] && <Body post={posts[i]} zone={zone} ui={ui} setUi={setUi} pending={pending} visualHref={visualHref} autoNetworks={autoNetworks} group={group} reschedule={reschedule} />}
+      renderBody={(_, i) => posts[i] && <Body post={posts[i]} zone={zone} ui={ui} setUi={setUi} pending={pending} visualHref={visualHref} autoNetworks={autoNetworks} group={group} reschedule={reschedule} onClose={onClose} />}
       renderFooter={(_, i) => posts[i] && <Actions post={posts[i]} ui={ui} setUi={setUi} pending={pending} act={act} autoNetworks={autoNetworks} onEdit={onEdit} toast={toast} />}
     />
   );
@@ -129,7 +129,7 @@ export function PostDetail({ post, zone, onClose, onEdit, visualHref, autoNetwor
 type SetUi = (fn: (u: Ui) => Ui) => void;
 
 /** What happened to the post and what to know (notes, results), moving it, and its script and versions. */
-function Body({ post, zone, ui, setUi, pending, visualHref, autoNetworks, group, reschedule }: { post: CalendarPost; zone: string; ui: Ui; setUi: SetUi; pending: boolean; visualHref?: string | null; autoNetworks: readonly string[]; group: readonly CalendarPost[]; reschedule: (p: CalendarPost) => void }) {
+function Body({ post, zone, ui, setUi, pending, visualHref, autoNetworks, group, reschedule, onClose }: { post: CalendarPost; zone: string; ui: Ui; setUi: SetUi; pending: boolean; visualHref?: string | null; autoNetworks: readonly string[]; group: readonly CalendarPost[]; reschedule: (p: CalendarPost) => void; onClose: () => void }) {
   // Opened from a click, never rendered on the server: reading the clock here cannot mismatch.
   const timePassed = approvalTimePassed(post);
   // Results (when the plan shows them, lib/publishing/results.ts): this post first, then its other networks.
@@ -152,7 +152,8 @@ function Body({ post, zone, ui, setUi, pending, visualHref, autoNetworks, group,
         <p role="note" className="rounded-2xl bg-new-bg p-3.5 text-[14px] text-new">
           {post.reviewNote}{" "}
           {visualHref && (
-            <Link href={visualHref} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-2">
+            // Closes the post too: on its own subject page only the address's query changes, and the post stayed open on top.
+            <Link href={visualHref} onClick={onClose} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-2">
               Open it
             </Link>
           )}

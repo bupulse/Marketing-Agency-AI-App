@@ -167,6 +167,14 @@ export function CampaignCard({ name, coverUrl, status, statusLabel, kindLabel, p
         )}
         {actions.length > 0 && <ActionRow actions={actions} compact className="relative z-[2] mt-auto pt-1" />}
       </div>
+      {/* The whole card opens it: the name sits in the cover's own positioned box, so its stretched link covers only the
+          title. This layer (for the pointer only: the name stays the link for keyboards and screen readers) covers the
+          cover and the facts; the name and the actions sit above it. */}
+      {href ? (
+        <Link href={href} tabIndex={-1} aria-hidden className="absolute inset-0 z-[1] rounded-[26px]" />
+      ) : onOpen ? (
+        <span aria-hidden onClick={onOpen} className="absolute inset-0 z-[1] cursor-pointer rounded-[26px]" />
+      ) : null}
     </article>
   );
 }

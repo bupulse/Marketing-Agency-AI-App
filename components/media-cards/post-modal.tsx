@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { NetworkIcon, networkName } from "@/components/publishing/network-icon";
@@ -47,6 +47,8 @@ function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 
   const post = posts[index];
   const root = useRef<HTMLDivElement>(null);
   const media = useRef<HTMLDivElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef(0);
   const titleId = useId();
   const calm = useReducedMotion();
   const [tab, setTab] = useState(0);
@@ -60,16 +62,19 @@ function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 
 
   const go = useCallback(
     (step: 1 | -1) => {
+      // Not while it closes: the close would land on the post opened next.
+      if (closing) return;
       const next = index + step;
       if (next >= 0 && next < posts.length) onIndexChange(next);
     },
-    [index, posts.length, onIndexChange],
+    [closing, index, posts.length, onIndexChange],
   );
   const close = useCallback(() => {
     if (calm) return onClose();
     setClosing(true);
-    window.setTimeout(onClose, 200);
+    closeTimer.current = window.setTimeout(onClose, 200);
   }, [calm, onClose]);
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
 
   useDialog(true, root, {
     Escape: (e) => {
@@ -92,7 +97,8 @@ function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 
     if (post.media.length > 1) return;
     if (d === "left") go(1);
     if (d === "right") go(-1);
-    if (d === "down") close();
+    // Only from the top: on a phone the sheet scrolls, and a drag down on the media to scroll back up must not close it.
+    if (d === "down" && (sheet.current?.scrollTop ?? 0) <= 0) close();
   });
 
   return (
@@ -122,6 +128,7 @@ function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 
       </button>
 
       <div
+        ref={sheet}
         className={cn(
           s.sheetIn,
           "relative z-[1] flex w-full flex-col overflow-hidden bg-surface text-text shadow-[0_40px_120px_-30px_rgba(0,0,0,0.8)] dark:bg-[#141419]",
