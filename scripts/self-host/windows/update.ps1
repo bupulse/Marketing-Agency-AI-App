@@ -1,56 +1,89 @@
-# Updates bupulse.com on the home Windows PC to the latest code on GitHub (docs/SELF_HOST.md). Run it from an
-# administrator PowerShell:  powershell -ExecutionPolicy Bypass -File D:\BuPulse\scripts\self-host\windows\update.ps1
+# Updates bupulse.com on the home Windows PC to the latest code on GitHub (docs/SELF_HOST.md). A NORMAL PowerShell is
+# enough (no "Run as administrator", no UAC prompt):
+#   powershell -ExecutionPolicy Bypass -File C:\Users\WECPC015\BuPulse\scripts\self-host\windows\update.ps1
 #
-# Stop-ScheduledTask ends only server.mjs: the `next start` it launched keeps running and holding port 3002, so the
-# restarted task cannot listen and the old version stays live (6 November 2026). This script also stops the process
-# listening on port 3002, by its exact process ID, before building and starting again.
+# It talks to the BuPulse supervisor (supervisor.mjs) through files in %USERPROFILE%\bupulse-prod instead of stopping
+# and starting scheduled tasks: until 13 November 2026 it used Stop-/Start-ScheduledTask on tasks an administrator had
+# registered, which Windows allows only to administrators (that was the UAC prompt). The supervisor stops the server by
+# the exact process ID it started (with its `next start` child), so nothing is left holding port 3002.
+#
+# Still on the old tasks (the supervisor is not running)? Run admin-once.ps1 once as administrator (docs/SELF_HOST.md).
 $ErrorActionPreference = "Stop"
 $repo = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
+$logs = Join-Path $env:USERPROFILE "bupulse-prod"
+$pause = Join-Path $logs "pause-server"
 Set-Location $repo
 
-Write-Host "1/4 Downloading the new code"
+function Get-SupervisorState {
+  try { return Invoke-RestMethod -Uri "http://127.0.0.1:3019/" -TimeoutSec 5 } catch { return $null }
+}
+
+if (-not (Get-SupervisorState)) {
+  $old = Get-ScheduledTask -TaskName "BuPulse server" -ErrorAction SilentlyContinue
+  if ($old -and $old.State -ne "Disabled") {
+    throw "This PC still runs the old 'BuPulse server' task. Run once, in a PowerShell opened with 'Run as administrator': powershell -ExecutionPolicy Bypass -File `"$repo\scripts\self-host\windows\admin-once.ps1`" (docs/SELF_HOST.md). Nothing was changed."
+  }
+  throw "The BuPulse supervisor is not running. Start it (no administrator needed): Start-Process wscript.exe `"$logs\supervisor-hidden.vbs`" , wait a minute, and run this again. Nothing was changed."
+}
+
+Write-Host "1/5 Downloading the new code"
+$before = (git rev-parse HEAD).Trim()
 git pull --ff-only
 if ($LASTEXITCODE -ne 0) { throw "git pull failed: nothing was changed, the site still runs the old version" }
 
-# The tunnel's hostnames live in the repo (tunnel-config.ps1): a new one (support.bupulse.com, 9 November 2026) is
-# picked up by restarting the tunnel task, a few seconds offline.
+# The tunnel's hostnames live in the repo (tunnel-config.ps1): a new one is picked up by restarting the tunnel, a few
+# seconds offline. The supervisor does it (restart-tunnel).
 if ((& (Join-Path $PSScriptRoot "tunnel-config.ps1")) -eq "changed") {
-  Write-Host "    tunnel hostnames changed: restarting the tunnel"
-  Stop-ScheduledTask -TaskName "BuPulse tunnel"
-  Start-Sleep -Seconds 2
-  Start-ScheduledTask -TaskName "BuPulse tunnel"
+  Write-Host "    tunnel hostnames changed: the supervisor restarts the tunnel"
+  New-Item -ItemType File -Force (Join-Path $logs "restart-tunnel") | Out-Null
 }
 
-Write-Host "2/4 Stopping the website (down for a few minutes)"
-Stop-ScheduledTask -TaskName "BuPulse server"
-$listener = Get-NetTCPConnection -LocalPort 3002 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
-foreach ($id in $listener) { Stop-Process -Id $id -Force }
-Start-Sleep -Seconds 3
+Write-Host "2/5 Stopping the website (down for a few minutes)"
+New-Item -ItemType File -Force $pause | Out-Null
+$stopped = $false
+foreach ($i in 1..30) {
+  Start-Sleep -Seconds 2
+  $s = Get-SupervisorState
+  if ($s -and $s.children.server.state -eq "paused" -and -not $s.children.server.pid) { $stopped = $true; break }
+}
+if (-not $stopped) {
+  Remove-Item -LiteralPath $pause -ErrorAction SilentlyContinue
+  throw "The supervisor did not stop the website within a minute (see $logs\supervisor.log). Nothing was built; the site keeps running."
+}
 
-Write-Host "3/4 Building the new version (several minutes)"
+# A new supervisor.mjs takes effect only in a fresh supervisor: it replaces itself now, while the website is stopped
+# anyway (pause-server stays, so the new one keeps it stopped).
+if (git diff --name-only $before HEAD -- scripts/self-host/windows/supervisor.mjs) {
+  Write-Host "    the supervisor changed: starting a fresh one"
+  $oldPid = (Get-SupervisorState).supervisorPid
+  New-Item -ItemType File -Force (Join-Path $logs "restart-supervisor") | Out-Null
+  $fresh = $false
+  foreach ($i in 1..45) {
+    Start-Sleep -Seconds 2
+    $s = Get-SupervisorState
+    if ($s -and $s.supervisorPid -ne $oldPid) { $fresh = $true; break }
+  }
+  if (-not $fresh) { Write-Warning "The fresh supervisor did not answer within 90 seconds (see $logs\supervisor.log); the build goes on, and the 'BuPulse supervisor' task starts one within 5 minutes." }
+}
+
+Write-Host "3/5 Building the new version (several minutes)"
 node scripts\self-host\windows\server.mjs build
 $built = $LASTEXITCODE -eq 0
 
-Write-Host "4/4 Starting the website"
-Start-ScheduledTask -TaskName "BuPulse server"
-if (-not $built) { throw "the build failed (see the messages above): send them to Claude" }
-foreach ($i in 1..30) {
-  Start-Sleep -Seconds 4
+Write-Host "4/5 Starting the website"
+Remove-Item -LiteralPath $pause -ErrorAction SilentlyContinue
+if (-not $built) { throw "the build failed (see the messages above): send them to Claude. The supervisor starts the website again anyway." }
+$up = $false
+foreach ($i in 1..60) {
+  Start-Sleep -Seconds 5
   try {
-    if ((Invoke-RestMethod -Uri "http://127.0.0.1:3002/api/status" -TimeoutSec 5).status -eq "ok") {
-      # The job loop reads cron-loop.ps1 only when it starts: restart it (when it is switched on) so a new version of
-      # the loop, such as the heartbeat for the Server page, takes effect. The server was down, so no job was mid-way.
-      try {
-        $jobs = Get-ScheduledTask -TaskName "BuPulse jobs" -ErrorAction SilentlyContinue
-        if ($jobs -and $jobs.State -ne "Disabled") {
-          Stop-ScheduledTask -TaskName "BuPulse jobs"
-          Start-ScheduledTask -TaskName "BuPulse jobs"
-        }
-      } catch {
-        Write-Warning "The site is updated, but the BuPulse jobs task could not be restarted: $($_.Exception.Message)"
-      }
-      Write-Host "Done: bupulse.com runs $(git log --oneline -1)"; exit 0
-    }
+    if ((Invoke-RestMethod -Uri "http://127.0.0.1:3002/api/status" -TimeoutSec 5).status -eq "ok") { $up = $true; break }
   } catch { }
 }
-throw "the website did not answer within 2 minutes: check $env:USERPROFILE\bupulse-prod\server.log"
+if (-not $up) { throw "the website did not answer within 5 minutes: check $logs\server.log and $logs\supervisor.log" }
+
+# The jobs loop reads cron-loop.ps1 only when it starts: the supervisor restarts it (when it runs) so a new version of
+# the loop takes effect. The server was stopped, so no job was mid-way.
+Write-Host "5/5 Restarting the jobs loop (when it is on)"
+if (Test-Path (Join-Path $logs "jobs-on")) { New-Item -ItemType File -Force (Join-Path $logs "restart-jobs") | Out-Null }
+Write-Host "Done: bupulse.com runs $(git log --oneline -1)"

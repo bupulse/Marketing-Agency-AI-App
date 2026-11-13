@@ -1,5 +1,6 @@
 # Every minute: bupulse.com's scheduled jobs (/api/cron/tick runs the routes due that UTC minute, lib/cron/tick.ts).
-# The Windows twin of scripts/self-host/cron-loop.sh. Run by the "BuPulse jobs" task, and only on ONE computer at a time.
+# The Windows twin of scripts/self-host/cron-loop.sh. Run by the supervisor (supervisor.mjs) while
+# %USERPROFILE%\bupulse-prod\jobs-on exists (before 13 November 2026: the "BuPulse jobs" task), and only on ONE computer.
 #
 # Also every minute, on its own thread so a long tick never delays it: the PC's heartbeat for the support app's Server
 # page (POST /api/monitor/heartbeat, same secret): CPU, memory, disks, restart time, the three tasks, node and
@@ -54,13 +55,29 @@ $heartbeat = {
         }
       }
 
+      # Since 13 November 2026 the supervisor (supervisor.mjs) runs the three pieces: their states come from its
+      # supervisor-state.json (written every 15 s) under the same three names, so the Server page needs no change.
+      # Without a fresh state file (the old start-at-boot tasks), the scheduled tasks' own states as before.
       $tasks = @()
+      $sup = $null
+      try {
+        $stateFile = Join-Path $logs "supervisor-state.json"
+        if ((Test-Path $stateFile) -and ((Get-Date) - (Get-Item $stateFile).LastWriteTime).TotalMinutes -lt 2) {
+          $sup = Get-Content $stateFile -Raw | ConvertFrom-Json
+        }
+      } catch { $sup = $null }
+      $pieces = @{ "BuPulse server" = "server"; "BuPulse tunnel" = "tunnel"; "BuPulse jobs" = "jobs" }
       foreach ($taskName in "BuPulse server", "BuPulse tunnel", "BuPulse jobs") {
         $state = "Unknown"
-        try {
-          $state = (Get-ScheduledTask -TaskName $taskName -ErrorAction Stop).State.ToString()
-        } catch {
-          if ("$($_.Exception.Message)" -match "No MSFT_ScheduledTask") { $state = "Missing" }
+        if ($sup) {
+          $piece = $sup.children.($pieces[$taskName])
+          $state = switch ("$($piece.state)") { "running" { "Running" } "restarting" { "Queued" } "foreign" { "Queued" } "paused" { "Ready" } "stopped" { "Ready" } "off" { "Disabled" } default { "Unknown" } }
+        } else {
+          try {
+            $state = (Get-ScheduledTask -TaskName $taskName -ErrorAction Stop).State.ToString()
+          } catch {
+            if ("$($_.Exception.Message)" -match "No MSFT_ScheduledTask") { $state = "Missing" }
+          }
         }
         $tasks += @{ name = $taskName; state = $state }
       }

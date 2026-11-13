@@ -4,9 +4,10 @@
 #
 # What it does: keeps the PC awake on mains power, creates %USERPROFILE%\bupulse-prod (logs and this PC's own
 # CRON_SECRET), installs the packages, links the folder to the Netlify site (for the production settings), builds,
-# writes the tunnel config, and registers three tasks that start at boot: "BuPulse server", "BuPulse tunnel" and
-# "BuPulse jobs". The jobs task is registered DISABLED: switch it on only once the Mac's job loop is stopped, so the
-# scheduled jobs never run on two computers.
+# writes the tunnel config, and sets up the BuPulse supervisor (admin-once.ps1: website, tunnel and jobs loop, started at
+# boot and at sign-in, each restarted when it stops). The jobs loop starts switched OFF: switch it on (jobs-on file) only
+# once the Mac's job loop is stopped, so the scheduled jobs never run on two computers. Later updates: update.ps1 in a
+# normal PowerShell (no administrator).
 $ErrorActionPreference = "Stop"
 $repo = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $logs = Join-Path $env:USERPROFILE "bupulse-prod"
@@ -55,25 +56,13 @@ node scripts\self-host\windows\server.mjs build
 if ($LASTEXITCODE -ne 0) { throw "build failed: see the messages above" }
 Pop-Location
 
-Write-Host "6/6 Tunnel config and start-at-boot tasks"
+Write-Host "6/6 Tunnel config and the supervisor (website, tunnel, jobs loop; starts at boot and at sign-in)"
 & (Join-Path $PSScriptRoot "tunnel-config.ps1") | Out-Null
-
-$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-$boot = New-ScheduledTaskTrigger -AtStartup
-$node = (Get-Command node).Source
-$cloudflared = (Get-Command cloudflared).Source
-$tasks = @(
-  @{ Name = "BuPulse server"; Action = New-ScheduledTaskAction -Execute $node -Argument "`"$repo\scripts\self-host\windows\server.mjs`" start" -WorkingDirectory $repo },
-  @{ Name = "BuPulse tunnel"; Action = New-ScheduledTaskAction -Execute $cloudflared -Argument "tunnel --no-autoupdate --config `"$config`" run bupulse-prod" },
-  @{ Name = "BuPulse jobs"; Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$repo\scripts\self-host\windows\cron-loop.ps1`"" }
-)
-foreach ($t in $tasks) {
-  Register-ScheduledTask -TaskName $t.Name -Action $t.Action -Trigger $boot -Principal $principal -Settings $settings -Force | Out-Null
-}
-Disable-ScheduledTask -TaskName "BuPulse jobs" | Out-Null
-Start-ScheduledTask -TaskName "BuPulse server"
+# admin-once.ps1 registers "BuPulse supervisor at boot" and the per-user "BuPulse supervisor" task and starts it
+# (docs/SELF_HOST.md, "Supervisor"). The jobs loop stays off until %USERPROFILE%\bupulse-prod\jobs-on exists: create it
+# only once the Mac's job loop is stopped, so the scheduled jobs never run on two computers.
+& (Join-Path $PSScriptRoot "admin-once.ps1")
 
 Write-Host ""
-Write-Host "Done. In about a minute, http://localhost:3002/api/status should say ""status"":""ok""."
-Write-Host "Then follow the guide's switch step (tunnel on, Mac off, jobs on)."
+Write-Host "Done. http://localhost:3002/api/status should say ""status"":""ok""."
+Write-Host "Then follow the guide's switch step (Mac off, then: New-Item -ItemType File $env:USERPROFILE\bupulse-prod\jobs-on)."
