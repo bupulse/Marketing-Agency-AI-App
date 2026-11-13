@@ -191,9 +191,12 @@ function BrandCard({ data }: { data: HomeViewData }) {
   );
 }
 
+/** 2000 -> "2,000": limits like voice characters run into the hundreds of thousands. */
+const count = (n: number) => n.toLocaleString("en-US");
+
 function UsageCard({ meters, planEnded }: { meters: HomeViewData["meters"]; planEnded: boolean }) {
   const first = meters.find((m) => m.max > 0);
-  const summary = planEnded ? "Your plan has ended" : first ? `${first.label}: ${first.value} of ${first.max} used` : "Nothing in your plan yet";
+  const summary = planEnded ? "Your plan has ended" : first ? `${first.label}: ${count(first.value)} of ${count(first.max)} used` : "Nothing in your plan yet";
   return (
     <ExpandCard icon={BarChart3} tone="blue" title="What you used this period" summary={summary} defaultOpen={planEnded}>
       <div className="flex flex-col gap-4">
@@ -205,7 +208,7 @@ function UsageCard({ meters, planEnded }: { meters: HomeViewData["meters"]; plan
               <div key={m.label} className={cn("flex flex-col gap-2", unavailable && "opacity-60")}>
                 <div className="flex justify-between gap-2 text-sm">
                   <span>{m.label}</span>
-                  <span className="text-muted tabular-nums">{unavailable ? "Not in plan" : `${m.value} / ${m.max}`}</span>
+                  <span className="text-muted tabular-nums">{unavailable ? "Not in plan" : `${count(m.value)} / ${count(m.max)}`}</span>
                 </div>
                 <Meter value={m.value} max={m.max} label={m.label} />
               </div>
