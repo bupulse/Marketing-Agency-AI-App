@@ -666,10 +666,17 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
             </button>
             <div className="flex min-w-0 items-center gap-2.5">
               <BrandMark name={businessName} brand={brand} size={36} />
-              {/* On a phone the bar keeps to one row: the greeting shows from the small breakpoint up. */}
+              {/* On a phone the bar keeps to one row: the greeting shows from the small breakpoint up. Home greets in its
+                  own title ("Welcome, Euzeb"), so there the bar shows only the company, not the same greeting twice. */}
               <div className="hidden min-w-0 flex-col sm:flex">
-                <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">Welcome back, {firstName}</span>
-                <span className="truncate text-[13px] text-muted">{businessName}</span>
+                {pathname === "/dashboard" ? (
+                  <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">{businessName}</span>
+                ) : (
+                  <>
+                    <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">Welcome back, {firstName}</span>
+                    <span className="truncate text-[13px] text-muted">{businessName}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -69,9 +69,8 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
               <span className="sr-only"> to review</span>
             </span>
           </h2>
-          <p className="text-[15px] text-muted">
-            {posts.length === 0 ? "Nothing new to review today." : "New posts waiting for your OK. Approving schedules each one at the best time for its app."}
-          </p>
+          {/* Nothing today: the card below says so ("You are all caught up"), not a second line saying the same. */}
+          {posts.length > 0 && <p className="text-[15px] text-muted">New posts waiting for your OK. Approving schedules each one at the best time for its app.</p>}
         </div>
         {posts.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
