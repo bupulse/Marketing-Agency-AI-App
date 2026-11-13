@@ -197,7 +197,7 @@ export function PlanBoard({ view, creditsLeft }: { view: AutopilotView; creditsL
             Your upcoming posts
           </h2>
           <p className="text-[14px] text-muted">
-            {creditsLeft} text {creditsLeft === 1 ? "credit" : "credits"} left this month. Next plan: week of {weekLabel(view.nextWeekStart, view.timeZone)}.
+            {creditsLeft.toLocaleString("en-US")} text {creditsLeft === 1 ? "credit" : "credits"} left this month. Next plan: week of {weekLabel(view.nextWeekStart, view.timeZone)}.
           </p>
         </div>
         <Button

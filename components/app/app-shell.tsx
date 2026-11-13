@@ -425,7 +425,7 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
           </div>
           <RailMeter value={plan.used} max={plan.max} label="Text generations used" />
           <span className="text-xs text-white/85 dark:text-white/60">
-            {plan.used} of {plan.max} generations used
+            {plan.used.toLocaleString("en-US")} of {plan.max.toLocaleString("en-US")} generations used
           </span>
         </div>
       </div>

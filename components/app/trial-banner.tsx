@@ -132,7 +132,7 @@ export function TrialBanner(props: TrialBannerProps) {
             <div key={m.label} className="flex min-w-[140px] flex-1 flex-col gap-1">
               <Meter value={m.used} max={m.max} label={m.label} />
               <span className="text-xs text-muted">
-                {m.label}: {m.used} of {m.max}
+                {m.label}: {m.used.toLocaleString("en-US")} of {m.max.toLocaleString("en-US")}
               </span>
             </div>
           ))}
