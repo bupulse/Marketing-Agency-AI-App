@@ -275,7 +275,7 @@ describe("workflow: one down alert per outage, runs stay green", () => {
       return null; // bupulse.com does not answer
     });
   }
-  const env = { SITE_URL: "https://bupulse.com", GITHUB_REPOSITORY: "bupulse/app", GITHUB_RUN_ID: "3", GITHUB_TOKEN: "t", TELEGRAM_BOT_TOKEN: "1:x", TELEGRAM_CHAT_ID: "42", RESEND_API_KEY: "re_x", UPTIME_SECRET: "u", UPTIME_DOWN_ALERT: "on" } as unknown as NodeJS.ProcessEnv;
+  const env = { SITE_URL: "https://bupulse.com", GITHUB_REPOSITORY: "bupulse/app", GITHUB_RUN_ID: "3", GITHUB_TOKEN: "t", TELEGRAM_BOT_TOKEN: "1:x", TELEGRAM_CHAT_ID: "42", RESEND_API_KEY: "re_x", UPTIME_SECRET: "u" } as unknown as NodeJS.ProcessEnv;
 
   async function runMain(fn: typeof fetch, extra: Record<string, string | undefined> = {}) {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
@@ -301,9 +301,9 @@ describe("workflow: one down alert per outage, runs stay green", () => {
     expect(printed).not.toMatch(/re_x|1:x|Bearer/);
   });
 
-  it("GitHub's down alert is off unless UPTIME_DOWN_ALERT is on (the server PC sends it); the marker is still left", async () => {
+  it("GitHub's down alert is on by default and can be switched off with UPTIME_DOWN_ALERT=off; the marker is still left", async () => {
     const { fn, calls } = siteDown(false);
-    const { code, mark, printed } = await runMain(fn, { UPTIME_DOWN_ALERT: undefined });
+    const { code, mark, printed } = await runMain(fn, { UPTIME_DOWN_ALERT: "off" });
     expect(code).toBe(0);
     expect(mark).toHaveBeenCalledTimes(1);
     expect(calls.some((c) => c.url.startsWith("https://api.telegram.org/") || c.url.startsWith("https://api.resend.com/"))).toBe(false);

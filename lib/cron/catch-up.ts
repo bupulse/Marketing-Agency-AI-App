@@ -14,8 +14,9 @@ import { CRON_ROUTES } from "@/worker-crons";
 //   publishing/engine.ts sweepStalePosts), and leaves posts from a past local day to the carry-over, which reschedules
 //   them (the daily-posts job, itself caught up here).
 // - A missed time counts only once it is CATCH_UP_DELAY_MS old (a run of that time may still be going) and only when
-//   no run started since; a job due again within NEXT_SOON_MS just waits; at most MAX_PER_TICK jobs per tick, and each
-//   missed time is tried once per server process (a job that fails is not retried every minute).
+//   no run started since; a job due again within NEXT_SOON_MS just waits; one job per tick (MAX_PER_TICK) inside its own
+//   2.5-minute budget (CATCH_UP_BUDGET_MS), so the every-minute publisher is never held for long; each missed time is
+//   tried once per server process (a job that fails is not retried every minute).
 
 export const CATCH_UP_JOB = "catch-up";
 export const CATCH_UP_DELAY_MS = 20 * 60_000;
@@ -24,7 +25,10 @@ export const MIN_PERIOD_MS = 30 * 60_000;
 export const NEXT_SOON_MS = 15 * 60_000;
 /** Older missed times are not run (a job missed for over a week waits for its next time). */
 export const MAX_AGE_MS = 7 * 86_400_000;
-export const MAX_PER_TICK = 3;
+/** One missed job per tick, so a catch-up never holds the next minute's publisher for long. */
+export const MAX_PER_TICK = 1;
+/** The catch-up's own time budget in a tick: no new cursor call after this (one route call can still finish). */
+export const CATCH_UP_BUDGET_MS = 150_000;
 /** How far back the tick reads each job's last start. */
 export const LOOKBACK_MS = 8 * 86_400_000;
 

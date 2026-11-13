@@ -19,9 +19,11 @@
 //   and email message when the site has been down for 2 minutes and one when it is back (lib/monitor/watch.ts).
 //
 // Control files in %USERPROFILE%\bupulse-prod (update.ps1 uses them; no admin needed):
-//   pause-server       stop the server and keep it stopped (while update.ps1 builds); delete it to start again
+//   pause-server       stop the server and keep it stopped (while update.ps1 builds); delete it to start again. A
+//                      pause-server older than 45 minutes is ignored (and logged): a failed update never keeps the site off
 //   restart-server     restart-tunnel     restart-jobs     restart that piece once (the file is removed)
-//   jobs-on            run the jobs loop (the scheduled jobs must run on ONE computer only)
+//   jobs-on            run the jobs loop (the scheduled jobs must run on ONE computer only). Never while port 3002
+//                      belongs to a server this supervisor did not start (the old tasks may still run their own loop)
 //   restart-supervisor stop the pieces and start a fresh supervisor (update.ps1, when supervisor.mjs changed)
 //   stop-supervisor    stop everything and exit; while it exists the supervisor does not start
 //
@@ -61,6 +63,8 @@ export const TIMING = {
   quickCrashMs: 60_000,
   /** How often supervisor-state.json is written. */
   stateMs: 15_000,
+  /** A pause-server file older than this is left over from a failed update: ignored. */
+  maxPauseMs: 45 * 60_000,
 };
 
 const MAX_LOG_BYTES = 20 * 1024 * 1024;
@@ -145,6 +149,19 @@ export function processStartedAt(pid) {
   return r.status === 0 && text ? text : null;
 }
 
+/**
+ * The process listening on `port` and when it started ({ pid, startedAt }), or null. Recorded once the server answers,
+ * because the listener (`next start`) is a grandchild of the process the supervisor started (node -> cmd -> npx -> next):
+ * if its parents die it can be left holding the port, and it is then stopped by this PID only when its start time matches.
+ */
+export function listenerOf(port) {
+  if (process.platform !== "win32") return null;
+  const script = `$c = Get-NetTCPConnection -LocalPort ${Number(port)} -State Listen -ErrorAction Stop | Select-Object -First 1; $p = Get-Process -Id $c.OwningProcess -ErrorAction Stop; "$($c.OwningProcess)|$($p.StartTime.ToUniversalTime().ToString('o'))"`;
+  const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, encoding: "utf8" });
+  const [pid, startedAt] = (r.stdout ?? "").trim().split("|");
+  return r.status === 0 && Number(pid) > 0 && startedAt ? { pid: Number(pid), startedAt } : null;
+}
+
 /** Is something listening on 127.0.0.1:`port`? */
 export function portInUse(port, host = "127.0.0.1") {
   return new Promise((done) => {
@@ -209,6 +226,7 @@ export class Supervisor {
    * @param {(pid: number) => void} [o.kill]
    * @param {(pid: number) => string | null} [o.startedAtOf]
    * @param {(port: number) => Promise<boolean>} [o.portBusy]
+   * @param {(port: number) => ({ pid: number, startedAt: string } | null)} [o.listenerOf]
    * @param {string} [o.localUrl]     http://127.0.0.1:3002
    * @param {string} [o.siteUrl]      https://bupulse.com
    * @param {string} [o.tunnelReadyUrl]
@@ -224,6 +242,8 @@ export class Supervisor {
     this.kill = o.kill ?? killTree;
     this.startedAtOf = o.startedAtOf ?? processStartedAt;
     this.portBusy = o.portBusy ?? ((port) => portInUse(port));
+    this.listenerOf = o.listenerOf ?? listenerOf;
+    this.stalePauseSeen = null;
     this.localUrl = o.localUrl ?? `http://127.0.0.1:${SERVER_PORT}`;
     this.siteUrl = o.siteUrl ?? SITE_URL;
     this.tunnelReadyUrl = o.tunnelReadyUrl ?? `http://${TUNNEL_METRICS}/ready`;
@@ -231,7 +251,7 @@ export class Supervisor {
     this.respawn = o.respawn ?? null;
     this.startedAt = new Date(this.now()).toISOString();
     this.children = Object.fromEntries(
-      NAMES.filter((n) => this.specs[n]).map((n) => [n, { pid: null, proc: null, state: "stopped", startedAt: 0, startedIso: null, quickCrashes: 0, nextStartAt: 0, restarts: 0, lastExit: null, mode: null, lastAnswerAt: null, foreign: false }]),
+      NAMES.filter((n) => this.specs[n]).map((n) => [n, { pid: null, proc: null, state: "stopped", startedAt: 0, startedIso: null, quickCrashes: 0, nextStartAt: 0, restarts: 0, lastExit: null, mode: null, lastAnswerAt: null, foreign: false, listener: null, waitLogged: false }]),
     );
     // serverSeenUp: the server answered at least once since this supervisor started, so a later silence is an outage
     // (the supervisor's own first start after a reboot is not: the uptime record covers a PC that was off).
@@ -255,9 +275,27 @@ export class Supervisor {
   }
 
   /** The pieces that should run now. */
+  /** Is the server paused by update.ps1? A pause-server older than maxPauseMs is ignored (a failed update). */
+  paused() {
+    const file = this.file("pause-server");
+    let mtime;
+    try {
+      mtime = statSync(file).mtimeMs;
+    } catch {
+      this.stalePauseSeen = null;
+      return false;
+    }
+    if (Date.now() - mtime <= this.timing.maxPauseMs) return true;
+    if (this.stalePauseSeen !== mtime) {
+      this.stalePauseSeen = mtime;
+      this.log(`pause-server is older than ${Math.round(this.timing.maxPauseMs / 60_000)} minutes (left by a failed update?): ignored, the server runs. Delete the file.`);
+    }
+    return false;
+  }
+
   wanted() {
     return {
-      server: !existsSync(this.file("pause-server")),
+      server: !this.paused(),
       tunnel: true,
       jobs: existsSync(this.file("jobs-on")),
     };
@@ -289,6 +327,8 @@ export class Supervisor {
     c.startedIso = new Date(c.startedAt).toISOString();
     c.lastAnswerAt = null;
     c.mode = null;
+    c.listener = null;
+    c.waitLogged = false;
     proc.once("error", (error) => {
       if (c.proc === proc) this.onExit(name, null, `failed: ${error?.message ?? error}`);
     });
@@ -352,17 +392,23 @@ export class Supervisor {
       return;
     }
     if (!prev || prev.bootAt !== bootTime(this.now())) return;
-    for (const name of NAMES) {
-      const old = prev.children?.[name];
-      if (!old?.pid || !old.startedAt || !isAlive(old.pid)) continue;
-      const actual = this.startedAtOf(old.pid);
-      if (!sameStart(old.startedAt, actual)) {
-        this.log(`leftover ${name}: pid ${old.pid} is alive but is not the process the last supervisor started; left alone`);
-        continue;
-      }
-      this.log(`leftover ${name}: stopping pid ${old.pid}, started by the previous supervisor at ${old.startedAt}`);
-      this.kill(old.pid);
+    const leftovers = NAMES.map((name) => [name, prev.children?.[name]]);
+    // The server's `next start` listener, recorded separately (it can outlive its parents).
+    if (prev.children?.server?.listener) leftovers.push(["server listener", prev.children.server.listener]);
+    for (const [name, old] of leftovers) this.stopIfSame(name, old, "started by the previous supervisor");
+  }
+
+  /** Stops `old.pid` only when it is alive and Windows confirms its start time is `old.startedAt`. */
+  stopIfSame(name, old, why) {
+    if (!old?.pid || !old.startedAt || !isAlive(old.pid)) return false;
+    const actual = this.startedAtOf(old.pid);
+    if (!sameStart(old.startedAt, actual)) {
+      this.log(`leftover ${name}: pid ${old.pid} is alive but is not the process recorded; left alone`);
+      return false;
     }
+    this.log(`leftover ${name}: stopping pid ${old.pid}, ${why} at ${old.startedAt}`);
+    this.kill(old.pid);
+    return true;
   }
 
   async controlRound() {
@@ -414,7 +460,19 @@ export class Supervisor {
         c.state = "restarting";
         continue;
       }
+      if (name === "jobs" && this.children.server?.foreign) {
+        // The old tasks may still run their own server and jobs loop: never run the scheduled jobs twice.
+        if (!c.waitLogged) this.log("jobs: not starting while port 3002 belongs to a server this supervisor did not start");
+        c.waitLogged = true;
+        c.state = "waiting";
+        continue;
+      }
       if (name === "server" && (await this.portBusy(SERVER_PORT))) {
+        // Our own `next start` left behind when its parents died (recorded PID and start time): stop it, start ours.
+        if (c.listener && this.stopIfSame("server listener", c.listener, "left by the server this supervisor started")) {
+          c.listener = null;
+          continue;
+        }
         // Another server (the old "BuPulse server" task?) holds the port: never start a second one.
         if (!c.foreign) this.log(`server: port ${SERVER_PORT} is used by a process this supervisor did not start (the old "BuPulse server" task?); not starting a second server. Run admin-once.ps1 once (docs/SELF_HOST.md).`);
         c.foreign = true;
@@ -437,6 +495,10 @@ export class Supervisor {
         server.lastAnswerAt = this.now();
         server.quickCrashes = 0;
         this.watch.serverSeenUp = true;
+        if (!server.listener) {
+          server.listener = this.listenerOf(SERVER_PORT);
+          if (server.listener) this.writeState();
+        }
       } else if (serverHangs({ startedAt: server.startedAt, lastAnswerAt: server.lastAnswerAt, now }, this.timing)) {
         this.stop("server", `no answer from ${this.localUrl}/api/status for ${Math.round(this.timing.hangMs / 60_000)} minutes`, { restart: true });
       }
@@ -501,7 +563,7 @@ export class Supervisor {
   snapshot() {
     const children = {};
     for (const [name, c] of Object.entries(this.children)) {
-      children[name] = { pid: c.pid, state: c.state, startedAt: c.startedIso, restarts: c.restarts, lastExit: c.lastExit };
+      children[name] = { pid: c.pid, state: c.state, startedAt: c.startedIso, restarts: c.restarts, lastExit: c.lastExit, ...(c.listener ? { listener: c.listener } : {}) };
     }
     return { supervisorPid: process.pid, startedAt: this.startedAt, bootAt: bootTime(this.now()), updatedAt: new Date(this.now()).toISOString(), children, probe: this.watch.last };
   }
@@ -593,6 +655,12 @@ export async function main() {
     child.unref();
   };
   const supervisor = new Supervisor({ logs, specs: defaultSpecs({ repo, logs, config }), respawn });
+  if (process.argv.includes("--self-test")) {
+    // update.ps1 runs this before asking for a fresh supervisor: the new file loads and builds its plan, starts nothing.
+    const s = supervisor.snapshot();
+    console.log(`supervisor self-test ok: ${Object.keys(s.children).join(", ")}`);
+    return 0;
+  }
   if (existsSync(join(logs, "stop-supervisor"))) {
     supervisor.log("not starting: stop-supervisor exists (delete it to let the supervisor run)");
     return 0;

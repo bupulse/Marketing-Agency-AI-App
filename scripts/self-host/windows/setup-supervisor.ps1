@@ -8,7 +8,11 @@
 # admin-once.ps1 adds a start-at-boot task (one time, as administrator). Safe to run again.
 #
 # -EnableJobs  also runs the scheduled jobs loop (creates %USERPROFILE%\bupulse-prod\jobs-on). Only on ONE computer.
-# -NoStart     register only (admin-once.ps1 starts it after retiring the old tasks).
+# -NoStart     register only (admin-once.ps1 starts the boot task itself and switches this one on at the end).
+#
+# While the old tasks ("BuPulse server", "BuPulse tunnel", "BuPulse jobs") are still switched on, the task is
+# registered SWITCHED OFF, jobs-on is not created and nothing is started, so nothing ever runs twice; admin-once.ps1
+# switches it on once the old tasks are off.
 param([switch]$EnableJobs, [switch]$NoStart)
 $ErrorActionPreference = "Stop"
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
@@ -32,9 +36,17 @@ $config = @{ node = $node; cloudflared = $cloudflared; tunnelConfig = (Join-Path
 $q = '"'
 $vbs = 'Set shell = CreateObject("WScript.Shell")' + "`r`n" + 'WScript.Quit shell.Run(' + ($q * 3) + $node + ($q * 2) + ' ' + ($q * 2) + $supervisor + ($q * 3) + ', 0, True)'
 [System.IO.File]::WriteAllText((Join-Path $logs "supervisor-hidden.vbs"), $vbs + "`r`n")
-if ($EnableJobs) {
+# The old tasks (install.ps1 before 13 November 2026) would run a second server, tunnel and jobs loop.
+$old = @()
+foreach ($name in "BuPulse server", "BuPulse tunnel", "BuPulse jobs") {
+  $t = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+  if ($t -and $t.State -ne "Disabled") { $old += $name }
+}
+if ($EnableJobs -and $old.Count -eq 0) {
   New-Item -ItemType File -Force (Join-Path $logs "jobs-on") | Out-Null
   Write-Host "    jobs loop: on (jobs-on created)"
+} elseif ($EnableJobs) {
+  Write-Warning "-EnableJobs ignored: the old tasks still run their own jobs loop (admin-once.ps1 moves it over)."
 }
 # A stop file left from before would keep the supervisor from starting.
 Remove-Item -LiteralPath (Join-Path $logs "stop-supervisor") -ErrorAction SilentlyContinue
@@ -45,6 +57,8 @@ $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$(Join-Pat
 $atLogon = New-ScheduledTaskTrigger -AtLogOn -User $user
 $every5 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5)
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+# Switched off while the old tasks are on (admin-once.ps1 switches it on after retiring them).
+if ($old.Count -gt 0) { $settings.Enabled = $false }
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 try {
   Register-ScheduledTask -TaskName "BuPulse supervisor" -Action $action -Trigger @($atLogon, $every5) -Settings $settings -Principal $principal -Force -ErrorAction Stop | Out-Null
@@ -55,17 +69,12 @@ try {
   Write-Host "    already registered (by admin-once.ps1); kept as it is"
 }
 
-# The old tasks (install.ps1 before 13 November 2026) would run a second server, tunnel and jobs loop.
-$old = @()
-foreach ($name in "BuPulse server", "BuPulse tunnel", "BuPulse jobs") {
-  $t = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-  if ($t -and $t.State -ne "Disabled") { $old += $name }
-}
 if ($old.Count -gt 0) {
+  try { Disable-ScheduledTask -TaskName "BuPulse supervisor" -ErrorAction Stop | Out-Null } catch { }
   Write-Warning "The old tasks are still switched on: $($old -join ', '). They were made as administrator, so only an"
   Write-Warning "administrator PowerShell can switch them off. Run ONCE, as administrator:"
   Write-Warning "  powershell -ExecutionPolicy Bypass -File `"$repo\scripts\self-host\windows\admin-once.ps1`""
-  Write-Warning "The supervisor is registered but NOT started, so nothing runs twice."
+  Write-Warning "The supervisor task is registered SWITCHED OFF and not started, so nothing runs twice."
   exit 0
 }
 if ($NoStart) { Write-Host "Registered (not started)."; exit 0 }

@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -168,6 +169,66 @@ describe("the supervisor with real child processes", () => {
     expect(sup!.children.server.pid).toBeNull();
     expect(sup!.children.server.state).toBe("foreign");
     expect(log().match(/not starting a second server/g)).toHaveLength(1);
+  });
+
+  it("ignores (and logs once) a pause-server left for more than 45 minutes by a failed update", async () => {
+    const { log } = make({ server: spec("setInterval(() => {}, 1000)") });
+    writeFileSync(join(dir, "pause-server"), "");
+    const old = new Date(Date.now() - 46 * 60_000);
+    utimesSync(join(dir, "pause-server"), old, old);
+    await sup!.controlRound();
+    await sup!.controlRound();
+    expect(sup!.children.server.pid).toBeTruthy();
+    expect(log().match(/pause-server is older than 45 minutes/g)).toHaveLength(1);
+  });
+
+  it("never starts the jobs loop while port 3002 belongs to a server it did not start (the old tasks)", async () => {
+    let busy = true;
+    const { log } = make({ server: spec("setInterval(() => {}, 1000)"), jobs: spec("setInterval(() => {}, 1000)") }, { portBusy: async () => busy, listenerOf: () => null });
+    writeFileSync(join(dir, "jobs-on"), "");
+    await sup!.controlRound();
+    await sup!.controlRound();
+    expect(sup!.children.jobs.pid).toBeNull();
+    expect(sup!.children.jobs.state).toBe("waiting");
+    expect(log().match(/jobs: not starting/g)).toHaveLength(1);
+    // The old server goes away: ours starts, and then the jobs loop.
+    busy = false;
+    await sup!.controlRound();
+    expect(sup!.children.server.pid).toBeTruthy();
+    expect(sup!.children.jobs.pid).toBeTruthy();
+  });
+
+  it("records the server's listener and stops it as an orphan only when its start time matches", async () => {
+    const orphan = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });
+    const recorded = { pid: orphan.pid!, startedAt: "2026-11-13T08:00:00.000Z" };
+    let startTimeWindowsReports = "2026-11-13T09:30:00.000Z"; // a different process reusing the PID
+    let busy = false;
+    const { kills, log } = make(
+      { server: spec("setInterval(() => {}, 1000)") },
+      { portBusy: async () => busy, listenerOf: () => recorded, startedAtOf: () => startTimeWindowsReports, fetchImpl: async () => new Response("{}", { status: 200 }) },
+    );
+    await sup!.controlRound();
+    await sup!.healthRound();
+    expect(sup!.children.server.listener).toEqual(recorded);
+    expect((sup!.snapshot().children as Record<string, { listener?: unknown }>).server.listener).toEqual(recorded);
+    // server.mjs dies by itself, its `next start` keeps the port.
+    const serverPid = sup!.children.server.pid!;
+    process.kill(-serverPid, "SIGKILL");
+    await until(() => sup!.children.server.pid === null);
+    sup!.children.server.nextStartAt = 0;
+    busy = true;
+    await sup!.controlRound();
+    // Start time does not match: left alone, no second server.
+    expect(kills).not.toContain(orphan.pid);
+    expect(sup!.children.server.state).toBe("foreign");
+    // It matches: stopped by that PID, and ours starts once the port is free.
+    startTimeWindowsReports = "2026-11-13T08:00:02.000Z";
+    await sup!.controlRound();
+    expect(kills).toContain(orphan.pid);
+    expect(log()).toMatch(/leftover server listener: stopping pid \d+/);
+    busy = false;
+    await sup!.controlRound();
+    expect(sup!.children.server.pid).toBeTruthy();
   });
 
   it("restarts a hung server (no answer for 2 minutes after the grace) by its PID", async () => {

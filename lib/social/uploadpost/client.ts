@@ -101,9 +101,13 @@ export async function uploadPostApi<T>(network: Network, method: "GET" | "POST" 
     lastKeyRetryAt = Date.now();
     throw asFault(new UploadPostError(KEY_REFUSED, "temporary", network, status, code), "uploadpost:key");
   }
-  if (options.profileCreate && (status === 403 || status === 429 || isProfileLimit(detail, code))) {
+  if (options.profileCreate && (status === 403 || isProfileLimit(detail, code))) {
     // ensureProfile decides: a profile that exists is still used; otherwise it is the profile limit.
     throw new UploadPostError(detail || "plan restriction", "rate_limit", network, status, code, LIMIT_RETRY_SECONDS);
+  }
+  if (options.profileCreate && status === 429) {
+    // Too many requests right now: rate limiting, not the profile limit and not the posting limit.
+    throw new UploadPostError("Upload-Post is busy right now. Try again in a minute.", "rate_limit", network, status, code, Number(response.headers.get("retry-after")) || 60);
   }
   if (status === 429) {
     const retryAfter = Number(response.headers.get("retry-after")) || LIMIT_RETRY_SECONDS;
@@ -162,7 +166,7 @@ export async function ensureProfile(network: Network, username: string, displayN
     await clearServiceFault("uploadpost:profile-limit");
   } catch (error) {
     if (error instanceof UploadPostError && error.status === 409) return;
-    if (error instanceof UploadPostError && (error.status === 403 || error.status === 429 || isProfileLimit(error.message, error.code))) {
+    if (error instanceof UploadPostError && (error.status === 403 || (error.status !== 429 && isProfileLimit(error.message, error.code)))) {
       if (await getProfile(network, username).then(Boolean, () => false)) return;
       await tellOwner("uploadpost:profile-limit", error.message || "profile limit reached");
       throw asFault(new UploadPostError(PROFILE_LIMIT_MESSAGE, "rate_limit", network, 403, "profile_limit", LIMIT_RETRY_SECONDS), "uploadpost:profile-limit");

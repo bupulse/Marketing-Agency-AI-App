@@ -101,7 +101,7 @@ describe("runCatchUp", () => {
     };
   }
 
-  it("runs at most 3 missed jobs per tick through their own routes, records them, then the rest next minute", async () => {
+  it("runs one missed job per tick through its own route, records it, then the next one the next minute", async () => {
     const f = fakeDb("2026-11-13T00:59:00Z");
     let clock = at("2026-11-13T06:30:00Z");
     const fetchImpl = vi.fn(async (url: string) => {
@@ -110,8 +110,8 @@ describe("runCatchUp", () => {
     });
     const now = clock;
     const done = await runCatchUp(now, { origin: "http://127.0.0.1:3002", secret: "s", fetchImpl, db: f.db as never });
-    expect(done).toHaveLength(3);
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(done).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
     for (const call of fetchImpl.mock.calls as unknown as [string, RequestInit][]) {
       expect(call[0]).toMatch(/^http:\/\/127\.0\.0\.1:3002\/api\/cron\//);
       expect(call[0]).not.toContain("/api/cron/publish");
@@ -125,6 +125,20 @@ describe("runCatchUp", () => {
     const next = await runCatchUp(clock, { origin: "http://127.0.0.1:3002", secret: "s", fetchImpl, db: f.db as never });
     expect(next.length).toBeGreaterThan(0);
     expect(next.map((d) => d.job).some((j) => done.map((d) => d.job).includes(j))).toBe(false);
+  });
+
+  it("a cursor job caught up stops after its own 2.5-minute budget, so the next publisher tick is not held", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(at("2026-11-13T06:30:00Z"));
+    const f = fakeDb("2026-11-13T00:59:00Z");
+    const fetchImpl = vi.fn(async () => {
+      vi.setSystemTime(Date.now() + 60_000); // each call takes a minute
+      return new Response(JSON.stringify({ nextCursor: "more" }), { status: 200 });
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCatchUp(new Date(), { origin: "http://x", secret: "s", fetchImpl, db: f.db as never, stopAt: Date.now() + 20 * 60_000 });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
   });
 
   it("looks only every 5 minutes when nothing is waiting", async () => {

@@ -49,7 +49,7 @@ Yes, it can host bupulse.com, and it is a good free option if it stays on. Scrip
 | `supervisor.mjs` | **since 13 November 2026**: runs the server, the tunnel and the jobs loop, starts each again when it stops, and sends the down watch's reports (see "Supervisor, down alert and missed jobs" below) |
 | `setup-supervisor.ps1` | registers the per-user "BuPulse supervisor" task (at sign-in, checked every 5 minutes, hidden), **no administrator needed** |
 | `admin-once.ps1` | **one time, administrator**: retires the three old tasks, registers "BuPulse supervisor at boot", runs `setup-supervisor.ps1` |
-| `update.ps1` | pulls, builds and restarts through the supervisor, **in a normal PowerShell** |
+| `update.ps1` | pulls, builds and restarts: through the supervisor in a **normal** PowerShell, or the old tasks' way (administrator) when there is no supervisor yet; always restarts the site and keeps the previous build (`.next-prev`) |
 | `server.mjs` | `build` (prisma generate + next build) or `start` (`next start -H 127.0.0.1 -p 3002`), with Netlify's production settings in memory only |
 | `cron-loop.ps1` | every 60 s `POST /api/cron/tick` with this PC's secret, and on its own thread the PC's heartbeat (below) |
 
@@ -65,14 +65,21 @@ Order (the owner, with remote control):
 6. On the Mac, stop the job loop, tunnel and server by their PIDs (`~/bupulse-prod/pids.txt`), then on the PC
    `Enable-ScheduledTask "BuPulse jobs"; Start-ScheduledTask "BuPulse jobs"`. Never run the jobs on both.
 
-Updating the PC later (the repo is C:\Users\WECPC015\BuPulse on the PC), in a **normal** PowerShell (no administrator,
-no UAC prompt, since 13 November 2026):
-`powershell -ExecutionPolicy Bypass -File C:\Users\WECPC015\BuPulse\scripts\self-host\windows\update.ps1`. It pulls,
-asks the supervisor to stop the server (the `pause-server` file; the supervisor stops the exact process it started,
-with its `next start` child, so nothing keeps port 3002), builds, lets the supervisor start it again, waits for
-/api/status and restarts the jobs loop. Before the supervisor, update.ps1 used Stop-/Start-ScheduledTask on the three
-tasks install.ps1 had registered from an administrator PowerShell: Windows lets only administrators control those,
-which was the UAC prompt.
+Updating the PC later (the repo is C:\Users\WECPC015\BuPulse on the PC):
+`powershell -ExecutionPolicy Bypass -File C:\Users\WECPC015\BuPulse\scripts\self-host\windows\update.ps1`. It picks
+its way by itself:
+- **with the supervisor** (after `admin-once.ps1`): a **normal** PowerShell. It pulls, asks the supervisor to stop the
+  server (the `pause-server` file; the supervisor stops the exact process it started, with its `next start` child),
+  builds, removes `pause-server` in a `finally` (so the site always comes back), waits for /api/status and restarts the
+  jobs loop. If `supervisor.mjs` changed, it first checks the new file loads (`node --check` and `--self-test`) and only
+  then asks for a fresh supervisor.
+- **without it** (nothing answers on 127.0.0.1:3019 and no supervisor task is switched on): the old way, in an
+  **administrator** PowerShell: Stop-ScheduledTask "BuPulse server", stop the process listening on port 3002 by its
+  ID, build, `Start-ScheduledTask "BuPulse server"` in a `finally`, restart "BuPulse jobs". Those tasks were registered
+  from an administrator PowerShell; Windows lets only administrators control them (that was the UAC prompt).
+Both ways keep the previous build: `.next` is renamed `.next-prev` before the build (its cache moved back in) and put
+back if the build fails, so a failed build never leaves the site without a working version. `.next-prev` stays as a
+one-step rollback until the next update.
 
 Tools with the production settings (in memory), on the PC: `node scripts/self-host/windows/server.mjs tool <name> [args]`
 runs `scripts/self-host/tools/<name>.mjs`. `wipe-test-clients` (6 November 2026) lists every account except ADMIN_EMAILS
@@ -113,41 +120,58 @@ Windows 11 Pro's own Remote Desktop needs the PC reachable, so it suits the home
 The owner was away and wanted the PC sturdier: the site and tunnel come back by themselves, updates without an
 administrator, one message when the site is down, and no "overdue" jobs after a power cut.
 
-### What the main session runs on Windows (once)
+### What the main session runs on Windows
 
-Copy-paste, in this order. None of them types a secret. The site is down for 1 to 3 minutes in step 2 and for a few
-minutes during the build in step 3.
+Two phases, done separately. None of the lines types a secret.
 
-1. **Normal PowerShell** (not administrator): get this code.
+**Phase A: the app update only (tonight, the old tasks stay).** The Telegram token reading, the partner faults on
+Health, the catch-up of missed jobs and the watch endpoint (it waits for the supervisor). Down for a few minutes during
+the build.
+
+1. In the **administrator** PowerShell already open on the PC (the old tasks need it):
    ```
-   cd C:\Users\WECPC015\BuPulse; git pull --ff-only
+   cd C:\Users\WECPC015\BuPulse; git pull --ff-only; powershell -ExecutionPolicy Bypass -File .\scripts\self-host\windows\update.ps1
    ```
-   If the branch is not on GitHub yet: on the Mac `git bundle create ~/Desktop/ops-nov13.bundle ops-nov13` (the whole
-   branch, so it works whatever commit the PC is on), copy the file to the PC's Downloads with Chrome Remote Desktop's
-   file transfer, then on the PC
-   `cd C:\Users\WECPC015\BuPulse; git pull --ff-only $env:USERPROFILE\Downloads\ops-nov13.bundle ops-nov13`.
-2. **Administrator PowerShell** (Start, type PowerShell, "Run as administrator"), ONE time only:
+   The pull brings the new update.ps1, which finds no supervisor and takes the old way (Stop/Start-ScheduledTask, with
+   the `finally` and the `.next-prev` safety). It ends with "Done: bupulse.com runs <commit>".
+   If the branch is not on GitHub: on the Mac `git bundle create ~/Desktop/ops-nov13.bundle ops-nov13`, copy it to the
+   PC's Downloads with Chrome Remote Desktop's file transfer, and use
+   `git pull --ff-only $env:USERPROFILE\Downloads\ops-nov13.bundle ops-nov13` instead of `git pull --ff-only`.
+2. Check: `Invoke-RestMethod http://127.0.0.1:3002/api/status` says `ok`; Admin -> Health loads; within 5 minutes the
+   tick's log shows any catch-up (`Get-Content $env:USERPROFILE\bupulse-prod\cron.log -Tail 5`, look for `caughtUp`).
+   A failed build needs nothing: update.ps1 puts the previous build back and starts it. Rollback of phase A if the new
+   version misbehaves (administrator PowerShell; serves the previous build kept in `.next-prev`; the database changes of
+   this branch: none):
+   `cd C:\Users\WECPC015\BuPulse; Stop-ScheduledTask "BuPulse server"; Get-NetTCPConnection -LocalPort 3002 -State Listen -ErrorAction SilentlyContinue | % { Stop-Process -Id $_.OwningProcess -Force }; Rename-Item .next .next-bad; Rename-Item .next-prev .next; Start-ScheduledTask "BuPulse server"`
+
+**Phase B: the supervisor switch (while watching the PC over remote desktop).** Down for 1 to 3 minutes.
+
+1. **Administrator** PowerShell, ONE time:
    ```
    powershell -ExecutionPolicy Bypass -File C:\Users\WECPC015\BuPulse\scripts\self-host\windows\admin-once.ps1
    ```
-   It switches off (does not delete) the old "BuPulse server", "BuPulse tunnel" and "BuPulse jobs" tasks, stops the old
-   `next start` on port 3002 by its process ID, registers "BuPulse supervisor at boot" (starts with Windows, nobody
-   signed in) and the per-user "BuPulse supervisor" (at sign-in, checked every 5 minutes), and starts the supervisor. If
-   "BuPulse jobs" was on, the jobs loop stays on (`jobs-on` file). It ends with "Done: the supervisor runs and
-   http://127.0.0.1:3002/api/status says ok". Close this window afterwards.
-3. **Normal PowerShell** again: build and start the new version (the down watch, the catch-up, the Health items).
-   ```
-   powershell -ExecutionPolicy Bypass -File C:\Users\WECPC015\BuPulse\scripts\self-host\windows\update.ps1
-   ```
-   It ends with "Done: bupulse.com runs <commit>". This is also the command for every later update.
-4. **Check** (normal PowerShell): the supervisor's state and its log.
+   In this order: registers "BuPulse supervisor at boot" (S4U: runs with nobody signed in and survives sign-out; at
+   startup and looked at every 5 minutes) and the per-user "BuPulse supervisor" (registered switched off for now);
+   starts the boot task next to the old tasks (no second server and no jobs loop while the old server holds port 3002;
+   its tunnel joins the old one); once its tunnel is connected, switches off (does not delete) "BuPulse jobs", then
+   "BuPulse server" (stopping the old `next start` by the process ID on port 3002), then "BuPulse tunnel"; stops the
+   cloudflared started by hand on 12 November (command line with tunnel-test.log) by its exact process ID; creates
+   `jobs-on` if "BuPulse jobs" was on; switches the per-user task on; waits for /api/status. It ends with "Done: the
+   supervisor runs ...". **If any of that fails it puts the old tasks back by itself** (stops the supervisor, switches
+   its tasks off, switches the old tasks on and starts them) and says so.
+2. Check (any PowerShell):
    ```
    Invoke-RestMethod http://127.0.0.1:3019/ | ConvertTo-Json -Depth 4; Get-Content $env:USERPROFILE\bupulse-prod\supervisor.log -Tail 15
    ```
-   `server`, `tunnel` (and `jobs`) should say `"state": "running"` with a pid.
-5. **Optional test** that a restart works (a few seconds offline):
-   `New-Item -ItemType File -Force $env:USERPROFILE\bupulse-prod\restart-tunnel`, then the log shows
-   "restarting tunnel ... starting again now" and "start tunnel: pid ...".
+   `server`, `tunnel` and `jobs` should say `"state": "running"` with a pid. Optional restart test (seconds offline):
+   `New-Item -ItemType File -Force $env:USERPROFILE\bupulse-prod\restart-tunnel`; the log shows "restarting tunnel".
+3. From then on every update is `powershell -ExecutionPolicy Bypass -File C:\Users\WECPC015\BuPulse\scripts\self-host\windows\update.ps1`
+   in a **normal** PowerShell.
+
+Rollback of phase B by hand (administrator PowerShell; one line):
+`New-Item -ItemType File -Force $env:USERPROFILE\bupulse-prod\stop-supervisor; Start-Sleep 10; Disable-ScheduledTask "BuPulse supervisor"; Disable-ScheduledTask "BuPulse supervisor at boot"; Remove-Item $env:USERPROFILE\bupulse-prod\jobs-on -ErrorAction SilentlyContinue; Enable-ScheduledTask "BuPulse server"; Enable-ScheduledTask "BuPulse tunnel"; Enable-ScheduledTask "BuPulse jobs"; Start-ScheduledTask "BuPulse server"; Start-ScheduledTask "BuPulse tunnel"; Start-ScheduledTask "BuPulse jobs"`
+(leave "BuPulse jobs" off if it was off before; delete `stop-supervisor` before ever running admin-once.ps1 again).
+update.ps1 then takes the old way again by itself.
 
 In the admin console (the owner, or the main session in the browser; keys are pasted there, never in PowerShell):
 - **Composio**: Admin -> Services -> Composio, paste the new key, press **Test now**: the Health item "Composio refused
@@ -161,10 +185,6 @@ Settings that are NOT changed by any script (do them by hand if wanted):
   cut, and "BuPulse supervisor at boot" brings the site back without anyone signing in.
 - Windows Update active hours / restart times, the firewall, UAC and services stay as they are. Nothing listens outside
   127.0.0.1 (server 3002, supervisor 3019, cloudflared metrics 20249), so no firewall prompt appears.
-
-Going back to the old tasks (administrator PowerShell):
-`New-Item -ItemType File -Force $env:USERPROFILE\bupulse-prod\stop-supervisor; Disable-ScheduledTask "BuPulse supervisor"; Disable-ScheduledTask "BuPulse supervisor at boot"; Enable-ScheduledTask "BuPulse server"; Enable-ScheduledTask "BuPulse tunnel"; Enable-ScheduledTask "BuPulse jobs"; Start-ScheduledTask "BuPulse server"; Start-ScheduledTask "BuPulse tunnel"; Start-ScheduledTask "BuPulse jobs"`
-(and delete `stop-supervisor` before ever starting the supervisor again).
 
 ### Supervisor (`supervisor.mjs`)
 
@@ -185,16 +205,21 @@ One Node process that starts and watches three pieces, without administrator rig
 - **Exact process IDs only:** every stop is `taskkill /PID <the pid it started> /T /F` (that process and its children,
   so `next start` never keeps port 3002), never by name. If the supervisor itself was killed hard, the next one stops a
   leftover piece only when Windows confirms that PID's start time is the one it recorded (a reused PID is left alone).
-  If port 3002 is held by a process it did not start (the old task), it never starts a second server and says so once.
+  If port 3002 is held by a process it did not start (the old task), it never starts a second server, never starts the
+  jobs loop (the old tasks may run their own), and says so once. The server's `next start` listener (a grandchild) is
+  recorded with its start time once the server answers; if it is left holding the port after its parents died, it is
+  stopped by that PID only when the start time matches.
 - **Every start, exit and restart** is one line in `%USERPROFILE%\bupulse-prod\supervisor.log` (moved to `.log.1` past
   5 MB; the piece logs past 20 MB). State every 15 s in `supervisor-state.json`, and live at `http://127.0.0.1:3019/`.
 - **One at a time:** it holds 127.0.0.1:3019; the boot task and the sign-in task can both start it, the second one exits.
-- **Started by:** "BuPulse supervisor at boot" (S4U, at startup, administrator to register: `admin-once.ps1`) and
-  "BuPulse supervisor" (this user, at sign-in and every 5 minutes, runs hidden through `supervisor-hidden.vbs` and
-  `wscript`, no administrator: `setup-supervisor.ps1`). If the supervisor stops, the task starts it again within 1 to 5
-  minutes. Without the boot task (`admin-once.ps1 -NoBootTask`), it starts only when someone signs in.
+- **Started by:** "BuPulse supervisor at boot" (S4U, at startup and every 5 minutes, runs with nobody signed in and
+  survives sign-out; administrator to register: `admin-once.ps1`) and "BuPulse supervisor" (this user, at sign-in and
+  every 5 minutes, hidden through `supervisor-hidden.vbs` and `wscript`, no administrator: `setup-supervisor.ps1`;
+  registered switched off while the old tasks are on). If the supervisor stops, a task starts it again within 1 to 5
+  minutes.
 - **Control files** in `%USERPROFILE%\bupulse-prod` (a normal PowerShell, `New-Item -ItemType File -Force <path>`):
-  `pause-server` (stop the server until the file is deleted; update.ps1), `restart-server`, `restart-tunnel`,
+  `pause-server` (stop the server until the file is deleted; update.ps1; ignored and logged once it is older than 45
+  minutes, so a failed update never keeps the site off), `restart-server`, `restart-tunnel`,
   `restart-jobs` (once; the file is removed), `jobs-on` (run the jobs loop; ONE computer only), `restart-supervisor`
   (a fresh supervisor; update.ps1 does it when supervisor.mjs changed), `stop-supervisor` (stop everything; while it
   exists the supervisor does not start).
@@ -219,10 +244,10 @@ outages for the Server page, but sends no second "back up" message for an outage
 whole PC was off, the watch saw nothing, so the uptime record's "back up" message goes out as before.
 
 **When the whole PC is off** nothing on it can send anything. The GitHub workflow `.github/workflows/uptime.yml` can:
-its "down" alert is now **off** unless the repository variable `UPTIME_DOWN_ALERT` is `on` (GitHub -> Settings ->
-Secrets and variables -> Actions -> Variables -> New repository variable). It also needs the repository secrets
-TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID and/or RESEND_API_KEY. Free (public repository), but GitHub's 5-minute schedule
-often runs late, and in a tunnel-only outage both the PC and GitHub may send a "down" message.
+its "down" alert stays **on**; set the repository variable `UPTIME_DOWN_ALERT=off` (GitHub -> Settings -> Secrets and
+variables -> Actions -> Variables) to switch it off. It needs the repository secrets TELEGRAM_BOT_TOKEN and
+TELEGRAM_CHAT_ID and/or RESEND_API_KEY. Free (public repository), but GitHub's 5-minute schedule often runs late, and in
+a tunnel-only outage both the PC and GitHub may send a "down" message (accepted).
 
 ### Missed jobs (catch-up)
 
@@ -230,8 +255,9 @@ The tick only ran the jobs due in the minute it ran, so after a power cut (or a 
 a job's minute) a daily job stayed "overdue" on Admin -> Health until the next day. Now the tick (`lib/cron/catch-up.ts`,
 `lib/cron/catch-up-run.ts`) runs each missed job **once** when the server is back: a scheduled time counts as missed
 when it is at least 20 minutes old and no run started since; a job due again within 15 minutes just waits; jobs that run
-every 30 minutes or more often (the publisher, the Video Studio sweep, Autopilot pictures) are never caught up; at most 3
-per tick; each missed time once per server process. It looks every 5 minutes (and right after the server starts). The
+every 30 minutes or more often (the publisher, the Video Studio sweep, Autopilot pictures) are never caught up; one job
+per tick, inside its own 2.5-minute budget (no new cursor call after it), so the next minute's publisher is not held;
+each missed time once per server process. It looks every 5 minutes (and right after the server starts). The
 tick's answer lists `caughtUp`, one "catch-up" row is written to CronRun, and Health shows the job as **Caught up**
 (hover: which time it made up for) instead of overdue.
 No duplicate posts: the publisher is not part of it; it claims each post atomically, never sends again a post that was
@@ -242,14 +268,16 @@ twice": one digest per business and day, one notice per renewal, one daily-posts
 ### Partner faults on Health (Composio, Upload-Post)
 
 A partner refusing BuPulse itself is one Admin -> Health item, not an error per call (`lib/admin/service-faults.ts`):
-- **Composio "invalid API key"** (401, or 403 about the key): recorded once (one warning in Admin -> Errors), a Health
+- **Composio "invalid API key"** (a 401/403 that names the API key, or a 401/403 in other words confirmed by one cheap
+  call that involves no client, the toolkits list; one client's broken connected account never pauses everyone): recorded once (one warning in Admin -> Errors), a Health
   problem "Composio refused BuPulse's API key", and Composio is not called again with that key (one try every 15
   minutes). A newly pasted key is used at once; a good answer or a passing Test now clears it. Only a short hash of the
   refused key is stored, never the key.
 - **Upload-Post profile limit** (a new company's profile cannot be made): the company sees "paused on our side", Health
   shows "Upload-Post's profile limit is reached" (for a week after the last try), and while it lasts a new profile is
   asked for at most every 30 minutes (pressing Connect again only costs a cheap look-up). A company whose profile exists
-  still connects. A profile made later clears it.
+  still connects. A profile made later clears it. A 429 while making a profile is rate limiting ("busy, try again in a
+  minute"), not the profile limit.
 - **Upload-Post refused key / posting limit**: the same way (posts wait and are tried again; nothing is lost).
 The errors thrown for these carry `serviceFault`, so `logError` leaves them out of Admin -> Errors.
 

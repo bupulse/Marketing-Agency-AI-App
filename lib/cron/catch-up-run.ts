@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { CATCH_UP_JOB, catchUpCandidates, LOOKBACK_MS, MAX_PER_TICK, missedJobs, type CatchUpSummary } from "./catch-up";
+import { CATCH_UP_BUDGET_MS, CATCH_UP_JOB, catchUpCandidates, LOOKBACK_MS, MAX_PER_TICK, missedJobs, type CatchUpSummary } from "./catch-up";
 import { runTickJob } from "./tick";
 
 // The tick's catch-up step (lib/cron/catch-up.ts has the rules): reads each job's last start, runs the missed ones the
@@ -37,14 +37,16 @@ export async function runCatchUp(now: Date, options: { origin: string; secret: s
     const missed = missedJobs(now, lastStarts, attempted);
     morePending = missed.length > MAX_PER_TICK;
     const done: CaughtUp[] = [];
+    // Its own small budget, never more than what is left of the tick's.
+    const stopAt = Math.min(Date.now() + CATCH_UP_BUDGET_MS, options.stopAt ?? Number.POSITIVE_INFINITY);
     for (const m of missed.slice(0, MAX_PER_TICK)) {
-      if (options.stopAt !== undefined && Date.now() > options.stopAt) {
+      if (Date.now() > stopAt) {
         morePending = true;
         break;
       }
       attempted.set(m.job, m.slot.toISOString());
       console.log(`[cron] catching up ${m.path} (missed ${m.slot.toISOString()})`);
-      const r = await runTickJob(m.path, { origin: options.origin, secret: options.secret, fetchImpl: options.fetchImpl, stopAt: options.stopAt });
+      const r = await runTickJob(m.path, { origin: options.origin, secret: options.secret, fetchImpl: options.fetchImpl, stopAt });
       done.push({ job: m.job, slot: m.slot.toISOString(), ok: r.ok, calls: r.calls });
     }
     if (done.length) {

@@ -59,7 +59,9 @@ export async function composioApi<T>(network: Network, method: "GET" | "POST" | 
   const json = (await response.json().catch(() => ({}))) as T & ApiError;
   if (!response.ok) {
     const message = typeof json.error === "object" ? json.error?.message : (json.error ?? json.message);
-    if (isKeyRefusal(response.status, message)) {
+    // Only a refusal of BuPulse's key pauses everyone: clear key wording, or a 401/403 that a cheap call naming no
+    // client account confirms (one client's broken connected account must never pause the others).
+    if (isKeyRefusal(response.status, message) || (mayBeKeyRefusal(response.status) && (await keyCheckRefused(key)))) {
       await reportServiceFault("composio:key", message || `error ${response.status}`, { apiKey: key });
       lastKeyRetryAt = Date.now();
       throw asFault(new SocialError(KEY_REFUSED_MESSAGE, "temporary", network), "composio:key");
@@ -77,9 +79,26 @@ const KEY_REFUSED_MESSAGE = "BuPulse-Socials is paused on our side (its key need
 const KEY_RETRY_MS = 15 * 60_000;
 let lastKeyRetryAt = 0;
 
-/** Composio's answer for a key it does not accept: 401, or 403 that says so (not a 403 about one account). */
+/** Composio's answer for a key it does not accept: a 401 or 403 that names the API key. */
 export function isKeyRefusal(status: number, message: string | undefined): boolean {
-  return status === 401 || (status === 403 && /api[ _-]?key|invalid key|unauthori[sz]ed|authentication/i.test(message ?? ""));
+  return (status === 401 || status === 403) && /api[ _-]?key|x-api-key|invalid key/i.test(message ?? "");
+}
+
+/** A 401/403 in other words could be about BuPulse's key or about one client's account: worth one cheap check. */
+const mayBeKeyRefusal = (status: number) => status === 401 || status === 403;
+
+/**
+ * Does Composio refuse the key itself? One cheap call that involves no client (the toolkits list, as Admin -> Services'
+ * Test now does). Only a 401/403 there counts; anything else (an outage, a timeout) is not blamed on the key.
+ */
+async function keyCheckRefused(key: string): Promise<boolean> {
+  try {
+    const res = await fetch("https://backend.composio.dev/api/v3/toolkits?limit=1", { headers: { "x-api-key": key }, signal: AbortSignal.timeout(10_000) });
+    await res.text().catch(() => "");
+    return res.status === 401 || res.status === 403;
+  } catch {
+    return false;
+  }
 }
 
 /** Is this key one Composio refused (and not due for its 15-minute retry)? */

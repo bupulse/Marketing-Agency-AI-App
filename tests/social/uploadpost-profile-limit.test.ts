@@ -65,6 +65,15 @@ describe("Upload-Post's profile limit", () => {
     expect(m.logError).toHaveBeenCalledTimes(1);
   });
 
+  it("a 429 while making a profile is rate limiting: no profile-limit or posting-limit item", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ success: false, message: "Too many requests" }, { status: 429 })));
+    const error = await ensureProfile("linkedin", "bupulse_biz4", "").catch((e) => e);
+    expect(error).toBeInstanceOf(UploadPostError);
+    expect(error.status).toBe(429);
+    expect(error.serviceFault).toBeUndefined();
+    expect(m.rows.get(SERVICE_FAULTS_SETTING)).toBeUndefined();
+  });
+
   it("a company that already has its profile still connects at the limit", async () => {
     vi.stubGlobal(
       "fetch",

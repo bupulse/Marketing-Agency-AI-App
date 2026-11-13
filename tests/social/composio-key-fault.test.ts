@@ -30,10 +30,13 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+const TOOLKITS = "https://backend.composio.dev/api/v3/toolkits?limit=1";
+
 describe("Composio refusing BuPulse's key", () => {
-  it("knows a key refusal from other 403s", () => {
-    expect(isKeyRefusal(401, "")).toBe(true);
+  it("counts only clear API-key wording as a key refusal", () => {
+    expect(isKeyRefusal(401, "Invalid API key")).toBe(true);
     expect(isKeyRefusal(403, "Invalid API key provided")).toBe(true);
+    expect(isKeyRefusal(401, "")).toBe(false);
     expect(isKeyRefusal(403, "You do not have access to this connected account")).toBe(false);
     expect(isKeyRefusal(500, "Invalid API key")).toBe(false);
   });
@@ -57,5 +60,24 @@ describe("Composio refusing BuPulse's key", () => {
     await expect(composioApi("facebook", "GET", "/connected_accounts?x=1")).resolves.toEqual({ items: [] });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(m.rows.get(SERVICE_FAULTS_SETTING)).not.toHaveProperty("composio:key");
+  });
+
+  it("one client's 403 in other words never pauses everyone: the key check passes, nothing is recorded", async () => {
+    const fetch = vi.fn(async (url: string) => (url === TOOLKITS ? jsonResponse({ items: [] }) : jsonResponse({ error: { message: "Forbidden: connected account belongs to another user" } }, { status: 403 })));
+    vi.stubGlobal("fetch", fetch);
+    const error = (await composioApi("instagram", "GET", "/connected_accounts/ca_1").catch((e: unknown) => e)) as Error & { serviceFault?: string };
+    expect(error.serviceFault).toBeUndefined();
+    expect(error.message).toContain("Forbidden");
+    expect(fetch.mock.calls.map((c) => c[0])).toContain(TOOLKITS);
+    expect(m.rows.get(SERVICE_FAULTS_SETTING)).toBeUndefined();
+    // The next call goes to Composio as normal.
+    await composioApi("instagram", "GET", "/connected_accounts/ca_1").catch(() => null);
+    expect(fetch.mock.calls.filter((c) => c[0] !== TOOLKITS)).toHaveLength(2);
+  });
+
+  it("a 401 in other words is a key refusal only when the key check is refused too", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ message: "Unauthorized" }, { status: 401 })));
+    const error = (await composioApi("facebook", "GET", "/connected_accounts?x=1").catch((e: unknown) => e)) as Error & { serviceFault?: string };
+    expect(error.serviceFault).toBe("composio:key");
   });
 });

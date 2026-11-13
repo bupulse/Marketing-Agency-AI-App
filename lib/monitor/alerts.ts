@@ -11,7 +11,7 @@ import { durationWords, kigaliTime, type Outage } from "./uptime-rules";
 // The owner's site alerts: "bupulse.com is back up", sent by the server on the first good outside check after an
 // outage (lib/monitor/uptime.ts), and the server PC's minute-by-minute "down" and "back up" messages (lib/monitor/
 // watch.ts, from the supervisor's reports). When the whole PC is off nothing here can run: the GitHub workflow can send
-// that "down" alert (scripts/monitor/uptime-check.mjs, switched off unless the owner turns it on). Same channels as the
+// that "down" alert (scripts/monitor/uptime-check.mjs, on unless UPTIME_DOWN_ALERT=off). Same channels as the
 // lead alerts: email to the admin address through Resend, and Telegram to the chat connected in Admin -> Settings ->
 // Lead alerts, with the bot token from Admin -> Services or the environment (resolveTelegramToken). Never throws.
 
