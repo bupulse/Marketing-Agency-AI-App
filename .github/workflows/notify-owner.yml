@@ -1,0 +1,30 @@
+# Sends one short Telegram message to the owner (the same bot and chat as the uptime "down" alert). Used by the
+# main Claude session for progress notes while the owner is away (13 November 2026):
+#   gh workflow run notify-owner.yml -f text="Deployed 71c62bb0: trending sounds live"
+name: Notify owner
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: Message text (plain, no secrets)
+        required: true
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send Telegram message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TEXT: ${{ inputs.text }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then echo "Telegram secrets missing"; exit 1; fi
+          body=$(jq -n --arg c "$TELEGRAM_CHAT_ID" --arg t "🤖 BuPulse (Claude): $TEXT" '{chat_id: $c, text: $t, link_preview_options: {is_disabled: true}}')
+          code=$(curl -s -o /tmp/tg.json -w '%{http_code}' -H 'Content-Type: application/json' -d "$body" "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")
+          echo "Telegram answered $code"; jq -r '.ok, .description // empty' /tmp/tg.json
+          [ "$code" = "200" ]
