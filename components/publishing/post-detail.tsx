@@ -3,9 +3,10 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CheckCheck, ClipboardCopy, Clock, Copy, Download, ExternalLink, Pencil, PlugZap, RotateCw, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { CheckCheck, ClipboardCopy, Clock, Copy, Download, Ellipsis, ExternalLink, Pencil, PlugZap, RotateCw, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { APPROVED_LATE, approvalTimePassed, TIME_PASSED_NOTE } from "@/lib/publishing/approval-note";
 import { Button, useToast } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import {
   approvePostsAction,
   connectByHandPostsAction,
@@ -82,7 +83,7 @@ function retryMessage(res: Record<string, unknown>): { text: string; tone: "succ
   return { text: "We will try again shortly.", tone: "success" };
 }
 
-type Ui = { id: string | null; confirmDelete: boolean; moveTo: string; error: string | null };
+type Ui = { id: string | null; confirmDelete: boolean; moveTo: string; error: string | null; more: boolean };
 
 /**
  * One post in full, like Instagram's opened post (components/media-cards PostModal): the picture or video on the left,
@@ -94,9 +95,9 @@ export function PostDetail({ post, zone, onClose, onEdit, visualHref, autoNetwor
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
-  const [ui, setUi] = useState<Ui>({ id: null, confirmDelete: false, moveTo: "", error: null });
+  const [ui, setUi] = useState<Ui>({ id: null, confirmDelete: false, moveTo: "", error: null, more: false });
   // A new post opened (or the next one): its own move time, no question or error left over.
-  if (post && ui.id !== post.id) setUi({ id: post.id, confirmDelete: false, moveTo: post.scheduledAt ? toLocalInput(new Date(post.scheduledAt), zone) : "", error: null });
+  if (post && ui.id !== post.id) setUi({ id: post.id, confirmDelete: false, moveTo: post.scheduledAt ? toLocalInput(new Date(post.scheduledAt), zone) : "", error: null, more: false });
 
   const posts = useMemo(() => (post ? (list?.some((p) => p.id === post.id) ? list : [post]) : []), [post, list]);
   const index = post ? posts.findIndex((p) => p.id === post.id) : -1;
@@ -172,7 +173,7 @@ function Body({ post, zone, ui, setUi, pending, visualHref, autoNetworks, group,
       {post.remindOnly && post.status !== "PUBLISHED" && (
         <div className="flex flex-col gap-2 rounded-2xl bg-amber-500/15 p-3.5 text-[14px] text-amber-900 dark:text-amber-200">
           <p>
-            {networkName(post.network)} is not connected to BuPulse, so this post is a reminder: at its time you get an email with the caption and the {post.media.some((m) => /\.(mp4|webm)$/i.test(m.path)) ? "video" : "pictures"} to post it yourself, then press &ldquo;Mark as posted&rdquo;.
+            {networkName(post.network)} is not connected to BuPulse, so this post is a reminder: at its time you get an email with the caption and the {post.media.some((m) => /\.(mp4|webm)$/i.test(m.path)) ? "video" : "pictures"} to post it yourself, then press {showsSoundTip(post) ? "“I posted it”" : "“Mark as posted”"}.
           </p>
           {autoNetworks.includes(post.network) ? (
             <p className="font-medium">{networkName(post.network)} is connected now. Switch this post to publish automatically.</p>
@@ -255,6 +256,10 @@ function Actions({
 }) {
   const editable = (EDITABLE as readonly string[]).includes(post.status);
   const timePassed = approvalTimePassed(post);
+  // A delete waiting for its "Yes" keeps the folded buttons open.
+  const more = ui.more || ui.confirmDelete;
+  // The trending-sound card has its own Video and Copy caption buttons: not twice on the same screen.
+  const soundTip = showsSoundTip(post);
   return (
     <>
       <div className="flex flex-wrap items-start gap-2">
@@ -283,46 +288,53 @@ function Actions({
             Publish automatically
           </Button>
         )}
-        {(post.remindOnly || post.notify || post.status === "NEEDS_ACTION") && (
-          <Button variant="outline" size="sm" leading={<ClipboardCopy aria-hidden className="size-4" />} onClick={() => copyCaption(post, toast)}>
-            Copy caption
-          </Button>
-        )}
-        {(post.remindOnly || post.status === "NEEDS_ACTION") &&
-          post.media.map((m, i) => (
-            <a key={m.path} href={m.url} target="_blank" rel="noopener noreferrer" download className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line px-4 text-[14px] font-semibold hover:bg-soft">
-              <Download aria-hidden className="size-4" /> {/\.(mp4|webm)$/i.test(m.path) ? "Video" : post.media.length > 1 ? `Image ${i + 1}` : "Image"}
-            </a>
-          ))}
-        <WhatsAppShare media={post.media} caption={postShareCaption(post)} what="post" />
-        {post.status === "SCHEDULED" && (
-          <Button variant="outline" size="sm" leading={<Undo2 aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => unschedulePostAction(post.id), "Back in review. It will not go out until you approve it.")}>
-            Back to review
-          </Button>
-        )}
         {editable && (
           <Button variant="outline" size="sm" leading={<Pencil aria-hidden className="size-4" />} disabled={pending} onClick={() => onEdit(post)}>
             Edit
           </Button>
         )}
-        <Button variant="outline" size="sm" leading={<Copy aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => duplicatePostAction(post.id), "Copied to your drafts.")}>
-          Duplicate
+        {/* On a phone the less-used buttons fold under "More", so the caption keeps room (8 buttons took a quarter of the
+            screen); from md up they all show, as before (md:contents). */}
+        <Button variant="outline" size="sm" className="md:hidden" aria-expanded={more} leading={<Ellipsis aria-hidden className="size-4" />} onClick={() => setUi((u) => ({ ...u, more: !u.more }))}>
+          {more ? "Less" : "More"}
         </Button>
-        {post.status !== "PUBLISHING" &&
-          (ui.confirmDelete ? (
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" className="border-danger text-danger" disabled={pending} onClick={() => act(() => deletePostAction(post.id), post.status === "PUBLISHED" ? "Removed from BuPulse. It stays live on the network." : "Deleted.")}>
-                {post.status === "PUBLISHED" ? "Yes, remove from BuPulse" : "Yes, delete"}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setUi((u) => ({ ...u, confirmDelete: false }))}>
-                Keep it
-              </Button>
-            </span>
-          ) : (
-            <Button variant="outline" size="sm" leading={<Trash2 aria-hidden className="size-4" />} disabled={pending} onClick={() => setUi((u) => ({ ...u, confirmDelete: true }))}>
-              Delete
+        <div className={cn("flex-wrap items-start gap-2 md:contents", more ? "flex w-full" : "hidden")}>
+          {!soundTip && (post.remindOnly || post.notify || post.status === "NEEDS_ACTION") && (
+            <Button variant="outline" size="sm" leading={<ClipboardCopy aria-hidden className="size-4" />} onClick={() => copyCaption(post, toast)}>
+              Copy caption
             </Button>
-          ))}
+          )}
+          {!soundTip && (post.remindOnly || post.status === "NEEDS_ACTION") &&
+            post.media.map((m, i) => (
+              <a key={m.path} href={m.url} target="_blank" rel="noopener noreferrer" download className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line px-4 text-[14px] font-semibold hover:bg-soft">
+                <Download aria-hidden className="size-4" /> {/\.(mp4|webm)$/i.test(m.path) ? "Video" : post.media.length > 1 ? `Image ${i + 1}` : "Image"}
+              </a>
+            ))}
+          <WhatsAppShare media={post.media} caption={postShareCaption(post)} what="post" />
+          {post.status === "SCHEDULED" && (
+            <Button variant="outline" size="sm" leading={<Undo2 aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => unschedulePostAction(post.id), "Back in review. It will not go out until you approve it.")}>
+              Back to review
+            </Button>
+          )}
+          <Button variant="outline" size="sm" leading={<Copy aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => duplicatePostAction(post.id), "Copied to your drafts.")}>
+            Duplicate
+          </Button>
+          {post.status !== "PUBLISHING" &&
+            (ui.confirmDelete ? (
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" className="border-danger text-danger" disabled={pending} onClick={() => act(() => deletePostAction(post.id), post.status === "PUBLISHED" ? "Removed from BuPulse. It stays live on the network." : "Deleted.")}>
+                  {post.status === "PUBLISHED" ? "Yes, remove from BuPulse" : "Yes, delete"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setUi((u) => ({ ...u, confirmDelete: false }))}>
+                  Keep it
+                </Button>
+              </span>
+            ) : (
+              <Button variant="outline" size="sm" leading={<Trash2 aria-hidden className="size-4" />} disabled={pending} onClick={() => setUi((u) => ({ ...u, confirmDelete: true }))}>
+                Delete
+              </Button>
+            ))}
+        </div>
       </div>
       {ui.confirmDelete && post.status === "PUBLISHED" && <p className="mt-2 text-[13px] text-muted">This only removes it from BuPulse. The post stays live on {networkName(post.network)}, so delete it there too if you want it gone.</p>}
     </>
