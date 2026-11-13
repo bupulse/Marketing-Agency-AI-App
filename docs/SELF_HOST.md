@@ -77,9 +77,12 @@ its way by itself:
   **administrator** PowerShell: Stop-ScheduledTask "BuPulse server", stop the process listening on port 3002 by its
   ID, build, `Start-ScheduledTask "BuPulse server"` in a `finally`, restart "BuPulse jobs". Those tasks were registered
   from an administrator PowerShell; Windows lets only administrators control them (that was the UAC prompt).
-Both ways keep the previous build: `.next` is renamed `.next-prev` before the build (its cache moved back in) and put
-back if the build fails, so a failed build never leaves the site without a working version. `.next-prev` stays as a
-one-step rollback until the next update.
+Both ways keep the previous build: `.next` is renamed `.next-prev` before the build (its cache moved back in). If the
+build fails, is stopped with Ctrl+C or anything else goes wrong, the `finally` that starts the site again first puts it
+back, by renames only (the failed build becomes `.next-failed-<time>`, delete it by hand later), so the site never starts
+on a broken build. If `.next` cannot be renamed at all (a locked file), it says so and builds nothing. `.next-prev`
+stays as a one-step rollback until the next update. The old way waits up to 5 minutes for the site (this PC takes about
+3) and restarts "BuPulse jobs" even when the site is slow.
 
 Tools with the production settings (in memory), on the PC: `node scripts/self-host/windows/server.mjs tool <name> [args]`
 runs `scripts/self-host/tools/<name>.mjs`. `wipe-test-clients` (6 November 2026) lists every account except ADMIN_EMAILS
@@ -154,11 +157,13 @@ the build.
    startup and looked at every 5 minutes) and the per-user "BuPulse supervisor" (registered switched off for now);
    starts the boot task next to the old tasks (no second server and no jobs loop while the old server holds port 3002;
    its tunnel joins the old one); once its tunnel is connected, switches off (does not delete) "BuPulse jobs", then
-   "BuPulse server" (stopping the old `next start` by the process ID on port 3002), then "BuPulse tunnel"; stops the
-   cloudflared started by hand on 12 November (command line with tunnel-test.log) by its exact process ID; creates
-   `jobs-on` if "BuPulse jobs" was on; switches the per-user task on; waits for /api/status. It ends with "Done: the
-   supervisor runs ...". **If any of that fails it puts the old tasks back by itself** (stops the supervisor, switches
-   its tasks off, switches the old tasks on and starts them) and says so.
+   "BuPulse server" (stopping the old `next start` by the process ID on port 3002), then "BuPulse tunnel"; creates
+   `jobs-on` if "BuPulse jobs" was on; switches the per-user task on; waits for /api/status; only then stops the
+   cloudflared started by hand on 12 November (command line with tunnel-test.log) by its exact process ID. It ends with
+   "Done: the supervisor runs ...". **If any of that fails it puts the old tasks back by itself**: the old tunnel first
+   (so one connector always runs), then it stops the supervisor and switches its tasks off, then switches the old server
+   and jobs on and starts them (each on its own try/catch), then checks https://bupulse.com for 3 minutes and prints a
+   loud warning with the line to start a tunnel by hand if it does not answer.
 2. Check (any PowerShell):
    ```
    Invoke-RestMethod http://127.0.0.1:3019/ | ConvertTo-Json -Depth 4; Get-Content $env:USERPROFILE\bupulse-prod\supervisor.log -Tail 15

@@ -29,33 +29,63 @@ function Wait-SiteUp([int]$seconds) {
 }
 
 # Builds with the previous build kept aside: .next -> .next-prev (its cache moved back in, so the build stays fast).
-# Success: .next-prev stays as a one-step rollback until the next update. Failure: the previous build is put back.
+# Success: .next-prev stays as a one-step rollback until the next update. Failure, Ctrl+C or any error: the outer
+# `finally` of each path calls Restore-PreviousBuild BEFORE the site starts again, so it never starts on a broken .next.
+$script:setAside = $false      # .next was renamed to .next-prev by this run
+$script:asideFailed = $false   # .next could not be renamed (a locked file): nothing was built
+$script:restored = $false
 function Invoke-SafeBuild {
   $next = Join-Path $repo ".next"
   $prev = Join-Path $repo ".next-prev"
-  if (Test-Path -LiteralPath $prev) { Remove-Item -LiteralPath $prev -Recurse -Force }
-  $kept = $false
+  if (Test-Path -LiteralPath $prev) {
+    # The rollback copy of the update before: deleted, or moved aside when Windows will not delete it.
+    try { Remove-Item -LiteralPath $prev -Recurse -Force -ErrorAction Stop }
+    catch { Rename-Item -LiteralPath $prev -NewName ".next-stale-$(Get-Date -Format yyyyMMddHHmmss)" }
+  }
   if (Test-Path -LiteralPath $next) {
-    Rename-Item -LiteralPath $next -NewName ".next-prev"
-    $kept = $true
-    if (Test-Path -LiteralPath (Join-Path $prev "cache")) {
-      New-Item -ItemType Directory -Force $next | Out-Null
-      Move-Item -LiteralPath (Join-Path $prev "cache") -Destination (Join-Path $next "cache")
+    try { Rename-Item -LiteralPath $next -NewName ".next-prev" -ErrorAction Stop }
+    catch {
+      $script:asideFailed = $true
+      throw "Could not set the current build aside (.next -> .next-prev): $($_.Exception.Message). A file in .next is probably locked. Nothing was built; the current version is started again unchanged."
+    }
+    $script:setAside = $true
+    try {
+      if (Test-Path -LiteralPath (Join-Path $prev "cache")) {
+        New-Item -ItemType Directory -Force $next | Out-Null
+        Move-Item -LiteralPath (Join-Path $prev "cache") -Destination (Join-Path $next "cache") -ErrorAction Stop
+      }
+    } catch {
+      Write-Warning "The build cache could not be moved over ($($_.Exception.Message)): the build is slower, nothing else changes."
     }
   }
   # Out-Host: the build's lines go to the window, not into this function's return value.
   node scripts\self-host\windows\server.mjs build | Out-Host
-  $ok = $LASTEXITCODE -eq 0
-  if (-not $ok -and $kept) {
-    Write-Warning "The build failed: putting the previous build back (.next-prev -> .next)."
-    if (Test-Path -LiteralPath (Join-Path $next "cache")) {
-      if (Test-Path -LiteralPath (Join-Path $prev "cache")) { Remove-Item -LiteralPath (Join-Path $prev "cache") -Recurse -Force }
-      Move-Item -LiteralPath (Join-Path $next "cache") -Destination (Join-Path $prev "cache")
-    }
-    if (Test-Path -LiteralPath $next) { Remove-Item -LiteralPath $next -Recurse -Force }
-    Rename-Item -LiteralPath $prev -NewName ".next"
+  return ($LASTEXITCODE -eq 0)
+}
+
+# Puts the previous build back when this run set it aside and did not finish a good build. Only renames, never deletes:
+# the failed build is kept as .next-failed-<time> (delete it by hand later). Never throws.
+function Restore-PreviousBuild([bool]$built) {
+  if ($built -or -not $script:setAside) { return }
+  $next = Join-Path $repo ".next"
+  $prev = Join-Path $repo ".next-prev"
+  if (-not (Test-Path -LiteralPath $prev)) { Write-Warning "No previous build (.next-prev) to put back."; return }
+  try {
+    if (Test-Path -LiteralPath $next) { Rename-Item -LiteralPath $next -NewName ".next-failed-$(Get-Date -Format yyyyMMddHHmmss)" -ErrorAction Stop }
+    Rename-Item -LiteralPath $prev -NewName ".next" -ErrorAction Stop
+    $script:restored = $true
+    Write-Warning "The new build did not finish: the previous build was put back (.next-prev -> .next)."
+  } catch {
+    Write-Warning "COULD NOT PUT THE PREVIOUS BUILD BACK: $($_.Exception.Message). By hand, with the site stopped: rename .next to .next-failed and .next-prev to .next in $repo."
   }
-  return $ok
+}
+
+# The plain words for a run that did not build.
+function Get-NotBuiltMessage {
+  if ($script:asideFailed) { return "the current build could not be set aside (a locked file in .next?): nothing was built and the current version runs again. Send the messages above to Claude." }
+  if ($script:restored) { return "the build failed or was stopped (see the messages above): the previous version was put back and started again. Send the messages to Claude." }
+  if ($script:setAside) { return "the build failed and the previous build could NOT be put back (see the warning above). Send the messages to Claude." }
+  return "the update stopped before building (see the messages above); the current version is started again."
 }
 
 $sv = Get-SupervisorState
@@ -113,11 +143,12 @@ if ($sv) {
     Write-Host "3/5 Building the new version (several minutes)"
     $built = Invoke-SafeBuild
   } finally {
-    # Always: the supervisor starts the website again (with the new build, or the previous one put back).
+    # Always, even on Ctrl+C or an error: the previous build back if needed, THEN the supervisor starts the website.
+    Restore-PreviousBuild $built
     Remove-Item -LiteralPath $pause -ErrorAction SilentlyContinue
   }
   Write-Host "4/5 Starting the website"
-  if (-not $built) { throw "the build failed (see the messages above): the previous version was put back and the supervisor starts it again. Send the messages to Claude." }
+  if (-not $built) { throw (Get-NotBuiltMessage) }
   if (-not (Wait-SiteUp 300)) { throw "the website did not answer within 5 minutes: check $logs\server.log and $logs\supervisor.log" }
   # The jobs loop reads cron-loop.ps1 only when it starts: the supervisor restarts it (when it runs).
   Write-Host "5/5 Restarting the jobs loop (when it is on)"
@@ -147,13 +178,15 @@ try {
   Write-Host "3/5 Building the new version (several minutes)"
   $built = Invoke-SafeBuild
 } finally {
-  # Always started again, even if a step above failed (with the new build, or the previous one put back).
+  # Always, even on Ctrl+C or an error: the previous build back if needed, THEN the website task starts again.
+  Restore-PreviousBuild $built
   Write-Host "4/5 Starting the website"
   Start-ScheduledTask -TaskName "BuPulse server"
 }
-if (-not $built) { throw "the build failed (see the messages above): the previous version was put back and started again. Send the messages to Claude." }
-if (-not (Wait-SiteUp 120)) { throw "the website did not answer within 2 minutes: check $env:USERPROFILE\bupulse-prod\server.log" }
-# The job loop reads cron-loop.ps1 only when it starts: restart it (when it is switched on).
+if (-not $built) { throw (Get-NotBuiltMessage) }
+# This PC takes about 3 minutes to come up (Netlify's settings, then next start).
+$up = Wait-SiteUp 300
+# The job loop reads cron-loop.ps1 only when it starts: restart it (when it is switched on), also after a slow start.
 Write-Host "5/5 Restarting the jobs task (when it is on)"
 try {
   $jobs = Get-ScheduledTask -TaskName "BuPulse jobs" -ErrorAction SilentlyContinue
@@ -162,6 +195,7 @@ try {
     Start-ScheduledTask -TaskName "BuPulse jobs"
   }
 } catch {
-  Write-Warning "The site is updated, but the BuPulse jobs task could not be restarted: $($_.Exception.Message)"
+  Write-Warning "The BuPulse jobs task could not be restarted: $($_.Exception.Message)"
 }
+if (-not $up) { throw "the website did not answer within 5 minutes: check $env:USERPROFILE\bupulse-prod\server.log" }
 Write-Host "Done: bupulse.com runs $(git log --oneline -1)"

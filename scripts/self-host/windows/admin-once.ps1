@@ -14,12 +14,13 @@
 #   2. starts the boot task. While the old server holds port 3002 the supervisor starts no server and no jobs loop; its
 #      tunnel joins the old one (two connectors, as with the Mac before);
 #   3. once the supervisor's tunnel is connected, switches off (does not delete) the old jobs task, then the old server
-#      (and stops the old `next start` on port 3002 by its exact process ID), then the old tunnel, and stops the
-#      cloudflared started by hand on 12 November (its command line names tunnel-test.log) by its exact process ID;
-#      the supervisor then starts its own server, and the jobs loop if "BuPulse jobs" was on (jobs-on);
-#   4. switches the per-user task on and waits for http://127.0.0.1:3002/api/status.
-# If anything in 3-4 fails, it puts the old tasks back: stops the supervisor, switches its tasks off, and switches the
-# old tasks on and starts them again. Changes nothing else: no firewall, no UAC, no services, no power settings.
+#      (and stops the old `next start` on port 3002 by its exact process ID), then the old tunnel; the supervisor then
+#      starts its own server, and the jobs loop if "BuPulse jobs" was on (jobs-on);
+#   4. switches the per-user task on and waits for http://127.0.0.1:3002/api/status; only then stops the cloudflared
+#      started by hand on 12 November (its command line names tunnel-test.log) by its exact process ID.
+# If anything in 3-4 fails, it puts the old tasks back: the old tunnel first (so one connector always runs), then stops
+# the supervisor, switches its tasks off, and switches the old server and jobs on again (each on its own, a failure
+# never stops the others), then checks https://bupulse.com for 3 minutes and says loudly how to start a tunnel by hand. Changes nothing else: no firewall, no UAC, no services, no power settings.
 param([switch]$NoPerUserTask)
 $ErrorActionPreference = "Stop"
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -56,8 +57,10 @@ Start-ScheduledTask -TaskName $boot
 $up = $false
 foreach ($i in 1..45) { Start-Sleep -Seconds 2; if (Get-SupervisorState) { $up = $true; break } }
 if (-not $up) {
+  # It may still come up late: the stop file makes it stop at once (and keeps it from starting).
+  New-Item -ItemType File -Force (Join-Path $logs "stop-supervisor") | Out-Null
   Disable-ScheduledTask -TaskName $boot | Out-Null
-  throw "The supervisor did not start within 90 seconds (see $logs\supervisor.log). The old tasks were not touched; the boot task is switched off again."
+  throw "The supervisor did not answer within 90 seconds (see $logs\supervisor.log). The old tasks were not touched; the boot task is switched off again and stop-supervisor is written (delete it before trying again)."
 }
 $ready = $false
 foreach ($i in 1..30) { if (Test-TunnelReady) { $ready = $true; break }; Start-Sleep -Seconds 3 }
@@ -81,11 +84,6 @@ try {
       foreach ($id in $listener) { Write-Host "    stopping the old website process $id"; Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
     }
   }
-  # The cloudflared started by hand on 12 November 2026 (its command line names tunnel-test.log), by its exact ID.
-  foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name = 'cloudflared.exe'" | Where-Object { "$($_.CommandLine)" -like "*tunnel-test.log*" })) {
-    Write-Host "    stopping the hand-started cloudflared $($p.ProcessId)"
-    Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
-  }
   if ($wasOn["BuPulse jobs"]) {
     New-Item -ItemType File -Force (Join-Path $logs "jobs-on") | Out-Null
     Write-Host "    the jobs loop moves to the supervisor (jobs-on)"
@@ -99,19 +97,43 @@ try {
     try { if ((Invoke-RestMethod -Uri "http://127.0.0.1:3002/api/status" -TimeoutSec 5).status -eq "ok") { $ok = $true; break } } catch { }
   }
   if (-not $ok) { throw "the supervisor's website did not answer within 5 minutes" }
-  Write-Host "Done: the supervisor runs and http://127.0.0.1:3002/api/status says ok. Log: $logs\supervisor.log"
 } catch {
   Write-Warning "Switch failed ($($_.Exception.Message)): putting the old tasks back."
-  New-Item -ItemType File -Force (Join-Path $logs "stop-supervisor") | Out-Null
+  # Each old task on its own try/catch: one that fails never stops the others.
+  function Restore-OldTask([string]$name) {
+    if (-not $wasOn[$name]) { return }
+    try { Enable-ScheduledTask -TaskName $name -ErrorAction Stop | Out-Null } catch { Write-Warning "    $($name): could not be switched on: $($_.Exception.Message)" }
+    try { Start-ScheduledTask -TaskName $name -ErrorAction Stop; Write-Host "    $($name): on again" } catch { Write-Warning "    $($name): could not be started: $($_.Exception.Message)" }
+  }
+  # The old tunnel first, BEFORE the supervisor (and its tunnel) stops, so there is always one connector.
+  Restore-OldTask "BuPulse tunnel"
+  Start-Sleep -Seconds 10
+  try { New-Item -ItemType File -Force (Join-Path $logs "stop-supervisor") | Out-Null } catch { Write-Warning "    could not write stop-supervisor: $($_.Exception.Message)" }
   foreach ($i in 1..30) { Start-Sleep -Seconds 2; if (-not (Get-SupervisorState)) { break } }
   Remove-Item -LiteralPath (Join-Path $logs "jobs-on") -ErrorAction SilentlyContinue
-  foreach ($t in @($boot, "BuPulse supervisor")) { Disable-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue | Out-Null }
-  foreach ($name in "BuPulse server", "BuPulse tunnel", "BuPulse jobs") {
-    if ($wasOn[$name]) {
-      Enable-ScheduledTask -TaskName $name | Out-Null
-      Start-ScheduledTask -TaskName $name
-      Write-Host "    $($name): on again"
-    }
+  foreach ($t in @($boot, "BuPulse supervisor")) { try { Disable-ScheduledTask -TaskName $t -ErrorAction Stop | Out-Null } catch { } }
+  Restore-OldTask "BuPulse server"
+  Restore-OldTask "BuPulse jobs"
+  Write-Host "    checking https://bupulse.com from outside (up to 3 minutes)"
+  $public = $false
+  foreach ($i in 1..18) {
+    Start-Sleep -Seconds 10
+    try { if ((Invoke-RestMethod -Uri "https://bupulse.com/api/status" -TimeoutSec 8).status -eq "ok") { $public = $true; break } } catch { }
+  }
+  if (-not $public) {
+    Write-Warning "=================================================================================================="
+    Write-Warning "BUPULSE.COM DOES NOT ANSWER FROM OUTSIDE after the rollback. Check the server and start a tunnel by hand:"
+    Write-Warning "  Start-Process cloudflared -ArgumentList 'tunnel','--no-autoupdate','--config',`"$env:USERPROFILE\.cloudflared\bupulse-prod.yml`",'run','bupulse-prod' -WindowStyle Hidden"
+    Write-Warning "and look at $env:USERPROFILE\bupulse-prod\server.log (http://127.0.0.1:3002/api/status should say ok)."
+    Write-Warning "=================================================================================================="
   }
   throw "The old tasks run again (stop-supervisor is left in $logs; delete it before trying again). See $logs\supervisor.log."
 }
+
+# Only now that the switch worked: the cloudflared started by hand on 12 November 2026 (its command line names
+# tunnel-test.log), stopped by its exact process ID. Until here it stayed as an extra connector.
+foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name = 'cloudflared.exe'" | Where-Object { "$($_.CommandLine)" -like "*tunnel-test.log*" })) {
+  Write-Host "    stopping the hand-started cloudflared $($p.ProcessId)"
+  Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+}
+Write-Host "Done: the supervisor runs and http://127.0.0.1:3002/api/status says ok. Log: $logs\supervisor.log"
