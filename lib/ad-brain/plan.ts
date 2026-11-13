@@ -39,7 +39,7 @@ export function portraitPrompt(c: ScriptCharacter): string {
 }
 
 export function variantPrompt(change: string): string {
-  return `Edit this exact photo. Keep the same framing, pose, hands, clothes, room, lighting and camera angle exactly. ${realistic(oneLine(change))}. Keep it looking like a real unretouched phone photo: visible pores, uneven skin tone, natural light, no glow, no plastic skin. No text, no logos, no readable screens.`;
+  return `Edit this exact photo. Keep the same framing, pose, hands, clothes, room, lighting and camera angle exactly. ${realistic(oneLine(change))}. Keep it looking like a real unretouched phone photo: the same soft side light and warm undertones, natural sheen on the skin, no glow, no plastic or airbrushed skin. No text, no logos, no readable screens.`;
 }
 
 export function scenePrompt(scene: string, still: boolean, product?: { name: string } | null): string {
