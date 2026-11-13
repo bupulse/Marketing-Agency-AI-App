@@ -68,6 +68,10 @@ Built from `NEXT_PUBLIC_SITE_URL` + `/api/social/<network>/callback`. Register e
 
 ### Permissions to request
 
+**Current plan (13 November 2026): `docs/META_APP_REVIEW.md`.** Meta now says an app uses Facebook Login or Instagram
+Login for Instagram, not both, and trending sounds (Instagram Audio API) need Facebook Login, so the submission is
+Facebook Login only and production leaves `INSTAGRAM_APP_ID` empty. The table below is the older reference.
+
 For Facebook Login:
 
 | Permission | Why | Needs review |
