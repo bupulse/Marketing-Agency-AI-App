@@ -19,6 +19,7 @@ const mail = (
 export default function PrivacyPage() {
   return (
     <LegalPage
+      updated="13 November 2026"
       title="Privacy Policy"
       intro="We keep this simple: what we collect, why, who sees it, and how you can delete it."
     >
@@ -64,11 +65,23 @@ export default function PrivacyPage() {
         <LegalList
           items={[
             "Access and refresh tokens are encrypted before they are stored, and they are only decrypted on our servers at the moment we need to act for you.",
-            "We never post, comment, message or follow on your behalf unless you ask us to publish something.",
+            "We never post, comment, message or follow on your behalf unless you ask us to: you publish a post, switch on Answer comments and messages for an account, or send a reply yourself.",
             "We never share your tokens with anyone else. Pro customers who choose to use their own Composio account keep their tokens with Composio, and we store only the identifiers we need.",
             "You can disconnect any account at any time in the app. You can also remove BuPulse from the network's own settings. Either way we stop using the token and delete it.",
           ]}
         />
+        <p>
+          <strong>Comments and messages.</strong> If you switch on <strong>Answer comments and messages</strong> for an Instagram account or Facebook
+          Page, we receive the new comments on its posts and the direct messages people send it from that moment on: the person&apos;s name or username,
+          their account id, profile picture and what they wrote. We show them in your BuPulse inbox so you, your team, your automations or our AI
+          assistant can reply from that account. We use them only to answer for you, never for advertising, and we do not contact those people for
+          ourselves. Switch it off at any time on the Channels page; the conversations are deleted with your account as described in section 7.
+        </p>
+        <p>
+          <strong>Trending sounds on Instagram reels.</strong> For an Instagram account connected through Facebook, we may ask Instagram for the sounds
+          it currently allows apps to add to reels, and add one of them to a reel you publish. The post in BuPulse shows the name of the sound. This uses
+          only your own account and its token.
+        </p>
         <p>
           Instagram and Facebook data is received through Meta platforms and handled under Meta&apos;s Platform Terms. TikTok data is received through the
           TikTok Developer Platform and handled under TikTok&apos;s developer terms. LinkedIn data is received through LinkedIn&apos;s APIs and handled under
@@ -142,13 +155,19 @@ export default function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="8. Your choices and rights">
+      <LegalSection id="deletion" title="8. Your choices and rights">
         <p>
           You can view and edit your information in the app. You can delete your account at any time in <strong>Settings → Delete account</strong>, or email
           {" "}{mail} and we will do it for you. You can also ask us for a copy of your data or to correct it. See our{" "}
           <Link className="font-semibold text-[color:var(--bp-link)] underline" href="/data-deletion">data deletion page</Link> for the full steps. Depending on where you live
           (for example California), you may have additional rights to know, delete, correct or opt out of certain uses of your data. We will not
           discriminate against you for using them. Contact us to use any of these rights.
+        </p>
+        <p>
+          <strong>Data from Facebook and Instagram.</strong> Disconnecting an account on the Channels page deletes its tokens straight away. If you remove
+          BuPulse in your Facebook or Instagram settings, Meta tells us and we delete that connection; if you also ask Meta to delete your data, we delete
+          the Facebook and Instagram data linked to you and give you a confirmation code you can check on the{" "}
+          <Link className="font-semibold text-[color:var(--bp-link)] underline" href="/data-deletion">data deletion page</Link>.
         </p>
       </LegalSection>
 

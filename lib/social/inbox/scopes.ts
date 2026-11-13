@@ -10,8 +10,11 @@ export const INBOX_SCOPES = {
   instagram: ["instagram_business_manage_messages", "instagram_business_manage_comments"],
   /** Instagram through Facebook Login (Page token). */
   instagramViaFacebook: ["instagram_manage_comments", "instagram_manage_messages", "pages_messaging", "pages_manage_metadata"],
-  /** Facebook Pages. */
-  facebook: ["pages_messaging", "pages_manage_metadata"],
+  /**
+   * Facebook Pages. Replying to a comment as the Page (POST /{comment-id}/comments) needs pages_manage_engagement,
+   * which depends on pages_read_user_content (Meta's permissions reference, checked 13 November 2026).
+   */
+  facebook: ["pages_messaging", "pages_manage_metadata", "pages_read_user_content", "pages_manage_engagement"],
 } as const;
 
 /** The extra scopes for a direct sign-in, or none while the inbox uses BuPulse-Socials. */
