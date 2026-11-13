@@ -425,7 +425,7 @@ function Sidebar({ pathname, plan, businessName, brand, role, features, notOffer
           </div>
           <RailMeter value={plan.used} max={plan.max} label="Text generations used" />
           <span className="text-xs text-white/85 dark:text-white/60">
-            {plan.used} of {plan.max} generations used
+            {plan.used.toLocaleString("en-US")} of {plan.max.toLocaleString("en-US")} generations used
           </span>
         </div>
       </div>
@@ -462,10 +462,10 @@ function UserMenu({ displayName, email }: { displayName: string; email: string }
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label="Account menu"
-        className="glass inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5"
+        className="glass inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full py-1 pl-1 pr-1 sm:pr-2.5"
       >
         <Avatar name={displayName} size={36} />
-        <ChevronDown aria-hidden className={cn("size-4 text-muted transition-transform", open && "rotate-180")} />
+        <ChevronDown aria-hidden className={cn("size-4 text-muted transition-transform max-sm:hidden", open && "rotate-180")} />
       </button>
       {open && (
         <div
@@ -650,8 +650,10 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
       <PageFinder open={finding} onOpenChange={onFinding} entries={entries} />
 
       <div className="mx-auto flex w-full min-w-0 max-w-[1320px] flex-1 flex-col gap-6 px-4 pt-3 pb-10 max-lg:pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-5 sm:max-lg:pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:px-10 lg:pt-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
+        {/* One row on a 390 px phone too: smaller gaps and no chevrons below sm (the switcher and the account menu are
+            icon buttons there), or the actions dropped onto a second row. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               ref={menuButtonRef}
               type="button"
@@ -671,7 +673,7 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
             {switcher && <ServiceSwitcher {...switcher} />}
             <ThemeToggle />
             <NoticesBell notices={notices} />

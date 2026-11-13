@@ -85,7 +85,7 @@ export function AutopilotCard({
                 ? "Every night BuPulse makes the next day’s posts for your apps, about a different product, campaign or your business each day."
                 : "Your plan does not include daily posts. "}
               {!daily && (
-                <Link href="/dashboard/upgrade" className="font-medium text-accent underline-offset-2 hover:underline">
+                <Link href="/dashboard/upgrade?feature=dailyPosts" className="font-medium text-accent underline-offset-2 hover:underline">
                   See the plans
                 </Link>
               )}

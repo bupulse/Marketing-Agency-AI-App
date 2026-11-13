@@ -105,7 +105,7 @@ export function useDialog(open: boolean, root: RefObject<HTMLElement | null>, ke
       const target = e.target as HTMLElement | null;
       const typing = !!target?.closest("input:not([type=range]), textarea, select, [contenteditable=true]");
       if (e.key === "Tab" && root.current) {
-        const list = [...root.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex='-1'])")].filter((x) => x.offsetParent !== null || x === document.activeElement);
+        const list = [...root.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex='-1'])")].filter((x) => (x.offsetParent !== null && !x.closest("[inert]")) || x === document.activeElement);
         if (list.length === 0) return;
         const first = list[0];
         const last = list[list.length - 1];

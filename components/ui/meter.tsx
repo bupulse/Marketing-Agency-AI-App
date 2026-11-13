@@ -19,8 +19,8 @@ export function Meter({ value, max, label, showValue = false, className }: Meter
       {showValue && (
         <div className="mb-1.5 flex justify-between text-[13px] font-medium">
           <span className="text-muted">{label}</span>
-          <span>
-            {value} / {max}
+          <span className="tabular-nums">
+            {value.toLocaleString("en-US")} / {max.toLocaleString("en-US")}
           </span>
         </div>
       )}

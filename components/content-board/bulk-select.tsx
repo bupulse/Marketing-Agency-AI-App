@@ -6,7 +6,7 @@ import { CheckSquare, Square, Trash2, X } from "lucide-react";
 import { deletePostsAction } from "@/app/dashboard/calendar/actions";
 import { Button, Dialog, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { bulkDeleteMessage, MAX_BULK_DELETE } from "@/lib/publishing/bulk-delete";
+import { bulkDeleteMessage, MAX_BULK_DELETE, selectAllButton } from "@/lib/publishing/bulk-delete";
 
 /** One section in select mode at a time: entering it in one tells the others to leave it (one action bar on screen). */
 const EVENT = "bp-bulk-select";
@@ -75,7 +75,7 @@ export function useBulkSelect(ids: string[]): BulkSelect {
         else if (next.size < MAX_BULK_DELETE) next.add(id);
         return next;
       }),
-    toggleAll: () => setPicked(selected.size === ids.length ? new Set() : new Set(ids.slice(0, MAX_BULK_DELETE))),
+    toggleAll: () => setPicked(selectAllButton(ids.length, selected.size).all ? new Set() : new Set(ids.slice(0, MAX_BULK_DELETE))),
   };
 }
 
@@ -88,11 +88,11 @@ export function SelectToggle({ select, what = "posts" }: { select: BulkSelect; w
         Select
       </Button>
     );
-  const all = select.selected.size === select.ids.length;
+  const { all, label } = selectAllButton(select.ids.length, select.selected.size);
   return (
     <span className="flex flex-wrap items-center gap-2">
       <Button size="sm" variant="outline" leading={all ? <Square aria-hidden className="size-4" /> : <CheckSquare aria-hidden className="size-4" />} onClick={select.toggleAll} aria-pressed={all}>
-        {all ? "Clear all" : `Select all ${select.ids.length}`}
+        {label}
       </Button>
       <Button size="sm" variant="ghost" onClick={select.stop}>
         Done

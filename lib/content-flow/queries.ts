@@ -1,7 +1,8 @@
 // Database reads for a subject's day view (docs/CONTENT.md, content flow v3), scoped to the business.
 import "server-only";
 import { postInclude, toContentPosts } from "@/lib/content-board/queries";
-import type { ContentFilters, ContentScope } from "@/lib/content-board/filters";
+import { contentWhere, type ContentFilters, type ContentScope } from "@/lib/content-board/filters";
+import { dateDay, plannedDayOf } from "@/lib/content-board/period";
 import { prisma } from "@/lib/db";
 import { loadVisuals, pickVisuals } from "@/lib/visuals/queries";
 import { dayBounds, dayDate, dayWhere, periodWhere } from "./day";
@@ -26,7 +27,18 @@ export async function loadPeriodPosts(businessId: string, scope: ContentScope, p
   return { posts: await toContentPosts(businessId, rows.slice(0, filters.limit)), total, hasMore: rows.length > filters.limit };
 }
 
-export type DayContent = { id: string; network: string | null; angle: string | null; mode: string | null; createdAt: string; hasScript: boolean };
+/**
+ * The day of the subject's newest post under the filters, on any date (null when there is none). An empty day, week or
+ * month points there: "24 to review" on All posts opened a product on today, which said "No posts match" (QA 13 Nov).
+ */
+export async function latestPostDay(businessId: string, scope: ContentScope, filters: ContentFilters, zone: string, now: Date): Promise<string | null> {
+  const where = contentWhere(businessId, { ...filters, range: undefined, from: undefined, to: undefined, view: undefined, day: undefined }, { zone, now, scope });
+  const row = await prisma.post.findFirst({ where, orderBy: [{ createdAt: "desc" }, { id: "asc" }], select: { status: true, scheduledAt: true, publishedAt: true, createdAt: true, plannedDay: true } });
+  if (!row) return null;
+  return plannedDayOf({ status: row.status, scheduledAt: row.scheduledAt?.toISOString() ?? null, publishedAt: row.publishedAt?.toISOString() ?? null, createdAt: row.createdAt.toISOString(), plannedDay: row.plannedDay ? dateDay(row.plannedDay) : null }, zone);
+}
+
+export type DayContent ={ id: string; network: string | null; angle: string | null; mode: string | null; createdAt: string; hasScript: boolean };
 
 /** The content rows a day's runs made for a subject (one per post), each with its picture and video. */
 export async function loadDayContents(businessId: string, scope: ContentScope, day: string, zone: string) {

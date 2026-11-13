@@ -26,7 +26,7 @@ const video = (over: Partial<LibraryVideo> = {}): LibraryVideo => ({
 describe("library adapters", () => {
   it("labels the source", () => {
     expect(libraryEyebrow({ source: "studio", engine: "seedance" })).toBe("Video Studio · AI video");
-    expect(libraryEyebrow({ source: "studio", engine: "other" })).toBe("Video Studio · Studio");
+    expect(libraryEyebrow({ source: "studio", engine: "other" })).toBe("Video Studio");
     expect(libraryEyebrow({ source: "upload", engine: "upload" })).toBe("Uploaded");
     expect(libraryEyebrow({ source: "slideshow", engine: null })).toBe("Post video");
   });

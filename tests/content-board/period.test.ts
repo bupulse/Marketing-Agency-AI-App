@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSubjectCards } from "@/lib/content-board/grouping";
 import { contentQuery, contentWhere, EMPTY_FILTERS, parseContentFilters } from "@/lib/content-board/filters";
-import { dayHeading, groupByDay, periodBounds, periodContains, periodDays, periodLabel, periodOf, periodPostWhere, plannedDayOf, shiftPeriod } from "@/lib/content-board/period";
+import { dayHeading, emptyPeriodAction, groupByDay, periodBounds, periodContains, periodDays, periodLabel, periodOf, periodPostWhere, plannedDayOf, shiftPeriod } from "@/lib/content-board/period";
 
 // The Day / Week / Month switch (lib/content-board/period.ts): business-local days, weeks from Monday.
 const KIGALI = "Africa/Kigali"; // UTC+2, no daylight saving
@@ -133,5 +133,13 @@ describe("a week or a month listed by day", () => {
       ["2026-10-30", ["early", "late"]],
       ["2026-10-31", ["moved"]],
     ]);
+  });
+});
+
+describe("empty week or month button", () => {
+  it("goes back to the current period, or to today when this is the current one", () => {
+    expect(emptyPeriodAction(periodOf("month", "2026-11-14"), "2026-11-14", "month")).toEqual({ label: "See today", today: true });
+    expect(emptyPeriodAction(periodOf("month", "2026-10-03"), "2026-11-14", "month")).toEqual({ label: "Back to this month", today: false });
+    expect(emptyPeriodAction(periodOf("week", "2026-11-30"), "2026-11-14", "week")).toEqual({ label: "Back to this week", today: false });
   });
 });

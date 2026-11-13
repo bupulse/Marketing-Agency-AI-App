@@ -33,11 +33,12 @@ export function PriceTag({ plan, interval, size = "lg" }: { plan: PlanPrices & {
           </>
         )}
       </p>
-      <p className={cn("flex items-baseline gap-1.5", size === "sm" && "flex-wrap whitespace-nowrap")}>
-        <span className={cn("font-bold tracking-[-0.04em]", size === "lg" ? "text-5xl" : size === "md" ? "text-4xl font-semibold tracking-[-0.03em]" : "text-[2rem] leading-tight tracking-[-0.03em]")}>
+      {/* The price never breaks inside ("59,000" over "RWF" in Billing's three columns); "/ month" goes under it instead. */}
+      <p className="flex flex-wrap items-baseline gap-x-1.5">
+        <span className={cn("font-bold tracking-[-0.04em] whitespace-nowrap", size === "lg" ? "text-5xl" : size === "md" ? "text-4xl font-semibold tracking-[-0.03em]" : "text-[2rem] leading-tight tracking-[-0.03em]")}>
           {formatPlanPrice(plan, interval)}
         </span>
-        <span className={cn("text-muted", size === "sm" && "text-sm")}>/ {intervalWord(interval)}</span>
+        <span className={cn("whitespace-nowrap text-muted", size === "sm" && "text-sm")}>/ {intervalWord(interval)}</span>
       </p>
       {plan.vatRatePercent ? (
         <p className="text-xs text-muted">

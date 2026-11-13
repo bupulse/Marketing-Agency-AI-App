@@ -20,10 +20,11 @@ export type VideoSource = {
   ratio?: string | null;
 };
 
-/** The still of a video: its poster, or the video's first frame when it has none. */
+/** The still of a video: its poster, or the video's first frame when it has none (or its link has expired). */
 function Still({ video, alt = "", fit = "cover" }: { video: VideoSource; alt?: string; fit?: "cover" | "contain" }) {
   const [ready, setReady] = useState(false);
-  if (video.poster)
+  const [broken, setBroken] = useState(false);
+  if (video.poster && !broken)
     return (
       // Posters are signed storage links, which next/image is not configured for.
       // eslint-disable-next-line @next/next/no-img-element
@@ -33,6 +34,7 @@ function Still({ video, alt = "", fit = "cover" }: { video: VideoSource; alt?: s
         loading="lazy"
         decoding="async"
         onLoad={() => setReady(true)}
+        onError={() => setBroken(true)}
         ref={(el) => {
           if (el?.complete && el.naturalWidth && !ready) setReady(true);
         }}
@@ -153,7 +155,9 @@ export function VideoCard({ video, title, eyebrow, status, statusLabel, dateLabe
       style={style}
       className={cn(s.lift, s.video, "relative w-full min-w-0 select-none", seen ? s.rise : "opacity-0", open && s.openGlass, focused && "outline-[3px] outline-offset-[3px] outline-pulse-blue outline-solid", className)}
     >
-      <Still video={video} />
+      {/* Only once the card scrolls into view (it is invisible until then): a video without a poster shows its first
+          frame, and 14 of those loading at once made the Videos page take 14 s on a fast line (QA 13 Nov). */}
+      {seen && <Still video={video} />}
       {previewing && <Preview video={video} />}
       <span aria-hidden className={s.scrim} />
 
@@ -278,10 +282,13 @@ export function InlineVideo({ video, title, onExpand, autoPlay = false, fit = "c
           onLoadedData={(e) => {
             // A browser that blocks sound: play muted instead.
             const v = e.currentTarget;
-            if (v.paused) {
-              setMuted(true);
-              v.muted = true;
-              void v.play().catch(() => {});
+            // loadeddata often comes before autoplay starts, so try with sound first and mute only when refused.
+            if (v.paused && !v.ended) {
+              void v.play().catch(() => {
+                setMuted(true);
+                v.muted = true;
+                void v.play().catch(() => {});
+              });
             }
           }}
           className={cn(s.media, fit === "contain" && s.mediaContain)}

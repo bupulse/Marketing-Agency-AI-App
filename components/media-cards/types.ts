@@ -84,8 +84,11 @@ export type PostView = {
 
 /** PostModal adds the per-platform captions of the same post and the details list. */
 export type PostDetailView = PostView & {
-  /** The same post on other platforms with their own captions: shown as tabs. */
-  variants?: { platform: Platform; caption: string; hashtags?: string[]; status?: StatusKey | null }[];
+  /**
+   * The same post on other platforms with their own captions: shown as tabs. `label` is the tab's name when two
+   * versions share an app ("Facebook · Carousel"); the app's name otherwise.
+   */
+  variants?: { platform: Platform; caption: string; hashtags?: string[]; status?: StatusKey | null; label?: string }[];
   details?: { label: string; value: ReactNode }[];
   /** The full date line under the actions ("Scheduled for Friday 14 November, 12:30"). */
   dateLine?: string | null;

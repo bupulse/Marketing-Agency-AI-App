@@ -1,15 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { InlineVideo } from "./video-card";
 import type { MediaItem } from "./types";
 import s from "./media-cards.module.css";
 
-/** One picture, fading and settling in when it has loaded. */
+/** One picture, fading and settling in when it has loaded; a quiet "no picture" mark when it cannot load. */
 export function Picture({ item, fit = "cover", eager = false }: { item: MediaItem; fit?: "cover" | "contain"; eager?: boolean }) {
   const [ready, setReady] = useState(false);
+  const [broken, setBroken] = useState(false);
+  if (broken)
+    return (
+      <span role="img" aria-label={item.alt || "Picture not available"} className="absolute inset-0 grid place-items-center bg-soft text-muted">
+        <ImageOff aria-hidden className="size-10 stroke-[1.4]" />
+      </span>
+    );
   return (
     // Post pictures are signed storage links, which next/image is not configured for.
     // eslint-disable-next-line @next/next/no-img-element
@@ -20,6 +27,7 @@ export function Picture({ item, fit = "cover", eager = false }: { item: MediaIte
       decoding="async"
       draggable={false}
       onLoad={() => setReady(true)}
+      onError={() => setBroken(true)}
       ref={(el) => {
         if (el?.complete && el.naturalWidth && !ready) setReady(true);
       }}

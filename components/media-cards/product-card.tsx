@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { HostLink } from "@/components/platform/hosts";
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Package } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -100,13 +100,14 @@ export function ProductCard({ name, imageUrl, price, priceNote, summary, categor
           </div>
         )}
       </div>
-      <div className="relative flex flex-1 flex-col gap-1 p-4">
+      {/* Not positioned: the name's stretched link (nameCls) covers the whole card, photo included, from the article. */}
+      <div className="flex flex-1 flex-col gap-1 p-4">
         {category && <span className="truncate font-mono text-[11px] tracking-[0.08em] text-pulse-blue uppercase dark:text-[#8db0ff]">{category}</span>}
         <h3 className="line-clamp-2 text-[17px] leading-tight font-semibold tracking-[-0.015em]">
           {href ? (
-            <Link href={href} className={nameCls}>
+            <HostLink href={href} className={nameCls}>
               {name}
-            </Link>
+            </HostLink>
           ) : onOpen ? (
             <button type="button" onClick={onOpen} className={cn("cursor-pointer text-left", nameCls)}>
               {name}

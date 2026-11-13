@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { HostLink } from "@/components/platform/hosts";
 import { useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { CalendarDays, Megaphone, Users } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -91,9 +91,9 @@ export function CampaignCard({ name, coverUrl, status, statusLabel, kindLabel, p
           {kindLabel && <span className="font-mono text-[10.5px] tracking-[0.1em] text-white/80 uppercase">{kindLabel}</span>}
           <h3 className="line-clamp-2 text-[18px] leading-tight font-semibold tracking-[-0.015em] [text-shadow:0_1px_10px_rgba(0,0,0,.4)]">
             {href ? (
-              <Link href={href} className={nameCls}>
+              <HostLink href={href} className={nameCls}>
                 {name}
-              </Link>
+              </HostLink>
             ) : onOpen ? (
               <button type="button" onClick={onOpen} className={cn("cursor-pointer text-left", nameCls)}>
                 {name}
@@ -167,6 +167,14 @@ export function CampaignCard({ name, coverUrl, status, statusLabel, kindLabel, p
         )}
         {actions.length > 0 && <ActionRow actions={actions} compact className="relative z-[2] mt-auto pt-1" />}
       </div>
+      {/* The whole card opens it: the name sits in the cover's own positioned box, so its stretched link covers only the
+          title. This layer (for the pointer only: the name stays the link for keyboards and screen readers) covers the
+          cover and the facts; the name and the actions sit above it. */}
+      {href ? (
+        <HostLink href={href} tabIndex={-1} aria-hidden className="absolute inset-0 z-[1] rounded-[26px]" />
+      ) : onOpen ? (
+        <span aria-hidden onClick={onOpen} className="absolute inset-0 z-[1] cursor-pointer rounded-[26px]" />
+      ) : null}
     </article>
   );
 }

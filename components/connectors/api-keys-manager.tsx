@@ -61,7 +61,7 @@ export function ApiKeysManager({ keys, max, readOnly = false }: { keys: KeyView[
         {keys.length === 0 ? (
           <GlassCard className="flex flex-col gap-2 rounded-card p-5">
             <p className="font-semibold">No keys yet</p>
-            <p className="text-[14px] text-muted">Create a key, choose what it may do, and send it as <code>Authorization: Bearer bp_live_…</code>. Examples are in docs/API.md.</p>
+            <p className="text-[14px] text-muted">Create a key, choose what it may do, and send it as <code>Authorization: Bearer bp_live_…</code>. Need examples? Ask us in the help chat.</p>
           </GlassCard>
         ) : (
           <GlassCard padding="none" className="rounded-card">

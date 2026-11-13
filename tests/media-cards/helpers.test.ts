@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   aspectRatio,
+  distinctLabels,
   campaignDayLabel,
   campaignStatusKey,
   clock,
@@ -168,5 +169,17 @@ describe("numbers and ranges", () => {
   it("initials", () => {
     expect(initialOf("LinkedIn · acme")).toBe("A");
     expect(initialOf("  ")).toBe("?");
+  });
+});
+
+describe("distinctLabels", () => {
+  it("tells apart two versions on the same app by format, then by number", () => {
+    expect(distinctLabels([{ name: "Facebook", detail: "Post" }, { name: "Instagram", detail: "Post" }, { name: "Facebook", detail: "Carousel" }, { name: "Instagram", detail: "Post" }])).toEqual([
+      "Facebook · Post",
+      "Instagram · Post",
+      "Facebook · Carousel",
+      "Instagram · Post 2",
+    ]);
+    expect(distinctLabels([{ name: "LinkedIn", detail: "Post" }, { name: "TikTok" }])).toEqual(["LinkedIn", "TikTok"]);
   });
 });

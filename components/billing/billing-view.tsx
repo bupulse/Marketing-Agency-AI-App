@@ -58,7 +58,7 @@ export function BillingView({
     ...(receipts ? [{ value: "receipts", label: "Receipts", icon: Receipt, count: receiptsCount }] : []),
   ];
   const shown: BillingTab = (tab === "add" && !add) || (tab === "receipts" && !receipts) ? "plans" : tab;
-  const top3 = usage.meters.slice(0, 2).map((m) => `${m.label.split(" (")[0]} ${m.used}/${m.max}`).join(" · ");
+  const top3 = usage.meters.slice(0, 2).map((m) => `${m.label.split(" (")[0]} ${m.used.toLocaleString("en-US")}/${m.max.toLocaleString("en-US")}`).join(" · ");
   return (
     <>
       <KitStyles />

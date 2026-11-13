@@ -230,10 +230,13 @@ function Player({ items, index, onIndexChange, onClose }: MediaPlayerProps & { i
               onLoadedData={(e) => {
                 // A browser that blocks sound until a tap: play muted, the sound button turns it on.
                 const v = e.currentTarget;
+                // loadeddata often comes before autoplay starts, so try with sound first and mute only when refused.
                 if (v.paused && !v.ended) {
-                  v.muted = true;
-                  setMuted(true);
-                  void v.play().catch(() => {});
+                  void v.play().catch(() => {
+                    v.muted = true;
+                    setMuted(true);
+                    void v.play().catch(() => {});
+                  });
                 }
               }}
               onClick={toggle}

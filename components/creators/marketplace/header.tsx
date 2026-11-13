@@ -3,12 +3,15 @@ import { BackgroundBlobs } from "@/components/motion";
 import { Logo } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/theme";
 import { buttonClasses } from "@/components/ui";
+import { afterSignInPath } from "@/lib/platform/app-hosts";
 
 export type HeaderViewer = "guest" | "creator" | "company";
 
 /**
  * The frame of the creators' public pages (/creators, /creators/signup, /c/<slug>): the logo, and Sign in / Join as a
- * creator for visitors, or a way back to their own pages for signed-in people. Phone first.
+ * creator for visitors, or a way back to their own pages for signed-in people. Phone first. A company's "Dashboard" is
+ * the service chooser (/apps) once Marketing has its own host: a Next Link to /dashboard would prefetch a cross-host
+ * redirect, which the browser blocks (CORS).
  */
 export function CreatorsFrame({ viewer, children }: { viewer: HeaderViewer; children: React.ReactNode }) {
   return (
@@ -24,7 +27,7 @@ export function CreatorsFrame({ viewer, children }: { viewer: HeaderViewer; chil
           {viewer === "creator" ? (
             <Link href="/creator" className={buttonClasses({ size: "sm", variant: "ghost", className: "whitespace-nowrap px-3" })}>My campaigns</Link>
           ) : viewer === "company" ? (
-            <Link href="/dashboard" className={buttonClasses({ size: "sm", variant: "ghost", className: "whitespace-nowrap px-3" })}>Dashboard</Link>
+            <Link href={afterSignInPath()} className={buttonClasses({ size: "sm", variant: "ghost", className: "whitespace-nowrap px-3" })}>Dashboard</Link>
           ) : (
             <>
               <Link href="/login?next=/creator" className="inline-flex min-h-11 items-center px-2 text-sm font-semibold no-underline">Sign in</Link>

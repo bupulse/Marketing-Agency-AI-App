@@ -30,7 +30,7 @@ export function DomainsView({ connected, problem, tokenUrl, zones, snippet }: { 
                 (it opens with the right permissions ticked).
               </>,
               <>
-                Check these two permissions are listed: <strong>Zone, Zone, Read</strong> and <strong>Zone, Zaraz, Edit</strong>. If not, add them with &quot;Add more&quot;. Leave &quot;Zone Resources&quot; on <em>All zones</em> (or choose just your site).
+                Check these two permissions are listed: <strong>Zone → Zone → Read</strong> and <strong>Zone → Zaraz → Edit</strong>. If not, add them with &quot;Add more&quot;. Leave &quot;Zone Resources&quot; on <em>All zones</em> (or choose just your site).
               </>,
               <>
                 Click <strong>Continue to summary</strong>, then <strong>Create Token</strong>, and copy the token. Cloudflare shows it only once.
