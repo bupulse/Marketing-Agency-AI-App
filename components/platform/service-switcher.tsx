@@ -36,11 +36,11 @@ export function ServiceSwitcher({ chooser, agencyPicked }: SwitcherProps) {
         aria-haspopup="menu"
         aria-controls={menuId}
         aria-label="Switch BuPulse service. Now: Marketing"
-        className="glass inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[14px] font-semibold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30"
+        className="glass inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 text-[14px] max-sm:w-11 max-sm:px-0 font-semibold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30"
       >
         <LayoutGrid aria-hidden className="size-[18px] text-pulse-blue" />
         <span className="hidden sm:inline">Marketing</span>
-        <ChevronDown aria-hidden className={cn("size-4 text-muted transition-transform", open && "rotate-180")} />
+        <ChevronDown aria-hidden className={cn("size-4 text-muted transition-transform max-sm:hidden", open && "rotate-180")} />
       </button>
       {open && (
         <div
