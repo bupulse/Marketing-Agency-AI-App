@@ -165,7 +165,7 @@ export function WebhooksManager({ endpoints, deliveries, max, readOnly = false }
         {endpoints.length === 0 ? (
           <GlassCard className="flex flex-col gap-2 rounded-card p-5">
             <p className="font-semibold">No webhooks yet</p>
-            <p className="text-[14px] text-muted">Add the address Zapier or Make gave you, choose what to send, and every event arrives within seconds, signed so you know it is from BuPulse. Details are in docs/WEBHOOKS.md.</p>
+            <p className="text-[14px] text-muted">Add the address Zapier or Make gave you, choose what to send, and every event arrives within seconds, signed so you know it is from BuPulse. Need the fields or an example? Ask us in the help chat.</p>
           </GlassCard>
         ) : (
           <ul className="flex flex-col gap-3">
