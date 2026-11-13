@@ -1,12 +1,23 @@
 import { Check, Clock } from "lucide-react";
 import { FEATURE_ICONS } from "@/components/app/nav";
 import { EmptyState } from "@/components/app/empty-state";
-import { PageHeader } from "@/components/app/page-header";
+import type { LucideIcon } from "lucide-react";
+import { KitStyles, PageHeader } from "@/components/admin/kit";
 import { Button } from "@/components/ui";
 import { UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { blockMessage, PLAN_UNKNOWN_MESSAGE, type AccountBlock, type FeatureBlockReason } from "@/lib/entitlements";
 import { featureOf, type FeatureKey } from "@/lib/features";
 import { askMessage, can, type Role } from "@/lib/team/roles";
+
+/** The page top: the feature's icon, its name and one plain line (the admin kit's look). */
+function Top({ icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
+  return (
+    <>
+      <KitStyles />
+      <PageHeader icon={icon} title={title} description={description} />
+    </>
+  );
+}
 
 /**
  * The friendly page for a feature the company's plan does not include (or whose service is off right now):
@@ -20,7 +31,7 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
   if (block) {
     return (
       <>
-        <PageHeader title={def.label} description={block === "pending_demo" ? "Opens when your free trial starts." : "Your account is read-only for now."} />
+        <Top icon={Icon} title={def.label} description={block === "pending_demo" ? "Opens when your free trial starts." : "Your account is read-only for now."} />
         <EmptyState
           icon={Icon}
           title={block === "pending_demo" ? "Start your free trial first" : block === "trial_expired" ? "Your free trial has ended" : block === "past_due" ? "Your last payment did not go through" : "Your plan is not active"}
@@ -33,7 +44,7 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
   if (def.status === "coming_soon") {
     return (
       <>
-        <PageHeader title={def.label} description="Not available yet." />
+        <Top icon={Icon} title={def.label} description="Not available yet." />
         <EmptyState icon={Clock} comingSoon title={`${def.label} is on its way`} text={def.description} />
       </>
     );
@@ -41,7 +52,7 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
   if (reason === "plan_unknown") {
     return (
       <>
-        <PageHeader title={def.label} description="Your plan could not be checked." />
+        <Top icon={Icon} title={def.label} description="Your plan could not be checked." />
         <EmptyState icon={Icon} title="Please try again in a moment" text={PLAN_UNKNOWN_MESSAGE} />
       </>
     );
@@ -49,7 +60,7 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
   if (reason === "service_off") {
     return (
       <>
-        <PageHeader title={def.label} description="Part of your plan, paused for a short while." />
+        <Top icon={Icon} title={def.label} description="Part of your plan, paused for a short while." />
         <EmptyState icon={Icon} title="Temporarily unavailable" text={UNAVAILABLE_MESSAGE} />
       </>
     );
@@ -58,7 +69,7 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
   if (!can(role, "upgrade")) {
     return (
       <>
-        <PageHeader title={def.label} description="Not part of your company's plan." />
+        <Top icon={Icon} title={def.label} description="Not part of your company's plan." />
         <EmptyState icon={Icon} title={`${def.label} is not in your company's plan`} text={`${def.description} Your company owner decides what the plan includes.`} />
       </>
     );
@@ -70,7 +81,7 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
   if (addOnBilling && can(role, "billing")) {
     return (
       <>
-        <PageHeader title={def.label} description="Not part of your plan yet." />
+        <Top icon={Icon} title={def.label} description="Not part of your plan yet." />
         <EmptyState
           icon={Icon}
           title={`Add ${def.label} to your plan`}
@@ -92,7 +103,7 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
   }
   return (
     <>
-      <PageHeader title={def.label} description="Not part of your plan yet." />
+      <Top icon={Icon} title={def.label} description="Not part of your plan yet." />
       <EmptyState
         icon={Icon}
         title={`Add ${def.label} to your plan`}

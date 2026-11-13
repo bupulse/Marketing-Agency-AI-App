@@ -152,7 +152,8 @@ export function RevenueHow() {
       <ul>
         <li>Months and days are Kigali&apos;s (Africa/Kigali): a payment at 01:00 on the 1st counts in the new month.</li>
         <li>Revenue is every payment ever recorded (BillingEvent), kept when a client leaves or deletes their account. Card: Paddle&apos;s payout after tax and its fee, less approved refunds. Mobile Money: confirmed MTN or Airtel payments. Invoices: payments of an invoice (MoMo with the invoice number, bank or cash) and plain invoices marked paid.</li>
-        <li>RWF payments count at the USD value fixed when they were confirmed; the RWF column shows the francs received and that rate.</li>
+        <li>RWF payments count at the USD value fixed when they were confirmed; the RWF column shows the francs received before VAT and that rate.</li>
+        <li>VAT (Rwanda 18%, set per region in Regions) is added on top of plan prices and owed to the tax office, so it is never revenue or profit: Mobile Money and invoice payments count without it, and the month table shows it as VAT collected. Card payments through Paddle are already counted after tax.</li>
         <li>MRR: each paying client (active or past due, not on trial) counts their plan&apos;s monthly price; a Mobile Money client counts what they last paid for a whole period (features added mid-period count from the next renewal); yearly plans count a twelfth. ARPU is MRR divided by paying clients.</li>
         <li>Churn, 30 days: clients who had paid and stopped in the last 30 days, out of those paying now plus them. Stopped means the paid period ended after a cancel or expiry, or, without one (deleted account), the period their last payment bought ran out (30 days, a year for yearly).</li>
         <li>Costs and profit: see Costs. A month&apos;s costs are the providers&apos; bills when entered, otherwise the AI ledger&apos;s estimate, plus recurring and one-month costs.</li>
@@ -182,6 +183,7 @@ export function RevenueMonths({ r, fx = BOOKS_FMT }: { r: MoneyReport; fx?: Mone
           { key: "momo", header: "Mobile Money", cell: (m) => fx.amountEl(m.revenue.byMethod.momo, m.rwfByMethod?.momo), align: "right", hideOnPhone: true },
           { key: "invoice", header: "Invoices", cell: (m) => fx.amountEl(m.revenue.byMethod.invoice, m.rwfByMethod?.invoice), align: "right", hideOnPhone: true },
           { key: "refunds", header: "Refunds", cell: (m) => <span className="text-muted">{m.revenue.refundsCents ? `-${fx.text(m.revenue.refundsCents)}` : "0"}</span>, align: "right", hideOnPhone: true },
+          { key: "vat", header: "VAT collected", cell: (m) => (m.revenue.vatCents ? <span className="text-muted" title="Owed to the tax office: not in revenue or profit">{m.revenue.vatRwfMinor ? money(m.revenue.vatRwfMinor, "RWF") : fx.text(m.revenue.vatCents)}</span> : <span className="text-muted">0</span>), align: "right", hideOnPhone: true },
           { key: "rwf", header: "RWF received", cell: (m) => (m.revenue.rwfMinor ? <>{money(m.revenue.rwfMinor, "RWF")}<span className="block text-xs text-muted">at {m.rate} RWF/USD</span></> : <span className="text-muted">0</span>), align: "right", hideOnPhone: true },
         ]}
       />

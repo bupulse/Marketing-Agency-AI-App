@@ -3,6 +3,7 @@
 import { z } from "zod";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { formatMinor, minorDigits } from "@/lib/region-format";
+import { addVat, vatPart } from "@/lib/billing/vat";
 
 export const INVOICE_STATUSES = ["draft", "sent", "paid", "void"] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
@@ -50,12 +51,22 @@ export const linesSchema = z.array(lineSchema).min(1, "Add at least one line.").
 
 export type Totals = { subtotalMinor: number; taxMinor: number; totalMinor: number };
 
-/** Subtotal = sum of quantity x unit price; tax = subtotal x rate, rounded to the smallest unit; no rate, no tax. */
-export function computeTotals(lines: readonly InvoiceLine[], taxRatePercent: number | null | undefined): Totals {
-  const subtotalMinor = lines.reduce((sum, l) => sum + l.quantity * l.unitMinor, 0);
+/**
+ * The lines are the prices before VAT; no rate, no tax (subtotal = the lines). With a rate the total is the client price
+ * with VAT (lines x (1 + rate), rounded to the nearest 100 RWF in RWF, to the smallest unit otherwise: lib/billing/vat.ts
+ * addVat, the same amount Billing and Mobile Money ask for), the VAT is the receipt split of that total
+ * (round(total x rate / (100 + rate)), what the payment stores) and the subtotal ("Amount before VAT") is total - VAT.
+ * So subtotal + VAT = total always; when the 100-RWF rounding went down the amount before VAT is a few francs under the
+ * lines (73,000 -> total 86,100 = 72,966 + 13,134 VAT). The rate is the company region's (PricingRegion.vatRateBps,
+ * Admin -> Money -> Regions), stored on the invoice as taxRatePercent.
+ */
+export function computeTotals(lines: readonly InvoiceLine[], taxRatePercent: number | null | undefined, currency?: string | null): Totals {
+  const linesMinor = lines.reduce((sum, l) => sum + l.quantity * l.unitMinor, 0);
   const rate = taxRatePercent && taxRatePercent > 0 ? taxRatePercent : 0;
-  const taxMinor = rate ? Math.round((subtotalMinor * rate) / 100) : 0;
-  return { subtotalMinor, taxMinor, totalMinor: subtotalMinor + taxMinor };
+  if (!rate || linesMinor <= 0) return { subtotalMinor: linesMinor, taxMinor: 0, totalMinor: linesMinor };
+  const totalMinor = addVat(linesMinor, Math.round(rate * 100), currency);
+  const taxMinor = vatPart(totalMinor, rate);
+  return { subtotalMinor: totalMinor - taxMinor, taxMinor, totalMinor };
 }
 
 /** Reads stored lines defensively (a half-written row shows as no lines rather than breaking a page). */
@@ -144,7 +155,7 @@ export type DraftData = z.output<typeof draftSchema>;
  * Checks a draft against its issue date: the due date is on or after the issue date and at most a year later, and the
  * total fits. Returns the cleaned data or the first problem per field ("lines.0.description", "dueDate", ...).
  */
-export function validateDraft(raw: unknown, issueYmd: string, taxRatePercent: number | null): { ok: true; data: DraftData; totals: Totals } | { ok: false; errors: Record<string, string> } {
+export function validateDraft(raw: unknown, issueYmd: string, taxRatePercent: number | null, currency?: string | null): { ok: true; data: DraftData; totals: Totals } | { ok: false; errors: Record<string, string> } {
   const parsed = draftSchema.safeParse(raw);
   if (!parsed.success) {
     const errors: Record<string, string> = {};
@@ -154,7 +165,7 @@ export function validateDraft(raw: unknown, issueYmd: string, taxRatePercent: nu
   const { dueDate } = parsed.data;
   if (dueDate < issueYmd) return { ok: false, errors: { dueDate: "The due date cannot be before the issue date." } };
   if (daysBetween(issueYmd, dueDate) > MAX_DUE_DAYS) return { ok: false, errors: { dueDate: "The due date is at most a year after the issue date." } };
-  const totals = computeTotals(parsed.data.lines, taxRatePercent);
+  const totals = computeTotals(parsed.data.lines, taxRatePercent, currency);
   if (totals.totalMinor > MAX_TOTAL_MINOR) return { ok: false, errors: { lines: "The total is too large for one invoice." } };
   return { ok: true, data: parsed.data, totals };
 }

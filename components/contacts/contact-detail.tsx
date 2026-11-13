@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { merge, saveContact } from "@/app/dashboard/contacts/actions";
 import { tagContact } from "@/app/dashboard/inbox/actions";
-import { Badge, Button, Field, GlassCard, Input, PhoneInput, Select, useToast } from "@/components/ui";
+import { ChoiceChips } from "@/components/app/kit/c-choice";
+import { Badge, Button, Field, GlassCard, Input, PhoneInput, useToast } from "@/components/ui";
 import { timeAgo } from "@/components/leads/format";
 import { CHANNEL_LABELS } from "@/lib/inbox/labels";
 import type { ContactDetail as Detail, ContactRow } from "@/lib/contacts/service";
@@ -77,14 +78,13 @@ export function ContactDetail({ contact, fields, similar, canManage }: { contact
             {fields.map((f) => (
               <Field key={f.id} label={f.label}>
                 {f.type === "choice" || f.type === "yes_no" ? (
-                  <Select value={form.fields[f.key] ?? ""} onChange={(e) => setForm({ ...form, fields: { ...form.fields, [f.key]: e.target.value } })}>
-                    <option value="">Not set</option>
-                    {(f.type === "yes_no" ? ["Yes", "No"] : f.options).map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
-                  </Select>
+                  <ChoiceChips
+                    label={f.label}
+                    wrap
+                    value={form.fields[f.key] ?? ""}
+                    onChange={(v) => setForm({ ...form, fields: { ...form.fields, [f.key]: v } })}
+                    options={[{ value: "", label: "Not set" }, ...(f.type === "yes_no" ? ["Yes", "No"] : f.options).map((o) => ({ value: o, label: o }))]}
+                  />
                 ) : (
                   <Input type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"} value={form.fields[f.key] ?? ""} maxLength={500} onChange={(e) => setForm({ ...form, fields: { ...form.fields, [f.key]: e.target.value } })} />
                 )}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Check } from "lucide-react";
-import { Button, GlassCard } from "@/components/ui";
+import { Briefcase, Check } from "lucide-react";
+import { BPanel } from "@/components/app/kit/b-cards";
+import { Button } from "@/components/ui";
 import { IndustryFields } from "@/components/auth/industry-fields";
 import { fieldErrors, industrySchema, type FieldErrors } from "@/lib/auth/schemas";
 import type { IndustryFieldValues, IndustryOption } from "@/lib/industries/shared";
@@ -37,14 +38,8 @@ export function IndustrySection({ industries, initial }: { industries: IndustryO
   }
 
   return (
-    <GlassCard as="section" aria-labelledby="brand-industry" className="p-5 sm:p-6">
+    <BPanel id="brand-industry" icon={Briefcase} title="Your industry" hint="Your sector and a short description. BuPulse uses them for every post, plan and chat reply.">
       <form noValidate action={submitAction} className="flex flex-col gap-5">
-        <div className="flex flex-col gap-1">
-          <h2 id="brand-industry" className="text-lg font-semibold tracking-[-0.02em]">
-            Your industry
-          </h2>
-          <p className="text-[14px] text-muted">The sector and a short description of your business. BuPulse uses them for every post, plan and chat reply.</p>
-        </div>
         {state.error && (
           <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
             {state.error}
@@ -64,6 +59,6 @@ export function IndustrySection({ industries, initial }: { industries: IndustryO
           </span>
         </div>
       </form>
-    </GlassCard>
+    </BPanel>
   );
 }

@@ -288,7 +288,10 @@ export async function setDisplayCurrencyAction(currency: string): Promise<{ ok: 
   // Anyone who can see a money figure somewhere in the admin (it only changes how their own pages show money).
   await adminAction(["overview", "clients.view", "clients.own", "requests", "sales.team", "sales.board", "money.revenue", "money.costs", "payments.view", "payments.approve", "plans.manage", "ai"]);
   if (!isDisplayCurrency(currency)) return { ok: false };
-  (await cookies()).set(ADMIN_CURRENCY_COOKIE, currency, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/admin", maxAge: 365 * 86_400 });
+  // Path "/": on admin.bupulse.com the pages have clean addresses (/, /money…), so a cookie kept to "/admin" was never
+  // sent back and every page fell back to USD (12 November 2026). The admin host's cookies are host-only anyway.
+  const jar = await cookies();
+  jar.set(ADMIN_CURRENCY_COOKIE, currency, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 365 * 86_400 });
   revalidatePath("/admin", "layout");
   return { ok: true };
 }

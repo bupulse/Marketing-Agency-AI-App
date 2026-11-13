@@ -9,7 +9,7 @@ import { EXTRA_SKIT_PRICE_RWF, STATUS_TEXT, VOICE_ACCEPT, VOICE_MAX_SECONDS, che
 import type { SkitCard } from "@/lib/skits/service";
 import { toWav, useSkitRecorder } from "./voice-note";
 
-export type SkitPlanInfo = { perWeek: number; daysText: string; nextDay: string | null; today: string; canRecord: boolean };
+export type SkitPlanInfo = { perWeek: number; daysText: string; nextDay: string | null; today: string; canRecord: boolean; /** What an extra skit costs the client, with VAT when it applies (lib/billing/vat.ts). Absent: the price before VAT. */ extraPrice?: { minor: number; vatIncluded: boolean } };
 
 const rwf = (n: number) => `${n.toLocaleString("en-US")} RWF`;
 
@@ -72,7 +72,7 @@ export function SkitBoard({ cards, plan }: { cards: SkitCard[]; plan: SkitPlanIn
       {plan.canRecord && (
         <div className="flex flex-wrap items-center gap-3 px-1">
           <Button size="sm" variant="outline" leading={<Clapperboard aria-hidden className="size-4" />} disabled={ordering || ordered} onClick={order}>
-            {ordering ? "Sending…" : `Order an extra skit — ${rwf(EXTRA_SKIT_PRICE_RWF)}`}
+            {ordering ? "Sending…" : `Order an extra skit — ${rwf(plan.extraPrice?.minor ?? EXTRA_SKIT_PRICE_RWF)}${plan.extraPrice?.vatIncluded ? " (VAT included)" : ""}`}
           </Button>
           <span className="text-[13px] text-muted">BuPulse calls you to confirm and take the payment.</span>
         </div>

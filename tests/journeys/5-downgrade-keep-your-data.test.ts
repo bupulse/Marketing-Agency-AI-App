@@ -97,7 +97,7 @@ describe("journey: Business -> Starter, keep your data", () => {
     // The downgrade: the client pays for Starter by Mobile Money and the owner confirms it. A different plan replaces the
     // running one from today.
     const payment = await startManualPayment({ userId, plan: "STARTER", interval: "MONTH", now: AT });
-    expect(payment).toMatchObject({ planKey: "STARTER", amountMinor: 15000, currency: "RWF" });
+    expect(payment).toMatchObject({ planKey: "STARTER", amountMinor: 17700, currency: "RWF" });
     expect(payment.periodNote).toMatchObject({ mode: "replace", daysLeft: 18 });
     await submitManualProof(userId, { paymentId: payment.id, transactionId: "MP3300110022", payerPhone: "0781234567", network: "MTN" }, AT);
     expect(await confirmManualPayment(CONSOLE, payment.id, AT)).toMatchObject({ periodMode: "replace" });

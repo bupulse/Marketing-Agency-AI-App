@@ -1,5 +1,6 @@
 import { timeBudget } from "@/lib/platform/limits";
 import { graphGet, graphJson, graphPost, GRAPH_VERSION } from "../graph";
+import { audioConfiguration } from "../instagram-audio";
 import {
   finalStage,
   SocialError,
@@ -159,9 +160,27 @@ async function publish(credentials: ConnectionCredentials, post: PublishRequest)
   // is 25 s there; a container still processing is retried later ("temporary"), nothing was published yet.
   const deadline = Date.now() + timeBudget(POLL.deadlineMs, 25_000);
   let creationId: string;
+  let soundAttached = false;
   if (post.media.length === 1 && isVideo(post.media[0])) {
     // A Reel: Instagram fetches and processes the video; a container still processing is retried later ("temporary").
-    creationId = (await graphPost<{ id: string }>(E, `${base}/${igId}/media`, { media_type: "REELS", video_url: post.media[0].url, caption, share_to_feed: true, access_token: token })).id;
+    // With a trending sound (Facebook Login only, lib/social/instagram-audio.ts) the reel without BuPulse's music goes
+    // first, with audio_configuration. Any refusal of that (the app lacks access, an unknown sound, processing error)
+    // falls back to the plain reel with its music: a sound never fails a post. Only a rate limit stops here.
+    const sound = post.sound && !isInstagramToken(token) ? post.sound : null;
+    let withSound: string | null = null;
+    if (sound) {
+      try {
+        const id = (await graphPost<{ id: string }>(E, `${base}/${igId}/media`, { media_type: "REELS", video_url: post.media[0].url, caption, share_to_feed: true, audio_configuration: audioConfiguration(sound.audioId, { audio: sound.audioVolume, video: sound.videoVolume }), access_token: token })).id;
+        await waitForContainer(token, id, deadline);
+        withSound = id;
+      } catch (error) {
+        if (error instanceof SocialError && error.kind === "rate_limit") throw error;
+        // A reel still processing when the time ran out is retried later, sound and all.
+        if (error instanceof SocialError && error.kind === "temporary" && Date.now() >= deadline) throw error;
+      }
+    }
+    soundAttached = !!withSound;
+    creationId = withSound ?? (await graphPost<{ id: string }>(E, `${base}/${igId}/media`, { media_type: "REELS", video_url: post.sound?.fallbackVideoUrl ?? post.media[0].url, caption: post.sound?.fallbackText ?? caption, share_to_feed: true, access_token: token })).id;
   } else if (post.media.length === 1) {
     creationId = (await graphPost<{ id: string }>(E, `${base}/${igId}/media`, { image_url: post.media[0].url, caption, access_token: token })).id;
   } else {
@@ -169,10 +188,10 @@ async function publish(credentials: ConnectionCredentials, post: PublishRequest)
     await Promise.all(children.map((id) => waitForContainer(token, id, deadline)));
     creationId = (await graphPost<{ id: string }>(E, `${base}/${igId}/media`, { media_type: "CAROUSEL", children: children.join(","), caption, access_token: token })).id;
   }
-  await waitForContainer(token, creationId, deadline);
+  if (!soundAttached) await waitForContainer(token, creationId, deadline);
   const published = await finalStage(E, () => graphPost<{ id: string }>(E, `${base}/${igId}/media_publish`, { creation_id: creationId, access_token: token }));
   const permalink = await graphGet<{ permalink?: string }>(E, `${base}/${published.id}`, { fields: "permalink", access_token: token }).then((r) => r.permalink, () => undefined);
-  return { externalId: published.id, permalink };
+  return { externalId: published.id, permalink, ...(post.sound ? { soundAttached } : {}) };
 }
 
 async function metrics(credentials: ConnectionCredentials, externalId: string): Promise<MetricsSnapshot> {

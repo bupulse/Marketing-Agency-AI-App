@@ -75,7 +75,7 @@ export function PlanQuiz({ plans }: { plans: RegionalPlan[] }) {
               <p className="text-sm font-medium text-muted">Our suggestion</p>
               <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <strong className="text-2xl tracking-tight">{result.plan.name}</strong>
-                <span className="text-lg font-semibold">{formatPrice(result.plan.monthlyPriceCents, result.plan.currency)} / month</span>
+                <span className="text-lg font-semibold">{formatPrice(result.plan.monthlyPriceCents, result.plan.currency)} / month{result.plan.vatRatePercent ? ", VAT included" : ""}</span>
               </p>
             </>
           )}

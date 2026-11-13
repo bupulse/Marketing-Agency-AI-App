@@ -5,6 +5,7 @@ import { DEFAULT_CARD_MARGIN_PERCENT, DEFAULT_USD_TO_RWF } from "@/lib/region-fo
 import { DEFAULT_BUFFER_MINUTES, DEFAULT_SLOT_MINUTES, isValidYmd } from "@/lib/demo/slots";
 import { isPageLoader, type PageLoader } from "@/lib/ui/page-loader";
 import { isDisplayCurrency, type DisplayCurrency } from "@/lib/money/display";
+import { DEFAULT_VAT_SETTINGS, VAT_SETTING_KEYS, vatTinProblem } from "@/lib/billing/vat";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -68,6 +69,8 @@ export type Settings = {
   adBrainMonthlyUsd: number;
   /** The BuPulse company account's Gallery video space in MB (its Ad Brain ads; owner decision: 1 GB). Others keep MEDIA_COMPANY_VIDEO_MAX_BYTES. */
   adBrainGalleryVideoMb: number;
+  /** BuPulse's TIN at RRA, printed on receipts and invoices. Empty until the owner fills it in. (The VAT rate is per region: PricingRegion.vatRateBps.) */
+  vatTin: string;
 };
 export type SettingName = keyof Settings;
 
@@ -93,6 +96,7 @@ const KEYS: Record<SettingName, string> = {
   adBrainPerAdUsd: "adBrain.perAdUsd",
   adBrainMonthlyUsd: "adBrain.monthlyUsd",
   adBrainGalleryVideoMb: "adBrain.galleryVideoMb",
+  vatTin: VAT_SETTING_KEYS.tin,
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -117,6 +121,7 @@ export const DEFAULT_SETTINGS: Settings = {
   adBrainPerAdUsd: 3,
   adBrainMonthlyUsd: 30,
   adBrainGalleryVideoMb: 1024,
+  vatTin: DEFAULT_VAT_SETTINGS.tin,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -175,6 +180,12 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   adBrainPerAdUsd: number("The Ad Brain limit per ad (USD)", 0.5, 50, false),
   adBrainMonthlyUsd: number("The Ad Brain monthly limit (USD)", 1, 500, false),
   adBrainGalleryVideoMb: number("BuPulse's own gallery videos (MB)", 100, 10_000),
+  vatTin: (value) => {
+    const v = String(value ?? "").trim();
+    const problem = vatTinProblem(v);
+    if (problem) throw new AdminError("invalid", problem);
+    return v;
+  },
   goalStartMonth: (value) => {
     const v = String(value ?? "").trim();
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new AdminError("invalid", "The launch month must look like 2026-11 (year and month).");

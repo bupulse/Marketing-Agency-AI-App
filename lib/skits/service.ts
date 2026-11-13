@@ -41,7 +41,9 @@ import { mediaForPost } from "@/lib/visuals/post-media";
 import { higgsfieldConfigured, HiggsfieldError, SKIT_MODEL, skitVideoStatus, submitSkitVideo } from "./higgsfield";
 import { skitVideoPrompt } from "./prompt";
 import { isSkitDay } from "./schedule";
-import { checkVoice, MAX_OPEN_EXTRAS, missingVoices, readLines, readSpeakers, SKIT_SECONDS, type SkitStatus } from "./shared";
+import { clientPrice, vatApplies } from "@/lib/billing/vat";
+import { getVatSettings } from "@/lib/billing/vat-server";
+import { checkVoice, EXTRA_SKIT_PRICE_RWF, MAX_OPEN_EXTRAS, missingVoices, readLines, readSpeakers, SKIT_SECONDS, type SkitStatus } from "./shared";
 import { writeSkit, type SkitRequest } from "./writer";
 import { appUrl } from "@/lib/platform/app-hosts";
 
@@ -398,7 +400,9 @@ export async function orderExtraSkit(owner: { userId: string; businessId: string
 
 async function notifyAdminsOfOrder(businessName: string) {
   const title = `Extra skit ordered: ${businessName}`;
-  const { html, text } = renderEmail({ heading: title, intro: `${businessName} asked for an extra talking skit (5,000 RWF). Call them to confirm and take the payment.`, button: { label: "Open Admin", url: appUrl(`/admin`, publicSiteUrl()) } });
+  const vat = await getVatSettings();
+  const price = vatApplies("RWF", vat) ? `${clientPrice(EXTRA_SKIT_PRICE_RWF, "RWF", vat).toLocaleString("en-US")} RWF with VAT, ${EXTRA_SKIT_PRICE_RWF.toLocaleString("en-US")} RWF before VAT` : `${EXTRA_SKIT_PRICE_RWF.toLocaleString("en-US")} RWF`;
+  const { html, text } = renderEmail({ heading: title, intro: `${businessName} asked for an extra talking skit (${price}). Call them to confirm and take the payment.`, button: { label: "Open Admin", url: appUrl(`/admin`, publicSiteUrl()) } });
   for (const to of adminEmails()) await sendEmail({ to, subject: title, html, text }).catch(() => false);
 }
 

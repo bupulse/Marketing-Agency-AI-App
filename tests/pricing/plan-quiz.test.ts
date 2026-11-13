@@ -27,6 +27,7 @@ function plan(key: string, monthly: number, features: FeatureKey[], limits: { te
     regionKey: "RW",
     paymentMethods: ["momo", "card"],
     card: null,
+    vatRatePercent: null,
     ...extra,
   };
 }

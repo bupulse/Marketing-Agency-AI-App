@@ -3,7 +3,8 @@
 import { ArrowLeft, ExternalLink, Mail, MessageCircle, Phone } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { changeStatus, loadLead, saveNotes } from "@/app/dashboard/leads/actions";
-import { Badge, Button, Select, Textarea, useToast } from "@/components/ui";
+import { ChoiceChips } from "@/components/app/kit/c-choice";
+import { Badge, Button, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { LEAD_STATUSES, STATUS_LABELS, sourceLabel, type LeadStatusValue } from "@/lib/leads/filters";
 import { telLink, whatsappLink } from "@/lib/leads/normalize";
@@ -156,16 +157,10 @@ export function LeadPanel({ lead, readOnly = false, onClose, onStatus }: { lead:
         )
       ) : (
         <>
-          <label className="flex flex-col gap-1.5 text-[14px] font-medium">
-            Status
-            <Select value={lead.status} onChange={(e) => void setStatus(e.target.value as LeadStatusValue)}>
-              {LEAD_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABELS[s]}
-                </option>
-              ))}
-            </Select>
-          </label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[14px] font-medium">Status</span>
+            <ChoiceChips label="Status" wrap value={lead.status} onChange={(s) => void setStatus(s)} options={LEAD_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))} />
+          </div>
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">

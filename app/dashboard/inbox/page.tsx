@@ -1,10 +1,6 @@
-import { Inbox } from "lucide-react";
-import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
-import { InboxView } from "@/components/inbox/inbox-view";
-import { Button } from "@/components/ui";
+import { InboxScreen } from "@/components/inbox/inbox-screen";
 import { prisma } from "@/lib/db";
 import { INBOX_VIEWS, isChannelKind, type InboxView as View } from "@/lib/inbox/labels";
 import { listConversations, teamMembers, viewCounts } from "@/lib/inbox/service";
@@ -35,30 +31,12 @@ export default async function InboxPage({ searchParams }: { searchParams: Search
   ]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Inbox" description="Every conversation from your website chat and connected social accounts. Answer, add notes and share the work with your team." />
-      {any === 0 ? (
-        <EmptyState
-          icon={Inbox}
-          title="No conversations yet"
-          text="When people write in your website chat, or comment and message your connected Instagram and Facebook accounts, the conversations land here."
-          points={["Put the chat on your website (Website chat)", "Switch on “Answer comments and messages” for a social account (Channels)", "Let automations answer the common questions (Automations)"]}
-          action={<Button href="/dashboard/automations">Set up an automation</Button>}
-        />
-      ) : (
-        <InboxView
-          items={list.items}
-          hasMore={list.hasMore}
-          counts={counts}
-          view={view}
-          channel={channel}
-          q={q}
-          channels={used.map((u) => u.channel)}
-          team={team}
-          actorId={actorId}
-          initialOpenId={openId}
-        />
-      )}
-    </div>
+    <InboxScreen
+      view={
+        any === 0
+          ? null
+          : { items: list.items, hasMore: list.hasMore, counts, view, channel, q, channels: used.map((u) => u.channel), team, actorId, initialOpenId: openId }
+      }
+    />
   );
 }

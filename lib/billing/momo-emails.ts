@@ -1,6 +1,7 @@
 import "server-only";
 import { adminEmails } from "@/lib/admin/auth";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
+import { vatReceiptLines, type VatBreakdown } from "./vat";
 import { formatMomoAmount, GRACE_DAYS, graceEnd, mtnMomoPayDial, whatsappText, type MomoPayDetails } from "./momo-shared";
 import { linkSiteUrl } from "@/lib/auth/request-site";
 import { appUrl } from "@/lib/platform/app-hosts";
@@ -83,8 +84,15 @@ export async function sendInvoiceReviewAlertEmail(p: { number: string; company: 
   return results.some(Boolean);
 }
 
-/** The client's confirmation: the plan is on, until when. */
-export async function sendPlanActiveEmail(to: ClientRecipient, p: { planName: string; interval: string; amountMinor: number; currency: string; reference: string; periodEnd: Date; /** A card payment of an offer or added features (lib/offers/card.ts): the amount charged, in USD. */ card?: { usdCents: number } }): Promise<boolean> {
+/** "17,700 RWF (VAT included)" when the amount includes VAT. */
+const withVatNote = (minor: number, currency: string, vatRatePercent: number | null | undefined) => `${formatMomoAmount(minor, currency)}${vatRatePercent ? " (VAT included)" : ""}`;
+
+/**
+ * The client's confirmation: the plan is on, until when. It is also the receipt of a Mobile Money payment: with VAT
+ * (RWF, lib/billing/vat.ts) it shows the total paid, the VAT in it, the amount before VAT and BuPulse's TIN.
+ */
+export async function sendPlanActiveEmail(to: ClientRecipient, p: { planName: string; interval: string; amountMinor: number; currency: string; reference: string; periodEnd: Date; /** A card payment of an offer or added features (lib/offers/card.ts): the amount charged, in USD. */ card?: { usdCents: number }; /** The VAT split of a Mobile Money payment in RWF; null or absent when no VAT. */ vat?: VatBreakdown | null }): Promise<boolean> {
+  const receipt = !p.card && p.vat ? [{ label: "Total paid", value: formatMomoAmount(p.vat.totalMinor, p.currency) }, ...vatReceiptLines(p.vat, (m) => formatMomoAmount(m, p.currency)), { label: "Reference", value: p.reference }] : [];
   const paid = p.card ? `card payment of ${formatMomoAmount(p.card.usdCents, "USD")} (for ${formatMomoAmount(p.amountMinor, p.currency)}, reference ${p.reference})` : `Mobile Money payment of ${formatMomoAmount(p.amountMinor, p.currency)} (reference ${p.reference})`;
   const { html, text } = renderEmail({
     heading: `Your ${p.planName} plan is active`,
@@ -92,6 +100,7 @@ export async function sendPlanActiveEmail(to: ClientRecipient, p: { planName: st
     blocks: [
       { label: "Plan", value: `${p.planName}, ${p.interval === "YEAR" ? "yearly" : "monthly"}` },
       { label: "Paid until", value: longDate(p.periodEnd) },
+      ...receipt,
     ],
     button: { label: "Open BuPulse", url: appUrl(`/dashboard`, await linkSiteUrl()) },
     footer: `We will remind you by email a few days before ${longDate(p.periodEnd)}. Nothing renews by itself and nothing is ever deleted.`,
@@ -116,6 +125,8 @@ export type ReminderInput = {
   interval: string;
   amountMinor: number;
   currency: string;
+  /** Set when the amount includes VAT (RWF): the email says "VAT included". */
+  vatRatePercent?: number | null;
   periodEnd: Date;
   details: MomoPayDetails;
 };
@@ -131,9 +142,9 @@ export async function sendRenewalReminderEmail(to: ClientRecipient, kind: "5d" |
   const when = ended ? `ended on ${longDate(p.periodEnd)}` : kind === "5d" ? `ends in 5 days, on ${longDate(p.periodEnd)}` : `ends tomorrow, ${longDate(p.periodEnd)}`;
   const { html, text } = renderEmail({
     heading,
-    intro: `${first(to.name)}your ${p.planName} plan (${p.interval === "YEAR" ? "yearly" : "monthly"}) ${when}. Pay ${formatMomoAmount(p.amountMinor, p.currency)} by Mobile Money to ${ended ? "continue" : "keep creating"}. ${ended ? `You can still create until ${grace}; after that` : `After ${longDate(p.periodEnd)} you have ${GRACE_DAYS} days of grace, then`} the account becomes read-only until you pay. Nothing is deleted.`,
+    intro: `${first(to.name)}your ${p.planName} plan (${p.interval === "YEAR" ? "yearly" : "monthly"}) ${when}. Pay ${withVatNote(p.amountMinor, p.currency, p.vatRatePercent)} by Mobile Money to ${ended ? "continue" : "keep creating"}. ${ended ? `You can still create until ${grace}; after that` : `After ${longDate(p.periodEnd)} you have ${GRACE_DAYS} days of grace, then`} the account becomes read-only until you pay. Nothing is deleted.`,
     blocks: [
-      { label: "Amount", value: formatMomoAmount(p.amountMinor, p.currency) },
+      { label: "Amount", value: withVatNote(p.amountMinor, p.currency, p.vatRatePercent) },
       { label: "Where to pay", value: payDetailsLine(p.details) || "See the Billing page" },
       { label: "How", value: "Open Billing, choose Pay by Mobile Money, pay with the reference shown, then tap I've paid. Your plan is extended within minutes." },
       { label: "Need help? Copy this into WhatsApp", value: whatsappText({ planName: p.planName, amountMinor: p.amountMinor, currency: p.currency, email: to.email, periodEnd: longDate(p.periodEnd) }) },
@@ -164,7 +175,7 @@ export async function sendPayDetailsChangedEmail(before: MomoPayDetails, after: 
 export async function sendPlanPausedEmail(to: ClientRecipient, p: ReminderInput): Promise<boolean> {
   const { html, text } = renderEmail({
     heading: `Your ${p.planName} plan is paused`,
-    intro: `${first(to.name)}your ${p.planName} plan ended on ${longDate(p.periodEnd)} and we have not received a payment. Everything you made is safe and nothing is deleted; new content is paused until you pay ${formatMomoAmount(p.amountMinor, p.currency)} by Mobile Money.`,
+    intro: `${first(to.name)}your ${p.planName} plan ended on ${longDate(p.periodEnd)} and we have not received a payment. Everything you made is safe and nothing is deleted; new content is paused until you pay ${withVatNote(p.amountMinor, p.currency, p.vatRatePercent)} by Mobile Money.`,
     blocks: [
       { label: "Where to pay", value: payDetailsLine(p.details) || "See the Billing page" },
       { label: "Need help? Copy this into WhatsApp", value: whatsappText({ planName: p.planName, amountMinor: p.amountMinor, currency: p.currency, email: to.email, periodEnd: longDate(p.periodEnd) }) },

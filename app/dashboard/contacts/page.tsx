@@ -1,7 +1,6 @@
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
-import { ContactsList } from "@/components/contacts/contacts-list";
+import { ContactsScreen } from "@/components/contacts/contacts-screen";
 import { can } from "@/lib/team/roles";
 import { PAGE_SIZE, listContacts, listFields, listTags } from "@/lib/contacts/service";
 import { isChannelKind } from "@/lib/inbox/labels";
@@ -24,10 +23,5 @@ export default async function ContactsPage({ searchParams }: { searchParams: Sea
   const limit = Number.isFinite(requested) && requested > 0 ? Math.min(Math.ceil(requested), 1000) : PAGE_SIZE;
   const [list, tags, fields] = await Promise.all([listContacts(business.id, { q, tag, channel }, limit), listTags(business.id), listFields(business.id)]);
 
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Contacts" description="Everyone who wrote to you on any channel, with their tags and details. Automations and your team add to them as you go." />
-      <ContactsList contacts={list.items} total={list.total} hasMore={list.hasMore} q={q} tag={tag} channel={channel} tags={tags} fields={fields} canManage={can(role, "settings")} />
-    </div>
-  );
+  return <ContactsScreen contacts={list.items} total={list.total} hasMore={list.hasMore} q={q} tag={tag} channel={channel} tags={tags} fields={fields} canManage={can(role, "settings")} />;
 }

@@ -2,15 +2,12 @@ import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
-import { PageHeader } from "@/components/app/page-header";
-import { Badge, GlassCard } from "@/components/ui";
-import { ConnectorCard } from "@/components/connectors/connector-card";
+import { ConnectionsView, type ConnectionsTab } from "@/components/connections/connections-view";
 import { getCatalog } from "@/lib/connectors/catalog";
 import { CanvaCard } from "@/components/settings/canva-card";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { CanvaReturnToast } from "@/components/designs/canva-return-toast";
 import { AccountPicker } from "@/components/connections/account-picker";
-import { ChannelList } from "@/components/connections/channel-list";
 import { ConnectToast } from "@/components/connections/connect-toast";
 import type { AccountInfo, ChannelInfo } from "@/components/connections/types";
 import { listConnections } from "@/lib/social/connections";
@@ -85,50 +82,42 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
   const accounts: AccountInfo[] = social.map((a) => ({ id: a.id, network: a.network, displayName: a.displayName, externalAccountId: a.externalAccountId, accountType: a.accountType, avatarUrl: a.avatarUrl, status: a.status, postingMode: a.postingMode, inbox: inbox[a.id] }));
 
   // After OAuth with several accounts, the encrypted cookie holds them until the user picks.
-  const pick = (await searchParams).pick;
+  const sp = await searchParams;
+  const pick = sp.pick;
   const store = await cookies();
   const pending = typeof pick === "string" && isNetwork(pick) ? await openPending((name) => store.get(name)?.value, user.id) : null;
   const picking = pending && pending.network === pick ? pending : null;
+  // Social accounts first; the Apps tab on ?show=apps, and when coming back from Canva.
+  const tab: ConnectionsTab = sp.show === "apps" || (typeof sp.canva === "string" && !picking) ? "apps" : "social";
 
   return (
-    <>
-      <PageHeader
-        title="Channels"
-        description="Connect your social accounts to publish, and your apps to bring in photos and products."
-      />
-      <Suspense>
-        <ConnectToast />
-      </Suspense>
-      {picking && (
-        <AccountPicker
-          network={picking.network}
-          label={channels.find((c) => c.network === picking.network)?.label ?? ""}
-          accounts={picking.result.accounts}
-          pageAccess={isUploadPostResult(picking.result.scopes)}
-        />
-      )}
-      <section aria-label="Social accounts" className="flex flex-col gap-3">
-        <h2 className="px-1 text-lg font-semibold">Social accounts</h2>
-        <ChannelList channels={channels} accounts={accounts} />
-      </section>
-      <Suspense>
-        <CanvaReturnToast />
-      </Suspense>
-      <CanvaCard userId={actorId} next="/dashboard/connections" />
-      <section aria-labelledby="apps-heading" className="flex flex-col gap-3">
-        <h2 id="apps-heading" className="px-1 text-lg font-semibold">Apps</h2>
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-4">
-          {apps.map((item) => (
-            <ConnectorCard key={item.id} item={item} />
-          ))}
-        </ul>
-      </section>
-      <GlassCard className="flex flex-wrap items-center gap-3 p-5 text-[15px]">
-        <Badge tone="violet">Pro</Badge>
-        <p className="min-w-0 flex-1 basis-64 text-muted">
-          Advanced: use your own Composio account to connect hundreds more apps. Available on the Pro plan.
-        </p>
-      </GlassCard>
-    </>
+    <ConnectionsView
+      tab={tab}
+      params={sp}
+      channels={channels}
+      accounts={accounts}
+      apps={apps}
+      toasts={
+        <>
+          <Suspense>
+            <ConnectToast />
+          </Suspense>
+          <Suspense>
+            <CanvaReturnToast />
+          </Suspense>
+        </>
+      }
+      picker={
+        picking ? (
+          <AccountPicker
+            network={picking.network}
+            label={channels.find((c) => c.network === picking.network)?.label ?? ""}
+            accounts={picking.result.accounts}
+            pageAccess={isUploadPostResult(picking.result.scopes)}
+          />
+        ) : null
+      }
+      canva={tab === "apps" ? <CanvaCard userId={actorId} next="/dashboard/connections?show=apps" /> : null}
+    />
   );
 }

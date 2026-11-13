@@ -558,6 +558,53 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
   }
 }
 
+/* ---------- The Marketing dashboard's calm look (components/app/app-shell.tsx sets .bp-app) ----------
+   Owner, 12 November 2026: "make it simple and neat just like Apple". Inside the dashboard the glass turns into plain
+   cards: white on the light grey page (a lifted dark grey in dark mode), a hairline border and a soft shadow, with no
+   blur. Set on the root (not on .bp-app) so dialogs and menus drawn outside the shell match. Every page that uses
+   GlassCard, .glass or .glass-strong picks this up without its own change; the public site and Admin keep their
+   glass. */
+:root:has(.bp-app) {
+  --bp-glass: #ffffff;
+  --bp-glass-strong: #ffffff;
+  --bp-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 12px 32px -22px rgba(17, 24, 39, 0.28);
+}
+.dark:has(.bp-app) {
+  --bp-glass: #16161c;
+  --bp-glass-strong: #1b1b22;
+  --bp-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 40px -30px rgba(0, 0, 0, 0.9);
+}
+:root:has(.bp-app) :is(.glass, .glass-strong) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* Gradient buttons keep their colour but lose most of the glow: a soft, short shadow, a little deeper on hover. */
+:root:has(.bp-app) .shadow-glow {
+  --tw-shadow: 0 6px 16px -8px rgba(47, 107, 255, 0.55);
+}
+:root:has(.bp-app) .shadow-glow:hover {
+  --tw-shadow: 0 10px 22px -10px rgba(91, 63, 217, 0.6);
+}
+/* Brand-blue text on the dark page: the lighter brand blue, so links and accents pass AA contrast (4.5:1). */
+.dark:has(.bp-app) .text-pulse-blue {
+  color: #8db0ff;
+}
+/* The left menu (components/app/rail.ts): white focus rings on the gradient and on the dark rail. */
+.bp-rail :focus-visible,
+.dark .bp-rail :focus-visible {
+  outline-color: #ffffff;
+}
+/* The open page's white bar at the rail's edge grows in (still under reduced motion: the global rule stops it). */
+.bp-rail-bar {
+  transform-origin: center;
+  animation: bp-rail-bar 0.3s var(--ease-out-soft) both;
+}
+@keyframes bp-rail-bar {
+  from {
+    transform: scaleY(0);
+  }
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   *,

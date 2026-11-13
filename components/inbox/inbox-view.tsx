@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { assignTo, changeStatus, loadThread, pauseAutomations, saveNote, sendReply, tagContact } from "@/app/dashboard/inbox/actions";
+import { ChoiceChips } from "@/components/app/kit/c-choice";
 import { Badge, Button, GlassCard, Input, Select, Textarea, useToast } from "@/components/ui";
 import { timeAgo } from "@/components/leads/format";
 import { cn } from "@/lib/cn";
@@ -102,37 +103,24 @@ export function InboxView({ items, hasMore, counts, view, channel, q, channels, 
     <div className="grid gap-4 lg:grid-cols-[minmax(280px,380px)_1fr]">
       <section aria-label="Conversations" className={cn("flex min-w-0 flex-col gap-3", openId && "hidden lg:flex")}>
         <GlassCard padding="sm" className="flex flex-col gap-3 p-3">
-          <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Views">
-            {INBOX_VIEWS.map((v) => (
-              <button
-                key={v}
-                type="button"
-                role="tab"
-                aria-selected={view === v}
-                onClick={() => navigate({ view: v === "open" ? null : v, c: null })}
-                className={cn("min-h-9 rounded-full px-3 text-[13px] font-medium", view === v ? "bg-ink text-white" : "bg-soft text-muted hover:text-text")}
-              >
-                {VIEW_LABELS[v]}
-                {v !== "closed" && v !== "all" && counts[v] > 0 ? <span className="ml-1 opacity-70">{counts[v]}</span> : null}
-              </button>
-            ))}
+          <ChoiceChips
+            label="Show"
+            value={view}
+            onChange={(v) => navigate({ view: v === "open" ? null : v, c: null })}
+            options={INBOX_VIEWS.map((v) => ({ value: v, label: VIEW_LABELS[v], count: v !== "closed" && v !== "all" && counts[v] > 0 ? counts[v] : undefined }))}
+          />
+          <div className="relative">
+            <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+            <Input value={query} onChange={(e) => onSearch(e.target.value)} placeholder="Search name, phone or message" aria-label="Search conversations" className="pl-9" />
           </div>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-              <Input value={query} onChange={(e) => onSearch(e.target.value)} placeholder="Search name, phone or message" aria-label="Search conversations" className="pl-9" />
-            </div>
-            {channels.length > 1 && (
-              <Select aria-label="Channel" value={channel ?? ""} onChange={(e) => navigate({ channel: e.target.value || null })} className="w-36">
-                <option value="">All channels</option>
-                {channels.map((c) => (
-                  <option key={c} value={c}>
-                    {CHANNEL_LABELS[c]}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </div>
+          {channels.length > 1 && (
+            <ChoiceChips
+              label="Channel"
+              value={channel ?? ""}
+              onChange={(c) => navigate({ channel: c || null })}
+              options={[{ value: "", label: "Every channel" }, ...channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))]}
+            />
+          )}
         </GlassCard>
 
         <GlassCard padding="none" className="overflow-hidden">

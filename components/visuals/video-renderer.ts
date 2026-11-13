@@ -46,6 +46,11 @@ export interface RenderOptions {
   /** The voiceover MP3 (signed URL or data URL) and the library track (public or data URL), mixed under the video. */
   voiceUrl?: string | null;
   musicUrl?: string | null;
+  /**
+   * Also make the Instagram version without the music (lib/visuals/ig-variant.ts): the same frames, encoded once, with
+   * the voice-over alone. MP4 only; skipped when there is no music to leave out.
+   */
+  noMusicVariant?: boolean;
   onProgress?: (fraction: number) => void;
   signal?: AbortSignal;
 }
@@ -56,6 +61,8 @@ export interface RenderResult {
   durationMs: number;
   /** Music or voice was asked for but this browser could not decode or encode it: the video is silent. */
   musicSkipped: boolean;
+  /** The Instagram version without music (MP4), when RenderOptions.noMusicVariant asked for it and it could be made. */
+  variantBlob?: Blob;
 }
 
 const UNSUPPORTED = "This browser cannot make videos. Try the latest Chrome, Edge or Safari on a computer or phone.";
@@ -200,15 +207,20 @@ export async function renderVideo(plan: VideoPlan, options: RenderOptions): Prom
     if (support.mp4) {
       const wantsAudio = !!(options.music || options.voiceUrl || options.musicUrl);
       const audio = wantsAudio ? await encodeSoundtrack(plan, options).catch(() => null) : null;
+      // The version without music: only when there is music to leave out and the full soundtrack worked.
+      const variant = !!(options.noMusicVariant && (options.music || options.musicUrl) && audio);
+      const variantAudio = variant ? await encodeSoundtrack(plan, { ...options, music: null, musicUrl: null }).catch(() => null) : null;
       // AI clips play in their scenes (the clips' own sound is never mixed in: the soundtrack above is the video's).
       const clips = await openClipLayers(plan, images, options.clipUrls);
       try {
         const draw = { plan: clips.plan, images: clips.images, beforeFrame: clips.count ? clips.update : undefined };
-        let blob = await encodeMp4(draw, VIDEO_LIMITS.bitrate, audio, options);
-        if (blob.size > VIDEO_LIMITS.maxBytes) blob = await encodeMp4(draw, VIDEO_LIMITS.bitrate * 0.55, audio, options);
+        const variantOf = variant ? { audio: variantAudio } : null;
+        let { blob, variantBlob } = await encodeMp4(draw, VIDEO_LIMITS.bitrate, audio, options, variantOf);
+        if (blob.size > VIDEO_LIMITS.maxBytes) ({ blob, variantBlob } = await encodeMp4(draw, VIDEO_LIMITS.bitrate * 0.55, audio, options, variantOf));
         if (blob.size > VIDEO_LIMITS.maxBytes) throw new VideoRenderError("too_large", TOO_LARGE);
         options.onProgress?.(1);
-        return { blob, mimeType: "video/mp4", durationMs: plan.totalMs, musicSkipped: wantsAudio && !audio };
+        const keepVariant = variantBlob && variantBlob.size <= VIDEO_LIMITS.maxBytes ? { variantBlob } : {};
+        return { blob, mimeType: "video/mp4", durationMs: plan.totalMs, musicSkipped: wantsAudio && !audio, ...keepVariant };
       } finally {
         clips.close();
       }
@@ -321,8 +333,12 @@ async function encodePcm(channels: Float32Array[], sampleRate: number): Promise<
   return { chunks, sampleRate, numberOfChannels };
 }
 
-/** Encodes every frame with WebCodecs H.264 and muxes it (plus the music, if any) into an in-memory MP4. */
-async function encodeMp4(draw: { plan: VideoPlan; images: Map<string, Img>; beforeFrame?: (tMs: number) => Promise<void> }, bitrate: number, audio: EncodedAudio | null, options: RenderOptions): Promise<Blob> {
+/**
+ * Encodes every frame with WebCodecs H.264 and muxes it (plus the music, if any) into an in-memory MP4. With `variant`,
+ * the same encoded frames also go into a second MP4 with the other soundtrack (the Instagram version without music):
+ * the frames are drawn and encoded once.
+ */
+async function encodeMp4(draw: { plan: VideoPlan; images: Map<string, Img>; beforeFrame?: (tMs: number) => Promise<void> }, bitrate: number, audio: EncodedAudio | null, options: RenderOptions, variant: { audio: EncodedAudio | null } | null = null): Promise<{ blob: Blob; variantBlob?: Blob }> {
   const { plan, images } = draw;
   const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
   let config: VideoEncoderConfig | null = null;
@@ -335,15 +351,25 @@ async function encodeMp4(draw: { plan: VideoPlan; images: Map<string, Img>; befo
   }
   if (!config) throw new VideoRenderError("unsupported", UNSUPPORTED);
 
-  const muxer = new Muxer({
-    target: new ArrayBufferTarget(),
-    video: { codec: "avc", width: plan.width, height: plan.height, frameRate: plan.fps },
-    ...(audio ? { audio: { codec: "aac" as const, sampleRate: audio.sampleRate, numberOfChannels: audio.numberOfChannels } } : {}),
-    fastStart: "in-memory",
-    firstTimestampBehavior: "offset",
-  });
+  const makeMuxer = (sound: EncodedAudio | null) =>
+    new Muxer({
+      target: new ArrayBufferTarget(),
+      video: { codec: "avc", width: plan.width, height: plan.height, frameRate: plan.fps },
+      ...(sound ? { audio: { codec: "aac" as const, sampleRate: sound.sampleRate, numberOfChannels: sound.numberOfChannels } } : {}),
+      fastStart: "in-memory",
+      firstTimestampBehavior: "offset",
+    });
+  const muxer = makeMuxer(audio);
+  const second = variant ? makeMuxer(variant.audio) : null;
   let failure: unknown = null;
-  const encoder = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => (failure = e) });
+  // mp4-muxer copies each chunk's bytes when it is added, so one encoded chunk can go into both files.
+  const encoder = new VideoEncoder({
+    output: (chunk, meta) => {
+      muxer.addVideoChunk(chunk, meta);
+      second?.addVideoChunk(chunk, meta);
+    },
+    error: (e) => (failure = e),
+  });
   const { canvas, ctx } = makeCanvas(plan);
   try {
     encoder.configure(config);
@@ -368,7 +394,11 @@ async function encodeMp4(draw: { plan: VideoPlan; images: Map<string, Img>; befo
     if (failure) throw failure;
     for (const { chunk, meta } of audio?.chunks ?? []) muxer.addAudioChunk(chunk, meta);
     muxer.finalize();
-    return new Blob([muxer.target.buffer], { type: "video/mp4" });
+    const blob = new Blob([muxer.target.buffer], { type: "video/mp4" });
+    if (!second) return { blob };
+    for (const { chunk, meta } of variant?.audio?.chunks ?? []) second.addAudioChunk(chunk, meta);
+    second.finalize();
+    return { blob, variantBlob: new Blob([second.target.buffer], { type: "video/mp4" }) };
   } finally {
     if (encoder.state !== "closed") encoder.close();
   }

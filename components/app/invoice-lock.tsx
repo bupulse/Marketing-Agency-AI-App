@@ -12,6 +12,7 @@ import { MomoPayment } from "@/components/billing/momo-payment";
 import { currentManualPayment } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured } from "@/lib/billing/momo-shared";
+import { vatPercentOf } from "@/lib/billing/vat";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { clientInvoices, payableView } from "@/lib/invoices/service";
@@ -68,8 +69,8 @@ export async function InvoiceLock({ invoice, businessId, role, firstName, email,
           </p>
         </GlassCard>
 
-        {canPay && (paying && payment ? <MomoPayment payment={payment} details={momoSettings} /> : <InvoicePay invoice={payable} methods={methods} highlight cardReason={custom || !payable.planKey ? `Card for this invoice is set up by our team: ask us for a card link at ${site.email}.` : null} />)}
-        {canPay && payment && !paying && payment.status !== "pending" && <MomoPayment payment={payment} details={momoSettings} />}
+        {canPay && (paying && payment ? <MomoPayment payment={payment} details={momoSettings} vatRatePercent={vatPercentOf(payment.vatRateBps)} /> : <InvoicePay invoice={payable} methods={methods} highlight cardReason={custom || !payable.planKey ? `Card for this invoice is set up by our team: ask us for a card link at ${site.email}.` : null} />)}
+        {canPay && payment && !paying && payment.status !== "pending" && <MomoPayment payment={payment} details={momoSettings} vatRatePercent={vatPercentOf(payment.vatRateBps)} />}
         {list.length > 0 && <ClientInvoices invoices={list} />}
 
         <p className="flex items-start gap-2 px-1 text-xs text-muted">

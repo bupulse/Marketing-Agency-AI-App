@@ -1,4 +1,5 @@
-import { ArrowLeft } from "lucide-react";
+import { Megaphone } from "lucide-react";
+import { KitStyles, PageHeader } from "@/components/admin/kit";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAppContext } from "@/components/app/context";
@@ -41,21 +42,23 @@ export async function openCampaign(id: string): Promise<{ ok: false; blocked: Re
 export function CampaignHeader({ campaign, tab }: { campaign: CampaignView; tab: CampaignTab }) {
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/dashboard/creators" className="inline-flex min-h-11 items-center gap-1.5 self-start px-1 text-[15px] font-medium text-muted no-underline hover:text-text">
-        <ArrowLeft aria-hidden className="size-4" /> All creator campaigns
-      </Link>
-      <header className="flex flex-wrap items-start justify-between gap-3 px-1">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.03em] sm:text-[30px]">{campaign.name}</h1>
+      <KitStyles />
+      <PageHeader
+        icon={Megaphone}
+        back={{ href: "/dashboard/creators", label: "All creator campaigns" }}
+        title={campaign.name}
+        description={
+          <span className="flex flex-wrap items-center gap-2">
             <Badge tone={STATUS_TONE[campaign.status] ?? "neutral"}>{CAMPAIGN_STATUS_LABEL[campaign.status as CampaignStatus] ?? campaign.status}</Badge>
             {campaign.status === "LIVE" && !campaign.acceptingApplications && <Badge tone="neutral">Applications closed</Badge>}
             {campaign.hiddenAt && <Badge tone="danger">Hidden by BuPulse</Badge>}
-          </div>
-          <PublicLink slug={campaign.slug} live={campaign.status === "LIVE"} />
-        </div>
-        <CampaignControls campaignId={campaign.id} status={campaign.status} problems={campaign.problems} />
-      </header>
+          </span>
+        }
+        actions={<CampaignControls campaignId={campaign.id} status={campaign.status} problems={campaign.problems} />}
+      />
+      <div className="px-1">
+        <PublicLink slug={campaign.slug} live={campaign.status === "LIVE"} />
+      </div>
       {campaign.status === "DRAFT" && campaign.setupStep !== null && (
         <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-ok-bg px-4 py-3">
           <p className="text-[15px] font-medium text-ok">

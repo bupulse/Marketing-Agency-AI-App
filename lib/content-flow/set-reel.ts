@@ -72,7 +72,9 @@ export async function createSetReel(row: { id: string; businessId: string; group
   const look = chooseLook({ pack, hasPhoto: images.length > 0, recent: recent.looks, seed: row.groupId });
   const video = reelPlanFromSet(set.reel, images, { businessName: business.name, colors: business.brandColors, pack, look, groupId: row.groupId });
   video.mood = set.reel.mood ?? moodFor({ tone: business.tone });
-  video.music = await trackForVideo(video.mood, row.groupId);
+  // The apps the day's posts go to: a track limited to some apps (Meta Sound Collection) only when all of them fit.
+  const destinations = await prisma.post.findMany({ where: { businessId: row.businessId, groupId: row.groupId }, distinct: ["network"], select: { network: true } }).then((r) => r.map((p) => p.network)).catch(() => []);
+  video.music = await trackForVideo(video.mood, row.groupId, destinations);
   const created = await prisma.contentVisual.create({
     data: { businessId: row.businessId, groupId: row.groupId, kind: "video", status: "pending", plan: json(video), items: json([]), ...(video.quality === "ai" ? { clipState: "waiting" } : {}) },
     select: { id: true },

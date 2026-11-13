@@ -130,6 +130,47 @@ Known limits: the Billing page still shows the stored status (an "Active" badge 
 or the webhook updates it; a card plan whose webhook was lost for good stays refused until the event is replayed in
 Paddle or reprocessed; usage during the grace days counts in the next monthly usage window.
 
+## VAT on Rwandan prices (decided 12 November 2026)
+
+BuPulse is VAT-registered with RRA: 18% VAT is on for Rwanda. One helper, `lib/billing/vat.ts` (pure), holds the
+rules; the server reads them with `getVatSettings()` (`lib/billing/vat-server.ts`: the rates from the regions, the TIN
+from AdminSetting, both cached 30 s).
+
+- **One source of the rate: the pricing region.** `PricingRegion.vatRateBps` (Admin → Money → Regions → VAT %; Rwanda
+  1800 = 18% since migration `20261112140000_rwanda_vat_on`, every other region 0). There is no other switch: 0% means no
+  VAT. The old AdminSetting keys `billing.vat.enabled` / `billing.vat.ratePercent` are no longer read. A region's rate
+  applies to amounts in its own currency (RWF for Rwanda); the region editor refuses VAT on a USD region (card
+  payments go through Paddle, the merchant of record, which adds tax itself) and two regions in one currency must share
+  a rate, so "the rate of a currency" (`VatSettings.rates`) is always well defined.
+- **Stored prices are before VAT**: `PlanRegionPrice` RW rows, custom plans (`PlanDefinition` in RWF), offers
+  (`PlanOffer.adjustedMinor`), `AddonPrice`, invoice lines. Nothing in the database was rewritten.
+- **The client sees and pays the price with VAT**: `addVat(net, rateBps, currency)`, RWF rounded to the nearest 100
+  RWF (`grossRwf`). Starter 15,000 → 17,700, Business 50,000 → 59,000, Business Pro 80,000 → 94,400. Computed at read
+  time: `regionalPlansFor` puts each plan's region VAT on it (`RegionalPlan.vat`), and `{ withVat: true }` on
+  `getRegionPlans` / `companyPlans` / `regionPlan` shows those totals (pricing page with the line "VAT included (18%):
+  50,000 RWF + 9,000 RWF VAT", home page, Billing, start trial, the support chat facts). The Mobile Money amount is the
+  same total (`momoPriceOf`, `withRegionVat` for custom plans and offers, priced with the company region's rate:
+  `offerVat` / `vatSettingsOfRegion`). Without the option the stored prices are returned, which invoices, offers and the
+  Paddle sync price from. Card quotes (`cardQuoteOf`, `offerCardQuote`) always start from the price before VAT.
+- **One split everywhere**: every VAT amount shown or stored is the split of the total the client pays,
+  `round(total × rate / (100 + rate))` (`vatPart`): 59,000 → 9,000, 17,700 → 2,700. Price lines, the admin previews,
+  invoices ("Amount before VAT" = total − VAT, "VAT (18%)", "Total (VAT incl.)"), the receipt email ("Of which VAT
+  (18%)", amount before VAT, BuPulse's TIN when set) and the payment all agree. When the 100-RWF rounding went down
+  the amount before VAT is a few francs under the typed price (73,000 → 86,100 = 72,966 + 13,134 VAT).
+- **Per payment**: `ManualPayment.vatMinor` / `vatRateBps` (migration `20261112120000_region_coming_soon_vat`) keep the
+  VAT inside `amountMinor` and its rate when the payment is opened, so a later rate change never re-prices it (an
+  invoice payment takes the invoice's own rate). Confirming an offer's payment checks it against the offer's price with
+  VAT at that snapshot rate.
+- **Revenue is before VAT**: a confirmed Mobile Money payment or a hand-marked invoice writes `usd_cents` before VAT
+  and `vat_minor`, `vat_rate_bps`, `vat_usd_cents` beside it (`lib/money/revenue-shared.ts`; Revenue and profit shows
+  "VAT collected"; the 9M goal and partner commissions count without VAT). An older event with `vat_minor` but no
+  `vat_usd_cents` had the VAT inside `usd_cents`; `parseMoneyEvent` keeps only its share before VAT.
+- **TIN** (Admin → Settings → VAT (Rwanda), AdminSetting `billing.vat.tin`): empty until RRA gives it; printed on
+  invoices and receipts. The page shows Rwanda's rate read-only with a link to Regions. An empty TIN with a region at
+  VAT shows a warning on the settings page, the Settings hub and the Overview.
+- **Admins type prices before VAT** everywhere; Regions (price table and form), the plan form's "Where it is shown"
+  preview, the offer editor, a custom plan's page, add-on prices and the Payments queue show what the client pays.
+
 ## Connecting Paddle (Admin → Settings → Card payments)
 
 No environment variable needs editing. In Admin → Settings → **Card payments (Paddle)** (AAL2, every save audited):

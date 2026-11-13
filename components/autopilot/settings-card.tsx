@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Plus, X } from "lucide-react";
+import { Check, ChevronDown, Plus, SlidersHorizontal, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { saveAutopilotSettings } from "@/app/dashboard/autopilot/actions";
 import { AccountAvatar } from "@/components/publishing/network-icon";
@@ -11,7 +11,13 @@ import { defaultAccountIds, MAX_POSTING_TIMES, MAX_POSTS_PER_WEEK, MIN_POSTS_PER
 import type { ViewAccount } from "@/lib/autopilot/view";
 import { VideoQualityPicker } from "@/components/visuals/video-quality-picker";
 import type { VideoQualityOffer } from "@/lib/visuals/video-quality-server";
+import { ChoiceChips } from "@/components/app/kit/a-choice-cards";
 import { Switch } from "./switch";
+
+/** Posts-a-week choices shown as chips (any saved number in the range is kept and shown too). */
+const WEEK_CHOICES = [2, 3, 5, 7, 10, 14].filter((n) => n >= MIN_POSTS_PER_WEEK && n <= MAX_POSTS_PER_WEEK);
+/** Common posting times, added in one tap (lunch time, 11:30 to 13:30, is the best default). */
+const TIME_IDEAS = ["08:00", "12:30", "13:00", "18:00", "20:00"];
 
 function ToggleRow({ title, text, checked, onChange }: { title: string; text: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -72,9 +78,7 @@ export function SettingsCard({ initial, accounts, timeZone, videoOffer = null }:
             </h2>
             <Badge tone={config.enabled ? "success" : "neutral"}>{config.enabled ? "On" : "Off"}</Badge>
           </div>
-          <p className="text-[14px] text-muted">
-            Every Friday, Autopilot plans next week&apos;s posts for your accounts. Each one is written for its network, comes with a picture from your photos and a free brand template, and is set for a good time. You approve them in one tap.
-          </p>
+          <p className="text-[14px] text-muted">Every Friday it plans next week&apos;s posts, each with a picture and a good time. You approve them in one tap.</p>
         </div>
         <Switch
           checked={config.enabled}
@@ -138,29 +142,14 @@ export function SettingsCard({ initial, accounts, timeZone, videoOffer = null }:
 
       <hr className="my-2 border-line" />
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <label htmlFor="posts-per-week" className="font-semibold">
-            Posts per week
-          </label>
-          <output htmlFor="posts-per-week" className="text-2xl font-semibold tabular-nums">
-            {config.postsPerWeek}
-          </output>
-        </div>
-        <input
-          id="posts-per-week"
-          type="range"
-          min={MIN_POSTS_PER_WEEK}
-          max={MAX_POSTS_PER_WEEK}
-          step={1}
-          value={config.postsPerWeek}
-          onChange={(e) => set("postsPerWeek", Number(e.target.value))}
-          className="h-11 w-full cursor-pointer accent-pulse-blue"
-        />
-        <p className="text-[14px] text-muted">
-          Each post is written for every account it suits, and costs 1 text credit. Between {MIN_POSTS_PER_WEEK} and {MAX_POSTS_PER_WEEK}.
-        </p>
-      </div>
+      <ChoiceChips
+        label="Posts per week"
+        value={String(config.postsPerWeek)}
+        onChange={(v) => set("postsPerWeek", Number(v))}
+        items={[...new Set([...WEEK_CHOICES, config.postsPerWeek])].sort((x, y) => x - y).map((n) => ({ value: String(n), label: String(n) }))}
+        hint="Each post costs 1 text credit and is written for every account it suits."
+        className="[&>p:first-child]:font-semibold [&>p:first-child]:text-[16px]"
+      />
 
       <hr className="my-2 border-line" />
 
@@ -182,19 +171,34 @@ export function SettingsCard({ initial, accounts, timeZone, videoOffer = null }:
             </li>
           ))}
         </ul>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="time"
-            aria-label="New posting time"
-            value={newTime}
-            onChange={(e) => setNewTime(e.target.value)}
-            className="min-h-11 rounded-2xl border border-line bg-transparent px-3 text-[15px]"
-          />
-          <Button type="button" variant="outline" size="sm" leading={<Plus aria-hidden className="size-4" />} onClick={addTime} disabled={config.postingTimes.length >= MAX_POSTING_TIMES}>
-            Add time
-          </Button>
-        </div>
-        <p className="text-[14px] text-muted">Local time ({timeZone.replace(/_/g, " ")}). Autopilot spreads posts over the week and uses what works best for you once it has results.</p>
+        {config.postingTimes.length < MAX_POSTING_TIMES && (
+          <div className="flex flex-col gap-2">
+            <p className="text-[13px] font-medium text-muted">Tap to add a time</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {TIME_IDEAS.filter((t) => !config.postingTimes.includes(t)).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => set("postingTimes", [...config.postingTimes, t].sort())}
+                  className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-full border-2 border-dashed border-line px-3.5 text-[14px] font-semibold tabular-nums text-muted transition-[border-color,color,transform] duration-200 hover:-translate-y-px hover:border-pulse-blue/50 hover:text-text motion-reduce:transform-none motion-reduce:transition-none"
+                >
+                  <Plus aria-hidden className="size-3.5" />
+                  {t}
+                </button>
+              ))}
+            </div>
+            <details className="group">
+              <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 text-[13px] font-semibold text-pulse-blue [&::-webkit-details-marker]:hidden">Another time</summary>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <input type="time" aria-label="New posting time" value={newTime} onChange={(e) => setNewTime(e.target.value)} className="min-h-11 rounded-2xl border border-line bg-transparent px-3 text-[15px]" />
+                <Button type="button" variant="outline" size="sm" leading={<Plus aria-hidden className="size-4" />} onClick={addTime}>
+                  Add time
+                </Button>
+              </div>
+            </details>
+          </div>
+        )}
+        <p className="text-[13px] text-muted">Your local time ({timeZone.replace(/_/g, " ")}). Up to {MAX_POSTING_TIMES} times.</p>
       </div>
 
       <hr className="my-2 border-line" />
@@ -202,28 +206,38 @@ export function SettingsCard({ initial, accounts, timeZone, videoOffer = null }:
       <div className="flex flex-col divide-y divide-line">
         <ToggleRow
           title="Post without asking"
-          text="Off: posts follow Content, Settings, where you choose per app which posts wait for your approval (every app waits unless you change it). On: Autopilot schedules all its posts straight away, and you can still edit or remove them before they go out."
+          text="On: posts are scheduled straight away (you can still edit or remove them). Off: they wait for your OK, as set in Posts, Settings."
           checked={config.autoPublish}
           onChange={(v) => set("autoPublish", v)}
         />
         <ToggleRow
-          title="AI images with people (on by default, uses image credits)"
-          text="On (the default): every post gets a unique AI ad made from your product, using AI image credits (2 for Lite, 4 for Pro), and your own photos when the month's credits run out. Off: only your own photos, as they are, no credits used."
+          title="AI pictures with people"
+          text="On: a unique AI ad for every post (2 image credits for Lite, 4 for Pro; your photos when credits run out). Off: your own photos, no credits."
           checked={config.useAiImages}
           onChange={(v) => set("useAiImages", v)}
         />
-        <ToggleRow
-          title="Skip religious holidays"
-          text="Autopilot greets national and cultural days. Switch this on to leave religious holidays out."
-          checked={config.skipReligious}
-          onChange={(v) => set("skipReligious", v)}
-        />
-        {videoOffer && (
-          <div className="py-4">
-            <VideoQualityPicker name="autopilot-video-quality" value={config.videoQuality} onChange={(v) => set("videoQuality", v)} offer={videoOffer} />
-          </div>
-        )}
       </div>
+
+      <details className="group rounded-2xl border border-line">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-2 [&::-webkit-details-marker]:hidden">
+          <SlidersHorizontal aria-hidden className="size-4 shrink-0 text-muted" />
+          <span className="flex-1 text-[14px] font-semibold">More choices</span>
+          <ChevronDown aria-hidden className="size-4 shrink-0 text-muted transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+        </summary>
+        <div className="flex flex-col divide-y divide-line px-4">
+          <ToggleRow
+            title="Skip religious holidays"
+            text="Autopilot greets national and cultural days. On: religious holidays are left out."
+            checked={config.skipReligious}
+            onChange={(v) => set("skipReligious", v)}
+          />
+          {videoOffer && (
+            <div className="py-4">
+              <VideoQualityPicker name="autopilot-video-quality" value={config.videoQuality} onChange={(v) => set("videoQuality", v)} offer={videoOffer} />
+            </div>
+          )}
+        </div>
+      </details>
 
       {error && (
         <p role="alert" className="text-[14px] font-medium text-danger">

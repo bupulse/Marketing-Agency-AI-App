@@ -3,9 +3,11 @@ import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { visitorCountry } from "@/lib/platform/headers";
 import { GEO_COOKIE, verifyGeoCookie } from "@/lib/geo-cookie";
+import { isIsoCountry } from "@/lib/iso-countries";
 import {
   DEFAULT_REGION_KEY,
   isPaymentMethod,
+  comingSoonRegionFor,
   isRegionKey,
   REGION_SEEDS,
   regionKeyForCountryCode,
@@ -41,7 +43,7 @@ export function resetRegionCache() {
   lastGood = null;
 }
 
-type Row = { key: string; name: string; currency: string; countries: string[]; paymentMethods: string[]; active: boolean; sortOrder: number };
+type Row = { key: string; name: string; currency: string; countries: string[]; paymentMethods: string[]; active: boolean; sortOrder: number; vatRateBps?: number | null; vatLabel?: string | null };
 
 export function regionOf(row: Row): RegionInfo {
   return {
@@ -52,6 +54,8 @@ export function regionOf(row: Row): RegionInfo {
     paymentMethods: (row.paymentMethods ?? []).filter(isPaymentMethod),
     active: row.active !== false,
     sortOrder: Number(row.sortOrder ?? 0),
+    vatRateBps: Math.max(0, Math.trunc(Number(row.vatRateBps ?? 0)) || 0),
+    vatLabel: (row.vatLabel ?? "").trim() || "VAT",
   };
 }
 
@@ -112,50 +116,65 @@ export function countryFromHeaders(h: Headers): string | null {
  * Pure: the display region key. Order: the dev override (`query`, then `cookie`; pass them only when REGION_OVERRIDE=1),
  * the verified "Use my location" country (`geo`), the Cloudflare IP country (`ip`), the dev country (`dev`), the catch-all.
  * `geo` beats `ip` on purpose: it exists only because the visitor allowed their browser's location, which is how a
- * VPN user gets their own prices. Unknown or inactive override keys are ignored.
+ * VPN user gets their own prices. An override is a LIVE region key (?region=EAC) or a country code (?region=KE: that
+ * country's region, as a visitor from there would get); a coming-soon or unknown key is ignored. A country only a
+ * COMING_SOON region lists gets the catch-all (lib/region-format.ts regionKeyForCountryCode has the precedence).
  */
 export function resolveDisplayRegionKey(
   input: { query?: string | null; cookie?: string | null; geo?: string | null; ip?: string | null; dev?: string | null },
   regions: RegionInfo[],
 ): string {
+  return resolveDisplay(input, regions).key;
+}
+
+/** The region key and the country it was worked out from (null for a region-key override or no country at all). */
+export function resolveDisplay(input: { query?: string | null; cookie?: string | null; geo?: string | null; ip?: string | null; dev?: string | null }, regions: RegionInfo[]): { key: string; country: string | null } {
   const active = new Set(regions.filter((r) => r.active).map((r) => r.key));
   for (const asked of [input.query, input.cookie]) {
     const key = (asked ?? "").toUpperCase();
-    if (isRegionKey(key) && active.has(key)) return key;
+    if (isRegionKey(key) && active.has(key)) return { key, country: isIsoCountry(key) ? key : null };
+    if (isIsoCountry(key)) return { key: regionKeyForCountryCode(key, regions), country: key };
   }
-  return regionKeyForCountryCode(input.geo || input.ip || input.dev || null, regions);
+  const country = (input.geo || input.ip || input.dev || "").toUpperCase() || null;
+  return { key: regionKeyForCountryCode(country, regions), country };
+}
+
+export type DisplayRegion = {
+  region: RegionInfo;
+  /** The coming-soon region the visitor's country is in ("West Africa" for NG), shown as a note; null otherwise. */
+  comingSoon: RegionInfo | null;
+};
+
+async function display(query: string | string[] | null | undefined, override: boolean): Promise<DisplayRegion> {
+  const [h, c, regions] = await Promise.all([headers(), cookies(), getRegions()]);
+  const { key, country } = resolveDisplay(
+    {
+      query: override ? (Array.isArray(query) ? query[0] : query) : null,
+      cookie: override ? c.get(REGION_COOKIE)?.value : null,
+      geo: await verifyGeoCookie(c.get(GEO_COOKIE)?.value),
+      ip: ipCountryFromHeaders(h),
+      dev: devCountry(),
+    },
+    regions,
+  );
+  const region = regions.find((r) => r.key === key) ?? (await fallbackRegion());
+  const soon = comingSoonRegionFor(country, regions);
+  return { region, comingSoon: soon && region.countries.length === 0 ? soon : null };
 }
 
 /** The region a visitor sees on the public pages. */
 export async function displayRegion(): Promise<RegionInfo> {
-  const [h, c, regions] = await Promise.all([headers(), cookies(), getRegions()]);
-  const key = resolveDisplayRegionKey(
-    {
-      cookie: regionOverrideEnabled() ? c.get(REGION_COOKIE)?.value : null,
-      geo: await verifyGeoCookie(c.get(GEO_COOKIE)?.value),
-      ip: ipCountryFromHeaders(h),
-      dev: devCountry(),
-    },
-    regions,
-  );
-  return regions.find((r) => r.key === key) ?? (await fallbackRegion());
+  return (await display(null, regionOverrideEnabled())).region;
 }
 
 /** Same, with the page's ?region= value; only for local development (REGION_OVERRIDE=1). */
 export async function displayRegionWithOverride(query?: string | string[] | null): Promise<RegionInfo> {
-  if (!regionOverrideEnabled()) return displayRegion();
-  const [h, c, regions] = await Promise.all([headers(), cookies(), getRegions()]);
-  const key = resolveDisplayRegionKey(
-    {
-      query: Array.isArray(query) ? query[0] : query,
-      cookie: c.get(REGION_COOKIE)?.value,
-      geo: await verifyGeoCookie(c.get(GEO_COOKIE)?.value),
-      ip: ipCountryFromHeaders(h),
-      dev: devCountry(),
-    },
-    regions,
-  );
-  return regions.find((r) => r.key === key) ?? (await fallbackRegion());
+  return (await display(query, regionOverrideEnabled())).region;
+}
+
+/** The region and, for a visitor whose live region is the catch-all, the coming-soon one their country is in. */
+export async function displayRegionDetails(query?: string | string[] | null): Promise<DisplayRegion> {
+  return display(query, regionOverrideEnabled());
 }
 
 /** The company's billing region (Business.pricingRegion). An unknown or retired key falls back to the catch-all region. */

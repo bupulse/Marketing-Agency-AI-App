@@ -2,7 +2,9 @@
 
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { Badge, Button, GlassCard, type BadgeTone } from "@/components/ui";
+import { CARD } from "@/components/admin/kit/tones";
+import { Badge, Button, type BadgeTone } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { ConnectDialog } from "./connect-dialog";
 import { DisconnectButton } from "./disconnect-button";
 import { InboxSwitch } from "./inbox-switch";
@@ -62,11 +64,11 @@ export function ChannelList({ channels, accounts }: { channels: ChannelInfo[]; a
   const [open, setOpen] = useState<ChannelInfo | null>(null);
   return (
     <>
-      <ul className="flex flex-col gap-4">
+      <ul className="kit-rise grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
         {channels.map((channel) => {
           const mine = accounts.filter((a) => a.network === channel.network);
           return (
-            <GlassCard as="li" key={channel.network} className="flex flex-col gap-3 rounded-card p-4 sm:p-5">
+            <li key={channel.network} className={cn(CARD, "flex flex-col gap-3 p-4 sm:p-5", mine.length > 0 && "border-pulse-blue/30")}>
               <div className="flex items-center gap-3">
                 <span aria-hidden className="inline-flex size-11 shrink-0 items-center justify-center">
                   <NetworkIcon network={channel.network} className="size-9" />
@@ -90,22 +92,25 @@ export function ChannelList({ channels, accounts }: { channels: ChannelInfo[]; a
                   ))}
                 </ul>
               )}
-            </GlassCard>
+            </li>
           );
         })}
-        {SOON_CHANNELS.map((soon) => (
-          <GlassCard as="li" key={soon.id} className="flex items-center gap-3 rounded-card p-4 sm:p-5">
-            <span aria-hidden className="inline-flex size-11 shrink-0 items-center justify-center">
-              <NetworkIcon network={soon.id} className="size-9" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold">{soon.label}</p>
-              <p className="truncate text-[13px] text-muted">{soon.note}</p>
-            </div>
-            <Badge tone="neutral">Coming soon</Badge>
-          </GlassCard>
-        ))}
       </ul>
+      {SOON_CHANNELS.length > 0 && (
+        <div className={cn(CARD, "flex flex-col gap-3 p-4 sm:p-5")}>
+          <p className="text-[14px] font-semibold">
+            Coming soon <span className="font-normal text-muted">· more networks on the way</span>
+          </p>
+          <ul className="flex flex-wrap gap-2">
+            {SOON_CHANNELS.map((soon) => (
+              <li key={soon.id} title={soon.note} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-soft px-3 text-[13px] font-semibold">
+                <NetworkIcon network={soon.id} className="size-5" />
+                {soon.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {open && <ConnectDialog channel={open} onClose={() => setOpen(null)} />}
     </>
   );

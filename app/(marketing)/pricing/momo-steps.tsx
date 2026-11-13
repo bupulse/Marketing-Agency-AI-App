@@ -19,7 +19,7 @@ export function MomoSteps({ plans, paymentMethods }: { plans: RegionalPlan[]; pa
         Pay with MTN MoMo or Airtel Money
       </h2>
       <ol className="flex flex-col gap-2 text-muted">
-        <li><strong className="text-text">1. Sign up and choose your plan.</strong> {examples.map((p) => `${p.name}: ${formatPrice(p.monthlyPriceCents, p.currency)} a month`).join(" · ")}.</li>
+        <li><strong className="text-text">1. Sign up and choose your plan.</strong> {examples.map((p) => `${p.name}: ${formatPrice(p.monthlyPriceCents, p.currency)} a month`).join(" · ")}{examples.some((p) => p.vatRatePercent) ? " (VAT included)" : ""}.</li>
         <li><strong className="text-text">2. Choose &ldquo;Mobile Money (MTN / Airtel)&rdquo;.</strong> You see the amount and your own reference, such as BP-7K3Q.</li>
         <li><strong className="text-text">3. Pay from your phone.</strong> MTN: tap &ldquo;Tap to dial&rdquo; (or dial the MoMo Pay code shown) and confirm with your PIN. Airtel: send the amount to the number shown with your reference.</li>
         <li><strong className="text-text">4. Tap &ldquo;I have paid&rdquo;.</strong> Type the transaction id from the SMS and add a screenshot of it.</li>

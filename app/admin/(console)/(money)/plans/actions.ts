@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { actionMessage, adminAction, finish } from "@/lib/admin/console";
 import { cancelPriceChange, createPlan, previewPriceChange, retryFailedPriceItems, syncPlanToPaddle, updatePlan, type PlanInput } from "@/lib/admin/plans-service";
+import { checkPlanRegions, setPlanRegions, type PlanRegionChoice } from "@/lib/admin/regions-service";
+import { getRegions } from "@/lib/region";
+import { toMinor } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { getPlan } from "@/lib/plan-catalog";
 import { FEATURE_KEYS } from "@/lib/features";
@@ -70,6 +73,24 @@ function readForm(f: FormData, isTrial: boolean, priced = true): Partial<PlanInp
   return input;
 }
 
+/**
+ * The plan form's "Where it is shown" (components/admin/plan-regions.tsx): one choice per ticked region, with its price
+ * before VAT typed in the region's currency. Null when the form has no region section (the trial, a custom plan, or a
+ * form opened before regions could be chosen): the plan's regions are then left as they are.
+ */
+async function readRegions(f: FormData): Promise<PlanRegionChoice[] | null> {
+  if (text(f, "regionsForm") !== "1") return null;
+  const regions = await getRegions({ force: true });
+  return regions
+    .filter((r) => f.get(`region_${r.key}`) === "on")
+    .map((r) => {
+      if (r.countries.length === 0) return { regionKey: r.key };
+      const monthly = toMinor(text(f, `regionMonthly_${r.key}`), r.currency);
+      const yearly = toMinor(text(f, `regionYearly_${r.key}`), r.currency);
+      return { regionKey: r.key, monthlyMinor: monthly, yearlyMinor: yearly };
+    });
+}
+
 /** Create or edit. A price change on an existing plan first answers with the confirm step; the same form then re-submits with confirmPrice=1. */
 export async function savePlanAction(_prev: PlanFormState, f: FormData): Promise<PlanFormState> {
   const ctx = await adminAction("plans.manage");
@@ -78,7 +99,11 @@ export async function savePlanAction(_prev: PlanFormState, f: FormData): Promise
   try {
     if (mode === "create") {
       const input = readForm(f, false);
+      // The regions are checked before the plan is written, so a wrong price there never leaves a half-made plan.
+      const regions = await readRegions(f);
+      if (regions) await checkPlanRegions(null, regions);
       const result = await createPlan(ctx, { ...(input as PlanInput), key: text(f, "key") });
+      if (regions) await setPlanRegions(ctx, result.plan.key, regions);
       const note =
         result.paddle === "synced" ? "Plan created and its prices are in Paddle."
         : result.paddle === "not_connected" ? "Plan saved as a draft. Paddle is not connected, so it has no prices there yet."
@@ -89,6 +114,8 @@ export async function savePlanAction(_prev: PlanFormState, f: FormData): Promise
       const current = await getPlan(key);
       if (!current) throw new AdminError("not_found", "No plan with that key.");
       const input = readForm(f, current.isTrial, !current.isCustom && current.currency === "USD");
+      const regions = current.isTrial || current.isCustom ? null : await readRegions(f);
+      if (regions) await checkPlanRegions(key, regions);
       const priceChanged = !current.isTrial && input.monthlyPriceCents !== undefined && (input.monthlyPriceCents !== current.monthlyPriceCents || input.yearlyPriceCents !== current.yearlyPriceCents);
       if (priceChanged && text(f, "confirmPrice") !== "1") {
         const preview = await previewPriceChange(key, { monthlyPriceCents: input.monthlyPriceCents!, yearlyPriceCents: input.yearlyPriceCents! });
@@ -99,7 +126,9 @@ export async function savePlanAction(_prev: PlanFormState, f: FormData): Promise
         throw new AdminError("conflict", "The price is not the one you reviewed. Review the price change again.");
       }
       const result = await updatePlan(ctx, key, input, { confirmPriceChange: priceChanged && text(f, "confirmPrice") === "1", expectedVersion: text(f, "version") || undefined });
-      const parts = [result.changed.length === 0 ? "Nothing to change." : "Plan saved."];
+      // After the plan, so Rest of the world's row carries the plan's new price.
+      const regionResult = regions ? await setPlanRegions(ctx, key, regions) : null;
+      const parts = [result.changed.length === 0 && !regionResult?.changed ? "Nothing to change." : "Plan saved."];
       if (result.priceChange) parts.push(`${result.priceChange.subscribers} ${result.priceChange.subscribers === 1 ? "client" : "clients"} will be moved to the new price.`);
       parts.push(...result.warnings);
       destination = `/admin/plans/${encodeURIComponent(key)}?notice=${encodeURIComponent(parts.join(" "))}`;

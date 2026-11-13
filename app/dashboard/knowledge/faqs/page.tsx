@@ -1,6 +1,5 @@
 import { getAppContext } from "@/components/app/context";
-import { PageHeader } from "@/components/app/page-header";
-import { BackLink } from "@/components/knowledge/back-link";
+import { SectionHeader } from "@/components/knowledge/section-header";
 import { QuizLink } from "@/components/knowledge/quiz-link";
 import { FaqEditor, PoliciesForm } from "@/components/knowledge/faq-editor";
 import { readPolicies } from "@/lib/knowledge/policies";
@@ -14,8 +13,7 @@ export default async function FaqsPage() {
   const faqs = await listFaqs(business.id);
   return (
     <>
-      <BackLink />
-      <PageHeader
+      <SectionHeader section="faqs"
         title="FAQs & policies"
         description="Answers to what customers ask, and your rules for delivery, returns, payment and bookings. Your website chat and your posts use them."
         action={can(role, "settings") ? <QuizLink round="rules" /> : undefined}

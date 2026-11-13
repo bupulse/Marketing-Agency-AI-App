@@ -24,14 +24,18 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(out);
 }
 
-/** Renders one plan. The renderer picks MP4 whenever VideoEncoder exists, so WebM is forced by hiding it. */
-async function render(plan: VideoPlan, photoUrls: Record<string, string>, format: Format, audio: { voice?: string; music?: string } = {}, clipUrls: Record<string, string> = {}) {
+/**
+ * Renders one plan. The renderer picks MP4 whenever VideoEncoder exists, so WebM is forced by hiding it. `variant`: also
+ * the Instagram version without music (lib/visuals/ig-variant.ts), returned as variantBase64 when it could be made.
+ */
+async function render(plan: VideoPlan, photoUrls: Record<string, string>, format: Format, audio: { voice?: string; music?: string } = {}, clipUrls: Record<string, string> = {}, variant = false) {
   if (format === "webm") Reflect.deleteProperty(globalThis, "VideoEncoder");
   try {
     // Voiceover and music arrive as data URLs, like the photos: the same mix as the owner's browser (lib/voice/mix.ts).
     // AI clips arrive as data URLs too (lib/visuals/ai-clips.ts); a missing one keeps its scene's photo.
-    const result = await renderVideo(plan, { photoUrls, clipUrls, voiceUrl: audio.voice ?? null, musicUrl: audio.music ?? null });
-    return { ok: true as const, base64: toBase64(new Uint8Array(await result.blob.arrayBuffer())), mimeType: result.mimeType, bytes: result.blob.size };
+    const result = await renderVideo(plan, { photoUrls, clipUrls, voiceUrl: audio.voice ?? null, musicUrl: audio.music ?? null, noMusicVariant: variant && format === "mp4" });
+    const variantBase64 = result.variantBlob ? toBase64(new Uint8Array(await result.variantBlob.arrayBuffer())) : undefined;
+    return { ok: true as const, base64: toBase64(new Uint8Array(await result.blob.arrayBuffer())), mimeType: result.mimeType, bytes: result.blob.size, ...(variantBase64 ? { variantBase64 } : {}) };
   } catch (error) {
     const reason = error instanceof VideoRenderError ? (error.reason === "too_large" ? "too_large" : error.reason === "unsupported" ? "unsupported" : "render_failed") : "render_failed";
     return { ok: false as const, reason };

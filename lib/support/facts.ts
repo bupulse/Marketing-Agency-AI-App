@@ -70,9 +70,9 @@ let pricing: { at: number; key: string; text: string } | null = null;
 export async function pricingContext(country: string | null): Promise<string> {
   const region = await regionFromCountryCode(country);
   if (pricing && pricing.key === region && Date.now() - pricing.at < 5 * 60_000) return pricing.text;
-  const all = await getRegionPlans(region);
+  const all = await getRegionPlans(region, { withVat: true });
   const trial = all.find((p) => p.isTrial);
-  const lines = all.filter((p) => !p.isTrial).map((p) => `- ${p.name}: ${formatMinor(p.monthlyPriceCents, p.currency)} a month or ${formatMinor(p.yearlyPriceCents, p.currency)} a year${p.highlights.length ? `. ${p.highlights.slice(0, 5).join("; ")}` : ""}`);
+  const lines = all.filter((p) => !p.isTrial).map((p) => `- ${p.name}: ${formatMinor(p.monthlyPriceCents, p.currency)} a month or ${formatMinor(p.yearlyPriceCents, p.currency)} a year${p.vatRatePercent ? ` (${p.vatRatePercent}% VAT included)` : ""}${p.highlights.length ? `. ${p.highlights.slice(0, 5).join("; ")}` : ""}`);
   const text = [trial?.trialDays ? `Free trial: ${trial.trialDays} days.` : null, ...lines].filter(Boolean).join("\n");
   pricing = { at: Date.now(), key: region, text };
   return text;

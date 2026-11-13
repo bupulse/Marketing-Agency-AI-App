@@ -1,6 +1,7 @@
 // Manual Mobile Money payments: the parts with no database or server imports, so the client components, the
 // admin pages and the tests share one set of rules (docs/MOMO.md).
 import { z } from "zod";
+import { paymentVat, priceWithVat, vatOf } from "@/lib/billing/vat";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { addMonths, MANUAL_GRACE_DAYS } from "./period";
 
@@ -117,9 +118,48 @@ export function usdCentsOf(amountMinor: number, currency: string, usdToRwf: numb
  * in the region's currency. Null when the region does not take Mobile Money. One source of truth: the same amount
  * the pricing page and Billing show.
  */
-export function momoPriceOf(plan: { monthlyPriceCents: number; yearlyPriceCents: number; currency: string; paymentMethods: readonly string[] }, interval: BillingInterval): { amountMinor: number; currency: string } | null {
+export type MomoPrice = {
+  /** What the client sends: the price plus the region's VAT. */
+  amountMinor: number;
+  currency: string;
+  /**
+   * The VAT inside amountMinor, as the receipt splits it (round(total x rate / (100 + rate)), lib/billing/vat.ts
+   * paymentVat; 0 without VAT) and its rate in basis points (null without VAT). Stored on the payment.
+   */
+  vatMinor: number;
+  vatRateBps: number | null;
+};
+
+type VatTotal = { totalMinor: number };
+
+function momoPrice(amountMinor: number, currency: string, rateBps: number | null | undefined): MomoPrice {
+  return { amountMinor, currency: currency.toUpperCase(), ...paymentVat(amountMinor, rateBps) };
+}
+
+/**
+ * A price before VAT plus a region's VAT, as what a client sends by Mobile Money (custom plan offers and their
+ * renewals: docs/OFFERS.md). The region's rate applies to amounts in its own currency, never USD (lib/billing/vat.ts
+ * vatSettingsOfRegion: the same rule the offer's shown price uses). At 0% the amount is unchanged, no VAT part.
+ */
+export function withRegionVat(netMinor: number, currency: string, region: { currency?: string; vatRateBps?: number | null; vatLabel?: string | null } | null | undefined): MomoPrice {
+  const code = currency.toUpperCase();
+  const own = !region?.currency || region.currency.toUpperCase() === code;
+  const vat = code === "USD" || !own ? null : vatOf(region);
+  const price = priceWithVat(netMinor, vat, currency);
+  return momoPrice(price.totalMinor, currency, vat ? vat.rateBps : null);
+}
+
+/**
+ * The price is typed before VAT; a region with VAT (Rwanda, 18%) adds it on top, so a 50,000 RWF plan is sent as
+ * 59,000 RWF (lib/billing/vat.ts). `plan.vat` is the region's VAT from lib/region-prices.ts. A plan whose prices
+ * already include the VAT (`vatRatePercent`, lib/region-prices.ts withVat) is not taxed twice.
+ */
+export function momoPriceOf(plan: { monthlyPriceCents: number; yearlyPriceCents: number; currency: string; paymentMethods: readonly string[]; vat?: { rateBps: number; monthly: VatTotal; yearly: VatTotal } | null; vatRatePercent?: number | null }, interval: BillingInterval): MomoPrice | null {
   if (!plan.paymentMethods.includes("momo")) return null;
-  return { amountMinor: interval === "YEAR" ? plan.yearlyPriceCents : plan.monthlyPriceCents, currency: plan.currency.toUpperCase() };
+  const listed = interval === "YEAR" ? plan.yearlyPriceCents : plan.monthlyPriceCents;
+  if (plan.vat) return momoPrice((interval === "YEAR" ? plan.vat.yearly : plan.vat.monthly).totalMinor, plan.currency, plan.vat.rateBps);
+  if (plan.vatRatePercent) return momoPrice(listed, plan.currency, Math.round(plan.vatRatePercent * 100));
+  return momoPrice(listed, plan.currency, null);
 }
 
 // ---- owner settings (AdminSetting "billing.momo") ----------------------------------------------------------
@@ -304,6 +344,9 @@ export type ManualPaymentView = {
   interval: BillingInterval;
   amountMinor: number;
   currency: string;
+  /** The VAT part of amountMinor, and its rate in basis points (null: no VAT). */
+  vatMinor?: number;
+  vatRateBps?: number | null;
   reference: string;
   /** The invoice this payment settles (its number is the reference), or null for a plain plan payment. */
   invoiceId: string | null;

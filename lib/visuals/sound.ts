@@ -32,7 +32,8 @@ export async function setVideoMusic(businessId: string, visualId: string, trackI
   if (!row || !plan) throw new VisualError("We could not find that video.");
   let music: VideoPlan["music"] = null;
   if (trackId) {
-    const track = await prisma.musicTrack.findFirst({ where: { id: trackId, active: true } });
+    // Tracks limited to some apps (Meta Sound Collection) are never offered to the owner: a video can go anywhere.
+    const track = await prisma.musicTrack.findFirst({ where: { id: trackId, active: true, platforms: { isEmpty: true } } });
     if (!track) throw new VisualError("That track is no longer in the library.");
     // With the credit line its posts' captions end with (lib/music/credit.ts): the new video's posts take the new credit
     // when it is saved (attachVisuals replaces the old line, or takes it off for music that needs none).

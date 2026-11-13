@@ -149,7 +149,7 @@ describe("making and sending an offer", () => {
     const r = await offers.sendOffer(CONSOLE, saved.id, NOW);
     expect(r).toMatchObject({ status: "sent", emailed: true, to: "biz1@example.rw" });
     expect(offerRow(saved.id).validUntil.toISOString()).toBe("2026-10-20T08:00:00.000Z");
-    expect(h.sendEmail.mock.calls[0][0]).toMatchObject({ to: "biz1@example.rw", subject: expect.stringContaining("73,000") });
+    expect(h.sendEmail.mock.calls[0][0]).toMatchObject({ to: "biz1@example.rw", subject: expect.stringContaining("86,100") });
     expect(h.sendEmail.mock.calls[0][0].text).toContain("/dashboard/billing#offer");
     expect(await code(offers.sendOffer(CONSOLE, saved.id, NOW))).toBe("conflict");
     expect(audits("send_offer")).toHaveLength(1);
@@ -175,7 +175,7 @@ describe("what the client sees", () => {
     const id = await sentOffer();
     expect(await offers.clientOffer("biz2", NOW)).toBeNull();
     const mine = await offers.clientOffer("biz1", NOW);
-    expect(mine).toMatchObject({ id, status: "sent", totalMinor: 73000, currency: "RWF", basePlanName: "Standard" });
+    expect(mine).toMatchObject({ id, status: "sent", totalMinor: 86100, netTotalMinor: 73000, vatRatePercent: 18, currency: "RWF", basePlanName: "Standard" });
     expect(mine!.features.filter((f) => f.added).map((f) => f.key)).toEqual(["aiPhotos", "websiteChat", "autopilot"]);
     // Another company cannot accept it, even with the id.
     expect(await msg(offers.acceptOffer({ userId: OTHER, actorId: OTHER, businessId: "biz2", offerId: id, method: "momo" }, NOW))).toMatch(/could not find/);
@@ -218,7 +218,7 @@ describe("accept -> pay by Mobile Money -> activate", () => {
     const id = await sentOffer();
     const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
     expect(offerRow(id)).toMatchObject({ status: "accepted", payMethod: "momo", customPlanKey: customPlanKeyFor(id) });
-    expect(r.payment).toMatchObject({ planKey: customPlanKeyFor(id), amountMinor: 73000, currency: "RWF", offerId: id, status: "pending" });
+    expect(r.payment).toMatchObject({ planKey: customPlanKeyFor(id), amountMinor: 86100, currency: "RWF", offerId: id, status: "pending" });
     expect(sub()).toMatchObject({ plan: "STANDARD", status: "ACTIVE" });
     expect(audits("accept_offer")[0]).toMatchObject({ actor: `client:${USER}` });
     // Accepting again (another tab) gives the same payment, no second plan.
@@ -305,8 +305,71 @@ describe("accept -> pay by Mobile Money -> activate", () => {
     // Renewing opens in the last 7 days of the period (docs/BILLING.md, "Renewing").
     expect(await msg(momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: LATER }))).toMatch(/is paid until 13 November 2026/);
     const renewal = await momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: new Date("2026-11-08T09:00:00Z") });
-    expect(renewal).toMatchObject({ amountMinor: 73000, currency: "RWF", offerId: null });
+    expect(renewal).toMatchObject({ amountMinor: 86100, currency: "RWF", offerId: null });
     expect(await msg(momo.startManualPayment({ userId: OTHER, plan: customPlanKeyFor(id), interval: "MONTH", now: LATER }))).toMatch(/not available/);
+  });
+});
+
+/** Rwanda's VAT % in Admin -> Regions (18% by default: BuPulse is VAT-registered; every other region 0%). */
+function rwandaVat(bps = 1800) {
+  h.db.pricingRegion.rows.push(...REGION_SEEDS.map((r) => ({ ...r, countries: [...r.countries], paymentMethods: [...r.paymentMethods], vatRateBps: r.key === "RW" ? bps : 0 })));
+  resetRegionCache();
+}
+
+describe("VAT on custom plan offers (the offer price is before VAT)", () => {
+  it("at 0% (Admin -> Regions) nothing is added: no VAT on the offer, the client sends the offer's price", async () => {
+    seed();
+    rwandaVat(0);
+    const id = await sentOffer();
+    expect((await offers.clientOffer("biz1", NOW))?.vatRatePercent ?? null).toBeNull();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    expect(r.payment).toMatchObject({ amountMinor: 73000, vatMinor: 0, vatRateBps: null });
+  });
+
+  it("at 18%: the client sees and sends price + VAT (rounded to 100 RWF), the payment keeps the VAT, confirming activates the offer", async () => {
+    seed();
+    rwandaVat();
+    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: DRAFT });
+    await offers.sendOffer(CONSOLE, saved.id, NOW);
+    // The offer email says the total.
+    expect((h.sendEmail.mock.calls.at(-1)?.[0] as { text: string }).text).toContain("86,100 RWF a month (VAT included)");
+    const id = saved.id;
+    expect(await offers.clientOffer("biz1", NOW)).toMatchObject({ netTotalMinor: 73000, totalMinor: 86100, vatRatePercent: 18 });
+    const { accepted, confirmed } = await payByMomo(id);
+    expect(accepted.offer.totalMinor).toBe(86100);
+    expect(accepted.payment).toMatchObject({ amountMinor: 86100, vatMinor: 13134, vatRateBps: 1800 });
+    expect(confirmed).toMatchObject({ status: "confirmed" });
+    expect(offerRow(id).status).toBe("paid");
+    expect(sub()).toMatchObject({ plan: customPlanKeyFor(id), status: "ACTIVE" });
+    const data = (h.db.billingEvent.rows.at(-1)!.payload as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({ amount_minor: 86100, vat_minor: 13134, vat_rate_bps: 1800 });
+  });
+
+  it("at 18%: the offer's invoice has the VAT line, and its Mobile Money payment (total) settles the offer", async () => {
+    seed();
+    rwandaVat();
+    const id = await sentOffer();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
+    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 72966, taxRatePercent: 18, taxMinor: 13134, totalMinor: 86100 });
+    const pay = await momo.startInvoicePayment({ userId: USER, invoiceId: r.invoiceId!, now: NOW });
+    expect(pay).toMatchObject({ amountMinor: 86100, vatMinor: 13134, vatRateBps: 1800 });
+    await momo.submitManualProof(USER, { paymentId: pay.id, transactionId: "MP66666666", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+    await momo.confirmManualPayment(CONSOLE, pay.id, LATER);
+    expect(offerRow(id).status).toBe("paid");
+    expect(h.db.invoice.rows[0].status).toBe("paid");
+  });
+
+  it("at 18%: a payment of the bare offer price (VAT missing) is refused on confirm", async () => {
+    seed();
+    rwandaVat();
+    const id = await sentOffer();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    await momo.submitManualProof(USER, { paymentId: r.payment!.id, transactionId: "MP77777777", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+    // Someone edits the payment to the pre-VAT price without its VAT part: it no longer matches the offer.
+    const row = h.db.manualPayment.rows.find((p) => p.id === r.payment!.id)!;
+    row.amountMinor = 73000;
+    expect(await msg(momo.confirmManualPayment(CONSOLE, row.id, LATER))).toMatch(/custom plan offer costs/);
+    expect(offerRow(id).status).toBe("accepted");
   });
 });
 
@@ -317,7 +380,7 @@ describe("accept -> pay by invoice -> activate", () => {
     const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
     const invoice = h.db.invoice.rows[0];
     expect(r.invoiceId).toBe(invoice.id);
-    expect(invoice).toMatchObject({ status: "sent", currency: "RWF", totalMinor: 73000, planKey: customPlanKeyFor(id), interval: "MONTH", createdBy: `client:${USER}` });
+    expect(invoice).toMatchObject({ status: "sent", currency: "RWF", subtotalMinor: 72966, taxRatePercent: 18, totalMinor: 86100, planKey: customPlanKeyFor(id), interval: "MONTH", createdBy: `client:${USER}` });
     expect(offerRow(id)).toMatchObject({ status: "accepted", payMethod: "invoice", invoiceId: invoice.id });
     expect(h.sendEmail).toHaveBeenCalled(); // the invoice email
     // Asking again returns the same invoice.
@@ -433,12 +496,12 @@ describe("review fixes", () => {
   const DAY = 86_400_000;
   const at = (days: number) => new Date(NOW.getTime() + days * DAY);
 
-  it("an offer invoice has no tax line whatever the VAT setting: the offer's price is the total", async () => {
+  it("an RWF offer invoice: the offer's price before VAT, plus Rwanda's VAT (Regions), so its total is the Mobile Money amount; the old invoice VAT rate is ignored", async () => {
     seed();
-    h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 18 } });
+    h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 5 } });
     const id = await sentOffer();
     await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
-    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 73000, taxMinor: 0, totalMinor: 73000, taxRatePercent: null });
+    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 72966, taxMinor: 13134, totalMinor: 86100, taxRatePercent: 18 }); // VAT = the receipt split of the total
   });
 
   it("confirming refuses a payment whose amount or currency is not the offer's price; nothing changes", async () => {
@@ -447,7 +510,7 @@ describe("review fixes", () => {
     const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
     await momo.submitManualProof(USER, { paymentId: r.payment!.id, transactionId: "MP77777777", payerPhone: "078 123 4567", network: "MTN" }, NOW);
     h.db.manualPayment.rows[0].amountMinor = 70000;
-    expect(await msg(momo.confirmManualPayment(CONSOLE, r.payment!.id, LATER))).toMatch(/70000 RWF, but the custom plan offer costs 73000 RWF/);
+    expect(await msg(momo.confirmManualPayment(CONSOLE, r.payment!.id, LATER))).toMatch(/70000 RWF, but the custom plan offer costs 86100 RWF with VAT/);
     h.db.manualPayment.rows[0].amountMinor = 73000;
     h.db.manualPayment.rows[0].currency = "USD";
     expect(await code(momo.confirmManualPayment(CONSOLE, r.payment!.id, LATER))).toBe("conflict");
@@ -461,7 +524,7 @@ describe("review fixes", () => {
     const id = await sentOffer();
     await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
     const p = await momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "YEAR", now: NOW });
-    expect(p).toMatchObject({ offerId: id, amountMinor: 73000, interval: "MONTH" });
+    expect(p).toMatchObject({ offerId: id, amountMinor: 86100, interval: "MONTH" });
     await offers.withdrawOffer(CONSOLE, id, "Client changed plans", NOW);
     expect(await msg(momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: NOW }))).toMatch(/not available|no longer open/);
   });

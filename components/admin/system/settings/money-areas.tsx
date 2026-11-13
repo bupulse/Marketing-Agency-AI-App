@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowLeftRight, CreditCard, FlaskConical, Rocket, Smartphone, Target } from "lucide-react";
+import { ArrowLeftRight, CreditCard, FlaskConical, Percent, Rocket, Smartphone, Target } from "lucide-react";
+import { adminVatPreview, vatRateFor, type VatSettings } from "@/lib/billing/vat";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { ExpandCard, StatusPill } from "@/components/admin/kit";
 import { RadioChips, SwitchRow } from "@/components/admin/kit/form-choices";
@@ -194,6 +195,56 @@ export function CurrencyArea({
             <Button type="submit" size="sm" variant="outline">Refresh EUR rate now</Button>
           </form>
         </div>
+      </Panel>
+    </AreaFrame>
+  );
+}
+
+/**
+ * /admin/settings/vat: BuPulse's TIN, and what Rwanda's VAT does to prices. The rate itself is per region
+ * (PricingRegion.vatRateBps, Admin -> Regions): this page only shows it and links there, so the two cannot disagree.
+ */
+export function VatArea({ vat, ok, bad }: Msg & { vat: VatSettings }) {
+  const examples = [15_000, 50_000, 80_000];
+  const rwf = vatRateFor("RWF", vat);
+  return (
+    <AreaFrame icon={Percent} tone="green" title={SETTINGS_TITLE.vat} description="VAT is added to Rwandan prices (RWF, paid by Mobile Money or invoice) at the rate set in Regions. Card prices in US dollars never get it: Paddle adds tax itself." ok={ok} bad={bad}>
+      {!vat.tin && (
+        <p className={notice.warn} role="status">
+          <strong>Your TIN is missing.</strong> Receipts and invoices still work, but they cannot show BuPulse&apos;s TIN until you add it below.
+        </p>
+      )}
+      <Panel id="vat" title="VAT on Rwandan prices" description="The prices you type in the admin are before VAT. Clients see and pay the price with VAT, rounded to the nearest 100 RWF." action={rwf ? <StatusPill tone="good" dot>{rwf}% in Rwanda</StatusPill> : <StatusPill tone="warn" dot>No region has VAT</StatusPill>}>
+        <p className="rounded-2xl bg-soft px-4 py-3 text-[14px]">
+          <strong>The rate is set per region</strong>, in <Link href="/admin/settings/regions" className="font-semibold underline">Regions</Link> (VAT %): {rwf ? `Rwanda ${rwf}%` : "Rwanda 0% (off)"}, every other region 0%. It is the one source of the rate: the pricing page, Billing, Mobile Money, invoices and custom offers all use it.
+        </p>
+        <form action={saveSettingsAction} className="flex flex-col gap-4">
+          <input type="hidden" name="vatPanel" value="1" />
+          <Field label="BuPulse TIN (from RRA)" hint="Printed on every receipt and invoice. Leave empty until you have it.">
+            <Input name="vatTin" defaultValue={vat.tin} maxLength={40} placeholder="e.g. 123456789" />
+          </Field>
+          <div>
+            <Button type="submit">Save TIN</Button>
+          </div>
+        </form>
+        <ul className="grid gap-2 text-[14px] sm:grid-cols-3">
+          {examples.map((net) => {
+            const p = adminVatPreview(net, "RWF", vat);
+            return (
+              <li key={net} className="rounded-2xl bg-soft px-4 py-3">
+                <span className="block text-[12px] font-semibold uppercase tracking-[0.04em] text-muted">You type {formatMinor(net, "RWF")}</span>
+                {p ? (
+                  <>
+                    Client pays <strong>{formatMinor(p.grossMinor, "RWF")}</strong> <span className="text-muted">(VAT {formatMinor(p.vatMinor, "RWF")})</span>
+                  </>
+                ) : (
+                  <>Client pays <strong>{formatMinor(net, "RWF")}</strong> <span className="text-muted">(no VAT)</span></>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        <p className="text-[13px] text-muted">Receipts show the total paid, the VAT inside it and the amount before VAT. A payment already made keeps the amount it was made with.</p>
       </Panel>
     </AreaFrame>
   );

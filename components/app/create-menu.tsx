@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ChevronRight, ExternalLink } from "lucide-react";
+import { IconBadge } from "@/components/admin/kit/icon-badge";
+import type { KitTone } from "@/components/admin/kit/tones";
 import { useEffect, useRef, type CSSProperties } from "react";
 import type { CreateAction } from "./nav";
+
+/** One brand shade per action, as on Home's "What do you want to do?" cards. */
+const TONE: Record<CreateAction["id"], KitTone> = { post: "blue", video: "violet", design: "indigo", photo: "pink" };
 
 /**
  * The + Create menu (the sidebar button and the phone bar's +): New post, New video, New design, Add photo. On phones a
@@ -39,18 +44,18 @@ export function CreateMenu({ actions, anchor, onClose }: { actions: CreateAction
     }
   };
 
-  const row = "flex min-h-14 items-center gap-3 rounded-2xl px-3 py-2 text-left no-underline outline-none hover:bg-soft focus-visible:bg-soft focus-visible:ring-2 focus-visible:ring-pulse-blue";
+  const row =
+    "group flex min-h-14 items-center gap-3 rounded-2xl px-3 py-2.5 text-left no-underline outline-none transition-[background-color,transform] duration-200 hover:bg-soft focus-visible:bg-soft focus-visible:ring-2 focus-visible:ring-pulse-blue motion-reduce:transition-none";
   const content = (a: CreateAction) => (
     <>
-      <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-pulse-blue/10 text-pulse-blue">
-        <a.icon className="size-5" />
-      </span>
+      <IconBadge icon={a.icon} tone={TONE[a.id]} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-[15px] font-semibold text-text">{a.label}</span>
         <span className="text-[13px] text-muted">{a.text}</span>
       </span>
     </>
   );
+  const arrow = <ChevronRight aria-hidden className="size-4 shrink-0 text-muted transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none" />;
 
   return (
     <div className="fixed inset-0 z-[60]" onKeyDown={onKeyDown}>
@@ -60,9 +65,9 @@ export function CreateMenu({ actions, anchor, onClose }: { actions: CreateAction
         role="menu"
         aria-label="Create"
         style={anchor ? ({ "--x": `${anchor.left}px`, "--y": `${anchor.bottom + 8}px`, "--w": `${Math.max(anchor.width, 280)}px` } as CSSProperties) : undefined}
-        className="bp-sheet-in absolute border border-line bg-surface inset-x-3 bottom-[calc(6rem+env(safe-area-inset-bottom))] mx-auto flex max-w-md flex-col gap-1 rounded-[24px] p-2 shadow-glass lg:inset-x-auto lg:bottom-auto lg:left-[var(--x,1.25rem)] lg:top-[var(--y,6rem)] lg:mx-0 lg:w-[var(--w,280px)]"
+        className="bp-sheet-in kit-rise absolute border border-line bg-surface inset-x-3 bottom-[calc(6rem+env(safe-area-inset-bottom))] mx-auto flex max-w-md flex-col gap-1 rounded-[24px] p-2 shadow-glass lg:inset-x-auto lg:bottom-auto lg:left-[var(--x,1.25rem)] lg:top-[var(--y,6rem)] lg:mx-0 lg:w-[var(--w,280px)]"
       >
-        <p className="px-3 pt-1.5 pb-1 text-xs font-semibold uppercase tracking-wide text-muted">Create</p>
+        <p className="px-3 pt-1.5 pb-1 text-[13px] font-semibold text-muted">What do you want to make?</p>
         {actions.map((a) =>
           a.external ? (
             // A plain link, not next/link: it must never be prefetched (each visit writes a sign-in ticket).
@@ -74,6 +79,7 @@ export function CreateMenu({ actions, anchor, onClose }: { actions: CreateAction
           ) : (
             <Link key={a.id} href={a.href} role="menuitem" onClick={() => onClose(false)} className={row}>
               {content(a)}
+              {arrow}
             </Link>
           ),
         )}

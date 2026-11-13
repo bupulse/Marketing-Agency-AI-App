@@ -178,18 +178,19 @@ describe("Add to current plan (admin) -> accept -> pay -> features on", () => {
     h.sendEmail.mockClear();
     await offers.sendOffer(CONSOLE, saved.id, NOW);
     const view = await offers.clientOffer("biz1", NOW);
-    expect(view).toMatchObject({ totalMinor: 6129, addition: { nextRenewalMinor: 45000, renewsOn: END.toISOString(), selfServe: false } });
+    expect(view).toMatchObject({ totalMinor: 7200, netTotalMinor: 6129, addition: { nextRenewalMinor: 53100, renewsOn: END.toISOString(), selfServe: false } });
     // The email says what it is: one prorated payment now, the new price from the renewal (not "a custom plan a month").
     const email = h.sendEmail.mock.calls[0][0];
-    expect(email.subject).toBe("Features for your BuPulse plan: 6,129 RWF, paid once");
-    expect(email.text).toMatch(/6,129 RWF, paid once for the 19 days left of your period/);
-    expect(email.text).toMatch(/45,000 RWF a month/);
-    expect(email.text).not.toMatch(/6,129 RWF a month/);
+    expect(email.subject).toBe("Features for your BuPulse plan: 7,200 RWF, paid once");
+    expect(email.text).toMatch(/7,200 RWF \(VAT included\), paid once for the 19 days left of your period/);
+    expect(email.text).toMatch(/53,100 RWF \(VAT included\) a month/);
+    expect(email.text).not.toMatch(/7,200 RWF a month/);
 
     // Accepted three days later: prorated again for the days left that day (16 of 31).
     const ACCEPT = new Date("2026-10-16T08:00:00Z");
     const accepted = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: saved.id, method: "momo" }, ACCEPT);
-    expect(accepted.payment).toMatchObject({ amountMinor: Math.round((10000 * 16) / 31), offerId: saved.id, periodNote: null });
+    // 5,161 RWF before VAT (16 of 31 days), paid with 18% VAT rounded to 100 RWF.
+    expect(accepted.payment).toMatchObject({ amountMinor: 6100, offerId: saved.id, periodNote: null });
     expect(sub()).toMatchObject({ plan: "STANDARD" }); // nothing on before the payment
     const custom = h.db.planDefinition.rows.find((p) => p.key === customPlanKeyFor(saved.id))!;
     expect(custom).toMatchObject({ monthlyPriceCents: 45000, isCustom: true });
@@ -207,7 +208,7 @@ describe("Add to current plan (admin) -> accept -> pay -> features on", () => {
     // The next renewal is the full new total, in the last 7 days only.
     expect(await msg(momo.startManualPayment({ userId: USER, plan: plan.key, interval: "MONTH", now: ACCEPT }))).toMatch(/paid until 1 November 2026/);
     const renewal = await momo.startManualPayment({ userId: USER, plan: plan.key, interval: "MONTH", now: new Date("2026-10-28T08:00:00Z") });
-    expect(renewal).toMatchObject({ amountMinor: 45000, offerId: null, periodNote: { mode: "extend" } });
+    expect(renewal).toMatchObject({ amountMinor: 53100, offerId: null, periodNote: { mode: "extend" } });
   });
 
   it("refuses a card plan, a plan whose period has ended, and nothing new to add", async () => {
@@ -277,12 +278,12 @@ describe("Add features on Billing (the client, self-serve)", () => {
   it("instant quote -> Mobile Money payment of the prorated amount; replacing an unpaid choice; audited", async () => {
     seed();
     const first = await offers.startFeatureAddition({ userId: USER, actorId: USER, businessId: "biz1", features: ["websiteChat"], method: "momo" }, NOW);
-    expect(first.payment).toMatchObject({ amountMinor: 6129, currency: "RWF" });
-    expect(first.offer).toMatchObject({ status: "accepted", addition: { selfServe: true, nextRenewalMinor: 45000 } });
+    expect(first.payment).toMatchObject({ amountMinor: 7200, currency: "RWF" });
+    expect(first.offer).toMatchObject({ status: "accepted", addition: { selfServe: true, nextRenewalMinor: 53100 } });
     expect(audits("self_serve_addition")).toHaveLength(1);
     // Changed their mind before paying: the earlier choice is withdrawn, its payment closed.
     const second = await offers.startFeatureAddition({ userId: USER, actorId: USER, businessId: "biz1", features: ["websiteChat", "aiPhotos"], method: "momo" }, NOW);
-    expect(second.payment).toMatchObject({ amountMinor: Math.round((18000 * 19) / 31) });
+    expect(second.payment).toMatchObject({ amountMinor: 13000 }); // 11,032 RWF before VAT
     expect(offerRow(first.offer.id).status).toBe("withdrawn");
     expect(h.db.manualPayment.rows.find((p) => p.id === first.payment!.id)!.status).toBe("expired");
     await momo.submitManualProof(USER, { paymentId: second.payment!.id, transactionId: "MP55500033", payerPhone: "078 123 4567", network: "MTN" }, NOW);

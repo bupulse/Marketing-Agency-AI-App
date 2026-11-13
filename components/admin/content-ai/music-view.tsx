@@ -1,15 +1,26 @@
-import { CheckCircle2, HardDrive, Music, Upload, Wand2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, HardDrive, Music, TrendingUp, Upload, Wand2 } from "lucide-react";
 import { MusicUpload } from "@/components/admin/music-upload";
 import { Button, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { isMood, MOOD_LABEL, MOODS } from "@/lib/music/tracks";
-import { deleteTrackAction, generateMusicBatchAction, generateTrackAction, setTrackActiveAction } from "@/app/admin/(console)/(content)/music/actions";
+import { isMood, MOOD_LABEL, MOODS, platformLimitLabel } from "@/lib/music/tracks";
+import { deleteTrackAction, generateMusicBatchAction, generateTrackAction, saveTrendingSoundsAction, setTrackActiveAction } from "@/app/admin/(console)/(content)/music/actions";
+import { MAX_TRENDING_TIPS, trendingLines, type TrendingTip } from "@/lib/social/instagram-audio";
 import { BATCH_MAX, batchCostUsd, MUSIC_BATCH } from "@/lib/music/batch";
 import { CARD, DataList, EmptyState, ExpandCard, FilterChips, PageHeader, StatGrid, StatTile, StatusPill, type SearchParamsLike } from "../kit";
 import { FormChips } from "../kit/form-chips";
 import { notice } from "../ui";
 
-export type TrackRow = { id: string; title: string; path: string; bytes: number; bpm: number | null; moods: string[]; licence: string; sourceUrl: string; attribution: string | null; active: boolean };
+export type TrackRow = { id: string; title: string; path: string; bytes: number; bpm: number | null; moods: string[]; licence: string; sourceUrl: string; attribution: string | null; active: boolean; platforms?: string[] };
+
+/** Free charts the admin checks each week for new tracks (Pixabay Content License: free for social videos). */
+const FREE_PICKS = [
+  { label: "Pixabay: popular music", href: "https://pixabay.com/music/search/" },
+  { label: "Pixabay: editor's choice", href: "https://pixabay.com/music/search/?order=ec" },
+  { label: "Pixabay: newest", href: "https://pixabay.com/music/search/?order=latest" },
+  { label: "Pixabay: Afrobeat", href: "https://pixabay.com/music/search/afrobeat/" },
+  { label: "Pixabay: upbeat", href: "https://pixabay.com/music/search/upbeat/" },
+] as const;
+const day = (iso: string) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(iso));
 export const TRACK_FILTERS = ["active", "inactive"] as const;
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
@@ -17,7 +28,7 @@ const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
  * Music library: three numbers, "Add a track" and "Generate a track" as cards that open, and the tracks as a list
  * (a table on a computer, cards on a phone) with a player, the licence, and Activate / Remove.
  */
-export function MusicView({ tracks, urlOf, maxBytes, show, params, message }: { tracks: TrackRow[]; urlOf: (path: string) => string; maxBytes: number; show: "" | (typeof TRACK_FILTERS)[number]; params: SearchParamsLike; message: { notice?: string; error?: string } }) {
+export function MusicView({ tracks, urlOf, maxBytes, show, params, message, lastAdded = null, trending = { tips: [], updatedAt: null } }: { tracks: TrackRow[]; urlOf: (path: string) => string; maxBytes: number; show: "" | (typeof TRACK_FILTERS)[number]; params: SearchParamsLike; message: { notice?: string; error?: string }; lastAdded?: string | null; trending?: { tips: TrendingTip[]; updatedAt: string | null } }) {
   const used = tracks.reduce((sum, t) => sum + t.bytes, 0);
   const active = tracks.filter((t) => t.active).length;
   const rows = show === "active" ? tracks.filter((t) => t.active) : show === "inactive" ? tracks.filter((t) => !t.active) : tracks;
@@ -60,6 +71,33 @@ export function MusicView({ tracks, urlOf, maxBytes, show, params, message }: { 
           </form>
         </ExpandCard>
       </div>
+      <div className="grid items-start gap-3 lg:grid-cols-2">
+        <ExpandCard icon={TrendingUp} tone="pink" title="Trending free picks" summary={lastAdded ? `Last track added ${day(lastAdded)}. Check the charts once a week.` : "No track yet. Check the charts once a week."}>
+          <div className="flex flex-col gap-3 text-[14px]">
+            <p className="text-muted">Once a week, open the free charts, listen to what is new and popular, and add the best fits with &ldquo;Add a track&rdquo; above (licence: Pixabay Content License, no credit line needed).</p>
+            <ul className="flex flex-col gap-1">
+              {FREE_PICKS.map((l) => (
+                <li key={l.href}>
+                  <a href={l.href} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1.5 font-medium text-pulse-blue underline">
+                    {l.label} <ExternalLink aria-hidden className="size-3.5" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[13px] text-muted">Last track added: {lastAdded ? day(lastAdded) : "none yet"}.</p>
+          </div>
+        </ExpandCard>
+        <ExpandCard icon={Music} tone="pink" title="Trending Instagram sounds this week" summary={trending.tips.length ? `${trending.tips.length} ${trending.tips.length === 1 ? "sound" : "sounds"}${trending.updatedAt ? `, saved ${day(trending.updatedAt)}` : ""}. Shown to clients who post reels by hand.` : "Empty. Shown to clients who post reels by hand."}>
+          <form action={saveTrendingSoundsAction} className="flex flex-col gap-3">
+            <p className="text-[13px] text-muted">
+              Clients whose Instagram cannot take a sound from BuPulse see these when they post a reel themselves. Used only when Meta gives no trending list. One sound per line: Title | Artist | Instagram audio link (artist and link are optional). At most {MAX_TRENDING_TIPS}.
+            </p>
+            <label htmlFor="trending-sounds" className="sr-only">Trending Instagram sounds, one per line</label>
+            <textarea id="trending-sounds" name="sounds" rows={6} defaultValue={trendingLines(trending.tips)} placeholder={"Song title | Artist | https://www.instagram.com/reels/audio/123"} className="min-h-32 rounded-[14px] border border-line bg-glass px-3 py-2 text-[14px] text-text" />
+            <Button type="submit" className="self-start">Save the list</Button>
+          </form>
+        </ExpandCard>
+      </div>
       <FilterChips label="Show tracks" param="show" base="/admin/music" params={params} current={show} options={[{ value: "", label: "All", count: tracks.length }, { value: "active", label: "Active", count: active }, { value: "inactive", label: "Inactive", count: tracks.length - active }]} />
       <div className={cn("p-4 sm:p-5 max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none", CARD)}>
         <DataList<TrackRow>
@@ -76,6 +114,7 @@ export function MusicView({ tracks, urlOf, maxBytes, show, params, message }: { 
                 <span className="flex flex-col gap-0.5 text-[13px]">
                   {/^https:\/\//.test(t.sourceUrl) ? <a href={t.sourceUrl} target="_blank" rel="noreferrer" className="font-medium text-pulse-blue underline">{t.licence}</a> : <span className="font-medium">{t.licence} · {t.sourceUrl}</span>}
                   <span className="text-muted">{t.attribution || "No credit line needed"}</span>
+                  {platformLimitLabel(t.platforms) && <StatusPill tone="muted">{platformLimitLabel(t.platforms)}</StatusPill>}
                 </span>
               ),
             },

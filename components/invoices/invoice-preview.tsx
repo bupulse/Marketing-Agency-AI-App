@@ -82,9 +82,9 @@ export function InvoicePreview({ doc, logoSrc }: { doc: InvoiceDocument; logoSrc
         </div>
 
         <dl className="ml-auto grid w-full max-w-[260px] grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-[12px]">
-          <dt className="text-[#6e6e73]">Subtotal</dt><dd className="text-right">{money(doc.subtotalMinor)}</dd>
+          <dt className="text-[#6e6e73]">{doc.taxRatePercent ? "Amount before VAT" : "Subtotal"}</dt><dd className="text-right">{money(doc.subtotalMinor)}</dd>
           {doc.taxRatePercent ? (<><dt className="text-[#6e6e73]">VAT ({doc.taxRatePercent}%)</dt><dd className="text-right">{money(doc.taxMinor)}</dd></>) : null}
-          <dt style={{ background: accent }} className="mt-1 px-2 py-1.5 font-bold text-white">{doc.status === "paid" ? "Total paid" : "Total due"}</dt>
+          <dt style={{ background: accent }} className="mt-1 px-2 py-1.5 font-bold text-white">{doc.status === "paid" ? "Total paid" : "Total due"}{doc.taxRatePercent ? " (VAT incl.)" : ""}</dt>
           <dd style={{ background: accent }} className="mt-1 px-2 py-1.5 text-right font-bold text-white">{money(doc.totalMinor)}</dd>
         </dl>
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Megaphone, Package, Search, Sparkles } from "lucide-react";
+import { FilterChips } from "@/components/admin/kit/filter-chips";
 import { Button, GlassCard, Input } from "@/components/ui";
 import { contentQuery, SUBJECT_SORT_LABEL, SUBJECT_SORTS, type ContentFilters } from "@/lib/content-board/filters";
 import type { SubjectCardView } from "@/lib/content-board/queries";
@@ -17,8 +18,10 @@ function drillQuery(f: ContentFilters) {
  * keeps the URL shareable); the other filters ride along as hidden fields. A card with posts made for it today glows
  * (a brand ring and soft glow, still under reduced motion) with a "Today's posts" label.
  */
-export function SubjectGrid({ cards, filters, period }: { cards: SubjectCardView[]; filters: ContentFilters; /** The Day / Week / Month label the counts are for. */ period?: string | null }) {
+export function SubjectGrid({ cards, filters, period, base = "/dashboard/content/all" }: { cards: SubjectCardView[]; filters: ContentFilters; /** The Day / Week / Month label the counts are for. */ period?: string | null; /** The page the grid is on (the sort chips link to it). */ base?: string }) {
   const hidden = new URLSearchParams(contentQuery({ ...filters, q: undefined, sort: "recent" }).slice(1));
+  // The sort chips keep every other filter (and the search words: contentQuery keeps ?q=), and change only ?sort=.
+  const current = Object.fromEntries(new URLSearchParams(contentQuery({ ...filters, sort: "recent" }).slice(1)));
   return (
     <section aria-labelledby="subjects-heading" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3 px-1">
@@ -37,25 +40,17 @@ export function SubjectGrid({ cards, filters, period }: { cards: SubjectCardView
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted" />
           <Input type="search" name="q" defaultValue={filters.q ?? ""} aria-label="Search products and campaigns" placeholder="Search products and campaigns" className="pl-10" />
         </div>
-        <label className="sr-only" htmlFor="subject-sort">
-          Sort
-        </label>
-        <select id="subject-sort" name="sort" defaultValue={filters.sort} className="min-h-11 rounded-[14px] border border-line bg-glass px-3 text-[15px] text-text">
-          {SUBJECT_SORTS.map((s) => (
-            <option key={s} value={s}>
-              {SUBJECT_SORT_LABEL[s]}
-            </option>
-          ))}
-        </select>
+        {filters.sort !== "recent" && <input type="hidden" name="sort" value={filters.sort} />}
         <Button type="submit" variant="outline" size="sm">
-          Apply
+          Search
         </Button>
       </form>
+      <FilterChips label="Sort" param="sort" base={base} params={current} current={filters.sort} allValue="recent" options={SUBJECT_SORTS.map((s) => ({ value: s, label: SUBJECT_SORT_LABEL[s] }))} />
 
       {cards.length === 0 ? (
         <GlassCard className="flex flex-col items-start gap-3 px-5 py-8">
           <p className="text-[15px] text-muted">{period ? `No posts for ${period} match. Try another day, week or month, or clear the filters.` : "Nothing matches. Try another word or clear the filters."}</p>
-          <Button href="/dashboard/content" variant="outline" size="sm">
+          <Button href={base} variant="outline" size="sm">
             Clear filters
           </Button>
         </GlassCard>

@@ -10,7 +10,7 @@ function rowsFor(plans: PublicPlan[], trialDays: number): { label: string; cells
   const total = (p: PublicPlan, n: number) => (p.isTrial ? `${n} total` : `${n} / month`);
   const rows: { label: string; cells: Cell[] }[] = [
     // The trial length is the admin setting (docs/REGIONS.md), not the TRIAL plan's own column.
-    { label: "Price", cells: each((p) => (p.isTrial ? `Free for ${trialDays} ${trialDays === 1 ? "day" : "days"}` : `${formatPrice(p.monthlyPriceCents, p.currency)}/month`)) },
+    { label: "Price", cells: each((p) => (p.isTrial ? `Free for ${trialDays} ${trialDays === 1 ? "day" : "days"}` : `${formatPrice(p.monthlyPriceCents, p.currency)}/month${(p as PublicPlan & { vatRatePercent?: number | null }).vatRatePercent ? ", VAT included" : ""}`)) },
     { label: "AI text generations", cells: each((p) => total(p, p.limits.text)) },
     { label: "AI image credits", cells: each((p) => total(p, p.limits.image)) },
     { label: "Brand voice and business knowledge", cells: each(() => true) },

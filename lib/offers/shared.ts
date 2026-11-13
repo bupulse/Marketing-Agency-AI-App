@@ -5,6 +5,7 @@ import { z } from "zod";
 import { featureInRegion, featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { addMonths as addMonthsUtc } from "@/lib/billing/period";
 import { cardUsdCents } from "@/lib/region-format";
+import { clientPrice, vatRateFor, type VatSettings } from "@/lib/billing/vat";
 import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_VIDEOS, VOICE_PLAN_CHARACTERS, type PlanLimits, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit } from "@/lib/plans";
 
 /** A yearly custom plan costs this many months (the regional plans' rule: yearly = 10 months). */
@@ -596,8 +597,13 @@ export type ClientOfferView = {
   status: OfferStatus;
   interval: "MONTH" | "YEAR";
   currency: string;
+  /** What the client pays: with VAT when the offer is in RWF (lib/billing/vat.ts). */
   totalMinor: number;
   computedMinor: number;
+  /** The offer's own price, before VAT (what card quotes start from: Paddle adds tax itself). */
+  netTotalMinor: number;
+  /** Set when the amounts shown include VAT at this rate. */
+  vatRatePercent: number | null;
   adjustment: string | null;
   basePlanName: string | null;
   features: { key: FeatureKey; label: string; description: string; added: boolean }[];
@@ -612,7 +618,10 @@ export type ClientOfferView = {
   addition: { addonMinor: number; nextRenewalMinor: number; renewsOn: string; daysLeft: number; periodDays: number; currentPlanName: string; selfServe: boolean } | null;
 };
 
-/** What the client sees, from an offer's stored fields. Pure: Billing and the admin editor's live preview share it. */
+/**
+ * What the client sees, from an offer's stored fields. Pure: Billing and the admin editor's live preview share it.
+ * The stored amounts are before VAT; with `vat` an RWF offer shows what the client pays (with VAT, lib/billing/vat.ts).
+ */
 export function toClientOffer(o: {
   id: string;
   status: OfferStatus;
@@ -631,14 +640,17 @@ export function toClientOffer(o: {
   payMethod: string | null;
   invoiceId: string | null;
   addition?: OfferAddition | null;
-}): ClientOfferView {
+}, vat?: VatSettings): ClientOfferView {
+  const pay = (minor: number) => (vat ? clientPrice(minor, o.currency, vat) : minor);
   return {
     id: o.id,
     status: o.status,
     interval: o.interval,
     currency: o.currency,
-    totalMinor: o.adjustedMinor,
-    computedMinor: o.computedMinor,
+    totalMinor: pay(o.adjustedMinor),
+    computedMinor: pay(o.computedMinor),
+    netTotalMinor: o.adjustedMinor,
+    vatRatePercent: vat ? vatRateFor(o.currency, vat) : null,
     adjustment: adjustmentText(o.computedMinor, o.adjustedMinor),
     basePlanName: o.basePlanName,
     features: o.features.map((key) => ({ key, label: featureLabel(key), description: FEATURES.find((f) => f.key === key)?.description ?? "", added: o.added.includes(key) })),
@@ -649,7 +661,7 @@ export function toClientOffer(o: {
     validUntil: o.validUntil ? new Date(o.validUntil).toISOString() : null,
     payMethod: o.payMethod === "momo" || o.payMethod === "invoice" || o.payMethod === "card" ? o.payMethod : null,
     invoiceId: o.invoiceId,
-    addition: o.addition ? { addonMinor: o.addition.addonMinor, nextRenewalMinor: o.addition.nextRenewalMinor, renewsOn: o.addition.periodEnd, daysLeft: o.addition.daysLeft, periodDays: o.addition.periodDays, currentPlanName: o.addition.currentPlanName, selfServe: o.addition.selfServe } : null,
+    addition: o.addition ? { addonMinor: pay(o.addition.addonMinor), nextRenewalMinor: pay(o.addition.nextRenewalMinor), renewsOn: o.addition.periodEnd, daysLeft: o.addition.daysLeft, periodDays: o.addition.periodDays, currentPlanName: o.addition.currentPlanName, selfServe: o.addition.selfServe } : null,
   };
 }
 

@@ -88,7 +88,7 @@ export type MoneyReport = {
   truncated: boolean;
   rwfPerUsd: number;
   months: { month: string; revenue: RevenueMonth; costs: MonthCosts; profitCents: number; rate: number | null; /** The RWF part of each payment method's revenue (exact in RWF). */ rwfByMethod?: Record<PayMethod, RwfPart> }[];
-  lifetime: { revenueCents: number; /** The part received in RWF: exact RWF and its USD value at the rates of the day. */ rwfMinor: number; rwfUsdCents: number; costCents: number; profitCents: number; customersEver: number; payingNow: number; churned: number; firstMonth: string | null };
+  lifetime: { revenueCents: number; /** The part received in RWF: exact RWF and its USD value at the rates of the day. */ rwfMinor: number; rwfUsdCents: number; /** VAT collected (never revenue): USD value and the RWF part. */ vatCents?: number; vatRwfMinor?: number; costCents: number; profitCents: number; customersEver: number; payingNow: number; churned: number; firstMonth: string | null };
   mrrCents: number;
   arpuCents: number | null;
   /** The RWF parts of MRR and ARPU (Mobile Money clients paying in RWF). */
@@ -225,6 +225,8 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
     lifetime: {
       revenueCents: lifetimeRevenue,
       ...rwfPartOf(entries),
+      vatCents: entries.reduce((s, e) => s + (e.vatUsdCents ?? 0), 0),
+      vatRwfMinor: entries.reduce((s, e) => s + (e.currency === "RWF" ? (e.vatLocalMinor ?? 0) : 0), 0),
       costCents: Math.round(lifetimeCost),
       profitCents: Math.round(lifetimeRevenue - lifetimeCost),
       customersEver: everPaid.length,

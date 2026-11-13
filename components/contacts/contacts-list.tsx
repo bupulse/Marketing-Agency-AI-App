@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { addField, bulkTag, changeTag, importContacts, removeContacts, removeField } from "@/app/dashboard/contacts/actions";
-import { Badge, Button, Dialog, GlassCard, Input, Select, useToast } from "@/components/ui";
+import { ChoiceChips } from "@/components/app/kit/c-choice";
+import { Badge, Button, Dialog, GlassCard, Input, useToast } from "@/components/ui";
 import { timeAgo } from "@/components/leads/format";
 import { cn } from "@/lib/cn";
 import { CHANNEL_LABELS, type ChannelKindValue } from "@/lib/inbox/labels";
@@ -109,23 +110,21 @@ export function ContactsList({ contacts, total, hasMore, q, tag, channel, tags, 
             <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
             <Input value={query} onChange={(e) => onSearch(e.target.value)} placeholder="Search name, email, phone or @handle" aria-label="Search contacts" className="pl-9" />
           </div>
-          <Select aria-label="Tag" value={tag ?? ""} onChange={(e) => navigate({ tag: e.target.value || null })} className="w-44">
-            <option value="">All tags</option>
-            {tags.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.name} ({t.count})
-              </option>
-            ))}
-          </Select>
-          <Select aria-label="Channel" value={channel ?? ""} onChange={(e) => navigate({ channel: e.target.value || null })} className="w-40">
-            <option value="">All channels</option>
-            {(["WEBSITE", "INSTAGRAM", "FACEBOOK", "WHATSAPP"] as ChannelKindValue[]).map((c) => (
-              <option key={c} value={c}>
-                {CHANNEL_LABELS[c]}
-              </option>
-            ))}
-          </Select>
         </div>
+        <ChoiceChips
+          label="Channel"
+          value={channel ?? ""}
+          onChange={(c) => navigate({ channel: c || null })}
+          options={[{ value: "", label: "Every channel" }, ...(["WEBSITE", "INSTAGRAM", "FACEBOOK", "WHATSAPP"] as ChannelKindValue[]).map((c) => ({ value: c, label: CHANNEL_LABELS[c] }))]}
+        />
+        {tags.length > 0 && (
+          <ChoiceChips
+            label="Tag"
+            value={tag ?? ""}
+            onChange={(t) => navigate({ tag: t || null })}
+            options={[{ value: "", label: "Every tag" }, ...tags.map((t) => ({ value: t.name, label: t.name, count: t.count }))]}
+          />
+        )}
         <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted">
           <span>
             {total} {total === 1 ? "contact" : "contacts"}
@@ -150,12 +149,8 @@ export function ContactsList({ contacts, total, hasMore, q, tag, channel, tags, 
         {selected.size > 0 && (
           <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-soft p-2">
             <span className="px-1 text-[13px] font-medium">{selected.size} selected</span>
-            <Input value={tagName} onChange={(e) => setTagName(e.target.value)} maxLength={40} placeholder="Tag" aria-label="Tag to add or remove" className="w-40" list="contact-tags" />
-            <datalist id="contact-tags">
-              {tags.map((t) => (
-                <option key={t.id} value={t.name} />
-              ))}
-            </datalist>
+            {tags.length > 0 && <ChoiceChips label="Pick a tag" value={tags.some((t) => t.name === tagName) ? tagName : null} onChange={setTagName} options={tags.slice(0, 12).map((t) => ({ value: t.name, label: t.name }))} className="max-w-full" />}
+            <Input value={tagName} onChange={(e) => setTagName(e.target.value)} maxLength={40} placeholder={tags.length ? "or a new tag" : "Tag"} aria-label="Tag to add or remove" className="w-40" />
             <Button size="sm" disabled={busy} onClick={() => applyTag(true)}>
               Add tag
             </Button>
@@ -171,7 +166,41 @@ export function ContactsList({ contacts, total, hasMore, q, tag, channel, tags, 
         )}
       </GlassCard>
 
-      <GlassCard padding="none" className="overflow-x-auto">
+      <GlassCard padding="none" className="kit-rise overflow-hidden">
+        {/* A phone gets cards (name, contact, tags); a computer the table. */}
+        <ul className="flex flex-col divide-y divide-line sm:hidden" aria-label="Contacts">
+          {contacts.length === 0 && <li className="p-6 text-center text-[14px] text-muted">{q || tag || channel ? "No contact matches." : "No contacts yet. They appear as people write to you."}</li>}
+          {contacts.map((c) => (
+            <li key={c.id} className={cn("flex items-start gap-1", selected.has(c.id) && "bg-pulse-blue/[0.06]")}>
+              <label className="flex w-12 shrink-0 cursor-pointer items-center justify-center self-stretch">
+                <span className="sr-only">Select {c.name}</span>
+                <input type="checkbox" className="size-5 accent-[var(--color-pulse-blue)]" checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
+              </label>
+              <Link href={`/dashboard/contacts/${c.id}`} className="flex min-w-0 flex-1 flex-col gap-1 py-3 pr-4 text-text no-underline">
+                <span className="flex items-baseline gap-2">
+                  <strong className="truncate text-[15px] font-semibold">{c.name}</strong>
+                  <span className="ml-auto shrink-0 text-[12px] text-muted">{timeAgo(c.lastSeenAt)}</span>
+                </span>
+                <span className="truncate text-[13px] text-muted">{[c.phone, c.email].filter(Boolean).join(" · ") || "No phone or email"}</span>
+                {(c.channels.length > 0 || c.tags.length > 0) && (
+                  <span className="flex flex-wrap gap-1 pt-0.5">
+                    {c.channels.map((ch) => (
+                      <Badge key={ch} tone="neutral">
+                        {CHANNEL_LABELS[ch]}
+                      </Badge>
+                    ))}
+                    {c.tags.slice(0, 3).map((t) => (
+                      <Badge key={t} tone="violet">
+                        {t}
+                      </Badge>
+                    ))}
+                  </span>
+                )}
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <div className="max-sm:hidden overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-[14px]">
           <thead className="text-[12px] uppercase tracking-wide text-muted">
             <tr className="border-b border-line">
@@ -228,6 +257,7 @@ export function ContactsList({ contacts, total, hasMore, q, tag, channel, tags, 
             ))}
           </tbody>
         </table>
+        </div>
         {hasMore && (
           <div className="border-t border-line p-3 text-center">
             <Button size="sm" variant="outline" onClick={() => navigate({ limit: String(contacts.length + 50) })}>
@@ -301,13 +331,7 @@ function ManageDialog({ tags, fields, onClose }: { tags: Props["tags"]; fields: 
             }}
           >
             <Input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={60} placeholder="Field name, e.g. District" aria-label="Field name" className="min-w-[160px] flex-1" />
-            <Select aria-label="Field type" value={type} onChange={(e) => setType(e.target.value)} className="w-32">
-              {Object.entries(FIELD_TYPE_LABELS).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v}
-                </option>
-              ))}
-            </Select>
+            <ChoiceChips label="Field type" wrap value={type} onChange={setType} options={Object.entries(FIELD_TYPE_LABELS).map(([k, v]) => ({ value: k, label: v }))} className="w-full" />
             {type === "choice" && <Input value={options} onChange={(e) => setOptions(e.target.value)} placeholder="Options, separated by commas" aria-label="Options" className="min-w-[200px] flex-1" />}
             <Button size="sm" type="submit" disabled={busy || !label.trim()}>
               Add field

@@ -1,7 +1,6 @@
 import { featureGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
-import { PageHeader } from "@/components/app/page-header";
-import { BackLink } from "@/components/knowledge/back-link";
+import { SectionHeader } from "@/components/knowledge/section-header";
 import { QuizLink } from "@/components/knowledge/quiz-link";
 import { ReviewEditor } from "@/components/knowledge/review-editor";
 import { localParts, safeZone } from "@/lib/autopilot/timezone";
@@ -24,8 +23,7 @@ export default async function ReviewsPage() {
   const today = `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
   return (
     <>
-      <BackLink />
-      <PageHeader title="Reviews & testimonials" description="What customers say about you. BuPulse quotes only the reviews customers agreed to share, word for word." action={can(role, "content") ? <QuizLink round="love" /> : undefined} />
+      <SectionHeader section="reviews" title="Reviews & testimonials" description="What customers say about you. BuPulse quotes only the reviews customers agreed to share, word for word." action={can(role, "content") ? <QuizLink round="love" /> : undefined} />
       <ReviewEditor reviews={reviews.map((r) => ({ id: r.id, values: reviewFormValues(r), productName: r.product?.name ?? null }))} products={products} today={today} canEdit={can(role, "content")} canGrant={can(role, "settings")} />
     </>
   );

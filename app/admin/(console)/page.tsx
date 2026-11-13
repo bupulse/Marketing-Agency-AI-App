@@ -24,6 +24,7 @@ import { PendingPaymentList } from "@/components/admin/payments/pending-payments
 import { TodayPayments, TodayTimeline } from "@/components/admin/overview-today";
 import { getTodayPayments, getTodayTimeline, type TodayPayment } from "@/lib/admin/today";
 import { listManualPayments } from "@/lib/billing/momo";
+import { getVatSettings } from "@/lib/billing/vat-server";
 import { confirmPaymentAction, rejectPaymentAction } from "@/app/admin/(console)/(money)/payments/actions";
 import { kigaliMonthOf } from "@/lib/time/kigali";
 
@@ -50,7 +51,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
   const seeMoney = can(me, "money.revenue");
   const seePayments = can(me, ["payments.view", "payments.approve"]);
   const canApprove = can(me, "payments.approve");
-  const [report, clients, demos, inbox, ai, attention, activity, series, pending, todayPayments] = await Promise.all([
+  const [report, clients, demos, inbox, ai, attention, activity, series, pending, todayPayments, vat] = await Promise.all([
     seeMoney ? getMoneyReportCached(6).catch(() => null) : Promise.resolve(null),
     getClientCounts().catch(() => ({ active: 0, trial: 0, pastDue: 0, waitingDemo: 0, ended: 0, total: 0 })),
     getDemosToday().catch(() => ({ today: 0, next: null })),
@@ -63,6 +64,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
     // shows as "Nothing to approve".
     seePayments ? listManualPayments({ toCheck: true, limit: 20 }).then((p) => p.items).catch(() => null) : Promise.resolve([]),
     seePayments || seeMoney ? getTodayPayments(new Date(), fx.display).catch(() => [] as TodayPayment[]) : Promise.resolve([] as TodayPayment[]),
+    getVatSettings(),
   ]);
   // Each attention line only for someone who may open the page it links to.
   const attentionShown = attention.filter((a) => {
@@ -136,7 +138,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
             </p>
           ) : (
             <>
-              <PendingPaymentList items={pending} canApprove={canApprove} confirmAction={confirmPaymentAction} rejectAction={rejectPaymentAction} />
+              <PendingPaymentList items={pending} canApprove={canApprove} confirmAction={confirmPaymentAction} rejectAction={rejectPaymentAction} vat={vat} />
               {waiting > pending.length && <p className="pt-3 text-sm text-muted"><Link href="/admin/payments" className="underline">{waiting - pending.length} more on Payments</Link></p>}
             </>
           )}

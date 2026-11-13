@@ -13,7 +13,7 @@ import { withLedger } from "@/lib/ai/ledger";
 import { composeMusic, ELEVENLABS_MUSIC_MODEL } from "@/lib/ai/tts";
 import { rateLimit, RateLimitError } from "@/lib/rate-limit";
 import { trackCredit } from "./credit";
-import { ELEVENLABS_MUSIC_LICENCE, ELEVENLABS_MUSIC_SOURCE, isOwnedLicence, MOOD_LABEL, MOODS, pickTrack, sniffAudio, TRACK_MAX_BYTES, TRACK_TYPES, trackInputSchema, type TrackInput } from "./tracks";
+import { ELEVENLABS_MUSIC_LICENCE, ELEVENLABS_MUSIC_SOURCE, isOwnedLicence, MOOD_LABEL, MOODS, pickTrack, sniffAudio, TRACK_MAX_BYTES, trackUsableFor, TRACK_TYPES, trackInputSchema, type TrackInput } from "./tracks";
 
 export const MUSIC_BUCKET = "music";
 /** The whole library stays small: it shares the free Storage project with everything else. */
@@ -25,12 +25,27 @@ export function musicUrl(path: string): string {
   return `${base}/storage/v1/object/public/${MUSIC_BUCKET}/${encodeURIComponent(path)}`;
 }
 
-export type LibraryTrack = { id: string; title: string; moods: string[]; attribution: string; licence: string; path: string; url: string; sourceUrl?: string };
+export type LibraryTrack = { id: string; title: string; moods: string[]; attribution: string; licence: string; path: string; url: string; sourceUrl?: string; platforms: string[] };
 
-/** Active tracks for the pickers and the art director, newest first. Empty library: videos have no music. */
-export async function activeTracks(): Promise<LibraryTrack[]> {
-  const rows = await prisma.musicTrack.findMany({ where: { active: true }, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, title: true, moods: true, attribution: true, licence: true, path: true, sourceUrl: true } });
+/** Every active track, app-limited ones too, newest first. */
+async function libraryTracks(): Promise<LibraryTrack[]> {
+  const rows = await prisma.musicTrack.findMany({ where: { active: true }, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, title: true, moods: true, attribution: true, licence: true, path: true, sourceUrl: true, platforms: true } });
   return rows.map((r) => ({ ...r, url: musicUrl(r.path) }));
+}
+
+/**
+ * Active tracks for the pickers and the art director, newest first. Empty library: videos have no music. Tracks limited
+ * to some apps (Meta Sound Collection) are left out unless every one of `destinations` is allowed (trackUsableFor):
+ * the owner's pickers do not know where a video will go, so they never offer them.
+ */
+export async function activeTracks(destinations?: readonly string[] | null): Promise<LibraryTrack[]> {
+  return (await libraryTracks()).filter((t) => trackUsableFor(t, destinations));
+}
+
+/** When the newest track was added (Admin -> Music, "Trending free picks"); null for an empty library. */
+export async function lastTrackAddedAt(): Promise<Date | null> {
+  const row = await prisma.musicTrack.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+  return row?.createdAt ?? null;
 }
 
 /**
@@ -45,12 +60,13 @@ let cache: { at: number; tracks: LibraryTrack[] } | null = null;
 
 /**
  * The library track for a new video: one with the mood (the art director's, else the angle's or the brand voice's),
- * varied by `seed`; null when the library is empty or cannot be read (the video has no music).
+ * varied by `seed`; null when the library is empty or cannot be read (the video has no music). `destinations`: the apps
+ * the video goes to; an app-limited track is picked only when all of them are allowed (unknown: never).
  */
-export async function trackForVideo(mood: string | null | undefined, seed: string): Promise<VideoMusic | null> {
+export async function trackForVideo(mood: string | null | undefined, seed: string, destinations?: readonly string[] | null): Promise<VideoMusic | null> {
   try {
-    if (!cache || Date.now() - cache.at > 60_000) cache = { at: Date.now(), tracks: await activeTracks() };
-    const track = pickTrack(cache.tracks, mood, seed);
+    if (!cache || Date.now() - cache.at > 60_000) cache = { at: Date.now(), tracks: await libraryTracks() };
+    const track = pickTrack(cache.tracks, mood, seed, destinations);
     return track ? videoMusicOf(track) : null;
   } catch {
     return null;
@@ -99,7 +115,7 @@ export async function finishTrackUpload(ctx: AdminContext, path: string, raw: Tr
     // The 80 MB cap is checked again under a lock, so two uploads at once cannot both pass it.
     if (!(await libraryHasRoom(tx, size))) return null;
     const row = await tx.musicTrack.create({ data });
-    await writeAudit(tx, ctx, "create_music_track", `music:${row.id}`, null, { title: row.title, licence: row.licence, sourceUrl: row.sourceUrl, bytes: row.bytes });
+    await writeAudit(tx, ctx, "create_music_track", `music:${row.id}`, null, { title: row.title, licence: row.licence, sourceUrl: row.sourceUrl, bytes: row.bytes, platforms: row.platforms });
     return row;
   });
   return row ?? reject("The music library is full (80 MB). Remove a track first.");

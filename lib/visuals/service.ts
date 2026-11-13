@@ -38,6 +38,7 @@ import { videoGetsAiClips, type VideoQuality } from "./video-quality";
 import { CLIPS_IN_PROGRESS, clipsInProgress, releaseClips } from "./ai-clips";
 import { voiceScriptAfterEdit } from "@/lib/voice/speech";
 import { creditLine, withCredit } from "@/lib/music/credit";
+import { needsInstagramVariant, NO_MUSIC_VARIANT, variantPathOf } from "./ig-variant";
 
 /** A problem the owner can read and act on (a KnowledgeError, so the content actions show its message). */
 export class VisualError extends KnowledgeError {}
@@ -791,10 +792,33 @@ export function countsAsNewVideo(row: { kind: string; items: unknown }): boolean
 
 
 /**
- * Checks a video the browser is about to upload (plan feature, length, size, videos left, media quota) and
- * gives it a signed upload URL. The seconds are counted when the upload is confirmed (finalizeVideo).
+ * Whether making this video should also make its Instagram version without library music (lib/visuals/ig-variant.ts):
+ * it has library music and one of its posts still to go out is on an Instagram account connected through Facebook
+ * Login (BuPulse attaches a trending sound there). False on any doubt: nothing extra is made.
  */
-export async function prepareVideoUpload(owner: Owner, visualId: string, file: { bytes: number; mimeType: string; durationMs: number }) {
+export async function wantsInstagramVariant(businessId: string, row: { groupId: string | null; contentId: string | null; plan: unknown }, mimeType: string = "video/mp4"): Promise<boolean> {
+  try {
+    if (!readVideoPlan(row.plan)?.music) return false;
+    const keys = [...(row.groupId ? [{ groupId: row.groupId }] : []), ...(row.contentId ? [{ contentId: row.contentId }] : [])];
+    if (keys.length === 0) return false;
+    const posts = await prisma.post.findMany({
+      where: { businessId, network: "instagram", OR: keys, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] }, connectionId: { not: null } },
+      select: { network: true, status: true, connection: { select: { provider: true, method: true, scopes: true } } },
+      take: 20,
+    });
+    return needsInstagramVariant({ hasMusic: true, mimeType, posts });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks a video the browser is about to upload (plan feature, length, size, videos left, media quota) and
+ * gives it a signed upload URL. The seconds are counted when the upload is confirmed (finalizeVideo). With
+ * `options.variant` (the renderer made the Instagram version without music) and when that version is wanted, a second
+ * signed URL for it, next to the video (variantPathOf); finalizeVideo takes it if it arrived.
+ */
+export async function prepareVideoUpload(owner: Owner, visualId: string, file: { bytes: number; mimeType: string; durationMs: number }, options: { variant?: boolean } = {}) {
   if (!(await videoAvailable(owner.businessId))) throw new VisualError("Videos are not in your plan. Add video to your plan to make them.");
   const { row, plan } = await videoRow(owner, visualId);
   if (!isVideoType(file.mimeType)) throw new VisualError("The video must be an MP4 or WebM file.");
@@ -823,7 +847,11 @@ export async function prepareVideoUpload(owner: Owner, visualId: string, file: {
   const target = await createSignedUploadUrl("media", path, { service: !!owner.service });
   // One open upload per visual: a newer one replaces it (the clean-up deletes a file nobody confirmed).
   await prisma.contentVisual.update({ where: { id: visualId }, data: { uploadPath: target.path, uploadBytes: VIDEO_LIMITS.maxBytes, uploadExpiresAt: new Date(now.getTime() + UPLOAD_RESERVATION_MS) } });
-  return { path: target.path, token: target.token, signedUrl: target.signedUrl, seconds };
+  const variantPath = options.variant ? variantPathOf(target.path) : null;
+  const variant = variantPath && (await wantsInstagramVariant(owner.businessId, row, file.mimeType))
+    ? await createSignedUploadUrl("media", variantPath, { service: !!owner.service }).then((t) => ({ path: t.path, token: t.token, signedUrl: t.signedUrl }), () => null)
+    : null;
+  return { path: target.path, token: target.token, signedUrl: target.signedUrl, seconds, ...(variant ? { variant } : {}) };
 }
 
 /**
@@ -887,17 +915,36 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
       throw error;
     }
   }
+  // The Instagram version without music, when the renderer made and uploaded it (prepareVideoUpload): kept only if it is
+  // an MP4 of at most 8 MB that still fits the quota with the video. Anything wrong with it never stops the video.
+  const variant = (await wantsInstagramVariant(owner.businessId, row, sniffed)) ? await takeVariant(bucket, owner.businessId, row, now, input.path, size) : null;
   const previous = readItems(row.items);
   await prisma.contentVisual.update({
     where: { id: row.id },
-    data: { status: "ready", error: null, items: json([{ path: input.path }]), bytes: size, seconds, renderedAt: new Date(), uploadPath: null, uploadBytes: 0, uploadExpiresAt: null, renderingUntil: null, robotJobId: null, robotAttempts: 0 },
+    data: { status: "ready", error: null, items: json([{ path: input.path }, ...(variant ? [{ path: variant.path, variant: NO_MUSIC_VARIANT }] : [])]), bytes: size + (variant?.size ?? 0), seconds, renderedAt: new Date(), uploadPath: null, uploadBytes: 0, uploadExpiresAt: null, renderingUntil: null, robotJobId: null, robotAttempts: 0 },
   });
   for (const old of previous) {
-    if (old.path !== input.path && !(await inUse(owner.businessId, old.path))) await bucket.remove([old.path]).catch(() => {});
+    if (old.path !== input.path && old.path !== variant?.path && !(await inUse(owner.businessId, old.path))) await bucket.remove([old.path]).catch(() => {});
   }
   if (row.groupId) await attachToGroup(owner.businessId, row.groupId).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
   if (row.contentId) await attachToContent(owner.businessId, row.contentId).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
   return { path: input.path, seconds };
+}
+
+/** The uploaded Instagram version without music of this video, checked; null (and the file removed) when it cannot be kept. */
+async function takeVariant(bucket: ReturnType<ReturnType<typeof createAdminClient>["storage"]["from"]>, businessId: string, row: Parameters<typeof usageWithoutOwn>[1], now: Date, mainPath: string, mainSize: number): Promise<{ path: string; size: number } | null> {
+  const path = variantPathOf(mainPath);
+  if (!path) return null;
+  const info = await bucket.info(path).catch(() => null);
+  const size = info?.data?.size;
+  if (!info || info.error || !size) return null;
+  const drop = async () => {
+    await bucket.remove([path]).catch(() => {});
+    return null;
+  };
+  if (size > VIDEO_LIMITS.maxBytes || (info.data?.contentType && info.data.contentType !== "video/mp4")) return drop();
+  if (quotaProblem(usageWithoutOwn(await mediaUsage(businessId), row, now), { count: 1, bytes: mainSize + size })) return drop();
+  return { path, size };
 }
 
 /** The owner edited the video's captions (or its photos): the plan changes and the video is made again on open. */

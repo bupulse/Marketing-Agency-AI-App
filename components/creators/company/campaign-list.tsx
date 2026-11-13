@@ -1,13 +1,13 @@
 import { ArrowRight, Megaphone } from "lucide-react";
-import Link from "next/link";
 import { EmptyState } from "@/components/app/empty-state";
-import { Badge, Button, GlassCard } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
+import { CampaignCard, campaignStatusKey } from "@/components/media-cards";
+import { NETWORKS, type Network } from "@/lib/social/types";
 import { formatShortDate } from "@/components/analytics/format";
 import { CAMPAIGN_STATUS_LABEL, PLATFORM_LABEL, type CampaignStatus, type Platform } from "@/lib/creators/company-forms";
 import type { CampaignRow } from "@/lib/creators/campaigns";
 import { continueHref, detailedSetupHref } from "@/lib/creators/quick";
 import { STEP_COUNT } from "@/lib/creators/wizard";
-import { STATUS_TONE } from "./campaign-page";
 
 /** The company's campaigns, newest first, or how to start the first one. */
 export function CampaignList({ campaigns }: { campaigns: CampaignRow[] }) {
@@ -23,42 +23,46 @@ export function CampaignList({ campaigns }: { campaigns: CampaignRow[] }) {
     );
   }
   return (
-    <GlassCard padding="none" className="divide-y divide-line">
-      {campaigns.map((c) => {
+    <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {campaigns.map((c, i) => {
         // A draft still being set up: "Draft · step 6 of 12", Continue in quick mode, or the detailed wizard.
         const setting = c.status === "DRAFT" && c.setupStep !== null;
         const href = setting ? continueHref(c.id, c.setupStep!) : `/dashboard/creators/${c.id}`;
+        const platforms = c.platforms.filter((p): p is Network => (NETWORKS as readonly string[]).includes(p));
         return (
-          <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5 hover:bg-soft">
-            <Link href={href} className="flex min-w-0 flex-1 flex-col gap-1 no-underline">
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-[15px] font-semibold">{c.name}</span>
-                <Badge tone={STATUS_TONE[c.status] ?? "neutral"}>{setting ? `Draft · step ${c.setupStep} of ${STEP_COUNT}` : (CAMPAIGN_STATUS_LABEL[c.status as CampaignStatus] ?? c.status)}</Badge>
-                {c.applied > 0 && <Badge tone="violet">{c.applied} new {c.applied === 1 ? "applicant" : "applicants"}</Badge>}
-                {c.hidden && <Badge tone="danger">Hidden by BuPulse</Badge>}
-              </span>
-              <span className="text-[13px] text-muted">
-                {formatShortDate(c.startsOn)} to {formatShortDate(c.endsOn)}
-                {c.platforms.length > 0 && ` · ${c.platforms.map((p) => PLATFORM_LABEL[p as Platform] ?? p).join(", ")}`}
-              </span>
-            </Link>
-            {setting ? (
-              <span className="flex items-center gap-1">
-                <Link href={detailedSetupHref(c.id, c.setupStep!)} className="inline-flex min-h-11 items-center px-2 text-[13px] font-medium text-muted underline underline-offset-2 hover:text-text">
-                  Detailed setup
-                </Link>
-                <Button href={href} size="sm" trailing={<ArrowRight aria-hidden className="size-4" />}>
-                  Continue
-                </Button>
-              </span>
-            ) : (
-              <span className="text-right text-[13px] text-muted">
-                {c.joined} {c.joined === 1 ? "creator" : "creators"} · {c.tasks} {c.tasks === 1 ? "task" : "tasks"}
-              </span>
-            )}
-          </div>
+          <li key={c.id} className="flex">
+            <CampaignCard
+              index={i}
+              className="w-full"
+              href={href}
+              name={c.name}
+              status={campaignStatusKey(c.status)}
+              statusLabel={setting ? `Draft · step ${c.setupStep} of ${STEP_COUNT}` : (CAMPAIGN_STATUS_LABEL[c.status as CampaignStatus] ?? c.status)}
+              kindLabel={c.platforms.length > 0 ? c.platforms.map((p) => PLATFORM_LABEL[p as Platform] ?? p).join(" · ") : "Creator campaign"}
+              platforms={platforms}
+              dateText={`${formatShortDate(c.startsOn)} to ${formatShortDate(c.endsOn)}`}
+              creators={setting ? null : c.joined}
+              facts={setting ? [] : [`${c.tasks} ${c.tasks === 1 ? "task" : "tasks"}`]}
+              extra={
+                c.applied > 0 || c.hidden ? (
+                  <>
+                    {c.applied > 0 && <Badge tone="violet">{c.applied} new {c.applied === 1 ? "applicant" : "applicants"}</Badge>}
+                    {c.hidden && <Badge tone="danger">Hidden by BuPulse</Badge>}
+                  </>
+                ) : undefined
+              }
+              actions={
+                setting
+                  ? [
+                      { id: "detailed", label: "Detailed setup", href: detailedSetupHref(c.id, c.setupStep!) },
+                      { id: "continue", label: "Continue", tone: "primary", icon: <ArrowRight />, href },
+                    ]
+                  : []
+              }
+            />
+          </li>
         );
       })}
-    </GlassCard>
+    </ul>
   );
 }

@@ -63,6 +63,8 @@ const offer = (over: Partial<ClientOfferView> = {}): ClientOfferView => ({
   currency: "RWF",
   totalMinor: 73000,
   computedMinor: 73000,
+  netTotalMinor: 73000,
+  vatRatePercent: null,
   adjustment: null,
   basePlanName: "Business",
   features: [{ key: "websiteChat", label: "Website chat and leads", description: "", added: true }],

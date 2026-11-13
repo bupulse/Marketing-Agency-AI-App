@@ -364,7 +364,7 @@ tool({
     limits: z.object({ text: z.number().int().min(0), image: z.number().int().min(0), chat: z.number().int().min(0), seats: z.number().int().min(1) }).describe("Monthly limits of the custom plan; above what the base plan and add-ons include, blocks are priced."),
     managedTier: z.enum(MANAGED_TIERS).optional().describe("Managed by BuPulse tier, when features include managed."),
     interval: z.enum(["MONTH", "YEAR"]),
-    adjustedMinor: z.number().int().positive().optional().describe("The price the client pays, when it differs from the computed total (rounding or discount). Needs adjustReason."),
+    adjustedMinor: z.number().int().positive().optional().describe("The offer price before VAT, when it differs from the computed total (rounding or discount). RWF offers are paid with VAT on top (Settings, VAT). Needs adjustReason."),
     adjustReason: z.string().max(200).optional(),
     note: z.string().max(1000).optional().describe("A message to the client, shown with the offer."),
     validDays: z.number().int().min(1).max(60).optional(),

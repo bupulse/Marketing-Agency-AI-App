@@ -1,8 +1,8 @@
-import { Camera, Plug, Sparkles } from "lucide-react";
+import { Bot, Camera, Plug, Sparkles } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { getAppContext } from "@/components/app/context";
 import { EmptyState } from "@/components/app/empty-state";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
 import { PlanBoard } from "@/components/autopilot/plan-board";
 import { SettingsCard } from "@/components/autopilot/settings-card";
 import { Button, GlassCard } from "@/components/ui";
@@ -25,7 +25,7 @@ export default async function AutopilotPage() {
 
   return (
     <>
-      <PageHeader title="Autopilot" description="AI plans your week of posts, writes one for each network and gets them ready for you to approve." />
+      <PageHeader icon={Bot} tone="violet" title="Autopilot" description="AI plans your week of posts. You approve them in one tap." />
       {!view || view.accounts.length === 0 ? (
         <EmptyState
           icon={Sparkles}

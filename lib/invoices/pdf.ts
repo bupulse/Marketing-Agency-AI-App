@@ -246,9 +246,9 @@ export async function renderInvoicePdf(doc: InvoiceDocument, logo?: InvoiceLogo 
 
   // ---- totals
   const totals: [string, string, boolean][] = [
-    ["Subtotal", money(doc.subtotalMinor), false],
+    [doc.taxRatePercent ? "Amount before VAT" : "Subtotal", money(doc.subtotalMinor), false],
     ...(doc.taxRatePercent ? ([[`VAT (${doc.taxRatePercent}%)`, money(doc.taxMinor), false]] as [string, string, boolean][]) : []),
-    [doc.status === "paid" ? "Total paid" : "Total due", money(doc.totalMinor), true],
+    [`${doc.status === "paid" ? "Total paid" : "Total due"}${doc.taxRatePercent ? " (VAT incl.)" : ""}`, money(doc.totalMinor), true],
   ];
   w.ensure(totals.length * 18 + 20);
   w.y -= 8;

@@ -670,8 +670,12 @@ model ManualPayment {
   planKey       String
   plan          PlanDefinition  @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Restrict)
   interval      BillingInterval
-  amountMinor   Int // RWF has no minor unit: whole francs
+  amountMinor   Int // what the client sends, VAT included. RWF has no minor unit: whole francs
   currency      String          @default("RWF")
+  // VAT snapshot (docs/REGIONS.md, "VAT"): the part of amountMinor that is VAT and the rate it was worked out with, so a
+  // later rate change never rewrites a payment. netMinor = amountMinor - vatMinor. Null rate = no VAT (older rows too).
+  vatMinor      Int             @default(0)
+  vatRateBps    Int?
   // "BP-7K3Q": what the client types as the payment note; unambiguous characters. A payment of an invoice uses the
   // invoice number instead ("BP-INV-0001"), so several attempts at one invoice share it: uniqueness is two partial
   // indexes in SQL ("ManualPayment_reference_key" where the reference does not start with BP-INV-,
@@ -917,6 +921,9 @@ model Post {
   plannedDay     DateTime?     @db.Date
   // How many times a missed post was moved to the next day. The 4th miss makes it EXPIRED; "Use again" sets it to 0.
   carryCount     Int           @default(0)
+  // The trending Instagram sound attached when the reel was published (lib/social/instagram-audio.ts):
+  // { audioId, title, artist, link?, attachedAt }. Null for every other post.
+  trendingSound  Json?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   metrics        PostMetrics[]
@@ -1129,6 +1136,9 @@ model MusicTrack {
   mimeType    String
   bytes       Int
   durationMs  Int?
+  // Apps the track may be used on (lib/music/tracks.ts trackUsableFor). Empty: every app. ["facebook","instagram"]:
+  // only videos that go to Facebook and Instagram alone (Meta Sound Collection).
+  platforms   String[] @default([])
   active      Boolean  @default(true)
   createdBy   String // AuditLog actor
   createdAt   DateTime @default(now())
@@ -2166,8 +2176,13 @@ model PricingRegion {
   currency       String // ISO 4217: "RWF", "USD"
   countries      String[] // ISO 3166-1 alpha-2 codes; GLOBAL has none and takes everything else
   paymentMethods String[] // "momo" | "card"
+  // true = LIVE (visitors and sign-ups in its countries get it); false = COMING_SOON (listed, matched to nobody: its
+  // countries see the catch-all, and no plan can be newly offered there). A country is in at most one region.
   active         Boolean  @default(true)
   sortOrder      Int      @default(0)
+  // VAT added on top of the region's plan prices (which are typed before VAT), in basis points: 1800 = 18%. 0 = no VAT.
+  vatRateBps     Int      @default(0)
+  vatLabel       String   @default("VAT")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

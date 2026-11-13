@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check } from "lucide-react";
-import { Button, GlassCard, useToast } from "@/components/ui";
+import { Check, MessageCircle, Mic, Palette, ShoppingBag, type LucideIcon } from "lucide-react";
+import { BPanel } from "@/components/app/kit/b-cards";
+import { Button, useToast } from "@/components/ui";
 import { StepFields, type StepContext } from "./step-fields";
 import { saveStep, STEP_TITLES, validateStep, type BrandValues, type Errors, type StepId } from "./steps";
+
+const ICON: Record<StepId, LucideIcon> = { offer: ShoppingBag, voice: Mic, look: Palette, knowledge: MessageCircle };
 
 /** One editable card on /dashboard/brand. Saves on its own. */
 export function BrandSection({ step, initial, context }: { step: StepId; initial: BrandValues; context: StepContext }) {
@@ -40,14 +43,8 @@ export function BrandSection({ step, initial, context }: { step: StepId; initial
   }
 
   return (
-    <GlassCard as="section" aria-labelledby={`brand-${step}`} className="p-5 sm:p-6">
+    <BPanel id={`brand-${step}`} icon={ICON[step]} title={title} hint={description}>
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-5">
-        <div className="flex flex-col gap-1">
-          <h2 id={`brand-${step}`} className="text-lg font-semibold tracking-[-0.02em]">
-            {title}
-          </h2>
-          <p className="text-[14px] text-muted">{description}</p>
-        </div>
         <StepFields step={step} values={values} errors={errors} onChange={onChange} onBusyChange={setBusy} context={context} />
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={pending || busy}>
@@ -62,6 +59,6 @@ export function BrandSection({ step, initial, context }: { step: StepId; initial
           </span>
         </div>
       </form>
-    </GlassCard>
+    </BPanel>
   );
 }

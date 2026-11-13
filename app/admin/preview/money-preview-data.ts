@@ -122,11 +122,11 @@ export const PREVIEW_OFFERS: AdminOfferView[] = [
 ];
 
 const planRow = (over: Partial<AdminPlanRow>): AdminPlanRow =>
-  ({ key: "STANDARD", name: "Standard", status: "active", isTrial: false, trialDays: null, highlight: false, monthlyPriceCents: 2000, yearlyPriceCents: 20000, subscribers: 13, payingSubscribers: 13, mrrCents: 26000, paddleReady: true, syncState: "synced", latestChange: null, ...over }) as unknown as AdminPlanRow;
+  ({ key: "STANDARD", name: "Standard", status: "active", isTrial: false, trialDays: null, highlight: false, monthlyPriceCents: 2000, yearlyPriceCents: 20000, subscribers: 13, payingSubscribers: 13, mrrCents: 26000, paddleReady: true, syncState: "synced", latestChange: null, regionNames: ["East Africa", "Rest of the world"], ...over }) as unknown as AdminPlanRow;
 
 export const PREVIEW_PLANS: AdminPlanRow[] = [
   planRow({ key: "TRIAL", name: "Free trial", isTrial: true, trialDays: 14, monthlyPriceCents: 0, yearlyPriceCents: 0, subscribers: 9, payingSubscribers: 0, mrrCents: 0, paddleReady: false, syncState: "not_synced" } as Partial<AdminPlanRow>),
-  planRow({ key: "STARTER", name: "Starter", monthlyPriceCents: 1300, yearlyPriceCents: 13000, subscribers: 16, payingSubscribers: 16, mrrCents: 20800 }),
+  planRow({ key: "STARTER", name: "Starter", monthlyPriceCents: 1300, yearlyPriceCents: 13000, subscribers: 16, payingSubscribers: 16, mrrCents: 20800, regionNames: ["Rwanda"] }),
   planRow({ highlight: true, latestChange: { id: "c1", direction: "increase", status: "scheduled", subscribers: 13, notifiedCount: 13, appliedCount: 4, failedCount: 0, createdAt: new Date("2026-10-15T00:00:00Z") } }),
   planRow({ key: "PRO", name: "Pro", monthlyPriceCents: 4000, yearlyPriceCents: 40000, subscribers: 5, payingSubscribers: 5, mrrCents: 20000, syncState: "failed" } as Partial<AdminPlanRow>),
   planRow({ key: "BUSINESS_2025", name: "Business (2025)", status: "retired", monthlyPriceCents: 6000, yearlyPriceCents: 60000, subscribers: 1, payingSubscribers: 1, mrrCents: 6000 }),

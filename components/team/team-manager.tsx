@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Crown, Mail, Trash2 } from "lucide-react";
-import { Badge, Button, Dialog, Field, GlassCard, Input, Select, useToast } from "@/components/ui";
+import { BellRing, ChevronDown, Crown, History, Mail, Trash2, UserPlus, Users } from "lucide-react";
+import { BPanel } from "@/components/app/kit/b-cards";
+import { BChoice } from "@/components/app/kit/b-choice";
+import { Badge, Button, Dialog, Field, Input, Select, useToast } from "@/components/ui";
 import {
   cancelInviteAction,
   changeRoleAction,
@@ -42,14 +44,16 @@ export function TeamManager({ me, role, limit, members, invites, alertsOn, histo
 
   return (
     <div className="flex flex-col gap-5">
-      <GlassCard as="section" aria-labelledby="invite" className="flex flex-col gap-4 p-5 sm:p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="invite" className="text-lg font-semibold">Invite someone</h2>
-          <p className="text-sm text-muted" aria-live="polite">{used} of {limit} {limit === 1 ? "seat" : "seats"} used</p>
-        </div>
+      <BPanel
+        id="invite"
+        icon={UserPlus}
+        title="Invite someone"
+        hint="Type their email, tap what they may do, and send."
+        aside={<p className="text-sm font-semibold text-muted" aria-live="polite">{used} of {limit} {limit === 1 ? "seat" : "seats"} used</p>}
+      >
         <form
           noValidate
-          className="grid gap-3 sm:grid-cols-[1fr_11rem_auto] sm:items-end"
+          className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             setFormError(null);
@@ -65,18 +69,14 @@ export function TeamManager({ me, role, limit, members, invites, alertsOn, histo
           <Field label="Email address" error={formError ?? undefined}>
             <Input type="email" name="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" />
           </Field>
-          <Field label="Role">
-            <Select name="role" value={inviteRole} onChange={(e) => setInviteRole(e.target.value as Role)}>
-              {roles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-            </Select>
-          </Field>
-          <Button type="submit" disabled={pending || !email.trim()}>{pending ? "Sending…" : "Send invitation"}</Button>
+          <BChoice legend="Role" tiles options={roles.map((r) => ({ value: r, label: ROLE_LABEL[r], hint: ROLE_HELP[r] }))} value={inviteRole} onChange={(v) => v && setInviteRole(v)} />
+          <div>
+            <Button type="submit" disabled={pending || !email.trim()}>{pending ? "Sending…" : "Send invitation"}</Button>
+          </div>
         </form>
-        <p className="text-sm text-muted">{ROLE_HELP[inviteRole]}</p>
-      </GlassCard>
+      </BPanel>
 
-      <GlassCard as="section" aria-labelledby="members" className="flex flex-col gap-3 p-5 sm:p-6">
-        <h2 id="members" className="text-lg font-semibold">People ({members.length})</h2>
+      <BPanel id="members" icon={Users} tone="indigo" title={`People (${members.length})`} hint="Everyone who can sign in to your company.">
         <ul className="flex flex-col divide-y divide-line">
           {members.map((m) => {
             const mine = m.userId === me;
@@ -116,11 +116,10 @@ export function TeamManager({ me, role, limit, members, invites, alertsOn, histo
             );
           })}
         </ul>
-      </GlassCard>
+      </BPanel>
 
       {invites.length > 0 && (
-        <GlassCard as="section" aria-labelledby="pending" className="flex flex-col gap-3 p-5 sm:p-6">
-          <h2 id="pending" className="text-lg font-semibold">Pending invitations ({invites.length})</h2>
+        <BPanel id="pending" icon={Mail} tone="violet" title={`Pending invitations (${invites.length})`} hint="Sent, not accepted yet.">
           <ul className="flex flex-col divide-y divide-line">
             {invites.map((i) => (
               <li key={i.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -138,28 +137,31 @@ export function TeamManager({ me, role, limit, members, invites, alertsOn, histo
               </li>
             ))}
           </ul>
-        </GlassCard>
+        </BPanel>
       )}
 
       {role === "ADMIN" && (
-        <GlassCard as="section" aria-labelledby="alerts" className="flex flex-col gap-2 p-5 sm:p-6">
-          <h2 id="alerts" className="text-lg font-semibold">Your email alerts</h2>
+        <BPanel id="alerts" icon={BellRing} tone="teal" title="Your email alerts">
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-1 size-4" defaultChecked={alertsOn} disabled={pending} onChange={(e) => start(async () => done(await setAlertsAction(e.target.checked)))} />
             <span>Also email me the owner&apos;s new-lead, daily digest, post reminder and failure emails.</span>
           </label>
-        </GlassCard>
+        </BPanel>
       )}
 
       {history.length > 0 && (
-        <GlassCard as="section" aria-labelledby="history" className="flex flex-col gap-3 p-5 sm:p-6">
-          <h2 id="history" className="text-lg font-semibold">Recent team changes</h2>
-          <ul className="flex flex-col gap-1 text-sm">
+        <details className="group rounded-[22px] border border-line bg-surface p-4 shadow-[0_18px_40px_-34px_rgba(17,24,39,0.5)] sm:p-5 dark:bg-white/[0.035] dark:shadow-none">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 font-semibold [&::-webkit-details-marker]:hidden">
+            <History aria-hidden className="size-5 text-muted" />
+            <span className="flex-1">Recent team changes ({history.length})</span>
+            <ChevronDown aria-hidden className="size-4 text-muted transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none" />
+          </summary>
+          <ul className="mt-3 flex flex-col gap-1 text-sm">
             {history.map((h) => (
               <li key={h.id} className="flex flex-wrap justify-between gap-2"><span>{h.text}</span><span className="text-muted">{new Date(h.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span></li>
             ))}
           </ul>
-        </GlassCard>
+        </details>
       )}
 
       <Dialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} title="Remove this person?" description={removing ? `${removing.email} loses access and their sign-in is deleted. Everything they created for the company stays.` : undefined}>

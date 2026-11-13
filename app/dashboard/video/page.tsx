@@ -1,6 +1,7 @@
 import { getAppContext } from "@/components/app/context";
 import { pageGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
+import { Clapperboard } from "lucide-react";
+import { PageHeader } from "@/components/admin/kit";
 import { VideoLibrary, type StudioState } from "@/components/video-library/video-library";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { can } from "@/lib/team/roles";
@@ -46,7 +47,7 @@ export default async function VideosPage({ searchParams }: PageProps<"/dashboard
 
   return (
     <>
-      <PageHeader title="Videos" description="Every video BuPulse made for you, from the Video Studio and your daily posts, and the ones you upload. Make new ones in the Video Studio; they appear here when they are ready." />
+      <PageHeader icon={Clapperboard} tone="violet" title="Videos" description="Every video made for you, and the ones you upload. New ones from the Video Studio appear here when ready." />
       {reelsOn && <UniqueReels products={reelProducts} brand={{ name: business.name, color: business.brandColors.find((c) => /^#[0-9a-f]{6}$/i.test(c)) ?? "#1B5E20", contact }} clipUsd={veoClipUsd(CLIP_SECONDS, veoModel())} initialReel={lastReel} />}
       <VideoLibrary
         initialVideos={videos}

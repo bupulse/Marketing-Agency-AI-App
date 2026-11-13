@@ -55,6 +55,8 @@ export function useVideoRender(visual: VisualView | null, onDone?: () => void) {
             music,
             voiceUrl: lease.audioUrls.voice ?? null,
             musicUrl: lease.audioUrls.music ?? null,
+            // The Instagram version without music, when a post goes to an Instagram account that takes a trending sound.
+            noMusicVariant: !!lease.noMusicVariant,
             onProgress: setProgress,
             signal: controller.signal,
           });
@@ -67,10 +69,13 @@ export function useVideoRender(visual: VisualView | null, onDone?: () => void) {
         }
         setMusicSkipped(result.musicSkipped);
         setPhase("uploading");
-        const target = await startVideoUpload(visual.id, { bytes: result.blob.size, mimeType: result.mimeType, durationMs: result.durationMs });
+        const target = await startVideoUpload(visual.id, { bytes: result.blob.size, mimeType: result.mimeType, durationMs: result.durationMs, variant: !!result.variantBlob });
         if (!target.ok) throw new Error(target.error);
-        const { error: uploadError } = await createClient().storage.from("media").uploadToSignedUrl(target.path, target.token, result.blob, { contentType: result.mimeType });
+        const storage = createClient().storage.from("media");
+        const { error: uploadError } = await storage.uploadToSignedUrl(target.path, target.token, result.blob, { contentType: result.mimeType });
         if (uploadError) throw new Error("The video could not be uploaded. Please try again.");
+        // Best effort: without it the Instagram post simply keeps the music and gets no trending sound.
+        if (target.variant && result.variantBlob) await storage.uploadToSignedUrl(target.variant.path, target.variant.token, result.variantBlob, { contentType: "video/mp4" }).catch(() => undefined);
         const saved = await finishVideoUpload(visual.id, { path: target.path, durationMs: result.durationMs });
         if (!saved.ok) throw new Error(saved.error);
         setProgress(1);

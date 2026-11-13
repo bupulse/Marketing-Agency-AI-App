@@ -5,6 +5,7 @@ import type { Plan } from "@/lib/plans";
 import { getPlans, planForPriceId, priceIdFor, toPublic, type PlanView, type PublicPlan } from "@/lib/plan-catalog";
 import { DEFAULT_REGION_KEY, type PaymentMethod, type RegionInfo } from "@/lib/region-format";
 import { companyRegion, getRegion } from "@/lib/region";
+import { priceWithVat, vatOf, type VatPrice } from "@/lib/billing/vat";
 
 // What a region's clients can buy, with the region's prices (PlanRegionPrice). A plan is offered in a region only
 // when it has a price there. GLOBAL is special: its prices ARE the plan's own prices from the plan builder (the
@@ -30,7 +31,29 @@ export type RegionalPlan = PublicPlan & {
   paymentMethods: PaymentMethod[];
   /** The card (USD) price of a local-currency plan, or null when the price is already in USD. */
   card: { monthlyUsdCents: number; yearlyUsdCents: number } | null;
+  /**
+   * The region's VAT (PricingRegion.vatRateBps, the one source of the rate) on the stored prices before VAT, or null
+   * when the region has none. Its totals are what a client pays by Mobile Money or invoice (lib/billing/vat.ts addVat:
+   * RWF rounded to 100). Card payments go through Paddle, which works out tax itself (never added here).
+   */
+  vat?: { rateBps: number; label: string; monthly: VatPrice; yearly: VatPrice } | null;
+  /**
+   * Set (percent) when monthlyPriceCents / yearlyPriceCents are the client's prices WITH the region's VAT (`withVat`
+   * below, for the pages clients see); null or absent when they are the stored prices before VAT.
+   */
+  vatRatePercent?: number | null;
 };
+
+/** Read options: `withVat` gives the prices clients see and pay (with the region's VAT). Leave it off for anything that prices from the stored amounts (offers, invoices, Paddle). */
+export type RegionPlanOptions = { withVat?: boolean };
+
+/** A region's VAT on a pair of prices before VAT (null without VAT, and always for USD). */
+export function vatFor(region: RegionInfo, monthlyMinor: number, yearlyMinor: number): RegionalPlan["vat"] {
+  const vat = vatOf(region);
+  // USD prices are paid by card through Paddle, which adds tax itself: never VAT on them (lib/billing/vat.ts).
+  if (!vat || region.currency.toUpperCase() === "USD") return null;
+  return { rateBps: vat.rateBps, label: vat.label, monthly: priceWithVat(monthlyMinor, vat, region.currency), yearly: priceWithVat(yearlyMinor, vat, region.currency) };
+}
 
 const TTL_MS = 30_000;
 let lastGood: RegionPriceRow[] | null = null;
@@ -82,7 +105,7 @@ export function regionalPlansFor(plans: PlanView[], prices: RegionPriceRow[], re
     if (isGlobal) {
       const pricedAnywhere = prices.some((p) => p.planKey === plan.key);
       if (!row && pricedAnywhere) continue;
-      out.push({ ...toPublic(plan), currency: plan.currency, regionKey: region.key, paymentMethods: region.paymentMethods, card: null });
+      out.push({ ...toPublic(plan), currency: plan.currency, regionKey: region.key, paymentMethods: region.paymentMethods, card: null, vat: vatFor(region, plan.monthlyPriceCents, plan.yearlyPriceCents), vatRatePercent: null });
       continue;
     }
     if (!row) continue;
@@ -95,28 +118,46 @@ export function regionalPlansFor(plans: PlanView[], prices: RegionPriceRow[], re
       regionKey: region.key,
       paymentMethods: region.paymentMethods,
       card: local && row.cardMonthlyUsdCents != null && row.cardYearlyUsdCents != null ? { monthlyUsdCents: row.cardMonthlyUsdCents, yearlyUsdCents: row.cardYearlyUsdCents } : null,
+      vat: vatFor(region, row.monthlyMinor, row.yearlyMinor),
+      vatRatePercent: null,
     });
   }
   return out;
 }
 
+/**
+ * Pure: the client's prices of regional plans. A plan whose region has VAT (`vat`, from regionalPlansFor) shows its
+ * totals with VAT (RWF rounded to 100 RWF, lib/billing/vat.ts); every other plan, and the card (USD) price, stays as it
+ * is. Plans already with VAT are returned unchanged.
+ */
+export function withVat(plans: RegionalPlan[]): RegionalPlan[] {
+  return plans.map((p) => {
+    if (p.vatRatePercent || !p.vat) return p;
+    return { ...p, monthlyPriceCents: p.vat.monthly.totalMinor, yearlyPriceCents: p.vat.yearly.totalMinor, vatRatePercent: p.vat.rateBps / 100 };
+  });
+}
+
+function maybeWithVat(plans: RegionalPlan[], opts: RegionPlanOptions): RegionalPlan[] {
+  return opts.withVat ? withVat(plans) : plans;
+}
+
 /** The plans a region's visitors or clients can buy, in sort order. */
-export async function getRegionPlans(regionKey: string): Promise<RegionalPlan[]> {
+export async function getRegionPlans(regionKey: string, opts: RegionPlanOptions = {}): Promise<RegionalPlan[]> {
   const region = await getRegion(regionKey);
   if (!region) return [];
   const [plans, prices] = await Promise.all([getPlans(), getRegionPrices()]);
-  return regionalPlansFor(plans, prices, region);
+  return maybeWithVat(regionalPlansFor(plans, prices, region), opts);
 }
 
-export async function regionPlan(regionKey: string, planKey: string): Promise<RegionalPlan | null> {
-  return (await getRegionPlans(regionKey)).find((p) => p.key === planKey) ?? null;
+export async function regionPlan(regionKey: string, planKey: string, opts: RegionPlanOptions = {}): Promise<RegionalPlan | null> {
+  return (await getRegionPlans(regionKey, opts)).find((p) => p.key === planKey) ?? null;
 }
 
-/** The plans a company can buy, at its own region's prices. */
-export async function companyPlans(businessId: string): Promise<{ region: RegionInfo; plans: RegionalPlan[] }> {
+/** The plans a company can buy, at its own region's prices (before VAT; `withVat` for what the client sees and pays). */
+export async function companyPlans(businessId: string, opts: RegionPlanOptions = {}): Promise<{ region: RegionInfo; plans: RegionalPlan[] }> {
   const region = await companyRegion(businessId);
   const [plans, prices] = await Promise.all([getPlans(), getRegionPrices()]);
-  return { region, plans: regionalPlansFor(plans, prices, region) };
+  return { region, plans: maybeWithVat(regionalPlansFor(plans, prices, region), opts) };
 }
 
 /**

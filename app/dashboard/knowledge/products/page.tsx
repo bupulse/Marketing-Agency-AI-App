@@ -3,8 +3,7 @@ import { Package, Plus, Search, Store } from "lucide-react";
 import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
-import { PageHeader } from "@/components/app/page-header";
-import { BackLink } from "@/components/knowledge/back-link";
+import { SectionHeader } from "@/components/knowledge/section-header";
 import { QuizLink } from "@/components/knowledge/quiz-link";
 import { ProductGrid } from "@/components/knowledge/product-grid";
 import { Button, GlassCard, Input } from "@/components/ui";
@@ -59,8 +58,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <BackLink />
-      <PageHeader
+      <SectionHeader section="products"
         title="Products & services"
         description="Everything you sell. Each one gets its own photo album, and BuPulse writes posts and designs from its details."
         action={

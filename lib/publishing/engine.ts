@@ -24,6 +24,9 @@ import { publicSiteUrl } from "@/lib/auth/site-url";
 import { recordStudioOutcome } from "@/lib/video-studio/outcomes";
 import { dayKey, isValidTimeZone, parseDayKey, zonedTimeToUtc } from "./time";
 import { appUrl } from "@/lib/platform/app-hosts";
+import { stripMusicCredit } from "@/lib/music/credit";
+import type { IgAudio } from "@/lib/social/instagram-audio";
+import { attachedSound, prepareInstagramSound, soundRequest } from "./instagram-sound";
 
 /** A claimed post whose lock is older than this was abandoned by a crashed run and is taken again. */
 export const STALE_LOCK_MINUTES = 10;
@@ -386,14 +389,20 @@ async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResu
     if (!post.connection || post.connection.postingMode === "NOTIFY" || post.format === "SCRIPT") return await sendReminder(post);
 
     const provider = getProvider(post.network);
-    let result: { externalId: string; permalink?: string };
+    let result: { externalId: string; permalink?: string; soundAttached?: boolean };
+    let soundSaved: { audio: IgAudio } | null = null;
     try {
       const admin = adminStorageClient();
       if (post.mediaPaths.length > 0 && !admin) throw new SocialError("Photos cannot be sent: the storage key is not set.", "temporary", post.network);
-      const { urls: signed, jpeg } = admin ? await signPathsForNetwork(admin, post.mediaPaths, post.network, PUBLISH_URL_SECONDS) : { urls: new Map<string, string>(), jpeg: new Set<string>() };
+      const credentials = await loadCredentials(post.connection.id);
+      // Instagram through Facebook Login: a trending sound on the reel, on its version without our music (never fails the post).
+      const sound = post.network === "instagram" && admin ? await prepareInstagramSound(post, credentials) : null;
+      const soundPaths = sound && sound.path !== post.mediaPaths[0] ? [sound.path] : [];
+      const { urls: signed, jpeg } = admin ? await signPathsForNetwork(admin, [...post.mediaPaths, ...soundPaths], post.network, PUBLISH_URL_SECONDS) : { urls: new Map<string, string>(), jpeg: new Set<string>() };
       if (post.mediaPaths.some((p) => !signed.has(p))) {
         throw new SocialError("A photo on this post is missing from your storage. Edit the post and add it again.", "invalid", post.network);
       }
+      const soundUrl = sound ? signed.get(sound.path) : undefined;
       const assets = post.mediaPaths.length
         ? await prisma.mediaAsset.findMany({ where: { businessId: post.businessId, path: { in: post.mediaPaths } }, select: { path: true, mimeType: true, width: true, height: true } })
         : [];
@@ -407,13 +416,25 @@ async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResu
         }),
         link: post.link,
       };
-      result = await provider.publish(await loadCredentials(post.connection.id), request);
+      if (sound && soundUrl) {
+        request.sound = soundRequest(sound, request.media[0].url);
+        request.media[0] = { ...request.media[0], url: soundUrl };
+        // The version without our music needs no music credit; the reel with music (the fallback) keeps it.
+        if (sound.withoutMusic) {
+          request.sound.fallbackText = request.text;
+          request.text = composeText(captionWithSite({ ...post, text: stripMusicCredit(post.text) }, provider.rules.maxText), post.hashtags);
+        }
+      }
+      result = await provider.publish(credentials, request);
+      if (sound && result.soundAttached) soundSaved = { audio: sound.audio };
     } catch (error) {
       return await handleProviderError(post, error);
     }
 
     // The network accepted the post. From here on it must never be sent again.
     await saveSuccess(post, result);
+    // The trending sound that went out with it, for the post card ("Trending sound: Title – Artist"). Best effort.
+    if (soundSaved) await prisma.post.update({ where: { id: post.id }, data: { trendingSound: attachedSound(soundSaved.audio) as unknown as Prisma.InputJsonValue } }).catch((e) => logError(e, { source: "publishing.sound-save", level: "warn", postId: post.id }));
     return "published";
   } catch (error) {
     await logError(error, { source: "publishing.process", businessId: post.businessId, postId: post.id });

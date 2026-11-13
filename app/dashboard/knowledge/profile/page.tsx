@@ -1,7 +1,6 @@
 import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
-import { PageHeader } from "@/components/app/page-header";
-import { BackLink } from "@/components/knowledge/back-link";
+import { SectionHeader } from "@/components/knowledge/section-header";
 import { QuizLink } from "@/components/knowledge/quiz-link";
 import { ProfileForm } from "@/components/knowledge/profile-form";
 import { readKnowledge } from "@/lib/brand/schemas";
@@ -25,8 +24,7 @@ export default async function ProfilePage() {
 
   return (
     <>
-      <BackLink />
-      <PageHeader title="Company profile" description="Who you are, in your own words. BuPulse uses this in every post, plan and chat reply." action={<QuizLink round="you" />} />
+      <SectionHeader section="profile" title="Company profile" description="Who you are, in your own words. BuPulse uses this in every post, plan and chat reply." action={<QuizLink round="you" />} />
       <ProfileForm industries={industries} initial={initial} />
     </>
   );

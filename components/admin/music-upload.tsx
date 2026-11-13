@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Field, Input } from "@/components/ui";
 import { finishTrackUploadAction, startTrackUploadAction } from "@/app/admin/(console)/(content)/music/actions";
 import { createClient } from "@/lib/supabase/client";
-import { MOODS, MOOD_LABEL, TRACK_MAX_BYTES, type Mood } from "@/lib/music/tracks";
+import { MOODS, MOOD_LABEL, TRACK_MAX_BYTES, TRACK_PLATFORMS, type Mood } from "@/lib/music/tracks";
 
 /** The admin's track upload: the file goes straight to the music bucket with a signed URL, then the server checks it. */
 export function MusicUpload() {
@@ -14,6 +14,8 @@ export function MusicUpload() {
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [moods, setMoods] = useState<Mood[]>([]);
+  // Meta Sound Collection tracks may only be used on Facebook and Instagram.
+  const [metaOnly, setMetaOnly] = useState(false);
 
   function submit(form: FormData) {
     setError(null);
@@ -33,10 +35,12 @@ export function MusicUpload() {
         licence: String(form.get("licence") ?? ""),
         sourceUrl: String(form.get("sourceUrl") ?? ""),
         attribution: String(form.get("attribution") ?? ""),
+        platforms: metaOnly ? [...TRACK_PLATFORMS] : [],
       });
       if (!done.ok) return setError(done.error);
       setFile(null);
       setMoods([]);
+      setMetaOnly(false);
       router.push("/admin/music?notice=Track%20added.");
       router.refresh();
     });
@@ -65,7 +69,7 @@ export function MusicUpload() {
         <Input name="bpm" type="number" min={30} max={300} />
       </Field>
       <Field label="Licence name" required>
-        <Input name="licence" maxLength={120} placeholder="e.g. Pixabay Content License" />
+        <Input name="licence" maxLength={120} placeholder="e.g. Pixabay Content License, or Meta Sound Collection" />
       </Field>
       <Field label="Source page (https)" required hint="For original music you own, the tool it was made with.">
         <Input name="sourceUrl" maxLength={500} />
@@ -73,6 +77,13 @@ export function MusicUpload() {
       <Field label="Credit line" hint="Shown under videos with this track, as the licence asks. Leave empty for original music you own.">
         <Input name="attribution" maxLength={300} placeholder="Music: Title by Artist (source)" />
       </Field>
+      <label className="flex min-h-11 items-start gap-3 text-[14px] sm:col-span-2">
+        <input type="checkbox" className="mt-0.5 size-5" checked={metaOnly} onChange={(e) => setMetaOnly(e.target.checked)} />
+        <span>
+          <span className="font-medium">Only for Facebook and Instagram</span>
+          <span className="block text-[13px] text-muted">For Meta Sound Collection tracks. BuPulse then uses the track only in videos that go to Facebook and Instagram alone, never TikTok or YouTube.</span>
+        </span>
+      </label>
       {error && (
         <p role="alert" className="text-[14px] font-medium text-danger sm:col-span-2">
           {error}

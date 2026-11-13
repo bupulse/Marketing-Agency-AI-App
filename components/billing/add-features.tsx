@@ -14,6 +14,7 @@ import { useTheme } from "@/components/theme";
 import { cardQuoteText, payByCard, type CardQuoteView } from "./card-checkout";
 import { PayStateNote, usePayState } from "./pay-state";
 import { formatMinor } from "@/lib/region-format";
+import { clientPrice, vatApplies, VAT_INCLUDED_NOTE, type VatSettings } from "@/lib/billing/vat";
 import { cn } from "@/lib/cn";
 
 export type AddFeaturesData = {
@@ -48,7 +49,7 @@ const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { da
  * each feature's card price per period, "≈ $3 now for the 25 days left" and the plan's new price, and "Add to my card
  * plan" with a confirm step before the card is charged (lib/offers/card-plan.ts).
  */
-export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null, cardAddons = [], preselect = null, now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; /** A card plan whose card subscription takes the features (Paddle set up): the terms; null otherwise. */ cardPlan?: CardPlanTerms | null; /** The features already added to that card plan, each with its card price per period (each can be removed). */ cardAddons?: CardAddonItem[]; /** A feature to start ticked (the "Add to your plan" page's "Add it on Billing"). */ preselect?: FeatureKey | null; contactEmail?: string; now: string }) {
+export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null, cardAddons = [], preselect = null, now, vat = null }: { /** The VAT settings: RWF amounts are shown with VAT (what Mobile Money asks for); card quotes stay before VAT. */ vat?: VatSettings | null; data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; /** A card plan whose card subscription takes the features (Paddle set up): the terms; null otherwise. */ cardPlan?: CardPlanTerms | null; /** The features already added to that card plan, each with its card price per period (each can be removed). */ cardAddons?: CardAddonItem[]; /** A feature to start ticked (the "Add to your plan" page's "Add it on Billing"). */ preselect?: FeatureKey | null; contactEmail?: string; now: string }) {
   const router = useRouter();
   const { toast } = useToast();
   const { resolvedTheme } = useTheme();
@@ -88,6 +89,9 @@ export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null
     }
   };
   const priceOf = (key: FeatureKey) => data?.prices.find((p) => p.addonKey === key && p.regionKey === data.region.key)?.monthlyMinor ?? null;
+  // Prices are stored before VAT: shown with VAT in RWF (lib/billing/vat.ts), as the Mobile Money payment asks.
+  const vatMinor = (minor: number) => (vat && data ? clientPrice(minor, data.region.currency, vat) : minor);
+  const withVat = Boolean(vat && data && vatApplies(data.region.currency, vat));
   const canPay = Boolean(quote && quote.dueNowMinor > 0 && quote.missing.length === 0);
   const card: CardQuoteView | null =
     cardRate && quote && data && canPay
@@ -232,7 +236,7 @@ export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null
                       {have && <Badge tone="success">In your plan</Badge>}
                       {soon && <Badge tone="violet">Coming soon</Badge>}
                       {neededBy.length > 0 && <Badge tone="blue">Needed by {neededBy.map(featureLabel).join(", ")}</Badge>}
-                      {!have && !soon && price !== null && !onCard && <span className="text-[13px] text-muted">+{formatMinor(price, data.region.currency)} / month</span>}
+                      {!have && !soon && price !== null && !onCard && <span className="text-[13px] text-muted">+{formatMinor(vatMinor(price), data.region.currency)} / month</span>}
                       {!have && !soon && onCard && cardPriceOf(f.key) !== null && <span className="text-[13px] text-muted">+{dollars(cardPriceOf(f.key) as number)} / {per} by card</span>}
                     </span>
                     <span className="block text-[13px] text-muted">{f.description}</span>
@@ -276,7 +280,7 @@ export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null
             <div key={l.key} className="flex justify-between gap-3">
               <dt>{l.label}</dt>
               <dd className="tabular-nums">
-                {formatMinor(l.totalMinor, data.region.currency)} / {per}
+                {formatMinor(vatMinor(l.totalMinor), data.region.currency)} / {per}
               </dd>
             </div>
           ))}
@@ -284,14 +288,15 @@ export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null
             <dt>
               To pay now ({quote.daysLeft} of {quote.periodDays} days left)
             </dt>
-            <dd className="tabular-nums">{formatMinor(quote.dueNowMinor, data.region.currency)}</dd>
+            <dd className="tabular-nums">{formatMinor(vatMinor(quote.dueNowMinor), data.region.currency)}</dd>
           </div>
           <div className="flex justify-between gap-3 text-muted">
             <dt>From {longDate(data.periodEnd)}</dt>
             <dd className="tabular-nums">
-              {formatMinor(quote.nextRenewalMinor, data.region.currency)} / {per}
+              {formatMinor(vatMinor(quote.nextRenewalMinor), data.region.currency)} / {per}
             </dd>
           </div>
+          {withVat && <p className="text-[13px] text-muted">{VAT_INCLUDED_NOTE}</p>}
         </dl>
       )}
 

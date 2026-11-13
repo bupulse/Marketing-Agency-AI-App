@@ -45,9 +45,9 @@ export function BottomBar({
         href={toHref(href)}
         aria-current={active ? "page" : undefined}
         aria-label={badge ? `${label}, ${unread} unread` : undefined}
-        className={cn(slot, active ? "text-pulse-blue" : "text-muted hover:text-text")}
+        className={cn(slot, active ? "text-[#1f55d6] dark:text-[#8db0ff]" : "text-muted hover:text-text")}
       >
-        <span aria-hidden className={cn("relative inline-flex h-8 w-12 items-center justify-center rounded-full transition-colors", active && "bg-pulse-blue/12")}>
+        <span aria-hidden className={cn("relative inline-flex h-8 w-14 items-center justify-center rounded-full transition-colors", active && "bg-pulse-blue/12 dark:bg-pulse-blue/25")}>
           <Icon className="size-[22px]" />
           {badge && (
             <span className="absolute -top-0.5 right-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[10px] leading-[18px] font-bold text-white ring-2 ring-[var(--bp-bg-solid)]">
@@ -65,7 +65,7 @@ export function BottomBar({
     <nav
       aria-label="Quick menu"
       data-bottom-bar
-      className="fixed inset-x-0 bottom-0 z-40 flex items-end gap-1 rounded-t-[24px] border border-b-0 border-line bg-surface shadow-glass px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 flex items-end gap-1 border-t border-line bg-surface/92 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_-20px_rgba(17,24,39,0.35)] backdrop-blur-xl lg:hidden"
     >
       {first && link(first)}
       {second && link(second)}
@@ -79,7 +79,7 @@ export function BottomBar({
             aria-label="Create"
             className="-mt-6 flex cursor-pointer flex-col items-center gap-0.5 text-[11px] font-semibold text-text"
           >
-            <span aria-hidden className={cn("inline-flex size-14 items-center justify-center rounded-full bg-brand-gradient text-white shadow-glow ring-4 ring-[var(--bp-bg-solid)] transition-transform", createOpen && "rotate-45")}>
+            <span aria-hidden className={cn("inline-flex size-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2152e0,#5a3fe0)] text-white shadow-[0_10px_24px_-10px_rgba(47,107,255,0.7)] ring-4 ring-[var(--bp-bg-solid)] transition-transform motion-reduce:transition-none", createOpen && "rotate-45")}>
               <Plus className="size-7" />
             </span>
             <span aria-hidden>Create</span>
@@ -88,7 +88,7 @@ export function BottomBar({
       )}
       {third && link(third)}
       <button type="button" onClick={(e) => onMenu(e.currentTarget)} aria-expanded={menuOpen} aria-label="Menu, all pages" className={cn(slot, "cursor-pointer text-muted hover:text-text")}>
-        <span aria-hidden className="inline-flex h-8 w-12 items-center justify-center">
+        <span aria-hidden className="inline-flex h-8 w-14 items-center justify-center">
           <Menu className="size-[22px]" />
         </span>
         <span aria-hidden>Menu</span>

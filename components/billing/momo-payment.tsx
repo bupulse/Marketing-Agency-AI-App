@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Field, GlassCard, Input, PhoneInput, Select, useToast } from "@/components/ui";
 import { cancelMomoPayment, momoPaymentStatus, startMomoPayment, startMomoProofUpload, submitMomoProof } from "@/app/dashboard/billing/actions";
+import { vatIncludedText } from "@/lib/billing/vat";
 import { checkingText, formatMomoAmount, MOMO_NETWORKS, mtnMomoPayDial, NETWORK_LABEL, PROOF_BUCKET, PROOF_TYPES, proofFileProblem, proofSchema, ussdHref, type ManualPaymentView, type MomoPayDetails } from "@/lib/billing/momo-shared";
 import { scaledSize } from "@/lib/media/rules";
 import { createClient } from "@/lib/supabase/client";
@@ -16,6 +17,8 @@ const POLL_MS = 5000;
 type Props = {
   payment: ManualPaymentView;
   details: MomoPayDetails;
+  /** Set when the amount includes VAT (RWF, lib/billing/vat.ts): a small "VAT included" note under it. */
+  vatRatePercent?: number | null;
 };
 
 /**
@@ -27,7 +30,7 @@ type Props = {
  * 3. waiting for BuPulse to confirm (polls every few seconds and refreshes the page when decided);
  * rejected: the reason and "Try again"; confirmed: a green success.
  */
-export function MomoPayment({ payment, details }: Props) {
+export function MomoPayment({ payment, details, vatRatePercent }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -224,6 +227,7 @@ export function MomoPayment({ payment, details }: Props) {
           <strong id="momo-heading" className="text-2xl tracking-[-0.02em]">
             {amount}
           </strong>
+          {vatRatePercent ? <span className="text-xs text-muted">{vatIncludedText(vatRatePercent)}</span> : null}
           <span className="text-sm text-muted">
             {payment.addition
               ? `${payment.invoiceId ? `Invoice ${payment.reference}: the` : "The"} features you added, for the days left of your ${payment.interval === "YEAR" ? "year" : "month"}, paid once. Your plan's renewal date does not change.`

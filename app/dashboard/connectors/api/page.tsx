@@ -1,7 +1,8 @@
 import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { KeptDataNote } from "@/components/app/kept-data-note";
-import { PageHeader } from "@/components/app/page-header";
+import { KeyRound } from "lucide-react";
+import { KitStyles, PageHeader } from "@/components/admin/kit";
 import { ApiKeysManager } from "@/components/connectors/api-keys-manager";
 import { ConnectorsSubNav } from "@/components/connectors/sub-nav";
 import { businessHasApiAccess } from "@/lib/api/auth";
@@ -22,7 +23,8 @@ export default async function ApiKeysPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="API keys" description="Let your own tools and scripts read your projects, content, posts and leads, and update leads." />
+      <KitStyles />
+      <PageHeader icon={KeyRound} tone="violet" title="API keys" description="Let your own tools and scripts read your projects, content, posts and leads, and update leads." />
       <ConnectorsSubNav current="api" />
       {readOnly && <KeptDataNote feature="apiAccess" label="API access" entitlements={entitlements} what="Your API keys" />}
       {!readOnly && !allowed && (

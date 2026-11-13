@@ -35,6 +35,8 @@ import { createClient } from "@/lib/supabase/server";
 import { signPaths } from "@/lib/publishing/media";
 import type { Network } from "@/lib/social/types";
 import { MAX_BULK_DELETE, type BulkDeleteResult } from "@/lib/publishing/bulk-delete";
+import { weekTrendingTips } from "@/lib/social/trending-sounds";
+import type { TrendingTip } from "@/lib/social/instagram-audio";
 
 const SAVE_FAILED = "We could not save that. Please try again.";
 
@@ -194,6 +196,27 @@ export async function markPostedAction(postId: string): Promise<ActionResult> {
     await markPosted(o.businessId, String(postId));
     return {};
   });
+}
+
+/** "Post manually" (an Instagram reel posted by hand with a trending sound): the post becomes published, BuPulse never sends it. */
+export async function markPostedByHandAction(postId: string): Promise<ActionResult> {
+  return run("mark-posted", "compose", async (o) => {
+    await markPosted(o.businessId, String(postId), new Date(), { byHand: true });
+    return {};
+  });
+}
+
+/** The week's trending Instagram sounds for the "Post manually" tip (lib/social/trending-sounds.ts). */
+export async function trendingTipsAction(): Promise<ActionResult<{ tips: TrendingTip[] }>> {
+  let o: Owner | null;
+  try {
+    o = await owner();
+  } catch (error) {
+    if (error instanceof ForbiddenError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
+    throw error;
+  }
+  if (!o) return { ok: false, error: "Set up your business first." };
+  return { ok: true, tips: await weekTrendingTips(o.businessId) };
 }
 
 export async function setTimezoneAction(timezone: string): Promise<ActionResult> {

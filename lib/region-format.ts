@@ -13,18 +13,60 @@ export type RegionInfo = {
   /** ISO 3166-1 alpha-2 codes; empty for the region that takes everything else. */
   countries: string[];
   paymentMethods: PaymentMethod[];
+  /** true = LIVE, false = COMING_SOON (see RegionStatus). */
   active: boolean;
   sortOrder: number;
+  /** VAT added on top of this region's prices, in basis points (1800 = 18%); 0 = none. Absent on old rows = 0. */
+  vatRateBps?: number;
+  /** What the tax is called on prices, invoices and receipts ("VAT"). */
+  vatLabel?: string;
 };
 
 export const DEFAULT_REGION_KEY = "GLOBAL";
 export const RWANDA_REGION_KEY = "RW";
-export const EAC_COUNTRY_CODES = ["KE", "UG", "TZ", "BI", "SS", "CD", "SO"];
+/** East Africa: the EAC members (Rwanda has its own region) plus the Horn of Africa. */
+export const EAC_COUNTRY_CODES = ["KE", "UG", "TZ", "BI", "SS", "CD", "SO", "ET", "DJ", "ER"];
 
+/**
+ * A region is LIVE (its visitors and sign-ups get its plans) or COMING_SOON (listed in the admin with its countries,
+ * but nobody is matched to it: its countries see the catch-all region, and no plan can be offered there yet). Stored
+ * as PricingRegion.active (true = LIVE), which every build already reads.
+ */
+export type RegionStatus = "LIVE" | "COMING_SOON";
+export const REGION_STATUSES: RegionStatus[] = ["LIVE", "COMING_SOON"];
+export function regionStatus(region: Pick<RegionInfo, "active">): RegionStatus {
+  return region.active ? "LIVE" : "COMING_SOON";
+}
+export function regionStatusLabel(status: RegionStatus): string {
+  return status === "LIVE" ? "Live" : "Coming soon";
+}
+/** The region with no country list takes every visitor the live regions do not ("Rest of the world"). */
+export function isCatchAll(region: Pick<RegionInfo, "key" | "countries">): boolean {
+  return region.countries.length === 0;
+}
+
+const comingSoon = (key: string, name: string, sortOrder: number, countries: string[]): RegionInfo => ({ key, name, currency: "USD", countries, paymentMethods: ["card"], active: false, sortOrder });
+
+/**
+ * What the migrations seed (20261010100100_regions_and_demos, then 20261112120000_region_coming_soon_vat and
+ * 20261112140000_rwanda_vat_on: Rwanda 18% VAT, BuPulse is VAT-registered with RRA; every other region 0%), and the
+ * fallback when the database cannot be read. A country is in at most one region. Every African country is in one
+ * (Central Africa was added so none is left out); the few uninhabited territories (AQ, BV, GS, HM, IO, TF, UM) are in
+ * none and see the catch-all.
+ */
 export const REGION_SEEDS: RegionInfo[] = [
-  { key: "RW", name: "Rwanda", currency: "RWF", countries: ["RW"], paymentMethods: ["momo", "card"], active: true, sortOrder: 0 },
+  { key: "RW", name: "Rwanda", currency: "RWF", countries: ["RW"], paymentMethods: ["momo", "card"], active: true, sortOrder: 0, vatRateBps: 1800, vatLabel: "VAT" },
   { key: "EAC", name: "East Africa", currency: "USD", countries: EAC_COUNTRY_CODES, paymentMethods: ["card"], active: true, sortOrder: 10 },
-  { key: "GLOBAL", name: "Everywhere else", currency: "USD", countries: [], paymentMethods: ["card"], active: true, sortOrder: 20 },
+  comingSoon("WEST_AFRICA", "West Africa", 30, ["NG", "GH", "CI", "SN", "ML", "BF", "NE", "GN", "GW", "SL", "LR", "TG", "BJ", "GM", "CV", "MR", "SH"]),
+  comingSoon("SOUTHERN_AFRICA", "Southern Africa", 40, ["ZA", "NA", "BW", "LS", "SZ", "ZW", "ZM", "MW", "MZ", "AO", "MG", "MU", "SC", "KM", "RE", "YT"]),
+  comingSoon("NORTH_AFRICA", "Northern Africa", 50, ["EG", "LY", "TN", "DZ", "MA", "SD", "EH"]),
+  comingSoon("CENTRAL_AFRICA", "Central Africa", 55, ["CM", "CF", "TD", "CG", "GQ", "GA", "ST"]),
+  comingSoon("EUROPE", "Europe", 60, ["AD", "AL", "AT", "AX", "BA", "BE", "BG", "BY", "CH", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FO", "FR", "GB", "GG", "GI", "GR", "HR", "HU", "IE", "IM", "IS", "IT", "JE", "LI", "LT", "LU", "LV", "MC", "MD", "ME", "MK", "MT", "NL", "NO", "PL", "PT", "RO", "RS", "RU", "SE", "SI", "SJ", "SK", "SM", "UA", "VA", "XK"]),
+  comingSoon("ASIA", "Asia", 70, ["AE", "AF", "AM", "AZ", "BD", "BH", "BN", "BT", "CN", "GE", "HK", "ID", "IL", "IN", "IQ", "IR", "JO", "JP", "KG", "KH", "KP", "KR", "KW", "KZ", "LA", "LB", "LK", "MM", "MN", "MO", "MV", "MY", "NP", "OM", "PH", "PK", "PS", "QA", "SA", "SG", "SY", "TH", "TJ", "TL", "TM", "TR", "TW", "UZ", "VN", "YE"]),
+  comingSoon("OCEANIA", "Australia and Oceania", 80, ["AU", "NZ", "FJ", "PG", "SB", "VU", "NC", "PF", "WS", "TO", "KI", "TV", "NR", "PW", "FM", "MH", "AS", "GU", "MP", "CK", "NU", "TK", "WF", "NF", "PN", "CC", "CX"]),
+  comingSoon("NORTH_AMERICA", "North America", 90, ["US", "CA", "MX", "GL", "BM", "PM", "GT", "BZ", "SV", "HN", "NI", "CR", "PA", "CU", "JM", "HT", "DO", "PR", "BS", "BB", "TT", "AG", "DM", "GD", "KN", "LC", "VC", "AI", "AW", "BL", "BQ", "CW", "KY", "MF", "MQ", "GP", "MS", "SX", "TC", "VG", "VI"]),
+  comingSoon("SOUTH_AMERICA", "South America", 100, ["AR", "BO", "BR", "CL", "CO", "EC", "GY", "PY", "PE", "SR", "UY", "VE", "GF", "FK"]),
+  { key: "GLOBAL", name: "Rest of the world", currency: "USD", countries: [], paymentMethods: ["card"], active: true, sortOrder: 900 },
 ];
 
 /** Defaults of the admin settings the card prices are computed from (Admin -> Settings). */
@@ -62,6 +104,9 @@ export const COUNTRY_TIMEZONES: Record<string, string> = {
   SS: "Africa/Juba",
   CD: "Africa/Kinshasa",
   SO: "Africa/Mogadishu",
+  ET: "Africa/Addis_Ababa",
+  DJ: "Africa/Djibouti",
+  ER: "Africa/Asmara",
 };
 
 export function timezoneForCountryName(name: string | null | undefined): string | null {
@@ -96,14 +141,30 @@ export function currencyNote(currency: string, methods: readonly string[]): stri
   return `Prices are in ${currency}, paid by ${how}. Pay yearly and save.`;
 }
 
-/** The region of an ISO country code: the active region that lists it, else the one with no countries (GLOBAL). */
+/**
+ * The region of an ISO country code: the LIVE region that lists it, else the catch-all (no countries, GLOBAL).
+ * Precedence, for data where a country sits in two live regions (the admin refuses that, so only older rows): the most
+ * specific region wins, i.e. the one with the fewest countries, then the lower sort order. A country listed only by a
+ * COMING_SOON region, an unknown code or no code at all gets the catch-all.
+ */
 export function regionKeyForCountryCode(code: string | null | undefined, regions: RegionInfo[] = REGION_SEEDS): string {
+  return regionForCountryCode(code, regions)?.key ?? DEFAULT_REGION_KEY;
+}
+
+/** Same, as the region itself (null only when there is no live catch-all either). */
+export function regionForCountryCode(code: string | null | undefined, regions: RegionInfo[]): RegionInfo | null {
   const c = (code ?? "").toUpperCase();
   const active = regions.filter((r) => r.active);
-  const hit = c ? active.find((r) => r.countries.includes(c)) : undefined;
-  if (hit) return hit.key;
-  const rest = active.find((r) => r.countries.length === 0);
-  return rest?.key ?? DEFAULT_REGION_KEY;
+  const hits = c ? active.filter((r) => r.countries.includes(c)) : [];
+  if (hits.length > 0) return [...hits].sort((a, b) => a.countries.length - b.countries.length || a.sortOrder - b.sortOrder)[0];
+  return active.find((r) => r.countries.length === 0) ?? null;
+}
+
+/** The COMING_SOON region that lists a country (for "BuPulse is coming to West Africa"), or null. */
+export function comingSoonRegionFor(code: string | null | undefined, regions: RegionInfo[]): RegionInfo | null {
+  const c = (code ?? "").toUpperCase();
+  if (!c) return null;
+  return regions.find((r) => !r.active && r.countries.includes(c)) ?? null;
 }
 
 export function countryCodeForName(name: string | null | undefined): string | null {

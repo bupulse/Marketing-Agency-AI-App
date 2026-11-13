@@ -1,10 +1,10 @@
-import { ArrowLeft, Search } from "lucide-react";
-import Link from "next/link";
+import { Search } from "lucide-react";
+import type { ReactNode } from "react";
 import { EmptyState } from "@/components/app/empty-state";
-import { PageHeader } from "@/components/app/page-header";
+import { FilterChips, KitStyles, PageHeader } from "@/components/admin/kit";
 import { campaignActor, creatorsGate } from "@/components/creators/company/campaign-page";
 import { CreatorFinder } from "@/components/creators/company/finder";
-import { Button, GlassCard, Input, Select } from "@/components/ui";
+import { Button, GlassCard, Input } from "@/components/ui";
 import { formatCompact } from "@/components/analytics/format";
 import { PLATFORM_LABEL, PLATFORMS } from "@/lib/creators/company-forms";
 import { findCreators, FOLLOWER_STEPS, readFinderFilters, type FinderFilters } from "@/lib/creators/finder";
@@ -32,54 +32,40 @@ export default async function FindCreatorsPage({ searchParams }: PageProps<"/das
   const filters = readFinderFilters(await searchParams);
   const [{ creators, hasMore }, campaigns] = await Promise.all([findCreators(actor, filters), offerCampaigns(actor)]);
   const filtered = Boolean(filters.platform || filters.minFollowers || filters.maxFollowers || filters.location || filters.verified);
+  const sp = Object.fromEntries(Object.entries({ platform: filters.platform ?? "", min: filters.minFollowers ? String(filters.minFollowers) : "", max: filters.maxFollowers ? String(filters.maxFollowers) : "", location: filters.location, verified: filters.verified ? "1" : "" }).filter(([, v]) => v));
+  const base = "/dashboard/creators/find";
   return (
     <div className="flex flex-col gap-6">
-      <Link href="/dashboard/creators" className="inline-flex min-h-11 items-center gap-1.5 self-start px-1 text-[15px] font-medium text-muted no-underline hover:text-text">
-        <ArrowLeft aria-hidden className="size-4" /> All campaigns
-      </Link>
-      <PageHeader title="Find creators" description="Creators who chose to be found by companies on BuPulse. Invite one to a live or draft campaign: they accept or decline in their creator account." />
-      <GlassCard className="p-4 sm:p-5">
-        <form role="search" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1.3fr_auto_auto] lg:items-end">
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Platform
-            <Select name="platform" defaultValue={filters.platform ?? ""}>
-              <option value="">Any platform</option>
-              {PLATFORMS.map((p) => (
-                <option key={p} value={p}>{PLATFORM_LABEL[p]}</option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Followers from
-            <Select name="min" defaultValue={filters.minFollowers ? String(filters.minFollowers) : ""}>
-              <option value="">Any</option>
-              {FOLLOWER_STEPS.map((n) => (
-                <option key={n} value={n}>{formatCompact(n)}</option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Followers up to
-            <Select name="max" defaultValue={filters.maxFollowers ? String(filters.maxFollowers) : ""}>
-              <option value="">Any</option>
-              {FOLLOWER_STEPS.map((n) => (
-                <option key={n} value={n}>{formatCompact(n)}</option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
+      <KitStyles />
+      <PageHeader icon={Search} title="Find creators" description="Creators who chose to be found on BuPulse. Invite one to a campaign: they accept or decline in their creator account." back={{ href: "/dashboard/creators", label: "All campaigns" }} />
+      <GlassCard className="flex flex-col gap-4 p-4 sm:p-5">
+        <FilterRow label="Posts on">
+          <FilterChips label="Platform" param="platform" base={base} params={sp} current={filters.platform ?? ""} options={[{ value: "", label: "Any platform" }, ...PLATFORMS.map((p) => ({ value: p, label: PLATFORM_LABEL[p] }))]} />
+        </FilterRow>
+        <FilterRow label="At least">
+          <FilterChips label="Followers from" param="min" base={base} params={sp} current={filters.minFollowers ? String(filters.minFollowers) : ""} options={[{ value: "", label: "Any" }, ...FOLLOWER_STEPS.map((n) => ({ value: String(n), label: `${formatCompact(n)} followers` }))]} />
+        </FilterRow>
+        <FilterRow label="At most">
+          <FilterChips label="Followers up to" param="max" base={base} params={sp} current={filters.maxFollowers ? String(filters.maxFollowers) : ""} options={[{ value: "", label: "Any" }, ...FOLLOWER_STEPS.map((n) => ({ value: String(n), label: `${formatCompact(n)} followers` }))]} />
+        </FilterRow>
+        <FilterRow label="Accounts">
+          <FilterChips label="Verified" param="verified" base={base} params={sp} current={filters.verified ? "1" : ""} options={[{ value: "", label: "All creators" }, { value: "1", label: "Verified only" }]} />
+        </FilterRow>
+        <form role="search" className="flex flex-wrap items-end gap-2">
+          {Object.entries(sp)
+            .filter(([k]) => k !== "location")
+            .map(([k, v]) => (
+              <input key={k} type="hidden" name={k} value={v} />
+            ))}
+          <label className="flex min-w-0 flex-1 basis-56 flex-col gap-1 text-sm font-medium">
             Location
             <Input name="location" defaultValue={filters.location} placeholder="Kigali, Musanze…" maxLength={60} />
           </label>
-          <label className="flex min-h-11 items-center gap-2 text-[15px]">
-            <input type="checkbox" name="verified" value="1" defaultChecked={filters.verified} className="size-5" />
-            Verified only
-          </label>
-          <Button type="submit" leading={<Search aria-hidden className="size-4" />}>
-            Show
+          <Button type="submit" variant="outline" leading={<Search aria-hidden className="size-4" />}>
+            Search
           </Button>
         </form>
-        <p className="mt-3 text-[13px] text-muted">Verified: the creator connected that account to BuPulse, so its views are real readings. Records count every BuPulse campaign, without other companies&apos; names or pay.</p>
+        <p className="text-[13px] text-muted">Verified: the creator connected that account to BuPulse, so its views are real readings. Records count every BuPulse campaign, without other companies&apos; names or pay.</p>
       </GlassCard>
       {creators.length === 0 ? (
         <EmptyState
@@ -97,6 +83,16 @@ export default async function FindCreatorsPage({ searchParams }: PageProps<"/das
           {hasMore && <Button href={hrefOf(filters, filters.page + 1)} variant="outline">Next</Button>}
         </nav>
       )}
+    </div>
+  );
+}
+
+/** One filter: a short name on the left (above on a phone) and its chips. */
+function FilterRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+      <span className="w-24 shrink-0 text-[13px] font-semibold text-muted">{label}</span>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }

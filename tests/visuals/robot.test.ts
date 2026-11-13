@@ -80,7 +80,7 @@ describe("claiming videos", () => {
     expect(lease.data.robotJobId).toBe(jobs[0].job);
     // The attempt counts from the claim, so a run killed mid-render still counts toward the 3.
     expect(lease.data.robotAttempts).toEqual({ increment: 1 });
-    expect(mocks.prepareVideoUpload).toHaveBeenCalledWith({ userId: U, businessId: "b1", service: true }, "v1", { bytes: 8 * 1024 * 1024, mimeType: "video/mp4", durationMs: 12_000 });
+    expect(mocks.prepareVideoUpload).toHaveBeenCalledWith({ userId: U, businessId: "b1", service: true }, "v1", { bytes: 8 * 1024 * 1024, mimeType: "video/mp4", durationMs: 12_000 }, { variant: true });
     expect(jobs[0].upload).toEqual({ url: "https://storage.example/upload?token=t", contentType: "video/mp4" });
     expect(Object.keys(jobs[0].photoUrls).sort()).toEqual([design, own].sort());
     // No database ids or storage paths outside the signed URLs.

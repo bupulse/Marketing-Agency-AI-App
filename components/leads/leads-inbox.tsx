@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { changeStatus, removeLeads } from "@/app/dashboard/leads/actions";
-import { Badge, Button, Dialog, GlassCard, Input, Select, useToast } from "@/components/ui";
+import { ChoiceChips } from "@/components/app/kit/c-choice";
+import { Badge, Button, Dialog, GlassCard, Input, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { LEAD_STATUSES, STATUS_LABELS, sourceLabel, type LeadFilters, type LeadStatusValue } from "@/lib/leads/filters";
 import { STATUS_TONE, timeAgo, type InboxLead } from "./format";
@@ -118,62 +119,42 @@ export function LeadsInbox({ leads: initial, total, hasMore, limit, counts, sour
   return (
     <div className="flex flex-col gap-4">
       <GlassCard className="flex flex-col gap-3 p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-0 flex-1 basis-56">
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
             <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted" />
             <Input type="search" aria-label="Search leads" placeholder="Search name, email, phone, interest" value={query} onChange={(e) => onSearch(e.target.value)} className="pl-10" />
           </div>
-          {sources.length > 1 && (
-            <div className="w-44 max-w-full">
-              <Select aria-label="Source" value={filters.source ?? ""} onChange={(e) => navigate({ source: e.target.value || null })}>
-                <option value="">All sources</option>
-                {sources.map((s) => (
-                  <option key={s} value={s}>
-                    {sourceLabel(s)}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )}
-          <Button variant="outline" size="sm" href={`/api/leads/export${exportQuery ? `?${exportQuery}` : ""}`} leading={<Download aria-hidden className="size-4" />} download>
-            Export CSV
+          <Button variant="outline" size="sm" href={`/api/leads/export${exportQuery ? `?${exportQuery}` : ""}`} leading={<Download aria-hidden className="size-4" />} download aria-label="Export CSV">
+            <span className="max-sm:hidden">Export CSV</span>
           </Button>
         </div>
-        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="Status">
-          {(["ALL", ...LEAD_STATUSES] as const).map((s) => {
-            const active = (filters.status ?? "ALL") === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={active}
-                onClick={() => navigate({ status: s === "ALL" ? null : s })}
-                className={cn(
-                  "inline-flex min-h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-4 text-[14px] font-medium whitespace-nowrap transition-colors",
-                  active ? "border-transparent bg-brand-gradient text-white" : "border-line text-text hover:bg-soft",
-                )}
-              >
-                {s === "ALL" ? "All" : STATUS_LABELS[s]}
-                <span className={cn("text-[12px]", active ? "text-white/80" : "text-muted")}>{counts[s]}</span>
-              </button>
-            );
-          })}
-        </div>
+        <ChoiceChips
+          label="Status"
+          value={filters.status ?? "ALL"}
+          onChange={(s) => navigate({ status: s === "ALL" ? null : s })}
+          options={(["ALL", ...LEAD_STATUSES] as const).map((s) => ({ value: s, label: s === "ALL" ? "All" : STATUS_LABELS[s], count: counts[s] }))}
+        />
+        {sources.length > 1 && (
+          <ChoiceChips
+            label="Source"
+            value={filters.source ?? ""}
+            onChange={(s) => navigate({ source: s || null })}
+            options={[{ value: "", label: "Every source" }, ...sources.map((s) => ({ value: s, label: sourceLabel(s) }))]}
+          />
+        )}
       </GlassCard>
 
       {selected.size > 0 && (
         <GlassCard strong className="sticky top-2 z-10 flex flex-wrap items-center gap-2 p-3" role="region" aria-label="Bulk actions">
           <span className="px-2 text-[14px] font-semibold">{selected.size} selected</span>
           {!readOnly && (
-            <div className="w-40">
-              <Select aria-label="Change status of selected" value="" disabled={busy} onChange={(e) => e.target.value && void bulkStatus(e.target.value as LeadStatusValue)}>
-                <option value="">Mark as…</option>
-                {LEAD_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </Select>
+            <div role="group" aria-label="Mark the selected leads as" className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[13px] text-muted">Mark as</span>
+              {LEAD_STATUSES.map((s) => (
+                <Button key={s} variant="outline" size="sm" disabled={busy} onClick={() => void bulkStatus(s)}>
+                  {STATUS_LABELS[s]}
+                </Button>
+              ))}
             </div>
           )}
           <Button variant="outline" size="sm" leading={<Trash2 aria-hidden className="size-4" />} onClick={() => setConfirmDelete(true)} disabled={busy}>
@@ -186,7 +167,7 @@ export function LeadsInbox({ leads: initial, total, hasMore, limit, counts, sour
       )}
 
       <div className={cn("grid items-start gap-4", open && "lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]")}>
-        <GlassCard as="section" aria-label="Leads" className="flex min-w-0 flex-col p-2 sm:p-3">
+        <GlassCard as="section" aria-label="Leads" className="kit-rise flex min-w-0 flex-col p-2 sm:p-3">
           {leads.length === 0 ? (
             <p className="px-3 py-10 text-center text-[15px] text-muted">
               {filtered ? "No leads match these filters." : "No leads yet."}{" "}
@@ -212,7 +193,7 @@ export function LeadsInbox({ leads: initial, total, hasMore, limit, counts, sour
                   const contact = [l.email, l.phone].filter(Boolean).join(" · ") || "No contact details";
                   const what = l.interest ?? l.message;
                   return (
-                    <li key={l.id} className={cn("flex items-stretch gap-1 rounded-2xl", l.id === openId ? "bg-soft" : "hover:bg-soft")}>
+                    <li key={l.id} className={cn("flex items-stretch gap-1 rounded-2xl transition-colors duration-150 motion-reduce:transition-none", l.id === openId ? "bg-pulse-blue/[0.07] ring-2 ring-pulse-blue/40 dark:bg-pulse-blue/15" : "hover:bg-soft")}>
                       <label className="flex w-11 shrink-0 cursor-pointer items-center justify-center">
                         <span className="sr-only">Select {l.name ?? "lead"}</span>
                         <input type="checkbox" className="size-5 cursor-pointer accent-[var(--color-pulse-blue)]" checked={selected.has(l.id)} onChange={() => toggle(l.id)} />

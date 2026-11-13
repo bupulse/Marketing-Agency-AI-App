@@ -128,7 +128,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   return (
     <HostsProvider {...hosts}>
-      <BackgroundBlobs />
+      {/* No colour blobs behind the dashboard: plain grey with calm white cards (owner: "simple and neat"). */}
       <PhoneAppSetup />
       <AppShell
         switcher={switcher}

@@ -13,7 +13,7 @@ import { formatBytes, formatDuration, MEDIA_MAX_ASSETS, MEDIA_MAX_TOTAL_BYTES, U
 import type { GalleryOverview, MediaItem } from "@/lib/media/service";
 import type { PhotoAlbums } from "@/lib/media/albums";
 import { DestinationDialog } from "./destination-dialog";
-import { GalleryThumb } from "./media-thumb";
+import { MediaTile } from "@/components/media-cards";
 import { ImportMenu } from "./import-menu";
 import { UploadProgress } from "./upload-progress";
 import { useGalleryUpload } from "./use-gallery-upload";
@@ -35,6 +35,12 @@ const HOME = "/dashboard/gallery";
  * "none", a folder id, or "product:<id>" / "campaign:<id>" for an album (lib/media/destinations.ts parseFilter).
  * Uploads go to the open folder or album; from "All photos" or "Not in a folder" the person picks a destination first.
  */
+/** Folder and album chips, in the kit's look (components/admin/kit FilterChips): a ring and a tick when chosen. */
+const FOLDER_CHIP =
+  "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border-2 px-4 text-[14px] font-semibold whitespace-nowrap no-underline transition-[border-color,background-color,transform] duration-200 hover:-translate-y-px motion-reduce:transform-none motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pulse-blue/30";
+const FOLDER_ON = "border-pulse-blue bg-pulse-blue/[0.08] text-text dark:bg-pulse-blue/15";
+const FOLDER_OFF = "border-line bg-surface text-muted hover:border-pulse-blue/40 hover:text-text dark:bg-white/[0.03]";
+
 export function GalleryView({ folder, overview, initialItems, initialCursor }: { folder: string; overview: GalleryOverview; initialItems: MediaItem[]; initialCursor: string | null }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -234,19 +240,17 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
             key={c.href}
             href={c.href}
             aria-current={c.active ? "page" : undefined}
-            className={cn(
-              "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-[15px] font-medium whitespace-nowrap transition-[background-color,transform] duration-300 hover:-translate-y-0.5 motion-reduce:hover:translate-y-0",
-              c.active ? "bg-brand-gradient text-white" : "glass text-text",
-            )}
+            className={cn(FOLDER_CHIP, c.active ? FOLDER_ON : FOLDER_OFF)}
           >
+            {c.active && <Check aria-hidden className="kit-pop size-3.5 text-pulse-blue" strokeWidth={3} />}
             {c.label}
-            <span className={cn("text-[13px]", c.active ? "text-white/80" : "text-muted")}>{c.count}</span>
+            <span className={cn("rounded-full px-1.5 text-[12px] tabular-nums", c.active ? "bg-pulse-blue text-white" : "bg-soft text-muted")}>{c.count}</span>
           </Link>
         ))}
         <button
           type="button"
           onClick={() => setDialog({ kind: "newFolder" })}
-          className="inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-dashed border-line px-4 text-[15px] font-medium text-muted hover:bg-soft hover:text-text"
+          className="inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full border-2 border-dashed border-line px-4 text-[14px] font-semibold text-muted hover:border-pulse-blue/40 hover:text-text"
         >
           <FolderPlus aria-hidden className="size-4" />
           New folder
@@ -260,14 +264,11 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
               key={c.href}
               href={c.href}
               aria-current={c.active ? "page" : undefined}
-              className={cn(
-                "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-[15px] font-medium whitespace-nowrap",
-                c.active ? "bg-brand-gradient text-white" : "border border-line text-text hover:bg-soft",
-              )}
+              className={cn(FOLDER_CHIP, c.active ? FOLDER_ON : FOLDER_OFF)}
             >
-              <Package aria-hidden className="size-4" />
+              {c.active ? <Check aria-hidden className="kit-pop size-3.5 text-pulse-blue" strokeWidth={3} /> : <Package aria-hidden className="size-4" />}
               {c.label}
-              <span className={cn("text-[13px]", c.active ? "text-white/80" : "text-muted")}>{c.count}</span>
+              <span className={cn("rounded-full px-1.5 text-[12px] tabular-nums", c.active ? "bg-pulse-blue text-white" : "bg-soft text-muted")}>{c.count}</span>
             </Link>
           ))}
         </nav>
@@ -306,21 +307,15 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
             {items.map((item, i) => {
               const on = selected.has(item.id);
               return (
-                <li key={item.id} className="animate-pop group relative" style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}>
-                  <button
-                    type="button"
+                <li key={item.id} className="group relative">
+                  <MediaTile
+                    index={i}
+                    item={{ url: item.url, kind: item.kind, poster: item.posterUrl, durationMs: item.durationMs }}
+                    label={item.name}
+                    selected={on}
                     onClick={() => (selecting ? toggle(item.id) : setViewing(item.id))}
-                    aria-label={selecting ? `${on ? "Deselect" : "Select"} ${item.name}` : `Open ${item.name}`}
-                    className={cn(
-                      "relative block aspect-square w-full cursor-pointer overflow-hidden rounded-2xl bg-soft ring-2 transition-[box-shadow] duration-300",
-                      on ? "ring-pulse-blue" : "ring-transparent",
-                    )}
-                  >
-                    <GalleryThumb item={item} alt="" className={cn("transition-transform duration-500 ease-out-soft group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100", on && "scale-95")} />
-                    <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/55 to-transparent px-3 pt-6 pb-2 text-left text-xs font-medium text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100 max-sm:hidden">
-                      {item.name}
-                    </span>
-                  </button>
+                    ariaLabel={selecting ? `${on ? "Deselect" : "Select"} ${item.name}` : `Open ${item.name}`}
+                  />
                   <button
                     type="button"
                     role="checkbox"
