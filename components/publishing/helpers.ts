@@ -17,8 +17,15 @@ export function formatTime(iso: string | Date, zone: string): string {
   return fmt(zone, { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 }
 
-export function formatDateTime(iso: string | Date, zone: string): string {
-  return fmt(zone, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+/**
+ * "Mon, Oct 5, 9:00 AM"; with the year when it is not this year ("Mon, Mar 1, 2027, 2:00 PM"), so a post planned for
+ * next year never reads as this year's.
+ */
+export function formatDateTime(iso: string | Date, zone: string, now: Date = new Date()): string {
+  const date = new Date(iso);
+  const year = fmt(zone, { year: "numeric" });
+  const other = year.format(date) !== year.format(now);
+  return fmt(zone, { weekday: "short", month: "short", day: "numeric", ...(other ? { year: "numeric" } : {}), hour: "numeric", minute: "2-digit" }).format(date);
 }
 
 /** "Mon, Oct 5" for a day key (a calendar date, no zone involved). */
