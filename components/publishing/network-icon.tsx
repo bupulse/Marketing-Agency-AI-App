@@ -1,3 +1,4 @@
+import { AvatarImage } from "@/components/ui/avatar-image";
 import { cn } from "@/lib/cn";
 import type { Network } from "@/lib/social/types";
 
@@ -76,17 +77,14 @@ export function NetworkIcon({ network, size = 20, className }: { network: Networ
 export function AccountAvatar({ network, name, src, size = 44 }: { network: Network; name: string; src?: string | null; size?: number }) {
   // "LinkedIn · Acme" (a LinkedIn Page, lib/social/choices.ts) shows the Page's letter, not the network's.
   const initial = (name.split(" · ").pop() ?? name).trim()[0]?.toUpperCase() ?? "?";
+  const letters = (
+    <span aria-hidden className="inline-flex size-full items-center justify-center rounded-full bg-soft text-sm font-semibold text-muted">
+      {initial}
+    </span>
+  );
   return (
     <span className="relative inline-flex shrink-0" style={{ width: size, height: size }}>
-      {src ? (
-        // Network avatars come from the network's own CDN, which next/image is not configured for.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt="" width={size} height={size} referrerPolicy="no-referrer" className="size-full rounded-full object-cover" />
-      ) : (
-        <span aria-hidden className="inline-flex size-full items-center justify-center rounded-full bg-soft text-sm font-semibold text-muted">
-          {initial}
-        </span>
-      )}
+      {src ? <AvatarImage src={src} size={size} className="size-full rounded-full object-cover" fallback={letters} /> : letters}
       <NetworkIcon network={network} size={Math.round(size * 0.46)} className="absolute -right-1 -bottom-1 ring-2 ring-[var(--bp-bg-solid)]" />
     </span>
   );

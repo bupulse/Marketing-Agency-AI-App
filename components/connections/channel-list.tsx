@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 import { CARD } from "@/components/admin/kit/tones";
 import { Badge, Button, type BadgeTone } from "@/components/ui";
+import { AvatarImage } from "@/components/ui/avatar-image";
 import { cn } from "@/lib/cn";
 import { ConnectDialog } from "./connect-dialog";
 import { DisconnectButton } from "./disconnect-button";
@@ -22,15 +23,12 @@ function status(a: AccountInfo): { label: string; tone: BadgeTone; reconnect: bo
 }
 
 function AccountAvatar({ account, name }: { account: AccountInfo; name: string }) {
-  return account.avatarUrl ? (
-    // Avatars come from each network's CDN, which next/image would need allow-listed one by one.
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={account.avatarUrl} alt="" width={44} height={44} referrerPolicy="no-referrer" className="size-11 shrink-0 rounded-full object-cover" />
-  ) : (
+  const letters = (
     <span aria-hidden className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-soft text-sm font-semibold text-muted">
       {name.replace(/^@/, "").slice(0, 2).toUpperCase()}
     </span>
   );
+  return account.avatarUrl ? <AvatarImage src={account.avatarUrl} size={44} className="size-11 shrink-0 rounded-full object-cover" fallback={letters} /> : letters;
 }
 
 function AccountRow({ account, variant }: { account: AccountInfo; variant?: string }) {
