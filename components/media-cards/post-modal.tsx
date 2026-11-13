@@ -184,7 +184,8 @@ function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 
               }}>
                 {versions.map((v, i) => (
                   <button
-                    key={v.platform}
+                    // Not the platform alone: two versions may share one (a Facebook post and a Facebook carousel).
+                    key={`${v.platform}-${i}`}
                     type="button"
                     role="tab"
                     aria-selected={i === tab}
@@ -193,7 +194,7 @@ function Modal({ posts, index, onIndexChange, onClose, actionsFor, startSlide = 
                     className={cn("inline-flex min-h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition-[background-color,color,box-shadow] duration-300", i === tab ? "bg-surface text-text shadow-sm dark:bg-white/15" : "text-muted hover:text-text")}
                   >
                     <NetworkIcon network={v.platform} size={18} />
-                    {networkName(v.platform)}
+                    {("label" in v && v.label) || networkName(v.platform)}
                   </button>
                 ))}
               </div>

@@ -19,6 +19,7 @@ import {
 } from "@/app/dashboard/calendar/actions";
 import { PostWriting } from "@/components/content-flow/post-writing";
 import { PostModal, contentPostView, type PostDetailView, type Platform } from "@/components/media-cards";
+import { distinctLabels } from "@/components/media-cards/helpers";
 import { WhatsAppShare } from "@/components/share/whatsapp-share";
 import { postShareCaption } from "@/lib/share/whatsapp";
 import { EDITABLE, STATUS_LABEL } from "@/lib/publishing/status";
@@ -27,6 +28,9 @@ import type { CalendarPost, PostOutcome } from "@/lib/publishing/types";
 import { formatDateTime } from "./helpers";
 import { networkName } from "./network-icon";
 import { ResultsPanel } from "./post-results";
+
+/** How a format reads next to its app when two versions share one ("Facebook · Carousel"). */
+const FORMAT_WORD: Record<string, string> = { POST: "Post", CAROUSEL: "Carousel", SCRIPT: "Video script", ARTICLE: "Article", THREAD: "Thread" };
 
 type Props = {
   post: CalendarPost | null;
@@ -51,12 +55,13 @@ export function detailView(post: CalendarPost, zone: string, group: readonly Cal
   const when = post.status === "PUBLISHED" && post.publishedAt ? `Published ${formatDateTime(post.publishedAt, zone)}` : post.scheduledAt ? formatDateTime(post.scheduledAt, zone) : null;
   const madeBy = post.source === "AUTOPILOT" ? "Autopilot" : post.source === "DAILY" ? "Made for you" : post.source === "STUDIO" ? "Video Studio" : null;
   const others = group.filter((p) => p.id !== post.id && p.network !== post.network);
+  const labels = distinctLabels(others.map((p) => ({ name: networkName(p.network), detail: FORMAT_WORD[p.format] ?? null })));
   return {
     ...view,
     timeLabel: when,
     status: view.status === "reminder" && post.status === "SCHEDULED" ? "scheduled" : view.status,
     statusLabel: STATUS_LABEL[post.status],
-    variants: others.map((p) => ({ platform: p.network as Platform, caption: p.text, hashtags: p.hashtags, status: contentPostView(p, zone).status })),
+    variants: others.map((p, i) => ({ platform: p.network as Platform, caption: p.text, hashtags: p.hashtags, status: contentPostView(p, zone).status, label: labels[i] })),
     details: [
       ...(when ? [{ label: post.status === "PUBLISHED" ? "Posted" : "When", value: when.replace(/^Published /, "") }] : []),
       { label: "App", value: `${networkName(post.network)} · ${post.accountName}` },

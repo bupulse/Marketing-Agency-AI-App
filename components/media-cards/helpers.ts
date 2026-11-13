@@ -218,3 +218,19 @@ export function campaignDayLabel(start: string, end: string, today: string): str
 
 /** The first letter for an avatar without a picture ("LinkedIn · Acme" gives "A"). */
 export const initialOf = (name: string) => (name.split(" · ").pop() ?? name).trim()[0]?.toUpperCase() ?? "?";
+
+/**
+ * Tab names that tell apart two versions on the same app: "Facebook · Carousel" next to "Facebook · Post", and a number
+ * when even that is the same ("Instagram", "Instagram 2"). The opened post showed two identical "Facebook" tabs.
+ */
+export function distinctLabels(items: readonly { name: string; detail?: string | null }[]): string[] {
+  const count = (list: string[], v: string) => list.filter((x) => x === v).length;
+  const names = items.map((i) => i.name);
+  const withDetail = items.map((i) => (count(names, i.name) > 1 && i.detail ? `${i.name} · ${i.detail}` : i.name));
+  const seen = new Map<string, number>();
+  return withDetail.map((label) => {
+    const n = (seen.get(label) ?? 0) + 1;
+    seen.set(label, n);
+    return n > 1 ? `${label} ${n}` : label;
+  });
+}
