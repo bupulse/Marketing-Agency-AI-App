@@ -28,7 +28,7 @@ export type LibraryVideo = {
   id: string;
   source: LibrarySource;
   title: string;
-  /** "motion" | "premium3d" | "seedance" for studio videos, "upload" for uploaded ones. */
+  /** "motion" | "premium3d" | "seedance" for studio videos, "adbrain" for Ad Brain ads, "upload" for uploaded ones. */
   engine: string | null;
   ratio: string;
   durationMs: number | null;
@@ -74,7 +74,8 @@ function jobVideo(j: JobRow, links: { url: string; download: string | null; post
     key: `${upload ? "upload" : "studio"}:${j.id}`,
     id: j.id,
     source: upload ? "upload" : "studio",
-    title: upload ? uploadTitle(j.caption) : (j.product?.name ?? "Studio video"),
+    // Ad Brain videos (lib/ad-brain) are BuPulse's own ads, not about a product.
+    title: upload ? uploadTitle(j.caption) : (j.product?.name ?? (j.engine === "adbrain" ? "BuPulse ad (Ad Brain)" : "Studio video")),
     engine: j.engine,
     ratio: j.ratio,
     durationMs: j.durationMs,

@@ -200,3 +200,35 @@ in the AI ledger as feature `trainingLab`, and the Lab stops by itself when that
 | 3 | 24 Oct 2026 | The same drop after the fix (18:56 CAT): Gemini read the logo and filled in the card correctly (title, how it was made, why it works, techniques, business type); discarded, no file left | 0.0022 | 0.0022 |
 | 4 | 24 Oct 2026 | Walkthrough for the owner (22:44 CAT): Gemini read a sample Kitenge price poster made in the browser and filled in the card; saved to the Lab on the test site with 5 stars and a "never this" line | 0.0023 | 0.0045 |
 | 5 | 24 Oct 2026 | Live walkthrough for the owner (22:53 CAT): Gemini listened to a 3 s sample tone and said, rightly, that it is a whistle with no speech; the transcript and spellings were typed by hand and saved as a Kinyarwanda recording | 0.0014 | 0.0059 |
+
+## Ad Brain (BuPulse's own video ads, November 2026)
+
+The Ad Brain (docs/AD_BRAIN.md) makes BuPulse's own 30 s ads. Limits: **$3 an ad, $30 a month** (Admin -> Settings),
+checked before every paid call. Every call is in the AI ledger as feature `adBrain`, which is kept out of the company
+account's AI allowance; the site-wide cap `AI_MONTHLY_BUDGET_USD` still applies, so raise it before ads run in earnest.
+
+Unit prices used for the limits (`lib/ad-brain/budget.ts`, list prices of 10 Nov 2026; check them against the bills):
+
+| What | Model | Price |
+| --- | --- | --- |
+| Portrait or identity edit | gemini-nano-banana-2.1 | $0.034 an image |
+| AI clip with speech | gemini-omni-1.1-flash | about $0.10 a second (ledger: $0.10, spec: $0.1014) |
+| Music track (about 30 s) | lyria-3-clip-preview | $0.04 a track |
+| Voice line (fallback) | gemini-3.8-flash-tts | about $0.001-0.002 a line (token estimate) |
+| Brief, concept, script, word timings, judge | gemini-3.8-flash | $0.001-0.03 a call |
+
+A typical ad (one actor, two talking clips of 9-10 s, music, a TTS call to action) plans at about **$2.0**; the twist
+format (three identities, four clips, two tracks) about $2.3-2.7.
+
+Paid test calls by the video-engine agent (the coordinator's cap: $1.00 without asking):
+
+| # | Date | What | Provider cost (USD) | Running total |
+| --- | --- | --- | --- | --- |
+| 1 | 11 Nov 2026 | Judge of the cached "Who's real?" ad re-rendered by the production renderer (Gemini 3.8 Flash, 540 px copy) | 0.0058 | 0.0058 |
+| 2 | 11 Nov 2026 | Real brief + concept + two scripts the old parser refused (brain run 1, cancelled) | 0.0580 | 0.0638 |
+| 3 | 11 Nov 2026 | Real brief + concept + script with the fixed parser (brain run 2) | 0.0172 | 0.0809 |
+| 4 | 11 Nov 2026 | One assets pass: Nano Banana portrait, Lyria track, TTS call to action + its word timings | 0.0774 | 0.1583 |
+| 5 | 11 Nov 2026 | One 4 s silent Omni clip from that portrait (47 s wait) | 0.4032 | 0.5615 |
+| 6 | 11 Nov 2026 | Judge calibration: the 4 hand-judged reference ads at 720p, 6 rounds (rubric before and after, two at temperature 0), plus one salon check | 0.1429 | 0.7044 |
+
+The calibrated judge looks twice per ad (two calls at once): about **$0.012 an ad**, measured on the reference ads.

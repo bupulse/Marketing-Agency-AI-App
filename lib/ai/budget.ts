@@ -6,6 +6,9 @@ import { AIProviderError } from "./types";
 import { kigaliMonthOf, kigaliMonthStart } from "@/lib/time/kigali";
 import { VIDEO_LEDGER_PREFIX, isVideoLedgerFeature } from "@/lib/video-engine/ledger-features";
 
+/** The Ad Brain's ledger feature (lib/ad-brain/budget.ts AD_BRAIN_FEATURE): kept out of the company allowance. */
+const AD_BRAIN_LEDGER_FEATURE = "adBrain";
+
 /** Monthly safety cap on BuPulse's own AI spend (AI_MONTHLY_BUDGET_USD, default $20). */
 export function monthlyBudgetUsd(): number {
   const value = Number(process.env.AI_MONTHLY_BUDGET_USD ?? 20);
@@ -158,7 +161,7 @@ export type CompanySpend = { totalUsd: number; widgetUsd: number; ownerUsd: numb
 export async function companySpendThisMonth(businessId: string, now = new Date()): Promise<CompanySpend> {
   const since = monthStart(now);
   const [total, widget] = await Promise.all([
-    prisma.aiCall.aggregate({ where: { businessId, createdAt: { gte: since }, NOT: { feature: { startsWith: VIDEO_LEDGER_PREFIX } } }, _sum: { costUsd: true } }),
+    prisma.aiCall.aggregate({ where: { businessId, createdAt: { gte: since }, NOT: [{ feature: { startsWith: VIDEO_LEDGER_PREFIX } }, { feature: AD_BRAIN_LEDGER_FEATURE }] }, _sum: { costUsd: true } }),
     prisma.aiCall.aggregate({ where: { businessId, feature: WIDGET_FEATURE, createdAt: { gte: since } }, _sum: { costUsd: true } }),
   ]);
   const totalUsd = Number(total._sum.costUsd ?? 0);
@@ -181,6 +184,8 @@ export function companyCallAllowed(spend: CompanySpend, feature: string): boolea
 export async function assertCompanyWithinBudget(businessId: string, provider: string, now = new Date(), feature = ""): Promise<void> {
   // Video Studio calls are paid with video credits (checked before the call, lib/usage.ts): the platform cap still applies.
   if (isVideoLedgerFeature(feature)) return;
+  // The Ad Brain (BuPulse's own ads) has its own limits per ad and per month (lib/ad-brain/budget.ts).
+  if (feature === AD_BRAIN_LEDGER_FEATURE) return;
   if (companyCallAllowed(await companySpendThisMonth(businessId, now), feature)) return;
   throw feature === WIDGET_FEATURE ? new WidgetBudgetExceededError(provider) : new CompanyBudgetExceededError(provider);
 }

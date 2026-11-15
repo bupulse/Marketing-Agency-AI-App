@@ -57,6 +57,11 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   // as input tokens): $17.50 per million output tokens at 5,792 tokens a second of 720p, about $0.10 a second.
   "gemini-omni-1.1-flash": { input: 100_000, output: 0 },
   "veo-3.1-fast-generate": { input: 100_000, output: 0 },
+  // The Ad Brain's media models (docs/AD_BRAIN.md section 4, list prices 10 Nov 2026; verify against the bill):
+  // Nano Banana 2.1 at $0.034 per 1K image, Lyria 3 Clip at $0.04 per 30 s track (recorded as one "image"). Its Gemini
+  // TTS voice is priced with the other TTS models above.
+  "gemini-nano-banana-2.1": { input: 0, output: 0, perImage: 0.034 },
+  "lyria-3-clip": { input: 0, output: 0, perImage: 0.04 },
   "veo-3.1-generate": { input: 400_000, output: 0 },
 };
 

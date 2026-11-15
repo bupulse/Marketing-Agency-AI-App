@@ -1,0 +1,394 @@
+{
+  "formats": [
+    {
+      "id": "identity-twist",
+      "name": "Identity twist reveal (\"you've been watching it\")",
+      "whyItWorks": "Opens like a normal organic post the viewer would watch anyway, then reveals in the last third that the post/graphic/caption they just enjoyed was made by the product. The reveal is the payoff, so people watch to the end and replay. Scored 9/10, our best test. Agencies also rate scenario-first openings and a real reaction pause above scripted pitches; the stale pattern is the ring-light testimonial that reads as an ad in 0.5 s.",
+      "beats": [
+        {
+          "from": 0,
+          "to": 3,
+          "picture": "Actor in a real shop/kitchen, phone selfie framing, holds up phone showing a pretty Instagram post (real screen recording composited)",
+          "speech": "\"Okay, I have to show you this post. It got more comments than anything I've done this year.\""
+        },
+        {
+          "from": 3,
+          "to": 12,
+          "picture": "Actor scrolls the real BuPulse feed/calendar recording; the post, then two more",
+          "speech": "\"And then my friend asked, who is your designer?\" (beat, small laugh)"
+        },
+        {
+          "from": 12,
+          "to": 24,
+          "picture": "Cut to real BuPulse screen: calendar with the posts scheduled, logo on the graphics (real capture, no AI screens)",
+          "speech": "\"Nobody. It writes in my brand voice, puts my logo on it, and it's all in one calendar.\""
+        },
+        {
+          "from": 24,
+          "to": 36,
+          "picture": "Actor back on camera, real reaction face; on-screen text: Instagram, Facebook, LinkedIn",
+          "speech": "\"Instagram, Facebook, LinkedIn, one calendar. I just approve it.\""
+        },
+        {
+          "from": 36,
+          "to": 42,
+          "picture": "Actor to camera, relaxed",
+          "speech": "\"If you want to see it, comment BUPULSE and we'll send you the link.\""
+        }
+      ],
+      "look": "Phone selfie, slightly off-centre, handheld drift, window light, no ring light; unretouched skin; real screen recordings as inserts; captions white bold with dark outline; room tone, no music bed over speech.",
+      "suits": [
+        "digital service/website",
+        "app",
+        "beauty",
+        "food"
+      ],
+      "realVsAi": "Real: every screen, logo, graphic, post, calendar, the reveal facts. AI-ok: the first-frame actor still then animated, room B-roll. Voice: real recorded Kinyarwanda/English, never AI Kinyarwanda.",
+      "bupulseExample": "Shop owner shows a post that got attention, then reveals BuPulse wrote it in her brand voice and designed it with her logo, scheduled from one calendar to Instagram, Facebook and LinkedIn.",
+      "cta": "Comment BUPULSE and we'll send you the link.",
+      "sources": [
+        {
+          "label": "our-tests",
+          "url": "9 test ads, judge scores (owner briefing 2026-11-11)"
+        },
+        {
+          "label": "facebook/tiktok/instagram (agency write-up)",
+          "url": "https://pixis.ai/blog/ugc-in-2026-whats-working-whats-stale-and-how-to-refresh-your-hook-library/"
+        },
+        {
+          "label": "higgsfield",
+          "url": "https://higgsfield.ai/blog/how-to-make-ai-ugc-videos"
+        },
+        {
+          "label": "arcads",
+          "url": "/Users/macbook1/bupulse-ugc-ads/research/digital-product-ugc.md"
+        }
+      ]
+    },
+    {
+      "id": "loop-story",
+      "name": "Loop story (end flows back into the first frame)",
+      "whyItWorks": "The last line completes the first sentence, so the video replays without the viewer noticing, which lifts watch time and replays. Scored 8/10. East African top performers are also 5-6 s loops and calm one-take tours (2.9M views on a 6 s loop in our library).",
+      "beats": [
+        {
+          "from": 0,
+          "to": 4,
+          "picture": "Actor mid-action in kitchen/shop, already talking, unboxing a stack of printed flyers vs a phone",
+          "speech": "\"...and that's the reason I stopped doing my posts at midnight.\""
+        },
+        {
+          "from": 4,
+          "to": 14,
+          "picture": "Cut to her old routine: phone notes, blank screen, tired face (real, acted); on-screen: 'Sunday 11 pm'",
+          "speech": "\"Every Sunday I'd sit with a blank page, what do I even post this week.\""
+        },
+        {
+          "from": 14,
+          "to": 28,
+          "picture": "Real BuPulse Autopilot screen recording: the week planned, one tap approve",
+          "speech": "\"Now Autopilot plans the week and I approve it with one tap.\""
+        },
+        {
+          "from": 28,
+          "to": 38,
+          "picture": "Actor relaxed, shows phone with Monday's posts scheduled (real capture insert)",
+          "speech": "\"Posts go out to Instagram and Facebook by themselves, in my voice.\""
+        },
+        {
+          "from": 38,
+          "to": 43,
+          "picture": "Actor turns to the camera; the frame matches the first frame",
+          "speech": "\"Save this for the next time it's midnight, and...\" (cuts to 0:00 line) "
+        }
+      ],
+      "look": "Single location, one handheld take plus two inserts; the last frame matches the first (same crop, same light); no intro card; caption text same position throughout.",
+      "suits": [
+        "digital service/website",
+        "app",
+        "food",
+        "beauty"
+      ],
+      "realVsAi": "Real: Autopilot screens and the approve tap. AI-ok: first-frame actor and room, the 'old routine' B-roll. Real human voice only.",
+      "bupulseExample": "Owner stops doing posts at midnight; Autopilot plans the week, one-tap approve; ends mid-sentence that connects to the opening line.",
+      "cta": "Save this for later.",
+      "sources": [
+        {
+          "label": "our-tests",
+          "url": "9 test ads, judge scores (owner briefing 2026-11-11)"
+        },
+        {
+          "label": "bupulse-viral",
+          "url": "/Users/macbook1/BuPulse/docs/research/viral/tiktok-notes.md"
+        },
+        {
+          "label": "bupulse-viral",
+          "url": "http://localhost:3100/viral (400 rows: tiktok 100, instagram 100, facebook 100, youtube 100)"
+        },
+        {
+          "label": "bupulse-viral",
+          "url": "/Users/macbook1/BuPulse/lib/video-engine/brain/data/formats.json"
+        }
+      ]
+    },
+    {
+      "id": "split-screen-reveal",
+      "name": "Split-screen reveal (reaction on top, real screen below)",
+      "whyItWorks": "Top half is a person reacting, bottom half is the real screen doing the work. The viewer sees proof and a human reaction at once. Scored 8/10. Arcads' own tooling and our research confirm the standard pattern for digital products: real UI capture plus a separate actor, composited in the edit, because video models draw screens as gibberish.",
+      "beats": [
+        {
+          "from": 0,
+          "to": 3,
+          "picture": "Split: actor top (jaw-drop, phone-framed), bottom shows a real blank calendar; text 'My week of posts. 30 seconds.'",
+          "speech": "\"Watch this. I'm not touching anything.\""
+        },
+        {
+          "from": 3,
+          "to": 15,
+          "picture": "Bottom: real BuPulse screen recording: Autopilot generating the week; top: actor reacting naturally",
+          "speech": "\"It's writing the captions... in my brand voice.\""
+        },
+        {
+          "from": 15,
+          "to": 28,
+          "picture": "Bottom: graphics appear with the logo; top: actor points at screen",
+          "speech": "\"And it designs the graphics with my logo on them.\""
+        },
+        {
+          "from": 28,
+          "to": 37,
+          "picture": "Bottom: tap Approve; calendar fills Instagram/Facebook/LinkedIn",
+          "speech": "\"One tap. That's the whole week, three platforms.\""
+        },
+        {
+          "from": 37,
+          "to": 43,
+          "picture": "Full-frame actor",
+          "speech": "\"Want one? Request a quote and we'll set it up.\""
+        }
+      ],
+      "look": "9:16, 50/50 split, thin divider; actor in phone-selfie framing with imperfect crop; real captures at native resolution (letterbox 'fit' on blurred fill); captions in the actor half's lower third.",
+      "suits": [
+        "digital service/website",
+        "app"
+      ],
+      "realVsAi": "Real: the whole bottom half. AI-ok: top actor (first frame then animate). Real recorded voice.",
+      "bupulseExample": "Actor reacts while the real Autopilot week plans itself and one tap approves it.",
+      "cta": "Request a quote.",
+      "sources": [
+        {
+          "label": "our-tests",
+          "url": "9 test ads, judge scores (owner briefing 2026-11-11)"
+        },
+        {
+          "label": "arcads",
+          "url": "/Users/macbook1/bupulse-ugc-ads/research/digital-product-ugc.md"
+        },
+        {
+          "label": "arcads",
+          "url": "/Users/macbook1/bupulse-ugc-ads/research/code-teardown.md"
+        },
+        {
+          "label": "higgsfield",
+          "url": "https://higgsfield.ai/marketing-studio-intro"
+        }
+      ]
+    },
+    {
+      "id": "sixty-second-challenge",
+      "name": "60-second challenge",
+      "whyItWorks": "A visible clock gives a built-in hook and stakes ('can I do a week of posts in 60 seconds'). Scored 7/10: strong retention but it needs tight editing, and the clock must be honest.",
+      "beats": [
+        {
+          "from": 0,
+          "to": 3,
+          "picture": "Phone on a table, a real timer 01:00 on screen, actor leans in",
+          "speech": "\"One minute. A full week of posts for my shop. Go.\""
+        },
+        {
+          "from": 3,
+          "to": 18,
+          "picture": "Screen recording with timer visible: write posts in brand voice",
+          "speech": "\"First, the captions, in my voice.\""
+        },
+        {
+          "from": 18,
+          "to": 32,
+          "picture": "Screen: graphics with logo generated; timer at 0:30",
+          "speech": "\"Now the graphics, my logo, my colours.\""
+        },
+        {
+          "from": 32,
+          "to": 40,
+          "picture": "Screen: schedule to Instagram, Facebook, LinkedIn; timer stops",
+          "speech": "\"Scheduled. Time check...\" (show true timer)"
+        },
+        {
+          "from": 40,
+          "to": 44,
+          "picture": "Actor shows timer, shrugs",
+          "speech": "\"Comment AD and we'll DM you how.\""
+        }
+      ],
+      "look": "Visible real timer overlay (do not fake the time; speed-ramp is ok if labeled 'sped up'); handheld phone over-the-shoulder shots; natural light.",
+      "suits": [
+        "digital service/website",
+        "app",
+        "food",
+        "beauty"
+      ],
+      "realVsAi": "Real: timer and screen work, actual elapsed time disclosed. AI-ok: actor opening frame only.",
+      "bupulseExample": "Race the clock to plan, design and schedule a week of posts with BuPulse; disclose any speed-up.",
+      "cta": "Comment AD and we'll DM you.",
+      "sources": [
+        {
+          "label": "our-tests",
+          "url": "9 test ads, judge scores (owner briefing 2026-11-11)"
+        },
+        {
+          "label": "tiktok/instagram (agency write-up)",
+          "url": "https://www.fueler.io/blog/ugc-ad-examples-that-convert-like-crazy-breakdown"
+        },
+        {
+          "label": "instagram/tiktok (agency write-up)",
+          "url": "https://www.socialync.io/blog/ugc-examples-that-worked-2026"
+        }
+      ]
+    },
+    {
+      "id": "things-i-wish-i-knew",
+      "name": "Selfie 'things I wish I knew' (store-owner shows)",
+      "whyItWorks": "First-person, mistake-based list that feels like advice from a peer, not an ad: scenario/diagnostic hooks and third-person social proof beat 'this changed my life'. Selfie testimonial scored 6-7/10 in our tests, our weakest, so use it for volume, not as the lead creative.",
+      "beats": [
+        {
+          "from": 0,
+          "to": 3,
+          "picture": "Selfie, walking in her shop, text '3 things I wish I knew about posting'",
+          "speech": "\"Three things I wish somebody told me about posting for my shop.\""
+        },
+        {
+          "from": 3,
+          "to": 14,
+          "picture": "Actor to camera, text '1. Post at lunch'; cut to real calendar insert",
+          "speech": "\"One: be consistent. Mine was random, now it's one calendar.\""
+        },
+        {
+          "from": 14,
+          "to": 26,
+          "picture": "Text '2. Same voice every time'; real post-writing screen",
+          "speech": "\"Two: sound like you. It writes in my brand voice.\""
+        },
+        {
+          "from": 26,
+          "to": 37,
+          "picture": "Text '3. Don't skip leads'; real website chat saving a lead",
+          "speech": "\"Three: the website chat saves leads while I'm busy.\""
+        },
+        {
+          "from": 37,
+          "to": 43,
+          "picture": "Selfie close",
+          "speech": "\"Save this, and tap the link in bio if you want it.\""
+        }
+      ],
+      "look": "Phone selfie handheld, walking, real background noise, ticked-list text top third; no polished lighting.",
+      "suits": [
+        "digital service/website",
+        "app",
+        "beauty",
+        "food",
+        "physical product"
+      ],
+      "realVsAi": "Real: all screens. AI-ok: actor and shop first frame. No fabricated testimonial numbers or reviews.",
+      "bupulseExample": "Three tips: consistency (one calendar), same voice (brand voice), no lost leads (website chat saves them), Kinyarwanda version as a variant.",
+      "cta": "Save this, tap the link in bio.",
+      "sources": [
+        {
+          "label": "our-tests",
+          "url": "9 test ads, judge scores (owner briefing 2026-11-11)"
+        },
+        {
+          "label": "facebook/tiktok/instagram (agency write-up)",
+          "url": "https://pixis.ai/blog/ugc-in-2026-whats-working-whats-stale-and-how-to-refresh-your-hook-library/"
+        },
+        {
+          "label": "higgsfield",
+          "url": "https://higgsfield.ai/blog/how-to-make-ai-ugc-videos"
+        },
+        {
+          "label": "bupulse-viral",
+          "url": "http://localhost:3100/viral (400 rows: tiktok 100, instagram 100, facebook 100, youtube 100)"
+        }
+      ]
+    }
+  ],
+  "ctas": [
+    {
+      "text": "Click the link in bio",
+      "where": "Instagram and TikTok organic; most common in our East Africa library ('Visit Instagram profile', 'Send WhatsApp message' were top)"
+    },
+    {
+      "text": "Comment AD and we'll DM you",
+      "where": "Instagram/Facebook keyword-DM automation; global creators"
+    },
+    {
+      "text": "Request a quote",
+      "where": "Rwanda B2B, our /quote page"
+    },
+    {
+      "text": "Save this for later",
+      "where": "Instagram/TikTok educational and list content"
+    },
+    {
+      "text": "Send this to someone who posts for a shop",
+      "where": "Instagram/TikTok share-driven"
+    },
+    {
+      "text": "Follow for the next part",
+      "where": "TikTok series; global tutorial videos"
+    },
+    {
+      "text": "Message us on WhatsApp",
+      "where": "Rwanda/Uganda/Kenya shops; the largest local CTA"
+    },
+    {
+      "text": "Tap the link, it takes a minute",
+      "where": "Facebook/Reels"
+    },
+    {
+      "text": "Tell me in the comments which one you'd try",
+      "where": "Facebook/Instagram engagement"
+    },
+    {
+      "text": "Try it and tell us what you think",
+      "where": "Soft product demo, TikTok"
+    }
+  ],
+  "realHumanGuide": {
+    "do": [
+      "Cast an ordinary adult with specific age, build, short natural hair or braids, not model-perfect",
+      "Real skin from light, not texture: soft side light, warm undertones, natural sheen on forehead, nose and cheekbones; never ask for pores, blemishes or grain (13 Nov 2026, Higgsfield comparison)",
+      "Exact wardrobe: 'faded green t-shirt with a small stain, plain cap, simple earrings'",
+      "Real Kigali settings: tin-roofed shop, red dust, motorbikes, plastic chairs, wall posters, mixed clutter",
+      "Soft natural window daylight, mixed light, slightly warm, slightly overexposed highlights",
+      "'iPhone front camera selfie, one-hand, slightly shaky, autofocus micro-pulses, no stabilization' (Higgsfield Sora 2 guide)",
+      "Asymmetric framing, partly cut-off head, off-centre subject, occasional soft focus",
+      "Natural gestures, blinks, glances away, small laughs, mid-sentence start",
+      "Generate first frame as a still, approve it, then animate it",
+      "Keep the face identical by pinning one avatar/reference image across clips",
+      "Prompt for ethnicity and place as facts: 'Rwandan woman in her 30s, Kigali market'",
+      "Record real Kinyarwanda voice with a real person; use captions"
+    ],
+    "dont": [
+      "No 'cinematic', 'professional', '8K', 'perfect skin', 'flawless', 'studio lighting', 'ring light'",
+      "No symmetrical centered face with glossy skin and a blurred perfect bokeh background",
+      "No airbrushed teeth, uniform smile, plastic hair, identical twin faces across clips",
+      "No clean empty rooms and spotless kitchens; no logos/text drawn by the model",
+      "No AI-drawn screens or UI; use real recordings only",
+      "No stock-photo African clothing/props or generic 'Africa' backgrounds; use actual local items",
+      "No 12-s pure talking head with no cuts, no breathing, no pause",
+      "No AI Kinyarwanda voice or lip-sync",
+      "No fake reviews, fake stats or fake before/afters",
+      "Negatives to paste: 'no beauty filter, no smoothing, no watermark, no extra fingers, no warped text, no studio backdrop, no stock look'"
+    ]
+  }
+}

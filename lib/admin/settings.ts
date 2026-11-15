@@ -63,6 +63,12 @@ export type Settings = {
   dailyPosts: boolean;
   /** Talking skit videos made with Seedance 2.0 on Higgsfield (lib/skits). Off by default until the owner's lip-sync test: skits then wait as "Voice received". */
   skitVideos: boolean;
+  /** The Ad Brain's spend limit per ad, in USD (docs/AD_BRAIN.md: $3). It stops before passing it and says why. */
+  adBrainPerAdUsd: number;
+  /** The Ad Brain's spend limit per calendar month (UTC), in USD (docs/AD_BRAIN.md: $30). */
+  adBrainMonthlyUsd: number;
+  /** The BuPulse company account's Gallery video space in MB (its Ad Brain ads; owner decision: 1 GB). Others keep MEDIA_COMPANY_VIDEO_MAX_BYTES. */
+  adBrainGalleryVideoMb: number;
   /** BuPulse's TIN at RRA, printed on receipts and invoices. Empty until the owner fills it in. (The VAT rate is per region: PricingRegion.vatRateBps.) */
   vatTin: string;
 };
@@ -87,6 +93,9 @@ const KEYS: Record<SettingName, string> = {
   firstPostPreview: "sales.firstPostPreview",
   dailyPosts: "content.dailyPosts",
   skitVideos: "content.skitVideos",
+  adBrainPerAdUsd: "adBrain.perAdUsd",
+  adBrainMonthlyUsd: "adBrain.monthlyUsd",
+  adBrainGalleryVideoMb: "adBrain.galleryVideoMb",
   vatTin: VAT_SETTING_KEYS.tin,
 };
 
@@ -109,6 +118,9 @@ export const DEFAULT_SETTINGS: Settings = {
   firstPostPreview: false,
   dailyPosts: true,
   skitVideos: false,
+  adBrainPerAdUsd: 3,
+  adBrainMonthlyUsd: 30,
+  adBrainGalleryVideoMb: 1024,
   vatTin: DEFAULT_VAT_SETTINGS.tin,
 };
 
@@ -165,6 +177,9 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   firstPostPreview: (value) => value === true || value === "on" || value === "true" || value === "1",
   dailyPosts: (value) => value === true || value === "on" || value === "true" || value === "1",
   skitVideos: (value) => value === true || value === "on" || value === "true" || value === "1",
+  adBrainPerAdUsd: number("The Ad Brain limit per ad (USD)", 0.5, 50, false),
+  adBrainMonthlyUsd: number("The Ad Brain monthly limit (USD)", 1, 500, false),
+  adBrainGalleryVideoMb: number("BuPulse's own gallery videos (MB)", 100, 10_000),
   vatTin: (value) => {
     const v = String(value ?? "").trim();
     const problem = vatTinProblem(v);

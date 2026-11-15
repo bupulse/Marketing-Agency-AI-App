@@ -4,7 +4,7 @@
 
 export const SETTINGS_BASE = "/admin/settings";
 
-export const SETTINGS_SLUGS = ["momo", "paddle", "vat", "currency", "goal", "content", "voices", "lead-alerts", "google-calendar", "calls", "availability", "trial", "loading"] as const;
+export const SETTINGS_SLUGS = ["momo", "paddle", "vat", "currency", "goal", "content", "voices", "ad-brain", "lead-alerts", "google-calendar", "calls", "availability", "trial", "loading"] as const;
 export type SettingsSlug = (typeof SETTINGS_SLUGS)[number];
 
 export const isSettingsSlug = (v: unknown): v is SettingsSlug => typeof v === "string" && (SETTINGS_SLUGS as readonly string[]).includes(v);
@@ -20,6 +20,7 @@ export const SETTINGS_TITLE: Record<SettingsSlug, string> = {
   goal: "Revenue goal",
   content: "Daily posts and videos",
   voices: "Kinyarwanda and Swahili voices",
+  "ad-brain": "Ad Brain limits",
   "lead-alerts": "Lead alerts on Telegram",
   "google-calendar": "Google Calendar",
   calls: "Demo calls",
@@ -69,6 +70,7 @@ export function settingsBackFor(has: (field: string) => boolean): string {
   if (has("dailyPanel")) return settingsHref("content", "daily-posts");
   if (has("skitPanel")) return settingsHref("content", "skit-videos");
   if (has("previewPanel")) return settingsHref("content", "first-post-preview");
+  if (has("adBrainPerAdUsd") || has("adBrainMonthlyUsd") || has("adBrainGalleryVideoMb")) return settingsHref("ad-brain");
   if (has("vatPanel") || has("vatTin")) return settingsHref("vat");
   if (has("currencyPanel") || has("usdToRwf") || has("cardMarginPercent") || has("displayCurrency") || has("usdToEur")) return settingsHref("currency");
   if (has("revenueGoalRwf") || has("goalStartMonth")) return settingsHref("goal");

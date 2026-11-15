@@ -2,6 +2,7 @@ import { recordCron } from "@/lib/admin/cron-run";
 import { NextResponse, type NextRequest } from "next/server";
 import { logError } from "@/lib/errors";
 import { sweepSkits } from "@/lib/skits/sweep";
+import { sweepAdJobs } from "@/lib/ad-brain/pipeline";
 import { sendReadyNotices } from "@/lib/video-studio/notices";
 import { sweepVideoJobs } from "@/lib/video-studio/sweep";
 
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     await recordCron("video-jobs", async () => {
       // Side by side (they touch different rows): an idle run is a few database round trips, not one after another.
       // A mail problem must not hide the sweep's result: it is logged, and the unsent videos wait for the next run.
-      const [sweep, notices, skits] = await Promise.all([
+      const [sweep, notices, skits, adBrain] = await Promise.all([
         sweepVideoJobs(),
         sendReadyNotices().catch(async (error) => {
           await logError(error, { source: "cron.video-jobs.notices" });
@@ -39,8 +40,13 @@ export async function POST(request: NextRequest) {
           await logError(error, { source: "cron.video-jobs.skits" });
           return null;
         }),
+        // BuPulse's own ads (lib/ad-brain): a minute and a half of steps at most, so the tick is not held up.
+        sweepAdJobs({ budgetMs: 80_000 }).catch(async (error) => {
+          await logError(error, { source: "cron.video-jobs.adBrain" });
+          return null;
+        }),
       ]);
-      return { ...sweep, notices, skits };
+      return { ...sweep, notices, skits, adBrain };
     }),
   );
 }

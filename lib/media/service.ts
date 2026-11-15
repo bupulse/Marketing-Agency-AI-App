@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { albumProblem, DESTINATION_REQUIRED, parseDestination, type AlbumKind, type Destination } from "./destinations";
 import { logError } from "@/lib/errors";
+import { videoMaxFor } from "./company-video-max";
 import {
   assetIdFromPath,
   cleanPhotoName,
@@ -26,7 +27,6 @@ import {
   WEBM_READ_MAX_BYTES,
   POSTER_SERVER_MAX_SIDE,
   isVideoType,
-  companyVideoMaxBytes,
   POSTER_MAX_BYTES,
   posterPathFor,
   sniffVideoType,
@@ -305,7 +305,7 @@ export async function galleryOverview(businessId: string): Promise<GalleryOvervi
     // Photos moved from old projects are in the gallery but do not count toward the quota.
     uncounted: Math.max(0, all - usage.count),
     usage,
-    videos: { bytes: videoBytes, max: companyVideoMaxBytes() },
+    videos: { bytes: videoBytes, max: await videoMaxFor(businessId) },
   };
 }
 
@@ -362,7 +362,7 @@ async function createWithinQuota(data: NewAsset, destination?: Destination, rese
     const problem = quotaProblem(await mediaUsage(data.businessId, tx), { count: 1, bytes: data.bytes });
     if (problem) throw new MediaError(problem);
     if (data.kind === "video") {
-      const videos = videoQuotaProblem(await galleryVideoBytes(data.businessId, tx), data.bytes);
+      const videos = videoQuotaProblem(await galleryVideoBytes(data.businessId, tx), data.bytes, await videoMaxFor(data.businessId));
       if (videos) throw new MediaError(videos);
     }
     await assertPlatformRoom(data.bytes, tx);
@@ -419,7 +419,7 @@ export async function prepareUploads(
   for (const file of files) {
     const type = inferMimeType(file.name, file.type);
     const video = isVideoType(type);
-    const problem = fileProblem(file) ?? quotaProblem(running, { count: 1, bytes: file.size }) ?? (video ? videoQuotaProblem(videoBytes, file.size) : null);
+    const problem = fileProblem(file) ?? quotaProblem(running, { count: 1, bytes: file.size }) ?? (video ? videoQuotaProblem(videoBytes, file.size, await videoMaxFor(businessId)) : null);
     if (problem) {
       results.push({ ok: false, error: problem });
       continue;
@@ -519,7 +519,7 @@ export async function finalizeUpload(
     if (!size || size > VIDEO_MAX_BYTES || size > reservation.bytes) return reject("Each video must be 50 MB or smaller, and the size it was started with.");
     const usage = await mediaUsage(businessId);
     const others = { count: Math.max(0, usage.count - 1), bytes: Math.max(0, usage.bytes - reservation.bytes) };
-    const quota = quotaProblem(others, { count: 1, bytes: size }) ?? videoQuotaProblem(Math.max(0, (await galleryVideoBytes(businessId)) - reservation.bytes), size);
+    const quota = quotaProblem(others, { count: 1, bytes: size }) ?? videoQuotaProblem(Math.max(0, (await galleryVideoBytes(businessId)) - reservation.bytes), size, await videoMaxFor(businessId));
     if (quota) return reject(quota);
     let checked: Awaited<ReturnType<typeof checkVideo>>;
     try {
@@ -831,7 +831,7 @@ export async function importVideo(
   if (!sniffed) throw new MediaError(`${label}: ${UNSUPPORTED_MESSAGE}`);
   const mimeType = storedVideoType(sniffed);
   const destination = await resolveDestination(businessId, input.destination);
-  const problem = quotaProblem(await mediaUsage(businessId), { count: 1, bytes: size }) ?? videoQuotaProblem(await galleryVideoBytes(businessId), size);
+  const problem = quotaProblem(await mediaUsage(businessId), { count: 1, bytes: size }) ?? videoQuotaProblem(await galleryVideoBytes(businessId), size, await videoMaxFor(businessId));
   if (problem) throw new MediaError(problem);
   await assertPlatformRoom(size);
   const durationMs = await videoLengthMs(async (start, length) => bytes.subarray(start, start + length), size, mimeType);

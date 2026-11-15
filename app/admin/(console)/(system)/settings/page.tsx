@@ -49,6 +49,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
         windows: windows.length,
         trialDays: s.trialDays,
         pageLoader: s.pageLoader,
+        adBrainPerAdUsd: s.adBrainPerAdUsd,
+        adBrainMonthlyUsd: s.adBrainMonthlyUsd,
         canRegions: can(me, "plans.manage"),
       }}
     />

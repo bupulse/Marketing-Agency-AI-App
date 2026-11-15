@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { REF_COOKIE, refCookieFor } from "@/lib/sales/ref-cookie";
+import { screenPassGate } from "@/lib/ad-brain/screen-pass-gate";
 import { isSupportPath, supportRewriteUrl, supportRoute } from "@/lib/support/app-host";
 import { AUTH_SCOPE_COOKIE, authCookieFor, authScopeValue, frontOrigin, hostKind, hostRewriteUrl, hostRoute, isSelfFetch, marketingOrigin, requestHost, sameHostRedirect, sessionCookieOptions } from "@/lib/platform/app-hosts";
 
@@ -19,6 +20,11 @@ const HOST_REDIRECT = 307;
 // Routes each host (lib/platform/app-hosts.ts, lib/support/app-host.ts), refreshes the Supabase session cookie on
 // every request and keeps signed-out visitors out of the dashboard.
 export async function proxy(request: NextRequest) {
+  // The Ad Brain's screen robot, first and before any host routing: local (never a self-fetch) + read-only app paths +
+  // company account only (lib/ad-brain/screen-pass-gate.ts). Null when the request carries no screen pass. Keep this
+  // line at the top when proxy.ts is rewritten.
+  const robot = await screenPassGate(request);
+  if (robot) return robot;
   const path = request.nextUrl.pathname;
   // support.bupulse.com serves only the support app: its paths are rewritten under /support (lib/support/app-host.ts).
   const support = supportRoute(path, request.headers.get("host"));
