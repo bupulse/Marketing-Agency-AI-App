@@ -30,8 +30,9 @@ a few days to 2 weeks, App Review about 2 to 3 weeks, one rejection adds about a
   and one document with the same legal name and address (bank statement or utility bill). Confirm by email on the
   bupulse.com domain (or by domain verification: Meta gives a DNS TXT record to add in Cloudflare).
 - [ ] Same legal name and address everywhere: business portfolio, App settings, the privacy page and terms page. **Today
-  the privacy and terms pages say only "BuPulse, Kigali, Rwanda"** (see Step 3). Change that line once the legal name
-  and street address are final.
+  the privacy and terms pages say only "BuPulse, Kigali, Rwanda"** (see Step 3). Once the legal name and street
+  address are final, change `LEGAL_NAME` and `LEGAL_ADDRESS` in `lib/legal/operator.ts` (privacy, terms and
+  data-deletion pages all read it), then deploy.
 - [ ] If the App Dashboard asks for **Access Verification (Tech Provider)** because BuPulse acts for other
   businesses, complete it there (same documents, a short form about how BuPulse serves its clients).
 
