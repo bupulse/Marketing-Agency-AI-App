@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import { getTelegramBot, latestPrivateChat, looksLikeBotToken, sendTelegramMessage, telegramToken } from "@/lib/lead-alerts/telegram";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getTelegramBot, latestPrivateChat, looksLikeBotToken, sendTelegramMessage, telegramRetry, telegramToken } from "@/lib/lead-alerts/telegram";
+
+beforeEach(() => {
+  telegramRetry.delaysMs = [0, 0];
+});
 
 // A made-up token in the shape @BotFather gives.
 const TOKEN = "123456789:AAtest_placeholder_token_000000000000";
@@ -57,6 +61,25 @@ describe("sendTelegramMessage", () => {
       throw new TypeError("fetch failed");
     });
     expect(await sendTelegramMessage({ chatId: "42", text: "hi", token: TOKEN }, fetchImpl as unknown as typeof fetch)).toEqual({ ok: false, error: "Telegram could not be reached." });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("tries again when Telegram could not be reached (a lossy line), and stops once it answers", async () => {
+    let n = 0;
+    const fetchImpl = vi.fn(async () => {
+      n++;
+      if (n === 1) throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
+      if (n === 2) throw new TypeError("fetch failed");
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 7 } }), { status: 200 });
+    });
+    expect(await sendTelegramMessage({ chatId: "42", text: "hi", token: TOKEN }, fetchImpl as unknown as typeof fetch)).toEqual({ ok: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("never retries an answer from Telegram, even an error (it would only fail the same way)", async () => {
+    const fetchImpl = reply({ ok: false, description: "Bad Request: chat not found" }, 400);
+    expect(await sendTelegramMessage({ chatId: "42", text: "hi", token: TOKEN }, fetchImpl as unknown as typeof fetch)).toMatchObject({ ok: false });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
 

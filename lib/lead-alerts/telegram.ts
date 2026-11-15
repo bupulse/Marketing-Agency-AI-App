@@ -6,7 +6,13 @@
 
 export const TELEGRAM_TOKEN_ENV = "TELEGRAM_BOT_TOKEN";
 const API = "https://api.telegram.org";
-const TIMEOUT_MS = 8_000;
+// The office PC's route to api.telegram.org drops about half its packets (Nov 2026), so one 8-second try often timed
+// out. Each try now gets 15 seconds, and a try that timed out or could not connect is made again after 1 s, then 3 s.
+// A Telegram answer (even an error) is never retried. A retried sendMessage can, rarely, arrive twice: a doubled lead
+// alert is better than a missed one.
+const TIMEOUT_MS = 15_000;
+/** Pauses before the 2nd and 3rd try. Tests set them to 0. */
+export const telegramRetry = { delaysMs: [1_000, 3_000] };
 
 type Fetch = typeof fetch;
 
@@ -27,7 +33,19 @@ function cleanError(description: unknown, status: number): string {
   return text ? `Telegram said: ${text}` : `Telegram returned ${status}.`;
 }
 
-async function call<T>(token: string, method: string, body: Record<string, unknown> | null, fetchImpl: Fetch): Promise<{ ok: true; result: T } | { ok: false; error: string }> {
+type CallResult<T> = { ok: true; result: T } | { ok: false; error: string; network?: true };
+
+async function call<T>(token: string, method: string, body: Record<string, unknown> | null, fetchImpl: Fetch): Promise<CallResult<T>> {
+  let r = await callOnce<T>(token, method, body, fetchImpl);
+  for (const delay of telegramRetry.delaysMs) {
+    if (r.ok || !r.network) break;
+    if (delay > 0) await new Promise((done) => setTimeout(done, delay));
+    r = await callOnce<T>(token, method, body, fetchImpl);
+  }
+  return r.ok ? r : { ok: false, error: r.error };
+}
+
+async function callOnce<T>(token: string, method: string, body: Record<string, unknown> | null, fetchImpl: Fetch): Promise<CallResult<T>> {
   try {
     const res = await fetchImpl(`${API}/bot${token}/${method}`, {
       method: body ? "POST" : "GET",
@@ -40,7 +58,7 @@ async function call<T>(token: string, method: string, body: Record<string, unkno
     return { ok: true, result: json.result as T };
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
-    return { ok: false, error: timedOut ? "Telegram did not answer in time." : "Telegram could not be reached." };
+    return { ok: false, network: true, error: timedOut ? "Telegram did not answer in time." : "Telegram could not be reached." };
   }
 }
 
