@@ -387,9 +387,17 @@ export function isSelfFetch(headers: Pick<Headers, "get">): boolean {
   return requestHost(headers) !== headers.get("host");
 }
 
-/** True for Next.js's own data request (client navigation, prefetch, router.refresh): the RSC header or `?_rsc=`. */
+/**
+ * True for a request that is not a page load: Next.js's own data request (client navigation, prefetch, router.refresh).
+ * In production Next.js strips the RSC header and `?_rsc=` before proxy.ts runs (next/dist/server/web/adapter.js,
+ * FLIGHT_HEADERS), so the browser's Sec-Fetch-Mode decides: a page load is "navigate", a fetch is "cors"/"same-origin".
+ * The RSC header and `?_rsc=` still count where they arrive (tests, other runtimes). No Sec-Fetch-Mode (curl, old
+ * browsers): a page load.
+ */
 export function isRscRequest(headers: Pick<Headers, "get">, search: Pick<URLSearchParams, "has">): boolean {
-  return headers.get("rsc") === "1" || search.has("_rsc");
+  if (headers.get("rsc") === "1" || search.has("_rsc")) return true;
+  const mode = headers.get("sec-fetch-mode");
+  return !!mode && mode !== "navigate";
 }
 
 /**

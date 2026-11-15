@@ -203,6 +203,10 @@ describe("with the split on", () => {
     expect(byParam.headers.get("location")).toBeNull();
     const marketing = await proxy(rsc("https://marketing.bupulse.com/dashboard/posts"));
     expect(marketing.headers.get("location")).toBeNull();
+    // In production Next.js strips the RSC header and ?_rsc= before the proxy: the browser's fetch mode is what is left.
+    const fetchMode = (url: string, mode: string) => new NextRequest(url, { headers: { host: new URL(url).host, "sec-fetch-mode": mode } });
+    expect((await proxy(fetchMode("https://admin.bupulse.com/admin/companies?status=ACTIVE", "cors"))).headers.get("location")).toBeNull();
+    expect((await proxy(fetchMode("https://admin.bupulse.com/admin/companies", "navigate"))).headers.get("location")).toBe("https://admin.bupulse.com/companies");
     // A normal page load still gets the clean address, and a data request never crosses hosts silently.
     expect((await proxy(req("https://admin.bupulse.com/admin/music"))).headers.get("location")).toBe("https://admin.bupulse.com/music");
     expect((await proxy(rsc("https://bupulse.com/admin/companies"))).headers.get("location")).toBe("https://admin.bupulse.com/companies");
