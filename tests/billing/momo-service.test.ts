@@ -449,7 +449,13 @@ describe("confirming", () => {
     const { featurePlanKey } = await import("@/lib/entitlements");
     expect(featurePlanKey({ plan: "PRO", status: "ACTIVE", chosenPlan: "STANDARD" })).toBe("PRO");
     const { consumeUsage } = await import("@/lib/usage");
-    await expect(consumeUsage(USER, "text")).resolves.toMatchObject({ periodStart: NOW });
+    // consumeUsage reads the clock: pin it to NOW, or the period rolls over once the real date passes NOW + 1 month.
+    vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+    try {
+      await expect(consumeUsage(USER, "text")).resolves.toMatchObject({ periodStart: NOW });
+    } finally {
+      vi.useRealTimers();
+    }
     // An expired trial (the trial-reminders cron flipped it) is reopened the same way.
     h.db.manualPayment.rows.length = 0;
     h.db.usageRecord.rows.length = 0;
