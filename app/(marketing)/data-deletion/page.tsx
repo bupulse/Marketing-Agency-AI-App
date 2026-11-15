@@ -5,6 +5,7 @@ import { pageMetadata } from "@/components/marketing/pages/seo";
 import { GlassCard } from "@/components/ui";
 import { prisma } from "@/lib/db";
 import { site } from "@/lib/content/site";
+import { LEGAL_OPERATOR } from "@/lib/legal/operator";
 
 export const metadata = pageMetadata({
   title: "Data deletion",
@@ -91,7 +92,7 @@ export default async function DataDeletionPage({ searchParams }: PageProps<"/dat
       </LegalSection>
 
       <LegalSection title="Questions">
-        <p>Email {mail} or write to BuPulse, Kigali, Rwanda.</p>
+        <p>Email {mail} or write to {LEGAL_OPERATOR}.</p>
       </LegalSection>
     </LegalPage>
   );

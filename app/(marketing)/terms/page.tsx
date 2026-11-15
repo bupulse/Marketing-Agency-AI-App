@@ -5,6 +5,7 @@ import { pageMetadata } from "@/components/marketing/pages/seo";
 import { site } from "@/lib/content/site";
 import { getSellablePlans } from "@/lib/plan-catalog";
 import { getSetting } from "@/lib/admin/settings";
+import { LEGAL_OPERATOR } from "@/lib/legal/operator";
 
 // Trial length (an admin setting) and plan prices (the plans an admin manages) are read live; the wording stays as written.
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export default async function TermsPage() {
   return (
     <LegalPage title="Terms of Service" intro="The rules for using BuPulse, in plain English.">
       <p>
-        These terms are an agreement between you and BuPulse, Kigali, Rwanda (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;). By creating an
+        These terms are an agreement between you and {LEGAL_OPERATOR} (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;). By creating an
         account or using bupulse.com or the BuPulse app (the &quot;Service&quot;), you agree to them. If you use BuPulse for a company, you confirm you can
         accept these terms for that company.
       </p>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { LegalList, LegalPage, LegalSection } from "@/components/marketing/pages/legal";
 import { pageMetadata } from "@/components/marketing/pages/seo";
 import { site } from "@/lib/content/site";
+import { LEGAL_OPERATOR } from "@/lib/legal/operator";
 
 export const metadata = pageMetadata({
   title: "Privacy Policy",
@@ -24,7 +25,7 @@ export default function PrivacyPage() {
       intro="We keep this simple: what we collect, why, who sees it, and how you can delete it."
     >
       <p>
-        BuPulse (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;) is operated by BuPulse, Kigali, Rwanda. This policy explains how
+        BuPulse (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;) is operated by {LEGAL_OPERATOR}. This policy explains how
         we handle personal data when you visit bupulse.com or use the BuPulse app (together, the &quot;Service&quot;). If you have a question, email {mail}.
       </p>
 
@@ -214,7 +215,7 @@ export default function PrivacyPage() {
       <LegalSection title="14. Changes and contact">
         <p>
           If we change this policy in a meaningful way, we will update the date above and, where appropriate, notify you. Questions or requests: {mail}
-          {" "}or BuPulse, Kigali, Rwanda.
+          {" "}or {LEGAL_OPERATOR}.
         </p>
       </LegalSection>
     </LegalPage>
