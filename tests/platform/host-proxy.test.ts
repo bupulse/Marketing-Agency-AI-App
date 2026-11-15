@@ -192,6 +192,22 @@ describe("with the split on", () => {
     expect(other.status).toBe(204);
   });
 
+  it("Next.js's data requests (RSC) for an app path on its own host are served, not cleaned again (the 503 loop)", async () => {
+    auth.signedIn = true;
+    const rsc = (url: string) => new NextRequest(url, { headers: { host: new URL(url).host, rsc: "1" } });
+    // Next.js answers a data request for admin.bupulse.com/music with a 307 to /admin/music?_rsc=...; that must not bounce back.
+    const admin = await proxy(rsc("https://admin.bupulse.com/admin/music?notice=Track%20added."));
+    expect(admin.status).not.toBe(307);
+    expect(admin.headers.get("location")).toBeNull();
+    const byParam = await proxy(req("https://admin.bupulse.com/admin/music?_rsc=abc"));
+    expect(byParam.headers.get("location")).toBeNull();
+    const marketing = await proxy(rsc("https://marketing.bupulse.com/dashboard/posts"));
+    expect(marketing.headers.get("location")).toBeNull();
+    // A normal page load still gets the clean address, and a data request never crosses hosts silently.
+    expect((await proxy(req("https://admin.bupulse.com/admin/music"))).headers.get("location")).toBe("https://admin.bupulse.com/music");
+    expect((await proxy(rsc("https://bupulse.com/admin/companies"))).headers.get("location")).toBe("https://admin.bupulse.com/companies");
+  });
+
   it("a forged Host header is just the front host: no redirect anywhere else", async () => {
     const res = await proxy(new NextRequest("https://bupulse.com/dashboard", { headers: { host: "evil.test" } }));
     expect(new URL(res.headers.get("location")!).origin).toBe("https://marketing.bupulse.com");

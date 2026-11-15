@@ -37,8 +37,8 @@ a few days to 2 weeks, App Review about 2 to 3 weeks, one rejection adds about a
 
 ## Step 2. App settings (App Dashboard → App settings → Basic)
 
-- [ ] **App icon** 1024 × 1024 PNG: the real BuPulse logo mark. The repo only has 500 px versions
-  (`public/brand/icon.png`); export a 1024 px one from the original logo file (do not upscale the 500 px PNG).
+- [x] **App icon** 1024 × 1024 PNG: `public/brand/icon-1024.png` (15 November 2026), the white pulse-B mark taken from
+  the 2000 px wordmark (`public/brand/logo.png`, barely enlarged) on the app icon's blue-to-violet gradient. Upload it here.
 - [ ] **Display name** BuPulse. **App domains** `bupulse.com`. **Contact email** `hello@bupulse.com`.
 - [ ] **Category** Business and pages.
 - [ ] **Privacy Policy URL** `https://bupulse.com/privacy`
@@ -65,7 +65,7 @@ a few days to 2 weeks, App Review about 2 to 3 weeks, one rejection adds about a
 | `https://bupulse.com/terms` | 200 | Same legal name/address gap. Also says Paddle and a 3-day free trial, which no longer match Rwanda (MoMo, free quote). Not Meta-blocking. |
 | `https://bupulse.com/data-deletion` | 200 | Good: self-service steps, email request, disconnect a channel, Meta callback, status by code (`?code=` shows "received", "completed" or "could not find"). Instagram's own removal path was wrong ("Business integrations"). **Fixed** (Facebook: Settings & privacy → Settings → Business integrations; Instagram: Settings → Website permissions → Apps and websites). |
 | `/privacy#deletion` | Works once the fix is deployed | |
-| All three pages | | The email address is hidden by **Cloudflare Email Address Obfuscation**: without JavaScript the page shows "[email protected]". Reviewers use a normal browser so it decodes, but automated checks may not see a contact address. Turn it off in Cloudflare → bupulse.com → Scrape Shield → Email Address Obfuscation (owner, 1 click). |
+| All three pages | | The email address is hidden by **Cloudflare Email Address Obfuscation**: without JavaScript the page shows "[email protected]". Reviewers use a normal browser so it decodes, but automated checks may not see a contact address. Turned off 15 November 2026 (Cloudflare → bupulse.com → Security → Settings → Email Address Obfuscation); the pages now carry hello@bupulse.com in plain text. |
 
 The fixes are on branch `meta-review-nov13`. They must be deployed (release zip, owner-confirmed) before submitting.
 

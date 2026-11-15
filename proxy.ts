@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { REF_COOKIE, refCookieFor } from "@/lib/sales/ref-cookie";
 import { screenPassGate } from "@/lib/ad-brain/screen-pass-gate";
 import { isSupportPath, supportRewriteUrl, supportRoute } from "@/lib/support/app-host";
-import { AUTH_SCOPE_COOKIE, authCookieFor, authScopeValue, frontOrigin, hostKind, hostRewriteUrl, hostRoute, isSelfFetch, marketingOrigin, requestHost, sameHostRedirect, sessionCookieOptions } from "@/lib/platform/app-hosts";
+import { AUTH_SCOPE_COOKIE, authCookieFor, authScopeValue, frontOrigin, hostKind, hostRewriteUrl, hostRoute, isRscRequest, isSelfFetch, marketingOrigin, requestHost, sameHostRedirect, sessionCookieOptions } from "@/lib/platform/app-hosts";
 
 const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/start-trial", "/book-demo", "/custom-plan", "/account", "/apps"];
 
@@ -39,9 +39,15 @@ export async function proxy(request: NextRequest) {
   // page, and every Marketing page for a signed-in client, an empty 204 (11 November 2026). A same-host clean-path
   // redirect on a self-fetch is served as it is (the path is already the app's own); any other host redirect is left to
   // the browser.
+  // A same-host clean-path redirect is not given to Next.js's own data requests (RSC, `?_rsc=`) either: Next.js answers a
+  // data request for a rewritten page (admin.bupulse.com/music) with a 307 to the app path (/admin/music?_rsc=...), and
+  // cleaning that again (/admin/music -> /music) looped until Cloudflare gave up with a 503 (15 November 2026: the admin
+  // music upload's router.push looped 300 times; likely the "random 503 on _rsc" behind blank client pages). The app
+  // path is a real page on that host, so it is served as it is; only the address bar keeps the longer form.
   if (route?.action === "redirect") {
-    if (!selfFetch) return noindexOnApp(NextResponse.redirect(route.url, HOST_REDIRECT), host);
-    if (!sameHostRedirect(route.url, host)) return leaveToBrowser();
+    const sameHost = sameHostRedirect(route.url, host);
+    if (!selfFetch && !(sameHost && isRscRequest(request.headers, request.nextUrl.searchParams))) return noindexOnApp(NextResponse.redirect(route.url, HOST_REDIRECT), host);
+    if (!sameHost) return leaveToBrowser();
   }
   const rewrite = support?.action === "rewrite" ? supportRewriteUrl(support.path, request.nextUrl.search, request.url) : route?.action === "rewrite" ? hostRewriteUrl(route.path, request.nextUrl.search, request.url) : null;
   const pass = () => (rewrite ? NextResponse.rewrite(rewrite, { request }) : NextResponse.next({ request }));

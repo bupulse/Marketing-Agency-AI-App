@@ -387,6 +387,11 @@ export function isSelfFetch(headers: Pick<Headers, "get">): boolean {
   return requestHost(headers) !== headers.get("host");
 }
 
+/** True for Next.js's own data request (client navigation, prefetch, router.refresh): the RSC header or `?_rsc=`. */
+export function isRscRequest(headers: Pick<Headers, "get">, search: Pick<URLSearchParams, "has">): boolean {
+  return headers.get("rsc") === "1" || search.has("_rsc");
+}
+
 /**
  * True when a host redirect stays on the visitor's own host (only the path changes: /admin/x → /x, /dashboard/x → /x).
  * proxy.ts serves such a redirect as it is when the server fetches a host rewrite from itself (see requestHost).
