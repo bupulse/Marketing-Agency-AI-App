@@ -12,8 +12,9 @@ import type { DailyPostSettings } from "@/lib/daily-posts/settings";
 import type { Network } from "@/lib/social/types";
 
 /**
- * Autopilot for posts (owner, 3 November 2026), at the top of Post settings: two switches that save at once. "Make new
- * posts every day" is the daily posts switch (null: the plan has no daily posts); "Approve and post them on their own"
+ * Daily posts (owner, 3 November 2026; titled "Daily posts", not "Autopilot", since 15 November 2026 so it is not
+ * confused with the separate Autopilot page), at the top of Post settings: two switches that save at once. "Make a new
+ * post each day" is the daily posts switch (null: the plan has no daily posts); "Approve and post them on their own"
  * turns approval off for every app, so each new post is scheduled at the best time and posted. The detailed cards below
  * (Daily posts made for you, Ask me to approve) stay for fine-tuning and follow these switches.
  */
@@ -72,14 +73,14 @@ export function AutopilotCard({
     <GlassCard as="section" aria-labelledby="autopilot-heading" padding="lg" className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
         <h2 id="autopilot-heading" className="text-xl font-semibold tracking-[-0.02em]">
-          Autopilot
+          Daily posts
         </h2>
         <p className="text-[15px] text-muted">Let BuPulse make your posts every day and put them out for you. You always see every new post under Posts.</p>
       </div>
       <ul className="-my-1 flex flex-col divide-y divide-line">
         <li className="flex items-start gap-3 py-3">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-[15px] font-semibold">Make new posts every day</span>
+            <span className="text-[15px] font-semibold">Make a new post each day</span>
             <span className="text-[14px] text-muted">
               {daily
                 ? "Every night BuPulse makes the next day’s posts for your apps, about a different product, campaign or your business each day."
@@ -91,7 +92,7 @@ export function AutopilotCard({
               )}
             </span>
           </div>
-          <Switch checked={creating} disabled={!canEdit || !daily || pending} label="Make new posts every day" onChange={saveCreating} />
+          <Switch checked={creating} disabled={!canEdit || !daily || pending} label="Make a new post each day" onChange={saveCreating} />
         </li>
         <li className="flex items-start gap-3 py-3">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">

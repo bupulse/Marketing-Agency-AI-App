@@ -58,7 +58,7 @@ export default async function ContentSettingsPage() {
       <Link href="/dashboard/content" className="-mb-2 inline-flex min-h-11 w-fit items-center gap-1 px-1 text-[15px] font-medium text-muted hover:text-text">
         <ChevronLeft aria-hidden className="size-4" /> Posts
       </Link>
-      <PageHeader title="Post settings" description="Turn on Autopilot, and choose the languages of your posts, the posts BuPulse makes for you each day and which apps' posts wait for your approval." />
+      <PageHeader title="Post settings" description="Turn on daily posts, and choose the languages of your posts, the posts BuPulse makes for you each day and which apps' posts wait for your approval." />
       <AutopilotCard
         key={JSON.stringify([daily?.settings.enabled ?? null, settings.requireApproval])}
         daily={daily?.settings ?? null}
