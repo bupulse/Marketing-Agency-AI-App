@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Button, Field, Input } from "@/components/ui";
 import { finishTrackUploadAction, startTrackUploadAction } from "@/app/admin/(console)/(content)/music/actions";
 import { createClient } from "@/lib/supabase/client";
@@ -10,6 +10,7 @@ import { MOODS, MOOD_LABEL, TRACK_MAX_BYTES, TRACK_PLATFORMS, type Mood } from "
 /** The admin's track upload: the file goes straight to the music bucket with a signed URL, then the server checks it. */
 export function MusicUpload() {
   const router = useRouter();
+  const pathname = usePathname();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -41,7 +42,9 @@ export function MusicUpload() {
       setFile(null);
       setMoods([]);
       setMetaOnly(false);
-      router.push("/admin/music?notice=Track%20added.");
+      // The path as the browser shows it (/music on admin.bupulse.com, /admin/music elsewhere): pushing /admin/... on the
+      // admin host went through the clean-path redirect and sometimes ended on "This page couldn't load" (16 Nov 2026).
+      router.push(`${pathname}?notice=Track%20added.`);
       router.refresh();
     });
   }

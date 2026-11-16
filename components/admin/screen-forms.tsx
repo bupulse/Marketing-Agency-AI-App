@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Button, Field, Input } from "@/components/ui";
 import { SecretBox } from "@/components/connectors/secret-box";
 import { createScreenLinkAction, finishSoundUploadAction, startSoundUploadAction } from "@/app/admin/(console)/(organisation)/organisation/screen/actions";
@@ -43,6 +43,7 @@ export function ScreenLinkForm() {
 /** Sound upload: the MP3 goes straight to the private sounds bucket with a signed URL, then the server checks it. */
 export function SoundUpload() {
   const router = useRouter();
+  const pathname = usePathname();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -61,7 +62,9 @@ export function SoundUpload() {
       const done = await finishSoundUploadAction(target.path, { name: String(form.get("name") ?? ""), rights });
       if (!done.ok) return setError(done.error);
       setFile(null);
-      router.push("/admin/organisation/screen?notice=Sound%20added.");
+      // The path as the browser shows it (/music on admin.bupulse.com, /admin/music elsewhere): pushing /admin/... on the
+      // admin host went through the clean-path redirect and sometimes ended on "This page couldn't load" (16 Nov 2026).
+      router.push(`${pathname}?notice=Sound%20added.`);
       router.refresh();
     });
   }
