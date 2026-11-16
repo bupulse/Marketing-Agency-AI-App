@@ -39,12 +39,17 @@ mkdirSync(logs, { recursive: true });
 // site stayed down: when the live read fails or has no production database, the last good copy is used instead.
 const PROD_DB = /gknlsmvrzsyxinwmodtk/;
 const envCache = join(logs, "prod-env.json");
-let vars = {};
-try {
-  vars = JSON.parse(execSync("npx -y netlify-cli@27.12.0 env:list --json --context production", { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], shell: true }));
-} catch {
-  vars = {};
-}
+// The pinned CLI first; since the upgrade its sign-in sits in the Windows keychain, which only newer CLIs read, so the
+// current netlify-cli is tried next.
+const readNetlify = (pkg) => {
+  try {
+    return JSON.parse(execSync(`npx -y ${pkg} env:list --json --context production`, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], shell: true }));
+  } catch {
+    return {};
+  }
+};
+let vars = readNetlify("netlify-cli@27.12.0");
+if (!PROD_DB.test(vars?.DATABASE_URL || "")) vars = readNetlify("netlify-cli@latest");
 if (PROD_DB.test(vars?.DATABASE_URL || "")) {
   try {
     writeFileSync(envCache, JSON.stringify(vars), { encoding: "utf8", mode: 0o600 });
