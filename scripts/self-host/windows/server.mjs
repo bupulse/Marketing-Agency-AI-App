@@ -11,7 +11,7 @@
 // cron-secret.txt (readable by this Windows user only, written by install.ps1), so Netlify's old scheduled functions
 // and the Mac's loop are refused here.
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, mkdirSync, openSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, openSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -33,13 +33,34 @@ const dir = realpathSync.native(resolve(import.meta.dirname, "../../.."));
 const logs = join(homedir(), "bupulse-prod");
 mkdirSync(logs, { recursive: true });
 
-const vars = JSON.parse(execSync("npx -y netlify-cli@27.12.0 env:list --json --context production", { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], shell: true }));
+// Production settings: read live from Netlify, and a copy is kept in %USERPROFILE%\bupulse-prod\prod-env.json (this
+// user's profile folder, like cron-secret.txt). After the Windows 11 upgrade (16 November 2026) the supervisor's hidden
+// start got Netlify settings without the production database (the CLI keeps its sign-in in the Windows keychain), so the
+// site stayed down: when the live read fails or has no production database, the last good copy is used instead.
+const PROD_DB = /gknlsmvrzsyxinwmodtk/;
+const envCache = join(logs, "prod-env.json");
+let vars = {};
+try {
+  vars = JSON.parse(execSync("npx -y netlify-cli@27.12.0 env:list --json --context production", { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], shell: true }));
+} catch {
+  vars = {};
+}
+if (PROD_DB.test(vars?.DATABASE_URL || "")) {
+  try {
+    writeFileSync(envCache, JSON.stringify(vars), { encoding: "utf8", mode: 0o600 });
+  } catch {
+    // The copy is a fallback only.
+  }
+} else if (existsSync(envCache)) {
+  console.error("Netlify settings unreadable here (no production database); using the saved copy prod-env.json");
+  vars = JSON.parse(readFileSync(envCache, "utf8"));
+}
 const env = { ...process.env };
 for (const [k, v] of Object.entries(vars)) if (!/^(NETLIFY|URL$|DEPLOY_|BUILD_SHA|PORT$|PLATFORM$)/.test(k)) env[k] = v;
 env.CRON_SECRET = readFileSync(join(logs, "cron-secret.txt"), "utf8").trim();
 Object.assign(env, { NODE_ENV: "production", PLATFORM: "node", PORT: "3002" });
-if (!/gknlsmvrzsyxinwmodtk/.test(env.DATABASE_URL || "")) {
-  console.error("not the production database, stopping");
+if (!PROD_DB.test(env.DATABASE_URL || "")) {
+  console.error(existsSync(envCache) ? "not the production database, stopping" : "not the production database, stopping (no saved prod-env.json yet: run any `server.mjs tool` once in a normal PowerShell to save it)");
   process.exit(1);
 }
 
