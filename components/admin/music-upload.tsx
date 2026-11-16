@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button, Field, Input } from "@/components/ui";
 import { finishTrackUploadAction, startTrackUploadAction } from "@/app/admin/(console)/(content)/music/actions";
 import { createClient } from "@/lib/supabase/client";
-import { MOODS, MOOD_LABEL, TRACK_MAX_BYTES, TRACK_PLATFORMS, type Mood } from "@/lib/music/tracks";
+import { MOODS, MOOD_LABEL, TRACK_MAX_BYTES, TRACK_PLATFORMS, TRACK_TYPES, type Mood } from "@/lib/music/tracks";
 
 /** The admin's track upload: the file goes straight to the music bucket with a signed URL, then the server checks it. */
 export function MusicUpload() {
@@ -23,7 +23,8 @@ export function MusicUpload() {
     if (!file) return setError("Choose an MP3 or M4A file.");
     if (file.size > TRACK_MAX_BYTES) return setError("Tracks can be at most 6 MB.");
     start(async () => {
-      const mimeType = file.type || (file.name.toLowerCase().endsWith(".m4a") ? "audio/mp4" : "audio/mpeg");
+      // Browsers name M4A files differently (audio/m4a, video/mp4 or nothing); the server sniffs the bytes anyway.
+      const mimeType = file.type in TRACK_TYPES ? file.type : /\.(m4a|mp4)$/i.test(file.name) ? "audio/mp4" : "audio/mpeg";
       const target = await startTrackUploadAction({ mimeType, bytes: file.size });
       if (!target.ok) return setError(target.error);
       const { error: uploadError } = await createClient().storage.from("music").uploadToSignedUrl(target.path, target.token, file, { contentType: mimeType });
