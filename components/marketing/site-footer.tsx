@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Logo } from "@/components/brand";
 import { Container } from "@/components/ui";
 import { footerLinks } from "@/lib/content/site";
+import { LEGAL_NAME, LEGAL_TIN } from "@/lib/legal/operator";
 
 export function SiteFooter() {
   return (
@@ -24,7 +25,7 @@ export function SiteFooter() {
             ))}
           </ul>
         </nav>
-        <p className="m-0 text-[13px] text-muted">© 2026 BuPulse · bupulse.com</p>
+        <p className="m-0 text-[13px] text-muted">© 2026 {LEGAL_NAME} · TIN {LEGAL_TIN} · bupulse.com</p>
       </Container>
     </footer>
   );

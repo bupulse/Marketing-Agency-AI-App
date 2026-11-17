@@ -114,7 +114,7 @@ function RegionForm({ r, taken }: { r: Region | null; taken: Record<string, stri
           <Input name="vatPercent" inputMode="decimal" defaultValue={r ? String((r.vatRateBps ?? 0) / 100) : "0"} className="w-28" />
         </Field>
         <p className="rounded-2xl bg-new-bg px-3 py-2.5 text-[13px] sm:col-span-2">
-          <strong>This is the only place the VAT rate is set.</strong> BuPulse is VAT-registered with RRA: Rwanda adds 18%. The pricing page, Billing, Mobile Money, invoices and custom offers all use this rate; payments and invoices already made keep the rate they were made with. BuPulse&apos;s TIN is in <Link href="/admin/settings/vat" className="underline">Settings, VAT</Link>.
+          <strong>This is the only place the VAT rate is set.</strong> Keep Rwanda at 0 until BuPulse is VAT-registered with RRA (mandatory above 5M RWF a quarter or 20M a year), then set 18. The pricing page, Billing, Mobile Money, invoices and custom offers all use this rate; payments and invoices already made keep the rate they were made with. BuPulse&apos;s TIN is in <Link href="/admin/settings/vat" className="underline">Settings, VAT</Link>.
         </p>
         <Field label="Tax name" hint="Shown on prices, invoices and receipts.">
           <Input name="vatLabel" defaultValue={r?.vatLabel ?? "VAT"} maxLength={20} className="w-28" />

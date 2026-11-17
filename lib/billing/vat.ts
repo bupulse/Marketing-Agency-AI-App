@@ -2,9 +2,10 @@
 // price editors, the client pages and the tests share one source of truth. The server builds the settings with
 // getVatSettings() (lib/billing/vat-server.ts).
 //
-// The rules (owner, 12 Nov 2026: BuPulse is VAT-registered with RRA):
-// - The rate lives on the pricing region: PricingRegion.vatRateBps (Admin -> Money -> Regions), 1800 = 18% for Rwanda,
-//   0 everywhere else. There is no other switch: 0% means no VAT. Admin -> Settings -> VAT only keeps BuPulse's TIN.
+// The rules (owner, 12 Nov 2026; on 17 Nov 2026 BuPulse LTD registered at RDB but NOT for VAT, so Rwanda was set to 0%
+// in Admin until it registers: VAT is mandatory above 5M RWF a quarter or 20M a year):
+// - The rate lives on the pricing region: PricingRegion.vatRateBps (Admin -> Money -> Regions), 1800 = 18% for Rwanda
+//   once VAT-registered, 0 everywhere else. There is no other switch: 0% means no VAT. Admin -> Settings -> VAT only keeps BuPulse's TIN.
 // - VAT is only added to what BuPulse collects itself (Mobile Money, invoices), in a region's own currency. USD prices
 //   never get it: card payments go through Paddle, the merchant of record, which adds tax itself. The region editor
 //   refuses a VAT rate on a USD region, and two regions in one currency share one rate, so "the rate of a currency"
