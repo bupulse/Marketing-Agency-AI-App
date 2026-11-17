@@ -9,7 +9,7 @@
 // - A piece that exits is started again after 5 s, then 10, 20, 40 s ... up to 5 minutes while it keeps crashing
 //   within a minute (no restart storm); a piece that ran 10 minutes starts again at once next time.
 // - The server is also restarted when it stops answering http://127.0.0.1:3002/api/status at all (any HTTP answer counts
-//   as alive: a 503 because the database is down is not fixed by a restart) for 2 minutes, after a 6-minute start grace.
+//   as alive: a 503 because the database is down is not fixed by a restart) for 5 minutes, after a 6-minute start grace.
 // - The tunnel is restarted when cloudflared's own /ready (metrics on 127.0.0.1:20249) has said "not ready" for 5 minutes.
 // - Every stop is by the exact process ID it started (taskkill /PID <pid> /T /F: that process and its children), never by
 //   process name. A piece left running by a previous supervisor (killed hard) is stopped only when Windows confirms its
@@ -53,8 +53,11 @@ export const TIMING = {
   probeMs: 60_000,
   /** server.mjs reads the production settings from Netlify, then next start: give it this long before health checks. */
   startGraceMs: 6 * 60_000,
-  /** No answer at all from the server for this long: it hangs, restart it. */
-  hangMs: 2 * 60_000,
+  /** No answer at all from the server for this long: it hangs, restart it. 5 minutes, not 2: on the PC's slow disk a
+   * fresh server can take minutes to answer, and each restart only started the wait over (17 November 2026). */
+  hangMs: 5 * 60_000,
+  /** How long one health check waits for /api/status. */
+  probeTimeoutMs: 20_000,
   /** cloudflared not ready for this long: restart it. */
   tunnelNotReadyMs: 5 * 60_000,
   /** A piece that ran at least this long starts again without waiting next time. */
@@ -490,7 +493,7 @@ export class Supervisor {
     const now = this.now();
     const server = this.children.server;
     if (server?.pid && server.state === "running") {
-      const status = await httpStatus(`${this.localUrl}/api/status`, 10_000, this.fetchImpl);
+      const status = await httpStatus(`${this.localUrl}/api/status`, this.timing.probeTimeoutMs ?? 20_000, this.fetchImpl);
       if (status !== null) {
         server.lastAnswerAt = this.now();
         server.quickCrashes = 0;

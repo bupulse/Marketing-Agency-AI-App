@@ -226,8 +226,10 @@ One Node process that starts and watches three pieces, without administrator rig
 
 - **Crashes:** a piece that exits is started again after 5 s, then 10, 20, 40 s ... up to 5 minutes while it keeps
   crashing within a minute; after a run of 10 minutes or more the count starts over. No restart storm.
-- **Hangs:** the server is restarted when `http://127.0.0.1:3002/api/status` gives no answer at all for 2 minutes
-  (after a 6-minute start grace: server.mjs reads Netlify's settings, then `next start`). Any HTTP answer counts as alive,
+- **Hangs:** the server is restarted when `http://127.0.0.1:3002/api/status` gives no answer at all for 5 minutes
+  (after a 6-minute start grace; each check waits 20 s). `start` uses the saved copy of the production settings
+  (prod-env.json) and refreshes it from Netlify in the background, so `next start` begins within seconds even on the
+  slow disk (17 November 2026: npx took minutes per run there and every start was stopped before the website began). Any HTTP answer counts as alive,
   so a database outage (503) does not make it restart in a loop. The tunnel is restarted when cloudflared's own
   `/ready` has said "not connected" for 5 minutes.
 - **Exact process IDs only:** every stop is `taskkill /PID <the pid it started> /T /F` (that process and its children,

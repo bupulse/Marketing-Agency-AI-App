@@ -30,13 +30,13 @@ describe("restart arithmetic", () => {
     expect(afterExit({ startedAt: 0, exitedAt: 5 * 60_000, quickCrashes: 2 })).toMatchObject({ quickCrashes: 2, waitMs: 20_000 });
   });
 
-  it("calls the server hung only after its start grace and 2 minutes without any answer", () => {
+  it("calls the server hung only after its start grace and 5 minutes without any answer", () => {
     const g = TIMING.startGraceMs;
     expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: g - 1 })).toBe(false);
-    expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: g + 60_000 })).toBe(false);
-    expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: g + 120_000 })).toBe(true);
-    expect(serverHangs({ startedAt: 0, lastAnswerAt: g + 100_000, now: g + 200_000 })).toBe(false);
-    expect(serverHangs({ startedAt: 0, lastAnswerAt: g + 100_000, now: g + 220_000 })).toBe(true);
+    expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: g + 120_000 })).toBe(false);
+    expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: g + 300_000 })).toBe(true);
+    expect(serverHangs({ startedAt: 0, lastAnswerAt: g + 100_000, now: g + 380_000 })).toBe(false);
+    expect(serverHangs({ startedAt: 0, lastAnswerAt: g + 100_000, now: g + 400_000 })).toBe(true);
   });
 
   it("calls the tunnel stuck after 5 minutes not ready", () => {
@@ -231,7 +231,7 @@ describe("the supervisor with real child processes", () => {
     expect(sup!.children.server.pid).toBeTruthy();
   });
 
-  it("restarts a hung server (no answer for 2 minutes after the grace) by its PID", async () => {
+  it("restarts a hung server (no answer for 5 minutes after the grace) by its PID", async () => {
     const { kills, log } = make({ server: spec("setInterval(() => {}, 1000)") }, { fetchImpl: async () => Promise.reject(new Error("no answer")) });
     await sup!.controlRound();
     const pid = sup!.children.server.pid!;

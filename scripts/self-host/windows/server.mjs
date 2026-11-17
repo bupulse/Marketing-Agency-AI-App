@@ -10,14 +10,14 @@
 // child only in memory, never written to disk. CRON_SECRET is this PC's own, kept in %USERPROFILE%\bupulse-prod\
 // cron-secret.txt (readable by this Windows user only, written by install.ps1), so Netlify's old scheduled functions
 // and the Mac's loop are refused here.
-import { execSync, spawnSync } from "node:child_process";
+import { execSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync, openSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 
 const mode = process.argv[2];
-if (mode !== "build" && mode !== "start" && mode !== "tool" && mode !== "videos") {
-  console.error("usage: node scripts/self-host/windows/server.mjs build|start|videos|tool <name> [args]");
+if (mode !== "build" && mode !== "start" && mode !== "tool" && mode !== "videos" && mode !== "refresh-env") {
+  console.error("usage: node scripts/self-host/windows/server.mjs build|start|videos|refresh-env|tool <name> [args]");
   process.exit(1);
 }
 // `tool <name>`: one of scripts/self-host/tools/<name>.mjs, run with the same production settings (in memory).
@@ -39,8 +39,8 @@ mkdirSync(logs, { recursive: true });
 // site stayed down: when the live read fails or has no production database, the last good copy is used instead.
 const PROD_DB = /gknlsmvrzsyxinwmodtk/;
 const envCache = join(logs, "prod-env.json");
-// The pinned CLI first; since the upgrade its sign-in sits in the Windows keychain, which only newer CLIs read, so the
-// current netlify-cli is tried next.
+// Since the upgrade the CLI's sign-in sits in the Windows keychain, which only newer CLIs read (27.12.0 cannot): a pinned
+// newer one first (npx finds it in its cache, no registry lookup), then the old pin, then the current one.
 const readNetlify = (pkg) => {
   try {
     return JSON.parse(execSync(`npx -y ${pkg} env:list --json --context production`, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], shell: true }));
@@ -48,18 +48,44 @@ const readNetlify = (pkg) => {
     return {};
   }
 };
-let vars = readNetlify("netlify-cli@27.12.0");
-if (!PROD_DB.test(vars?.DATABASE_URL || "")) vars = readNetlify("netlify-cli@latest");
-if (PROD_DB.test(vars?.DATABASE_URL || "")) {
-  try {
-    writeFileSync(envCache, JSON.stringify(vars), { encoding: "utf8", mode: 0o600 });
-  } catch {
-    // The copy is a fallback only.
+const readLive = () => {
+  for (const pkg of ["netlify-cli@27.19.0", "netlify-cli@27.12.0", "netlify-cli@latest"]) {
+    const live = readNetlify(pkg);
+    if (PROD_DB.test(live?.DATABASE_URL || "")) {
+      try {
+        writeFileSync(envCache, JSON.stringify(live), { encoding: "utf8", mode: 0o600 });
+      } catch {
+        // The copy is a fallback only.
+      }
+      return live;
+    }
   }
-} else if (existsSync(envCache)) {
-  console.error("Netlify settings unreadable here (no production database); using the saved copy prod-env.json");
-  vars = JSON.parse(readFileSync(envCache, "utf8"));
+  return null;
+};
+const readCache = () => {
+  try {
+    const saved = JSON.parse(readFileSync(envCache, "utf8"));
+    return PROD_DB.test(saved?.DATABASE_URL || "") ? saved : null;
+  } catch {
+    return null;
+  }
+};
+if (mode === "refresh-env") {
+  // Started in the background by `start`: brings the saved copy up to date for the next start.
+  process.exit(readLive() ? 0 : 1);
 }
+// The server and the render worker start from the saved copy when there is one, and refresh it in the background: on the
+// slow disk after the Windows 11 upgrade each npx run took minutes, so the supervisor stopped every start after 8.5
+// minutes, before `next start` was even reached (17 November 2026, the site was down for 6 hours). Build and tools read
+// Netlify live first, so a changed setting is in the next build.
+let vars = null;
+if ((mode === "start" || mode === "videos") && (vars = readCache())) {
+  if (mode === "start") spawn(process.execPath, [import.meta.filename, "refresh-env"], { cwd: dir, detached: true, stdio: "ignore", windowsHide: true }).unref();
+} else {
+  vars = readLive();
+  if (!vars && (vars = readCache())) console.error("Netlify settings unreadable here (no production database); using the saved copy prod-env.json");
+}
+vars ??= {};
 const env = { ...process.env };
 for (const [k, v] of Object.entries(vars)) if (!/^(NETLIFY|URL$|DEPLOY_|BUILD_SHA|PORT$|PLATFORM$)/.test(k)) env[k] = v;
 env.CRON_SECRET = readFileSync(join(logs, "cron-secret.txt"), "utf8").trim();
