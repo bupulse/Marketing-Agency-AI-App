@@ -6,7 +6,9 @@ $credFile = Join-Path $env:USERPROFILE ".cloudflared\$tunnelId.json"
 $config = Join-Path $env:USERPROFILE ".cloudflared\bupulse-prod.yml"
 # marketing. and admin. (docs/HOSTS.md) are served only once MARKETING_APP_URL / ADMIN_APP_URL are set; until then
 # they show the main site, and nothing links to them. agency. is phase 2: not here yet.
-$hosts = @("bupulse.com", "www.bupulse.com", "support.bupulse.com", "marketing.bupulse.com", "admin.bupulse.com")
+# pc. is only for the Mac's failover watcher (scripts/self-host/mac-failover): it always reaches this PC, wherever the
+# public hostnames point, so the Mac can tell when the PC answers again.
+$hosts = @("bupulse.com", "www.bupulse.com", "support.bupulse.com", "marketing.bupulse.com", "admin.bupulse.com", "pc.bupulse.com")
 $lines = @("tunnel: $tunnelId", "credentials-file: $credFile", "ingress:")
 foreach ($h in $hosts) { $lines += "  - hostname: $h"; $lines += "    service: http://localhost:3002" }
 $lines += "  - service: http_status:404"

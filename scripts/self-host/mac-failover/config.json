@@ -1,0 +1,6 @@
+{
+  "zoneName": "bupulse.com",
+  "zoneId": "b41214cf5b726c075cfb75a3ea06f47f",
+  "pcHealthUrl": "https://pc.bupulse.com/api/status",
+  "macHealthUrl": "http://127.0.0.1:3002/api/status"
+}
