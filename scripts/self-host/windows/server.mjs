@@ -39,8 +39,9 @@ mkdirSync(logs, { recursive: true });
 // site stayed down: when the live read fails or has no production database, the last good copy is used instead.
 const PROD_DB = /gknlsmvrzsyxinwmodtk/;
 const envCache = join(logs, "prod-env.json");
-// Since the upgrade the CLI's sign-in sits in the Windows keychain, which only newer CLIs read (27.12.0 cannot): a pinned
-// newer one first (npx finds it in its cache, no registry lookup), then the old pin, then the current one.
+// Since the upgrade the CLI's sign-in sits in the Windows keychain, which only newer CLIs read (27.12.0 cannot): the old
+// pin first (cached, answers fast without the production database), then the current one (cached as @latest). The exact
+// newer pin is last: npx installs it fresh under its own name, which hung for many minutes on the PC (17 November 2026).
 const readNetlify = (pkg) => {
   try {
     return JSON.parse(execSync(`npx -y ${pkg} env:list --json --context production`, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], shell: true, windowsHide: true }));
@@ -49,7 +50,7 @@ const readNetlify = (pkg) => {
   }
 };
 const readLive = () => {
-  for (const pkg of ["netlify-cli@27.19.0", "netlify-cli@27.12.0", "netlify-cli@latest"]) {
+  for (const pkg of ["netlify-cli@27.12.0", "netlify-cli@latest", "netlify-cli@27.19.0"]) {
     const live = readNetlify(pkg);
     if (PROD_DB.test(live?.DATABASE_URL || "")) {
       try {

@@ -9,7 +9,7 @@ import { join } from "node:path";
 const PROD_DB = /gknlsmvrzsyxinwmodtk/;
 const dir = join(homedir(), "BuPulse-deploy");
 let vars = {};
-for (const pkg of ["netlify-cli@27.19.0", "netlify-cli@27.12.0", "netlify-cli@latest"]) {
+for (const pkg of ["netlify-cli@27.12.0", "netlify-cli@latest", "netlify-cli@27.19.0"]) {
   try {
     vars = JSON.parse(execSync(`npx -y ${pkg} env:list --json --context production`, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }));
   } catch {
