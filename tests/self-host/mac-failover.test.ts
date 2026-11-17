@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error plain .mjs script without types
 import { decide, servingOf, TARGET, TIMING } from "../../scripts/self-host/mac-failover/watch.mjs";
 
 const pc = { serving: "pc", pcBadSince: null, pcGoodSince: null };
