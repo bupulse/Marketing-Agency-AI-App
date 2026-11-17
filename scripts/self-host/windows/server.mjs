@@ -43,7 +43,7 @@ const envCache = join(logs, "prod-env.json");
 // newer one first (npx finds it in its cache, no registry lookup), then the old pin, then the current one.
 const readNetlify = (pkg) => {
   try {
-    return JSON.parse(execSync(`npx -y ${pkg} env:list --json --context production`, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], shell: true }));
+    return JSON.parse(execSync(`npx -y ${pkg} env:list --json --context production`, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], shell: true, windowsHide: true }));
   } catch {
     return {};
   }
