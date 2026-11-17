@@ -376,8 +376,8 @@ Cost: none (the PC's own CPU; a 15-second 1080x1920 reel takes about 20 to 40 se
 The Mac keeps a standby copy of bupulse.com (scripts/self-host/mac-failover, installed with `install.sh` as three
 launchd jobs: `serve.mjs` on 127.0.0.1:3002 from ~/BuPulse-deploy, its tunnel bupulse-studio, and `watch.mjs`).
 The watcher asks https://pc.bupulse.com/api/status (served only by the PC's tunnel) and the Mac's own server every
-minute. When the PC has not answered for 10 minutes and the Mac does, bupulse.com, www., marketing., admin. and
-support. are pointed at the Mac's tunnel through Cloudflare's DNS API; after 10 minutes of good PC answers they go back.
+minute. When the PC has not answered for 5 minutes and the Mac does, bupulse.com, www., marketing., admin. and
+support. are pointed at the Mac's tunnel through Cloudflare's DNS API; after 60 minutes of good PC answers they go back (doubled, up to 8 hours, each time the PC fails again within an hour of getting the site back).
 Each switch is logged in ~/bupulse-prod/failover.log and sent to the owner on Telegram. The Mac's server has its own
 CRON_SECRET, so no scheduled job runs there (scheduled posts wait for the PC). The Cloudflare token (DNS edit for
 bupulse.com only) lives in the Mac's Keychain as "BuPulse Cloudflare DNS". Keep ~/BuPulse-deploy at the production

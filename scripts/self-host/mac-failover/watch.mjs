@@ -3,8 +3,9 @@
 //
 // - every minute it asks the PC (https://pc.bupulse.com/api/status, a hostname only the PC's tunnel serves) and the
 //   Mac's standby server (http://127.0.0.1:3002/api/status) whether they answer;
-// - when the PC has not answered for 10 minutes and the Mac does, the five public hostnames are pointed at the Mac's
-//   tunnel (bupulse-studio) through Cloudflare's DNS API; when the PC has answered for 10 minutes again, they go back;
+// - when the PC has not answered for 5 minutes and the Mac does, the five public hostnames are pointed at the Mac's
+//   tunnel (bupulse-studio) through Cloudflare's DNS API; when the PC has answered for 60 minutes again, they go back
+//   (doubled, up to 8 hours, each time the PC fails again within an hour of getting the site back);
 // - each switch is one line in ~/bupulse-prod/failover.log and one Telegram note (gh workflow run notify-owner.yml).
 //
 // The Mac's standby server runs with its own CRON_SECRET (serve.mjs), so no scheduled job runs on the Mac: nothing is
@@ -25,19 +26,25 @@ export const TIMING = {
   /** How often both servers are asked. */
   checkMs: 60_000,
   /** The PC silent this long (and the Mac answering): switch to the Mac. */
-  failAfterMs: 10 * 60_000,
-  /** The PC answering this long again: switch back. */
-  recoverAfterMs: 10 * 60_000,
+  failAfterMs: 5 * 60_000,
+  /** The PC answering this long again: switch back. 60 minutes, not 10: on 17 November the PC answered the watcher for
+   * 10 minutes, took the site back and failed under real traffic 2 minutes later. */
+  recoverAfterMs: 60 * 60_000,
+  /** A PC that fails again within this long after getting the site back doubles the next wait (up to maxRecoverMs). */
+  relapseWindowMs: 60 * 60_000,
+  maxRecoverMs: 8 * 60 * 60_000,
   /** How long one health check waits (the PC's first answer after a restart is slow). */
   probeTimeoutMs: 30_000,
 };
 
 /**
  * The next state and whether to switch. `state.serving` is "pc" or "mac"; `pcBadSince`/`pcGoodSince` are the times the
- * current run of failed/good PC answers started (null when there is none).
+ * current run of failed/good PC answers started (null when there is none); `recoverMs` is how long the PC must answer
+ * before it gets the site back (doubled after each relapse); `backAt` is when the site last went back to the PC.
  */
 export function decide(state, { pcOk, macOk, now }, timing = TIMING) {
-  const next = { ...state };
+  const recoverMs = state.recoverMs ?? timing.recoverAfterMs;
+  const next = { ...state, recoverMs };
   if (state.serving === "pc") {
     next.pcGoodSince = null;
     if (pcOk) {
@@ -45,7 +52,11 @@ export function decide(state, { pcOk, macOk, now }, timing = TIMING) {
       return { state: next, switchTo: null };
     }
     next.pcBadSince = state.pcBadSince ?? now;
-    if (macOk && now - next.pcBadSince >= timing.failAfterMs) return { state: { serving: "mac", pcBadSince: null, pcGoodSince: null }, switchTo: "mac" };
+    if (macOk && now - next.pcBadSince >= timing.failAfterMs) {
+      const relapse = state.backAt != null && now - state.backAt < timing.relapseWindowMs;
+      const nextRecover = relapse ? Math.min(recoverMs * 2, timing.maxRecoverMs) : timing.recoverAfterMs;
+      return { state: { serving: "mac", pcBadSince: null, pcGoodSince: null, recoverMs: nextRecover, backAt: state.backAt ?? null }, switchTo: "mac" };
+    }
     return { state: next, switchTo: null };
   }
   next.pcBadSince = null;
@@ -54,7 +65,7 @@ export function decide(state, { pcOk, macOk, now }, timing = TIMING) {
     return { state: next, switchTo: null };
   }
   next.pcGoodSince = state.pcGoodSince ?? now;
-  if (now - next.pcGoodSince >= timing.recoverAfterMs) return { state: { serving: "pc", pcBadSince: null, pcGoodSince: null }, switchTo: "pc" };
+  if (now - next.pcGoodSince >= recoverMs) return { state: { serving: "pc", pcBadSince: null, pcGoodSince: null, recoverMs, backAt: now }, switchTo: "pc" };
   return { state: next, switchTo: null };
 }
 
@@ -125,7 +136,13 @@ async function main() {
   const stateFile = join(dir, "failover-state.json");
 
   let serving = await dns.serving().catch((e) => (log(`reading DNS failed: ${e.message}`), null));
-  let state = { serving: serving ?? "pc", pcBadSince: null, pcGoodSince: null };
+  let saved = {};
+  try {
+    saved = JSON.parse(readFileSync(stateFile, "utf8"));
+  } catch {
+    // First start.
+  }
+  let state = { serving: serving ?? "pc", pcBadSince: null, pcGoodSince: null, recoverMs: saved.recoverMs ?? TIMING.recoverAfterMs, backAt: saved.backAt ?? null };
   log(`watcher started: bupulse.com points at the ${serving ?? "unknown (treated as PC)"}`);
 
   const round = async () => {
@@ -135,8 +152,8 @@ async function main() {
       try {
         await dns.pointAll(result.switchTo);
         const text = result.switchTo === "mac"
-          ? "bupulse.com: the office PC has not answered for 10 minutes, the site now runs from the Mac (scheduled posts wait for the PC)."
-          : "bupulse.com: the office PC answers again for 10 minutes, the site is back on the PC.";
+          ? `bupulse.com: the office PC has not answered for ${Math.round(TIMING.failAfterMs / 60_000)} minutes, the site now runs from the Mac (scheduled posts wait for the PC). It goes back after ${Math.round(result.state.recoverMs / 60_000)} good minutes.`
+          : `bupulse.com: the office PC answered well for ${Math.round(state.recoverMs / 60_000)} minutes, the site is back on the PC.`;
         log(`switched to the ${result.switchTo}`);
         notify(text);
         state = result.state;
