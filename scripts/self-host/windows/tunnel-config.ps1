@@ -9,7 +9,9 @@ $config = Join-Path $env:USERPROFILE ".cloudflared\bupulse-prod.yml"
 # pc. is only for the Mac's failover watcher (scripts/self-host/mac-failover): it always reaches this PC, wherever the
 # public hostnames point, so the Mac can tell when the PC answers again.
 $hosts = @("bupulse.com", "www.bupulse.com", "support.bupulse.com", "marketing.bupulse.com", "admin.bupulse.com", "pc.bupulse.com")
-$lines = @("tunnel: $tunnelId", "credentials-file: $credFile", "ingress:")
+# protocol http2 (TCP), not QUIC (UDP): on the office network the PC's QUIC connections kept timing out ("failed to
+# accept QUIC stream: timeout: no recent network activity"), so the tunnel dropped every few minutes (17 November 2026).
+$lines = @("tunnel: $tunnelId", "credentials-file: $credFile", "protocol: http2", "ingress:")
 foreach ($h in $hosts) { $lines += "  - hostname: $h"; $lines += "    service: http://localhost:3002" }
 $lines += "  - service: http_status:404"
 $text = ($lines -join "`r`n") + "`r`n"
