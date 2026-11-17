@@ -279,6 +279,26 @@ variables -> Actions -> Variables) to switch it off. It needs the repository sec
 TELEGRAM_CHAT_ID and/or RESEND_API_KEY. Free (public repository), but GitHub's 5-minute schedule often runs late, and in
 a tunnel-only outage both the PC and GitHub may send a "down" message (accepted).
 
+### Miner check (17 November 2026)
+
+A crypto-miner ran on the PC as `dlIhost` (capital i, imitating Windows' `dllhost`) from
+`%APPDATA%\DLL\dlIhost.exe` with `WinRing0x64.sys` beside it, held 2.35 GB and froze the PC; Defender removed it on 7
+and 12 November and it came back. Every 10 minutes (first check a minute after it starts) the supervisor lists the
+running programs (`Get-CimInstance Win32_Process`, hidden window, no administrator: the system's own paths stay hidden,
+this user's are visible) and flags (`findSuspicious` in supervisor.mjs, tests in `tests/self-host/supervisor.test.ts`):
+- a name that imitates a Windows program (the rule of `process-name-check.ps1`: equal after lower case and 1/I/i/| -> l,
+  0 -> o, but not the real name in any case, so `RuntimeBroker` and `SearchHost` are fine);
+- any program running from `%APPDATA%\DLL`, and that folder existing again;
+- a Windows program's name running from outside `C:\Windows`;
+- one program over 2 GB of private memory that is not node, Defender, a browser or VS Code.
+A finding is one `SECURITY:` line in `supervisor.log` and **one** Telegram and email message to the owner through the
+local server (`POST /api/monitor/pc-alert`, Bearer: `cron-secret.txt`; `lib/monitor/pc-alert.ts`, same channels as the
+down alert). The same finding (name + path) is logged and sent again at most once in 24 hours, also across supervisor
+restarts (`security-alerts.json`). The supervisor ships with `git pull` + `restart-supervisor`, the route only with a
+full deploy (build): until then the server answers 404 and the finding is only logged (one line saying so), and it is
+sent as soon as a server with the route runs. The supervisor's live state (`http://127.0.0.1:3019/`) shows the last
+check (`security`).
+
 ### Missed jobs (catch-up)
 
 The tick only ran the jobs due in the minute it ran, so after a power cut (or a restart, or a tick long enough to skip

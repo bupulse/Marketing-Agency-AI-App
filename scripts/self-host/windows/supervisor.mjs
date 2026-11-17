@@ -17,6 +17,11 @@
 // - Every minute it checks https://bupulse.com/api/status from outside (internet, Cloudflare, the tunnel) and reports it
 //   to the local server (POST /api/monitor/watch, Bearer: this PC's cron-secret.txt), which sends the owner ONE Telegram
 //   and email message when the site has been down for 2 minutes and one when it is back (lib/monitor/watch.ts).
+// - Every 10 minutes it checks for the crypto-miner of 17 November 2026 (a fake "dlIhost" in %APPDATA%\DLL): names that
+//   imitate Windows programs, programs running from %APPDATA%\DLL, that folder itself, a Windows name outside the
+//   Windows folder, over 2 GB of memory (findSuspicious). A finding is one SECURITY line in supervisor.log and one
+//   Telegram and email message through the local server (POST /api/monitor/pc-alert, same Bearer), again at most every
+//   24 hours (security-alerts.json). A server from before that route answers 404: then it is logged only.
 //
 // Control files in %USERPROFILE%\bupulse-prod (update.ps1 uses them; no admin needed):
 //   pause-server       stop the server and keep it stopped (while update.ps1 builds); delete it to start again. A
@@ -32,7 +37,7 @@
 //
 //   node scripts/self-host/windows/supervisor.mjs          (Task Scheduler runs it: setup-supervisor.ps1, admin-once.ps1)
 
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, appendFileSync } from "node:fs";
 import { createServer, connect } from "node:net";
 import { homedir, uptime } from "node:os";
@@ -68,6 +73,12 @@ export const TIMING = {
   stateMs: 15_000,
   /** A pause-server file older than this is left over from a failed update: ignored. */
   maxPauseMs: 45 * 60_000,
+  /** How often the running programs are checked for the crypto-miner (the fake "dlIhost", 17 November 2026). */
+  securityMs: 10 * 60_000,
+  /** The first miner check, this long after the supervisor starts. */
+  securityFirstMs: 60_000,
+  /** The same finding is sent to the owner again at most this often. */
+  securityRepeatMs: 24 * 60 * 60_000,
 };
 
 const MAX_LOG_BYTES = 20 * 1024 * 1024;
@@ -199,6 +210,98 @@ export function rotateIfBig(path, max = MAX_LOG_BYTES) {
   }
 }
 
+// ---- the miner check (17 November 2026) -------------------------------------------------------------------------
+// A crypto-miner ran as "dlIhost" (capital i, imitating Windows' "dllhost") from %APPDATA%\DLL\dlIhost.exe with the
+// WinRing0x64.sys driver beside it, held 2.35 GB and froze the PC. Defender removed it on 7 and 12 November and it came
+// back. Every 10 minutes the supervisor lists the running programs (no admin rights: the paths of the system's own
+// processes stay hidden, this user's are visible) and looks for it; process-name-check.ps1 is the same name rule.
+
+/** Real Windows programs a miner likes to imitate (lower case, without .exe). */
+export const WINDOWS_NAMES = ["svchost", "dllhost", "lsass", "csrss", "winlogon", "services", "smss", "explorer", "taskhostw", "conhost", "rundll32", "spoolsv", "wininit", "searchhost", "runtimebroker", "sihost", "ctfmon", "dwm", "wmiprvse"];
+/** Programs allowed to hold over 2 GB of private memory (lower case, without .exe). */
+const BIG_OK = new Set(["node", "msmpeng", "memory compression", "vmmem", "vmmemwsl", "chrome", "msedge", "firefox", "code"]);
+const BIG_BYTES = 2 * 1024 ** 3;
+
+/** Lower case with the letters a look-alike swaps: 1, I, i and | become l, 0 becomes o. */
+const canon = (s) => s.toLowerCase().replace(/[1i|]/g, "l").replace(/0/g, "o");
+const winPath = (p) => String(p).replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+
+/** The real Windows name `name` imitates ("dlIhost" -> "dllhost"), or null (also null for the real one, any case). */
+export function lookAlikeOf(name) {
+  const n = String(name ?? "").replace(/\.exe$/i, "");
+  if (!n || WINDOWS_NAMES.includes(n.toLowerCase())) return null;
+  return WINDOWS_NAMES.find((real) => canon(n) === canon(real)) ?? null;
+}
+
+/**
+ * The miner check, pure (tests/self-host/supervisor.test.ts). `processes`: [{ pid, name, path, privateBytes }] (path
+ * null when Windows hides it); `appData`: %APPDATA%; `dllFolderExists`: does %APPDATA%\DLL exist. One finding per
+ * suspicious process (all its reasons) plus one for the folder; `key` (name + path) is what alerts are counted by.
+ * Reasons: "lookalike" (a name imitating a Windows program), "dll-path" (runs from %APPDATA%\DLL), "dll-folder" (the
+ * folder is back), "system-name-path" (a Windows program's name running from outside the Windows folder), "memory"
+ * (over 2 GB private memory and not a program known to need it).
+ * @param {{ processes?: { pid?: number | null, name?: string, path?: string | null, privateBytes?: number }[], appData?: string, dllFolderExists?: boolean, windowsDir?: string }} o
+ */
+export function findSuspicious({ processes = [], appData = "", dllFolderExists = false, windowsDir = "C:\\Windows" }) {
+  const dllDir = appData ? `${winPath(appData)}\\dll\\` : null;
+  const winDir = `${winPath(windowsDir)}\\`;
+  const findings = [];
+  for (const p of processes) {
+    const name = String(p?.name ?? "").replace(/\.exe$/i, "");
+    if (!name) continue;
+    const path = p.path ? String(p.path) : null;
+    const reasons = [];
+    const looksLike = lookAlikeOf(name);
+    if (looksLike) reasons.push("lookalike");
+    if (path && dllDir && winPath(path).startsWith(dllDir)) reasons.push("dll-path");
+    if (path && WINDOWS_NAMES.includes(name.toLowerCase()) && !winPath(path).startsWith(winDir)) reasons.push("system-name-path");
+    const bytes = Number(p.privateBytes);
+    if (Number.isFinite(bytes) && bytes > BIG_BYTES && !BIG_OK.has(name.toLowerCase())) reasons.push("memory");
+    if (!reasons.length) continue;
+    findings.push({ key: `${name.toLowerCase()}|${path ? winPath(path) : ""}`, name, path, pid: Number(p.pid) || null, memMb: Number.isFinite(bytes) ? Math.round(bytes / 1024 ** 2) : null, looksLike, reasons });
+  }
+  if (dllFolderExists && appData) {
+    const path = `${appData.replace(/[\\/]+$/, "")}\\DLL`;
+    findings.push({ key: `folder|${winPath(path)}`, name: "DLL folder", path, pid: null, memMb: null, looksLike: null, reasons: ["dll-folder"] });
+  }
+  return findings;
+}
+
+/** The findings to send now: never sent, or last sent at least `repeatMs` ago (`sent`: key -> time sent). */
+export function dueFindings(findings, sent, now, repeatMs = TIMING.securityRepeatMs) {
+  return findings.filter((f) => {
+    const at = sent?.[f.key];
+    return typeof at !== "number" || now - at >= repeatMs;
+  });
+}
+
+/** One line for supervisor.log (no secrets: names, paths, memory). */
+export function findingLine(f) {
+  const words = { lookalike: `looks like Windows "${f.looksLike}"`, "dll-path": "runs from %APPDATA%\\DLL", "dll-folder": "the folder is back", "system-name-path": "a Windows name outside the Windows folder", memory: `${f.memMb} MB private memory` };
+  return `SECURITY: suspicious ${f.reasons.includes("dll-folder") ? "folder" : `program "${f.name}"`} (${f.reasons.map((r) => words[r] ?? r).join("; ")})${f.pid ? ` pid ${f.pid}` : ""} path ${f.path ?? "(hidden)"}`;
+}
+
+/** PowerShell's process list (ConvertTo-Json: one process comes as an object, not a list) as [{ pid, name, path, privateBytes }]. */
+export function parseProcessList(text) {
+  let raw;
+  try {
+    raw = JSON.parse(String(text ?? "").replace(/^﻿/, "").trim() || "[]");
+  } catch {
+    return null;
+  }
+  const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
+  return list.filter((p) => p && typeof p.name === "string").map((p) => ({ pid: Number(p.pid) || null, name: p.name, path: typeof p.path === "string" && p.path ? p.path : null, privateBytes: Number(p.priv) || 0 }));
+}
+
+/** The running programs (Windows; no admin rights), or null when they could not be listed. Never blocks the supervisor. */
+export function listProcesses(timeoutMs = 60_000) {
+  if (process.platform !== "win32") return Promise.resolve(null);
+  const script = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; @(Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object { [pscustomobject]@{ pid = $_.ProcessId; name = $_.Name; path = $_.ExecutablePath; priv = $_.PrivatePageCount } }) | ConvertTo-Json -Compress";
+  return new Promise((done) => {
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, encoding: "utf8" }, (error, stdout) => done(error ? null : parseProcessList(stdout)));
+  });
+}
+
 // ---- the supervisor ---------------------------------------------------------------------------------------------
 
 /**
@@ -235,6 +338,10 @@ export class Supervisor {
    * @param {string} [o.tunnelReadyUrl]
    * @param {boolean} [o.probe]       report the public check to the local server (off in most tests)
    * @param {() => void} [o.respawn]  starts a fresh supervisor (restart-supervisor)
+   * @param {boolean} [o.security]    run the miner check (on Windows by default)
+   * @param {() => Promise<object[] | null>} [o.listProcesses]
+   * @param {string} [o.appData]      %APPDATA%
+   * @param {string} [o.windowsDir]   %SystemRoot%
    */
   constructor(o) {
     this.logs = o.logs;
@@ -259,8 +366,34 @@ export class Supervisor {
     // serverSeenUp: the server answered at least once since this supervisor started, so a later silence is an outage
     // (the supervisor's own first start after a reboot is not: the uptime record covers a PC that was off).
     this.watch = { localDownSince: null, maintenanceUntil: 0, last: null, serverSeenUp: false };
+    this.securityOn = o.security ?? process.platform === "win32";
+    this.listProcesses = o.listProcesses ?? listProcesses;
+    this.appData = o.appData ?? process.env.APPDATA ?? join(homedir(), "AppData", "Roaming");
+    this.windowsDir = o.windowsDir ?? process.env.SystemRoot ?? "C:\\Windows";
+    // sent: finding key -> when the owner was told (security-alerts.json, so a restart does not tell again);
+    // logged: the same for supervisor.log (in memory).
+    this.security = { sent: this.readSecuritySent(), logged: {}, lastScanAt: null, findings: [], listFailed: false, unsupportedLogged: false, lastFailure: null };
     this.timers = [];
     this.stopped = false;
+  }
+
+  readSecuritySent() {
+    try {
+      const v = JSON.parse(readFileSync(this.file("security-alerts.json"), "utf8")).sent;
+      return Object.fromEntries(Object.entries(v ?? {}).filter(([, at]) => typeof at === "number"));
+    } catch {
+      return {};
+    }
+  }
+
+  saveSecuritySent() {
+    const keep = Object.fromEntries(Object.entries(this.security.sent).filter(([, at]) => this.now() - at < 7 * this.timing.securityRepeatMs));
+    this.security.sent = keep;
+    try {
+      writeFileSync(this.file("security-alerts.json"), JSON.stringify({ sent: keep }, null, 1));
+    } catch {
+      // Kept in memory; written next time.
+    }
   }
 
   file(name) {
@@ -563,12 +696,92 @@ export class Supervisor {
     }
   }
 
+  /**
+   * The miner check: every 10 minutes the running programs and %APPDATA%\DLL. A new finding is one SECURITY line in
+   * supervisor.log and one message to the owner (Telegram and email, through the local server's /api/monitor/pc-alert);
+   * the same finding (name + path) again at most once in 24 hours. While the running server is older than that route
+   * (until the next full deploy) the finding is only logged, and sent once a server that has it is running.
+   */
+  async securityRound() {
+    if (this.stopped || !this.securityOn) return;
+    const sec = this.security;
+    const processes = await this.listProcesses();
+    const now = this.now();
+    if (!processes) {
+      if (!sec.listFailed) this.log("miner check: the running programs could not be listed; trying again in 10 minutes");
+      sec.listFailed = true;
+      return;
+    }
+    sec.listFailed = false;
+    let dllFolderExists = false;
+    try {
+      dllFolderExists = Boolean(this.appData) && existsSync(join(this.appData, "DLL"));
+    } catch {
+      // Checked again next round.
+    }
+    const findings = findSuspicious({ processes, appData: this.appData, dllFolderExists, windowsDir: this.windowsDir });
+    sec.lastScanAt = new Date(now).toISOString();
+    sec.findings = findings.map((f) => f.name);
+    for (const f of dueFindings(findings, sec.logged, now, this.timing.securityRepeatMs)) {
+      this.log(findingLine(f));
+      sec.logged[f.key] = now;
+    }
+    const due = dueFindings(findings, sec.sent, now, this.timing.securityRepeatMs).slice(0, 10);
+    if (!due.length) return;
+    const result = await this.sendSecurityAlert(due);
+    if (result === "sent") {
+      for (const f of due) sec.sent[f.key] = this.now();
+      this.saveSecuritySent();
+      sec.lastFailure = null;
+      this.log(`SECURITY: the owner was alerted about ${due.map((f) => `"${f.name}"`).join(", ")}`);
+    } else if (result === "unsupported") {
+      if (!sec.unsupportedLogged) this.log("SECURITY: the running server has no /api/monitor/pc-alert yet (it comes with the next full deploy): logged here only, sent once it has");
+      sec.unsupportedLogged = true;
+    } else if (sec.lastFailure !== result) {
+      sec.lastFailure = result;
+      this.log(`SECURITY: the alert could not be sent (${result}); trying again every 10 minutes`);
+    }
+  }
+
+  /** "sent", "unsupported" (a server from before the route) or why it failed. Never logs the secret. */
+  async sendSecurityAlert(findings) {
+    let secret = "";
+    try {
+      secret = readFileSync(this.file("cron-secret.txt"), "utf8").replace(/^﻿/, "").trim();
+    } catch {
+      return "no cron-secret.txt";
+    }
+    if (!secret) return "cron-secret.txt is empty";
+    try {
+      const res = await this.fetchImpl(`${this.localUrl}/api/monitor/pc-alert`, {
+        method: "POST",
+        redirect: "manual",
+        headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+        body: JSON.stringify({ kind: "suspicious-process", findings: findings.map(({ name, path, pid, memMb, looksLike, reasons }) => ({ name, path, pid, memMb, looksLike, reasons })) }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const text = await res.text().catch(() => "");
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+      // An older server answers 404 (or a page, not this route's JSON).
+      if (res.status === 404 || (res.status >= 300 && res.status < 400) || (res.ok && json?.ok !== true)) return "unsupported";
+      if (!res.ok) return `the server answered ${res.status}`;
+      return json.sent ? "sent" : "no channel delivered it";
+    } catch {
+      return "the server did not answer";
+    }
+  }
+
   snapshot() {
     const children = {};
     for (const [name, c] of Object.entries(this.children)) {
       children[name] = { pid: c.pid, state: c.state, startedAt: c.startedIso, restarts: c.restarts, lastExit: c.lastExit, ...(c.listener ? { listener: c.listener } : {}) };
     }
-    return { supervisorPid: process.pid, startedAt: this.startedAt, bootAt: bootTime(this.now()), updatedAt: new Date(this.now()).toISOString(), children, probe: this.watch.last };
+    return { supervisorPid: process.pid, startedAt: this.startedAt, bootAt: bootTime(this.now()), updatedAt: new Date(this.now()).toISOString(), children, probe: this.watch.last, security: { lastScanAt: this.security.lastScanAt, findings: this.security.findings } };
   }
 
   writeState() {
@@ -611,6 +824,9 @@ export class Supervisor {
     this.timers.push(setInterval(safe(() => this.healthRound()), this.timing.healthMs));
     this.timers.push(setInterval(safe(() => this.probeRound()), this.timing.probeMs));
     this.timers.push(setInterval(() => this.writeState(), this.timing.stateMs));
+    // clearInterval also clears a timeout (shutdown).
+    this.timers.push(setTimeout(safe(() => this.securityRound()), this.timing.securityFirstMs));
+    this.timers.push(setInterval(safe(() => this.securityRound()), this.timing.securityMs));
     return control();
   }
 }

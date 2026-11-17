@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, utimesSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { afterExit, backoffMs, holdLock, sameStart, serverHangs, Supervisor, tunnelStuck, TIMING } from "@/scripts/self-host/windows/supervisor.mjs";
+import { afterExit, backoffMs, dueFindings, findSuspicious, holdLock, lookAlikeOf, parseProcessList, sameStart, serverHangs, Supervisor, tunnelStuck, TIMING } from "@/scripts/self-host/windows/supervisor.mjs";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(check: () => boolean, ms = 8_000) {
@@ -324,5 +324,166 @@ describe("one supervisor at a time", () => {
     expect(state.supervisorPid).toBe(process.pid);
     first!.close();
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("the miner check (the fake dlIhost of 17 November 2026)", () => {
+  const appData = "C:\\Users\\WECPC015\\AppData\\Roaming";
+  const proc = (name: string, path: string | null = null, privateBytes = 50 * 1024 ** 2, pid = 100) => ({ pid, name, path, privateBytes });
+  const GB = 1024 ** 3;
+
+  it("flags names that imitate Windows programs, never the real ones in any case", () => {
+    expect(lookAlikeOf("dlIhost.exe")).toBe("dllhost");
+    expect(lookAlikeOf("dlIhost")).toBe("dllhost");
+    expect(lookAlikeOf("svch0st")).toBe("svchost");
+    expect(lookAlikeOf("expl0rer.exe")).toBe("explorer");
+    expect(lookAlikeOf("wlnlogon")).toBe("winlogon");
+    for (const real of ["dllhost", "dllhost.exe", "RuntimeBroker.exe", "RuntimeBroker", "SearchHost.exe", "svchost", "explorer.EXE", "WmiPrvSE.exe", "chrome", "node.exe"]) expect(lookAlikeOf(real)).toBeNull();
+  });
+
+  it("finds the miner: look-alike name, in AppData\\Roaming\\DLL, 2.35 GB", () => {
+    const miner = proc("dlIhost.exe", `${appData}\\DLL\\dlIhost.exe`, 2.35 * GB, 4242);
+    const found = findSuspicious({ processes: [proc("dllhost.exe"), proc("RuntimeBroker.exe", "C:\\Windows\\System32\\RuntimeBroker.exe"), proc("SearchHost.exe"), miner], appData });
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ name: "dlIhost", pid: 4242, looksLike: "dllhost", reasons: ["lookalike", "dll-path", "memory"] });
+    expect(found[0].key).toBe("dlihost|c:\\users\\wecpc015\\appdata\\roaming\\dll\\dlihost.exe");
+  });
+
+  it("flags anything under AppData\\Roaming\\DLL, a Windows name outside Windows, the folder, and big unknown programs", () => {
+    const found = findSuspicious({
+      processes: [
+        proc("helper.exe", `${appData.toLowerCase()}/dll/helper.exe`),
+        proc("svchost.exe", `${appData}\\Microsoft\\svchost.exe`),
+        proc("svchost.exe", "C:\\Windows\\System32\\svchost.exe"),
+        proc("xmrig.exe", "C:\\Temp\\xmrig.exe", 3 * GB),
+        proc("node.exe", "C:\\Program Files\\nodejs\\node.exe", 3 * GB),
+        proc("MsMpEng.exe", null, 3 * GB),
+        proc("other.exe", `${appData}\\DLLs\\other.exe`),
+      ],
+      appData,
+      dllFolderExists: true,
+    });
+    expect(found.map((f: { name: string; reasons: string[] }) => [f.name, f.reasons])).toEqual([
+      ["helper", ["dll-path"]],
+      ["svchost", ["system-name-path"]],
+      ["xmrig", ["memory"]],
+      ["DLL folder", ["dll-folder"]],
+    ]);
+  });
+
+  it("finds nothing on a clean PC", () => {
+    expect(findSuspicious({ processes: [proc("dllhost.exe"), proc("RuntimeBroker.exe"), proc("SearchHost.exe"), proc("chrome.exe", null, 3 * GB)], appData })).toEqual([]);
+  });
+
+  it("reads PowerShell's list, also when it is one process", () => {
+    expect(parseProcessList('[{"pid":4,"name":"System","path":null,"priv":0},{"pid":9,"name":"dlIhost.exe","path":"C:\\\\x.exe","priv":10}]')).toEqual([
+      { pid: 4, name: "System", path: null, privateBytes: 0 },
+      { pid: 9, name: "dlIhost.exe", path: "C:\\x.exe", privateBytes: 10 },
+    ]);
+    expect(parseProcessList('{"pid":9,"name":"a.exe","path":"","priv":1}')).toEqual([{ pid: 9, name: "a.exe", path: null, privateBytes: 1 }]);
+    expect(parseProcessList("not json")).toBeNull();
+  });
+
+  it("sends a finding once, then again only after 24 hours", () => {
+    const f = [{ key: "dlihost|x" }, { key: "folder|y" }];
+    const day = TIMING.securityRepeatMs;
+    expect(dueFindings(f, {}, 1_000)).toEqual(f);
+    expect(dueFindings(f, { "dlihost|x": 1_000 }, 1_000 + 10 * 60_000)).toEqual([{ key: "folder|y" }]);
+    expect(dueFindings(f, { "dlihost|x": 1_000, "folder|y": 1_000 }, 1_000 + day - 1)).toEqual([]);
+    expect(dueFindings(f, { "dlihost|x": 1_000, "folder|y": 1_000 + day }, 1_000 + day)).toEqual([{ key: "dlihost|x" }]);
+  });
+
+  describe("in the supervisor", () => {
+    let dir = "";
+    afterEach(() => {
+      if (dir) rmSync(dir, { recursive: true, force: true });
+    });
+    const miner = { pid: 4242, name: "dlIhost.exe", path: `${appData}\\DLL\\dlIhost.exe`, privateBytes: 2.35 * GB };
+    function make(answer: (url: string, init?: RequestInit) => Response | Promise<Response>, startAt = Date.UTC(2026, 10, 17, 10)) {
+      dir = mkdtempSync(join(tmpdir(), "bp-sec-"));
+      writeFileSync(join(dir, "cron-secret.txt"), "pc-secret\n");
+      const calls: { url: string; body: { findings: { name: string; reasons: string[] }[] }; auth: string }[] = [];
+      let now = startAt;
+      const sup = new Supervisor({
+        logs: dir,
+        specs: {},
+        probe: false,
+        security: true,
+        appData,
+        now: () => now,
+        listProcesses: async () => [{ pid: 1, name: "dllhost.exe", path: null, privateBytes: 0 }, miner],
+        fetchImpl: (async (url: string, init?: RequestInit) => {
+          calls.push({ url, body: JSON.parse(String(init?.body)), auth: String((init?.headers as Record<string, string>).authorization) });
+          return answer(url, init);
+        }) as typeof fetch,
+      });
+      const log = () => (existsSync(join(dir, "supervisor.log")) ? readFileSync(join(dir, "supervisor.log"), "utf8") : "");
+      return { sup, calls, log, advance: (ms: number) => (now += ms) };
+    }
+
+    it("logs and alerts the owner once, again after 24 hours, and remembers it across a restart", async () => {
+      const ok = () => new Response(JSON.stringify({ ok: true, sent: true }), { status: 200 });
+      const { sup, calls, log, advance } = make(ok);
+      await sup.securityRound();
+      expect(calls).toHaveLength(1);
+      expect(calls[0].url).toBe("http://127.0.0.1:3002/api/monitor/pc-alert");
+      expect(calls[0].auth).toBe("Bearer pc-secret");
+      expect(calls[0].body.findings).toEqual([expect.objectContaining({ name: "dlIhost", reasons: ["lookalike", "dll-path", "memory"] })]);
+      expect(log()).toMatch(/SECURITY: suspicious program "dlIhost" \(looks like Windows "dllhost"; runs from %APPDATA%\\DLL; 2406 MB private memory\) pid 4242/);
+      expect(log()).toMatch(/the owner was alerted about "dlIhost"/);
+      expect(log()).not.toContain("pc-secret");
+      advance(10 * 60_000);
+      await sup.securityRound();
+      expect(calls).toHaveLength(1);
+      expect(log().match(/SECURITY: suspicious/g)).toHaveLength(1);
+      // A fresh supervisor (update, restart) does not tell again.
+      const again = new Supervisor({ logs: dir, specs: {}, probe: false, security: true, appData, now: () => Date.UTC(2026, 10, 17, 12), listProcesses: async () => [miner], fetchImpl: sup.fetchImpl });
+      await again.securityRound();
+      expect(calls).toHaveLength(1);
+      advance(TIMING.securityRepeatMs);
+      await sup.securityRound();
+      expect(calls).toHaveLength(2);
+    });
+
+    it("an older server without the route: logged only (once), and sent once a server has it", async () => {
+      let supported = false;
+      const { sup, calls, log, advance } = make(() => (supported ? new Response(JSON.stringify({ ok: true, sent: true })) : new Response("<html>not found</html>", { status: 404 })));
+      await sup.securityRound();
+      advance(10 * 60_000);
+      await sup.securityRound();
+      expect(calls).toHaveLength(2);
+      expect(log().match(/has no \/api\/monitor\/pc-alert yet/g)).toHaveLength(1);
+      expect(log().match(/SECURITY: suspicious/g)).toHaveLength(1);
+      supported = true;
+      advance(10 * 60_000);
+      await sup.securityRound();
+      expect(log()).toMatch(/the owner was alerted/);
+      advance(10 * 60_000);
+      await sup.securityRound();
+      expect(calls).toHaveLength(3);
+    });
+
+    it("a page instead of the route's JSON counts as an older server; a failed delivery is tried again", async () => {
+      let answer: () => Response = () => new Response("<html></html>", { status: 200 });
+      const { sup, calls, log, advance } = make(() => answer());
+      await sup.securityRound();
+      expect(log()).toMatch(/has no \/api\/monitor\/pc-alert yet/);
+      answer = () => new Response(JSON.stringify({ ok: true, sent: false }));
+      advance(10 * 60_000);
+      await sup.securityRound();
+      expect(log()).toMatch(/could not be sent \(no channel delivered it\)/);
+      advance(10 * 60_000);
+      await sup.securityRound();
+      expect(calls).toHaveLength(3);
+    });
+
+    it("sends nothing on a clean PC", async () => {
+      const { sup, calls, log } = make(() => new Response("{}"));
+      sup.listProcesses = async () => [{ pid: 1, name: "dllhost.exe", path: null, privateBytes: 0 }, { pid: 2, name: "RuntimeBroker.exe", path: "C:\\Windows\\System32\\RuntimeBroker.exe", privateBytes: 0 }];
+      await sup.securityRound();
+      expect(calls).toHaveLength(0);
+      expect(log()).toBe("");
+      expect(sup.snapshot().security.lastScanAt).toBeTruthy();
+    });
   });
 });
