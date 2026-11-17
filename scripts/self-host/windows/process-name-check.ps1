@@ -7,7 +7,7 @@ $norm = { param($s) $s.ToLower().Replace("1", "l").Replace("0", "o") }
 foreach ($p in Get-Process) {
   $n = $p.ProcessName
   $looksLike = $real | Where-Object { (& $norm $n) -eq $_ -or ($n.Length -eq $_.Length -and (& $norm $n) -ne $_ -and ([regex]::Replace($n.ToLower(), "[il1|]", "l") -eq $_)) }
-  if ($looksLike -and ($real -cnotcontains $n)) {
+  if ($looksLike -and ($real -notcontains $n)) {  # case-insensitive: "RuntimeBroker" is the real one, "dlIhost" lowercases to "dlihost" and is still flagged
     $codes = ($n.ToCharArray() | ForEach-Object { "$_=" + [int]$_ }) -join " "
     $w = Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" -ErrorAction SilentlyContinue
     Write-Host "SUSPICIOUS: '$n' looks like '$looksLike'  PID $($p.Id)  private $([math]::Round($p.PrivateMemorySize64 / 1MB)) MB"
