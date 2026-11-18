@@ -4,13 +4,15 @@ test("homepage loads with a single H1", async ({ page }) => {
   await page.goto("/");
   const h1 = page.getByRole("heading", { level: 1 });
   await expect(h1).toBeVisible();
-  await expect(h1).toContainText("The marketing team for your");
+  await expect(h1).toContainText("Your business, marketed every day.");
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
 });
 
-test("Start free trial goes to sign-up", async ({ page }) => {
+// Outside the Rwanda price region (CI has no visitor country) the main call to action is the free trial
+// (lib/quote/cta.ts); Rwanda visitors get "Get a free quote" instead.
+test("Start your free trial goes to sign-up", async ({ page }) => {
   await page.goto("/");
-  const cta = page.getByRole("main").getByRole("link", { name: "Start free trial" }).first();
+  const cta = page.getByRole("main").getByRole("link", { name: "Start your free trial" }).first();
   await expect(cta).toHaveAttribute("href", "/signup");
   await cta.click();
   await expect(page).toHaveURL(/\/signup/, { timeout: 15_000 });
@@ -18,11 +20,16 @@ test("Start free trial goes to sign-up", async ({ page }) => {
 
 test("FAQ opens", async ({ page }) => {
   await page.goto("/");
-  const q = page.getByRole("button", { name: "How does the free trial work?" });
+  // The first question starts open; "How do I get started?" starts closed. Its answer (trial mode) names the
+  // trial length from an Admin setting, so only the fixed opening words are checked.
+  const q = page.getByRole("button", { name: "How do I get started?" });
+  const answer = page.getByRole("region", { name: "How do I get started?" });
   await expect(q).toHaveAttribute("aria-expanded", "false");
+  await expect(answer).toBeHidden();
   await q.click();
   await expect(q).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByText("Sign up and use BuPulse free for 7 days")).toBeVisible();
+  await expect(answer).toBeVisible();
+  await expect(answer).toContainText("Sign up, tell BuPulse about your business");
 });
 
 test("theme toggle switches the dark class", async ({ page }) => {

@@ -35,12 +35,12 @@ test("expired confirmation link explains what to do", async ({ page }) => {
 test("forgot-password page asks for an email", async ({ page }) => {
   await page.goto("/forgot-password");
   await expect(page.getByRole("heading", { name: "Forgot your password?" })).toBeVisible();
-  await page.getByRole("button", { name: "Send reset link" }).click();
+  await page.getByRole("button", { name: "Send code and link" }).click();
   await expect(page.getByText("Enter your email address.")).toBeVisible();
 });
 
 test("reset-password without a recovery session shows an expired message", async ({ page }) => {
   await page.goto("/reset-password");
   await expect(page.getByRole("heading", { name: "This link has expired" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Request a new link" })).toHaveAttribute("href", "/forgot-password");
+  await expect(page.getByRole("link", { name: "Get a new code and link" })).toHaveAttribute("href", "/forgot-password");
 });

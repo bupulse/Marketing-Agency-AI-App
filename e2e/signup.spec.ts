@@ -11,9 +11,9 @@ async function fillStep2(page: Page) {
   await page.getByLabel("Organisation name").fill("Sunrise Phones");
   await page.getByLabel("CEO name").fill("Ana Silva");
   await page.getByLabel("Business sector").selectOption("other");
-  await page.getByLabel("Your industry").fill("Phone repairs");
+  await page.getByRole("textbox", { name: "Your industry" }).fill("Phone repairs");
   await page.getByLabel("Describe your business").fill("We repair and sell phones and accessories in Nairobi CBD.");
-  await page.getByLabel("Country").selectOption("Kenya");
+  await page.getByRole("combobox", { name: "Country", exact: true }).selectOption("Kenya");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 }
 
@@ -47,9 +47,9 @@ test("step 2 requires organisation details and validates optional fields", async
   await page.getByLabel("CEO name").fill("Ana Silva");
   // "Other" reveals the industry text and moves focus into it.
   await page.getByLabel("Business sector").selectOption("other");
-  await expect(page.getByLabel("Your industry")).toBeFocused();
+  await expect(page.getByRole("textbox", { name: "Your industry" })).toBeFocused();
   await page.getByLabel("Describe your business").fill("We repair and sell phones and accessories in Nairobi CBD.");
-  await page.getByLabel("Country").selectOption("Kenya");
+  await page.getByRole("combobox", { name: "Country", exact: true }).selectOption("Kenya");
   await page.getByLabel("Phone (optional)").fill("12");
   await page.getByLabel("Website (optional)").fill("not a url");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -57,10 +57,13 @@ test("step 2 requires organisation details and validates optional fields", async
   await expect(page.getByText(/Enter a valid Kenyan number/)).toBeVisible();
   await expect(page.getByText("Enter a valid website")).toBeVisible();
 
-  await page.getByLabel("Your industry").fill("Phone repairs");
-  // Typing a national number groups it with the Kenyan dial code.
+  await page.getByRole("textbox", { name: "Your industry" }).fill("Phone repairs");
+  // The picker follows the country (Kenya, +254); a national number drops its 0 and is grouped as typed, and the
+  // form posts it with the dial code (components/ui/phone-input.tsx).
   await page.getByLabel("Phone (optional)").fill("0712345678");
-  await expect(page.getByLabel("Phone (optional)")).toHaveValue("+254 712 345 678");
+  await expect(page.getByLabel("Phone (optional)")).toHaveValue("712 345678");
+  await expect(page.getByRole("combobox", { name: "Country code" })).toHaveValue("KE");
+  await expect(page.locator('input[type="hidden"][name="phone"]')).toHaveValue("+254 712 345678");
   await page.getByLabel("Website (optional)").fill("sunrise.example.com");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Secure your account" })).toBeVisible();
@@ -77,8 +80,8 @@ test("back keeps the values that were entered", async ({ page }) => {
   await expect(page.getByLabel("Organisation name")).toHaveValue("Sunrise Phones");
   await expect(page.getByLabel("CEO name")).toHaveValue("Ana Silva");
   await expect(page.getByLabel("Business sector")).toHaveValue("other");
-  await expect(page.getByLabel("Your industry")).toHaveValue("Phone repairs");
-  await expect(page.getByLabel("Country")).toHaveValue("Kenya");
+  await expect(page.getByRole("textbox", { name: "Your industry" })).toHaveValue("Phone repairs");
+  await expect(page.getByRole("combobox", { name: "Country", exact: true })).toHaveValue("Kenya");
 
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page.getByLabel("Email")).toHaveValue("keep@example.com");
