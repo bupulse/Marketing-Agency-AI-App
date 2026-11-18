@@ -6,6 +6,7 @@ import { sendTelegramMessage } from "@/lib/lead-alerts/telegram";
 import { readTelegramChat, resolveTelegramToken } from "@/lib/lead-alerts/telegram-settings";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { supportAppUrl } from "@/lib/support/alerts";
+import { notifyOwnerViaGithub } from "./github-notify";
 import { durationWords, kigaliTime, type Outage } from "./uptime-rules";
 
 // The owner's site alerts: "bupulse.com is back up", sent by the server on the first good outside check after an
@@ -13,7 +14,9 @@ import { durationWords, kigaliTime, type Outage } from "./uptime-rules";
 // watch.ts, from the supervisor's reports). When the whole PC is off nothing here can run: the GitHub workflow can send
 // that "down" alert (scripts/monitor/uptime-check.mjs, on unless UPTIME_DOWN_ALERT=off). Same channels as the
 // lead alerts: email to the admin address through Resend, and Telegram to the chat connected in Admin -> Settings ->
-// Lead alerts, with the bot token from Admin -> Services or the environment (resolveTelegramToken). Never throws.
+// Lead alerts, with the bot token from Admin -> Services or the environment (resolveTelegramToken). When Telegram fails
+// (after its retries) the generic `backupText` goes out through GitHub instead (github-notify.ts; outcome "github",
+// only present when it was needed). Never throws.
 
 export type AlertOutcome = "sent" | "skipped" | "failed";
 
@@ -34,7 +37,14 @@ export type OwnerAlert = {
   emoji: string;
   blocks?: { label: string; value: string }[];
   footer?: string;
+  /**
+   * What the GitHub backup says when Telegram fails. The repository is public: only the kind of alert and counts, never
+   * names, paths, addresses or links (github-notify.ts strips those again).
+   */
+  backupText?: string;
 };
+
+const DEFAULT_BACKUP = "Server alert for the owner. Details by email and on the support app's Server page.";
 
 /** One message to the owner by email and Telegram, each only when it is switched on and set up. */
 export async function sendOwnerAlert(a: OwnerAlert): Promise<Record<string, AlertOutcome>> {
@@ -64,7 +74,9 @@ export async function sendOwnerAlert(a: OwnerAlert): Promise<Record<string, Aler
       }
     })(),
   ]);
-  return { email, telegram };
+  const out: Record<string, AlertOutcome> = { email, telegram };
+  if (telegram === "failed") out.github = await notifyOwnerViaGithub(a.backupText ?? DEFAULT_BACKUP);
+  return out;
 }
 
 export async function sendBackUpAlert(o: Outage): Promise<Record<string, AlertOutcome>> {
@@ -79,5 +91,6 @@ export async function sendBackUpAlert(o: Outage): Promise<Record<string, AlertOu
       { label: "Up again", value: `${kigaliTime(o.endedAt)} (first good check)` },
     ],
     footer: "Checked from outside every 5 minutes by GitHub Actions and the server PC. Times are the checks around the outage, so it may have been a little shorter.",
+    backupText: `Site alert: bupulse.com was down about ${durationWords(o.minutes)} (back up now).`,
   });
 }

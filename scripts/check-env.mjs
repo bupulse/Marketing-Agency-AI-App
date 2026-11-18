@@ -49,6 +49,7 @@ export const RUNTIME_RECOMMENDED = [
   ["VAPID_SUBJECT", "phone and browser alerts for new leads are off (the switch is hidden)"],
   ["GITHUB_REPO", "Admin, Settings, Updates shows Not connected"],
   ["GITHUB_TOKEN", "Admin, Settings, Updates shows Not connected"],
+  ["GITHUB_NOTIFY_TOKEN", "no backup through GitHub when a Telegram alert from the server fails"],
 ];
 
 /** Development-only switches that must never be on in production. */

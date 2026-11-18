@@ -354,8 +354,10 @@ export const SERVICES: ServiceInfo[] = [
   {
     id: "telegram",
     name: "Telegram (lead alerts)",
-    purpose: "Free instant alerts to the owner's phone the moment someone asks for a quote or starts a chat on bupulse.com (lib/lead-alerts). Make a bot with @BotFather, paste its token here, send /start to the bot, then press Connect in Admin -> Settings, Lead alerts.",
+    purpose: "Free instant alerts to the owner's phone the moment someone asks for a quote or starts a chat on bupulse.com (lib/lead-alerts). Make a bot with @BotFather, paste its token here, send /start to the bot, then press Connect in Admin -> Settings, Lead alerts. GITHUB_NOTIFY_TOKEN (optional, a fine-grained GitHub token with Actions read/write on the repository) sends a short generic alert through GitHub when Telegram does not answer.",
     env: ["TELEGRAM_BOT_TOKEN"],
+    // The backup route when Telegram does not answer from the server (lib/monitor/github-notify.ts).
+    optionalEnv: ["GITHUB_NOTIFY_TOKEN"],
     features: ["Telegram alerts for quote requests", "Telegram alerts for the Contact and Done-for-you forms", "Telegram alerts for new website chats", "Telegram alerts for chats waiting for a person"],
     killable: true,
     whenOff: "No Telegram alerts are sent; the alert emails to the admin addresses carry on and every request stays in Admin -> Quote requests.",

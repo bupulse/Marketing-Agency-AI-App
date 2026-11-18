@@ -38,6 +38,7 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   process.env.RESEND_API_KEY = "re_placeholder";
   delete process.env.TELEGRAM_BOT_TOKEN;
+  delete process.env.GITHUB_NOTIFY_TOKEN;
 });
 
 describe("sendLeadAlert", () => {
@@ -123,7 +124,7 @@ describe("nothing is skipped quietly", () => {
     const off: AlertChannel = { id: "email", send: vi.fn(async () => "skipped" as const) };
     const broken: AlertChannel = { id: "telegram", send: vi.fn(async () => { throw new Error("down"); }) };
     await sendLeadAlert(alert, [off, broken]);
-    expect(m.logError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("quote alert reached nobody (email skipped, telegram failed)") }), expect.objectContaining({ source: "lead-alerts" }));
+    expect(m.logError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("quote alert reached nobody (email skipped, telegram failed, github skipped)") }), expect.objectContaining({ source: "lead-alerts" }));
   });
 
   it("but not when one channel sent it, nor when the caller said other alerts back it up", async () => {

@@ -279,6 +279,18 @@ variables -> Actions -> Variables) to switch it off. It needs the repository sec
 TELEGRAM_CHAT_ID and/or RESEND_API_KEY. Free (public repository), but GitHub's 5-minute schedule often runs late, and in
 a tunnel-only outage both the PC and GitHub may send a "down" message (accepted).
 
+**Telegram backup through GitHub (18 November 2026).** From the office PC, api.telegram.org often does not answer
+(Admin overview: "Telegram did not answer in time"). When a Telegram message from the server still fails after its
+retries (owner alerts: site down/up, PC security findings; lead alerts: quote requests, contact form, website chats,
+chats waiting for a person), the server starts `.github/workflows/notify-owner.yml` through the GitHub API, which sends
+a short Telegram message from GitHub's servers (`lib/monitor/github-notify.ts`; 10 s per try, one retry). The
+repository is public, so that text only says what kind of alert it is ("New quote request waiting. Open Admin -> Quote
+requests."), never names, numbers, emails, messages or links; the full details are in the email and in Admin. It shows
+as the channel `github` in the outcomes and logs. Needs `GITHUB_NOTIFY_TOKEN`: a fine-grained token, repository
+bupulse/Marketing-Agency-AI-App only, permission Actions: read and write (in the PC's `.env`, or pasted in Admin ->
+Services -> Telegram). Without it the backup is skipped (one console line per server start). Quote reminders are not
+backed up (their job is retried).
+
 ### Miner check (17 November 2026)
 
 A crypto-miner ran on the PC as `dlIhost` (capital i, imitating Windows' `dllhost`) from

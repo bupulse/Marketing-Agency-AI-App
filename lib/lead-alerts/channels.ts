@@ -5,6 +5,7 @@ import { logError } from "@/lib/errors";
 import { runInBackground } from "@/lib/leads/background";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { publicSiteUrl } from "@/lib/auth/site-url";
+import { leadBackupText, notifyOwnerViaGithub, type GithubNotifyOutcome } from "@/lib/monitor/github-notify";
 import { alertFields, alertIntro, alertSubject, telegramButtons, telegramText, type LeadAlert } from "./format";
 import { sendTelegramMessage } from "./telegram";
 import { readTelegramChat, resolveTelegramToken } from "./telegram-settings";
@@ -18,6 +19,9 @@ import { readTelegramChat, resolveTelegramToken } from "./telegram-settings";
 // Nothing is skipped quietly: a channel that is on but not set up (no bot token, no connected chat, no admin address)
 // writes a warning to Admin -> Errors (once a day per server, not on every alert: Admin -> Health keeps listing what is
 // missing until it is fixed, setup.ts), and an alert that reached nobody writes an error.
+// When the Telegram channel fails (after its retries; the office PC's route to Telegram drops packets), a generic
+// "new quote request waiting" goes out through GitHub's notify-owner workflow instead (lib/monitor/github-notify.ts),
+// reported as the channel "github". The repository is public, so that text names only the kind of alert.
 
 export type ChannelOutcome = "sent" | "skipped";
 
@@ -111,6 +115,7 @@ export async function sendLeadAlert(
   alert: LeadAlert,
   channels: readonly AlertChannel[] = ALERT_CHANNELS,
   opts: { quietIfNone?: boolean } = {},
+  backup: (text: string) => Promise<GithubNotifyOutcome> = notifyOwnerViaGithub,
 ): Promise<Record<string, ChannelOutcome | "failed">> {
   const results = await Promise.allSettled(channels.map((c) => c.send(alert)));
   const out: Record<string, ChannelOutcome | "failed"> = {};
@@ -124,6 +129,11 @@ export async function sendLeadAlert(
       }
     }),
   );
+  // Telegram failed: the backup through GitHub, with the kind of alert only (never who or what: the repository is public).
+  if (out.telegram === "failed") {
+    out.github = await backup(leadBackupText(alert)).catch(() => "failed" as const);
+    if (out.github === "failed") await logError(new Error(`The GitHub backup for a failed Telegram ${alert.kind} alert did not start either (see GITHUB_NOTIFY_TOKEN in docs/SELF_HOST.md).`), { source: "lead-alerts.github", level: "warn", kind: alert.kind });
+  }
   if (!opts.quietIfNone && channels.length && !Object.values(out).includes("sent")) {
     const summary = Object.entries(out).map(([id, o]) => `${id} ${o}`).join(", ");
     await logError(new Error(`A ${alert.kind} alert reached nobody (${summary}). Set up email or Telegram: Admin -> Health lists what is missing.`), { source: "lead-alerts", kind: alert.kind });

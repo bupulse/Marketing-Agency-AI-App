@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { sendOwnerAlert, type AlertOutcome, type OwnerAlert } from "./alerts";
 import { afterSend, delivered, EMPTY_WATCH, nextWatch, readWatchState, watchCovers, watchText, type WatchReport, type WatchSend, type WatchState } from "./watch-rules";
-import { kigaliTime } from "./uptime-rules";
+import { durationWords, kigaliTime } from "./uptime-rules";
 
 // The server PC's down watch (POST /api/monitor/watch, from scripts/self-host/windows/supervisor.mjs every minute).
 // Its state is one AdminSetting row ("monitor.watch"); the rules are in watch-rules.ts. Only one PC posts, once a
@@ -29,7 +29,14 @@ async function saveWatch(db: Db, state: WatchState) {
 function alertFor(send: WatchSend): OwnerAlert {
   const { subject, heading, line } = watchText(send);
   if (send.kind === "down") {
-    return { subject, heading, line, emoji: "🔴", footer: "Checked from the server PC every minute through the public address. This is the only message until the site is back." };
+    return {
+      subject,
+      heading,
+      line,
+      emoji: "🔴",
+      footer: "Checked from the server PC every minute through the public address. This is the only message until the site is back.",
+      backupText: `Site alert: bupulse.com is down (about ${durationWords(Math.max(2, send.minutes))} so far).`,
+    };
   }
   return {
     subject,
@@ -41,6 +48,7 @@ function alertFor(send: WatchSend): OwnerAlert {
       { label: "Up again", value: kigaliTime(send.outage.endedAt) },
     ],
     footer: send.downWasSent ? "Checked from the server PC every minute." : "The site was down for a while, but no message could go out while it lasted (the PC's internet or its website was down).",
+    backupText: `Site alert: bupulse.com was down about ${durationWords(send.outage.minutes)} (back up now).`,
   };
 }
 

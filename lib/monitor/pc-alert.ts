@@ -15,7 +15,10 @@ export async function sendPcAlert(alert: PcAlert, deps: Deps = {}): Promise<{ se
   const { subject, heading, line, blocks } = pcAlertText(alert);
   let outcomes: Record<string, AlertOutcome>;
   try {
-    outcomes = await send({ subject, heading, line, blocks, emoji: "🚨", footer: "Checked by the server PC's supervisor every 10 minutes. The same finding is sent again at most once a day." });
+    outcomes = await send({ subject, heading, line, blocks, emoji: "🚨", footer: "Checked by the server PC's supervisor every 10 minutes. The same finding is sent again at most once a day.",
+      // Public (GitHub backup): the count only, never a program's name or path (a path carries the Windows user name).
+      backupText: `Security alert on the server PC (${alert.findings.length} ${alert.findings.length === 1 ? "finding" : "findings"}). Details by email and on the support app's Server page.`,
+    });
   } catch (error) {
     outcomes = { email: "failed", telegram: "failed" };
     await logError(error, { source: "monitor.pc-alert", level: "warn" });
