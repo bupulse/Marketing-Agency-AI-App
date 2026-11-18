@@ -47,9 +47,16 @@ export function HandInForm(props: {
   const formRef = useRef<HTMLFormElement>(null);
   const uploading = items.some((i) => i.status === "uploading");
 
+  // Clear the picked files when a hand-in lands: done while rendering (React's "state from a changed value" pattern),
+  // not in the effect, so it causes no extra render pass.
+  const [seenState, setSeenState] = useState(state);
+  if (state !== seenState) {
+    setSeenState(state);
+    if (state.status === "done") setItems([]);
+  }
+
   useEffect(() => {
     if (state.status !== "done") return;
-    setItems([]);
     formRef.current?.reset();
     router.refresh();
   }, [state, router]);
