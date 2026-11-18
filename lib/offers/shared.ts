@@ -43,6 +43,19 @@ const FEATURE_INCLUDES: Partial<Record<FeatureKey, { metric: OfferMetric; amount
 };
 
 /**
+ * Floors, not extras: posts, Autopilot and Daily posts write with AI texts and Video Studio spends video credits, so a
+ * custom plan with one of them is never saved with fewer than the Starter plan's amounts. Unlike FEATURE_INCLUDES they
+ * add nothing on top of a base plan and change no price (BuPulse's own company plan, 12 November 2026: 0 texts and
+ * 0 video credits blocked Autopilot and every AI post).
+ */
+const FEATURE_MINIMUMS: Partial<Record<FeatureKey, { metric: OfferMetric; amount: number }>> = {
+  content: { metric: "text", amount: 60 },
+  autopilot: { metric: "text", amount: 60 },
+  dailyPosts: { metric: "text", amount: 60 },
+  video: { metric: "videoCredits", amount: 100 },
+};
+
+/**
  * Every priced add-on. Features use their registry key, except Managed by BuPulse, which has two tiers. A feature with
  * no price in a region is shown as "no price set" in the editor (the core features usually come with the base plan).
  */
@@ -145,6 +158,17 @@ export function withIncludedLimits<T extends Pick<PlanLimits, Exclude<OfferMetri
   for (const key of features) {
     const inc = isFeatureKey(key) ? FEATURE_INCLUDES[key] : undefined;
     if (inc && !((out[inc.metric] ?? 0) >= inc.amount)) out[inc.metric] = inc.amount;
+  }
+  return out;
+}
+
+/** The plan a custom offer becomes never has fewer AI texts / video credits than its features need (FEATURE_MINIMUMS).
+ * Applied when the plan is created only, so it never changes an offer's quote or price. */
+export function withFeatureFloors<T extends Partial<Record<OfferMetric, number>>>(limits: T, features: readonly string[]): T {
+  const out = { ...limits };
+  for (const key of features) {
+    const min = isFeatureKey(key) ? FEATURE_MINIMUMS[key] : undefined;
+    if (min && !((out[min.metric] ?? 0) >= min.amount)) (out as Record<string, number>)[min.metric] = min.amount;
   }
   return out;
 }

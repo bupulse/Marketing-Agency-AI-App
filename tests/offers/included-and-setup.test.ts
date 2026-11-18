@@ -8,6 +8,7 @@ import {
   quoteAddition,
   quoteOffer,
   selfServeFeatures,
+  withFeatureFloors,
   withIncludedLimits,
   type AddonPriceRow,
   type OfferBase,
@@ -61,6 +62,16 @@ describe("included amounts", () => {
     expect(withIncludedLimits({ ...stored, chat: 2000 }, ["websiteChat"]).chat).toBe(2000);
     expect(withIncludedLimits(stored, ["content"])).toEqual(stored);
     expect(withIncludedLimits({ ...stored, image: 10 }, ["aiPhotos"]).image).toBe(30);
+  });
+
+  it("posts, Autopilot and Daily posts bring at least 60 AI texts, Video Studio 100 video credits (BuPulse's own plan had 0)", () => {
+    const zero = { text: 0, image: 30, chat: 500, videos: 120, voiceCharacters: 72000, videoCredits: 0, seats: 1 };
+    expect(withFeatureFloors(zero, ["content", "autopilot", "dailyPosts", "video"])).toEqual({ ...zero, text: 60, videoCredits: 100 });
+    expect(withFeatureFloors(zero, ["autopilot"]).text).toBe(60);
+    expect(withFeatureFloors(zero, ["designs"])).toEqual(zero);
+    expect(withFeatureFloors({ ...zero, text: 300, videoCredits: 1500 }, ["content", "video"])).toMatchObject({ text: 300, videoCredits: 1500 });
+    // Floors are not extras: an offer's quote and its included amounts do not change.
+    expect(withIncludedLimits(zero, ["content", "autopilot", "video"])).toEqual(zero);
   });
 });
 

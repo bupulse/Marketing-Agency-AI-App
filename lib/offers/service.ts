@@ -48,6 +48,7 @@ import {
   readManagedTier,
   toClientOffer,
   validUntilOf,
+  withFeatureFloors,
   withIncludedLimits,
   YEARLY_MONTHS,
   type AddonPriceRow,
@@ -536,7 +537,7 @@ export async function createCustomPlanInTx(tx: Prisma.TransactionClient, input: 
       ...input.prices,
       currency: input.currency,
       // Never less than the features include (an offer saved with 0 chat replies and website chat would refuse every reply).
-      limits: json(input.limits && typeof input.limits === "object" ? withIncludedLimits(input.limits as unknown as PlanLimits, input.features) : input.limits),
+      limits: json(input.limits && typeof input.limits === "object" ? withFeatureFloors(withIncludedLimits(input.limits as unknown as PlanLimits, input.features), input.features) : input.limits),
       highlights: json([]),
       featureKeys: json(input.features),
       features: json([]),
