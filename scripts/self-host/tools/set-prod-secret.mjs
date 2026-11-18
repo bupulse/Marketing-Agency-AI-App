@@ -7,6 +7,7 @@
 //   node scripts/self-host/tools/set-prod-secret.mjs supabase-secret  new Supabase secret key (sb_secret_...)
 //                                                                    -> SUPABASE_SECRET_KEY
 //   node scripts/self-host/tools/set-prod-secret.mjs random KEY       a fresh random value made here -> KEY
+//   node scripts/self-host/tools/set-prod-secret.mjs clip KEY         a provider key from the clipboard (Gemini, ElevenLabs checked) -> KEY
 //
 // Nothing is written to disk. Values go to the Netlify CLI as arguments (no shell), so they never reach a log.
 import { execFileSync } from "node:child_process";
@@ -79,11 +80,25 @@ if (kind === "db-password") {
   if (!res.ok) throw new Error(`Supabase refused the new key (HTTP ${res.status})`);
   console.log("SUPABASE_SECRET_KEY: the new key works");
   setVar("SUPABASE_SECRET_KEY", sk);
+} else if (kind === "clip" && /^[A-Z][A-Z0-9_]+$/.test(key || "")) {
+  // A provider's new API key from the clipboard. Known providers are checked first with a read-only call.
+  const v = clipboard();
+  current();
+  const checks = {
+    GEMINI_API_KEY: () => fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", { headers: { "x-goog-api-key": v } }),
+    ELEVENLABS_API_KEY: () => fetch("https://api.elevenlabs.io/v1/models", { headers: { "xi-api-key": v } }),
+  };
+  if (checks[key]) {
+    const res = await checks[key]();
+    if (!res.ok) throw new Error(`the provider refused the new ${key} (HTTP ${res.status})`);
+    console.log(`${key}: the new key works`);
+  }
+  setVar(key, v);
 } else if (kind === "random" && /^[A-Z][A-Z0-9_]+$/.test(key || "")) {
   current();
   setVar(key, randomBytes(36).toString("base64url"));
 } else {
-  console.error("usage: set-prod-secret.mjs db-password | supabase-secret | random KEY");
+  console.error("usage: set-prod-secret.mjs db-password | supabase-secret | clip KEY | random KEY");
   process.exit(2);
 }
 console.log("done: restart the PC server (refresh-env) and the Mac standby to use it");
