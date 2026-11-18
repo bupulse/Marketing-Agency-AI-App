@@ -64,6 +64,9 @@ if (kind === "db-password") {
     const u = new URL(vars[name]);
     u.password = encodeURIComponent(pw);
     out[name] = u.toString();
+    // SKIP_TEST=1: Supabase's pooler blocks every login for a few minutes ("ECIRCUITBREAKER too many authentication
+    // failures") once the old password has been retried by running servers, which happens right after a reset.
+    if (process.env.SKIP_TEST === "1") continue;
     await testDb(out[name]);
     console.log(`${name}: the new password works`);
   }
