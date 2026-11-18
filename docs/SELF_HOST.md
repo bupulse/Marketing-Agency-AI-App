@@ -398,6 +398,12 @@ launchd jobs: `serve.mjs` on 127.0.0.1:3002 from ~/BuPulse-deploy, its tunnel bu
 The watcher asks https://pc.bupulse.com/api/status (served only by the PC's tunnel) and the Mac's own server every
 minute. When the PC has not answered for 5 minutes and the Mac does, bupulse.com, www., marketing., admin. and
 support. are pointed at the Mac's tunnel through Cloudflare's DNS API; after 60 minutes of good PC answers they go back (doubled, up to 8 hours, each time the PC fails again within an hour of getting the site back).
+
+The Mac's tunnel config (~/.cloudflared/bupulse-prod-mac.yml, not in the repo) has `protocol: http2` since 18 November
+2026, like the PC's: QUIC (UDP) connections time out silently on these networks. On 18 November 11:51-11:58 UTC the
+office internet could not reach Cloudflare at all ("TLS handshake with edge: i/o timeout" in tunnel.log); the watcher
+moved the site to the Mac after 5 minutes and the PC reconnected by itself. An outage of the office line is covered only
+because the Mac is on another network: keep it that way.
 Each switch is logged in ~/bupulse-prod/failover.log and sent to the owner on Telegram. The Mac's server has its own
 CRON_SECRET, so no scheduled job runs there (scheduled posts wait for the PC). The Cloudflare token (DNS edit for
 bupulse.com only) lives in the Mac's Keychain as "BuPulse Cloudflare DNS". Keep ~/BuPulse-deploy at the production
