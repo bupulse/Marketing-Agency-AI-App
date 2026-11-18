@@ -38,6 +38,8 @@ jobs:
       - run: npm ci
       - run: npx prisma generate --config prisma7.config.ts
       - run: npm run lint
+      # Route types (PageProps, RouteContext) come from Next.js; without this tsc fails on a fresh checkout.
+      - run: npx next typegen
       - run: npx tsc --noEmit
       - run: npm test
       # Content quality check against the real model; skips itself when the secret is not set.
