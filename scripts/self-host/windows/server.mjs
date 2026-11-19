@@ -42,10 +42,15 @@ const envCache = join(logs, "prod-env.json");
 // Since the upgrade the CLI's sign-in sits in the Windows keychain, which only newer CLIs read (27.12.0 cannot): the old
 // pin first (cached, answers fast without the production database), then the current one (cached as @latest). The exact
 // newer pin is last: npx installs it fresh under its own name, which hung for many minutes on the PC (17 November 2026).
+// `refresh-env` run by hand says what happened (names and counts only, never values); the background run is silent.
+const say = (line) => {
+  if (mode === "refresh-env") console.log(line);
+};
 const readNetlify = (pkg) => {
   try {
     return JSON.parse(execSync(`npx -y ${pkg} env:list --json --context production`, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], shell: true, windowsHide: true }));
-  } catch {
+  } catch (e) {
+    say(`${pkg}: failed (${String(e?.status ?? e?.message ?? e).slice(0, 80)})`);
     return {};
   }
 };
@@ -55,11 +60,14 @@ const readLive = () => {
     if (PROD_DB.test(live?.DATABASE_URL || "")) {
       try {
         writeFileSync(envCache, JSON.stringify(live), { encoding: "utf8", mode: 0o600 });
-      } catch {
+        say(`${pkg}: saved ${Object.keys(live).length} production settings to prod-env.json`);
+      } catch (e) {
         // The copy is a fallback only.
+        say(`${pkg}: read ${Object.keys(live).length} settings but could not save prod-env.json (${e?.code ?? e})`);
       }
       return live;
     }
+    say(`${pkg}: answered without the production database (${Object.keys(live || {}).length} settings), trying the next`);
   }
   return null;
 };
