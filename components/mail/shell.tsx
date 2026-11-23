@@ -7,12 +7,13 @@ import { Archive, File, Inbox, Menu, Moon, OctagonAlert, Pencil, Search, Send, S
 import { useTheme } from "@/components/theme";
 import { cn } from "@/lib/cn";
 import { BLockup } from "./brand";
+import { AccountMenu } from "./account-menu";
 import { Composer, type ComposeInit } from "./composer";
 import { undoSendAction } from "@/app/mail/(app)/actions";
 
 export type NavMailbox = { id: string; name: string; address: string | null; kind: string; visibility: string; unread: number; color: string | null };
 export type ShellData = {
-  me: { name: string; email: string; isAdmin: boolean; initial: string };
+  me: { name: string; email: string; isAdmin: boolean; initial: string; role: string };
   mailboxes: NavMailbox[];
   sendFrom: { id: string; label: string; address: string }[];
   signatureHtml: string;
@@ -119,7 +120,7 @@ export function MailShell({ data, children }: { data: ShellData; children: React
             <span className="hidden text-[12.5px] text-muted md:inline">{data.sendsLeft} of 100 sends left today</span>
             <button type="button" aria-label="Light or dark" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} className="inline-flex size-10 cursor-pointer items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10">{resolvedTheme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</button>
             {data.me.isAdmin && <Link href="/mail/console" className="hidden h-9 items-center rounded-full px-3 text-[13px] font-semibold hover:bg-black/5 sm:inline-flex dark:hover:bg-white/10">Console</Link>}
-            <span title={data.me.email} className="inline-flex size-9 items-center justify-center rounded-full bg-[#1f5ae6] text-[14px] font-semibold text-white ring-[3px] ring-white/80">{data.me.initial}</span>
+            <AccountMenu name={data.me.name} email={data.me.email} initial={data.me.initial} isAdmin={data.me.isAdmin} role={data.me.role} />
           </header>
 
           <div className="flex flex-1 items-start gap-2 px-2 pb-3 pr-3">

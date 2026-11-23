@@ -15,7 +15,7 @@ export default async function MailAppLayout({ children }: { children: React.Reac
   // Anything whose undo window ended while nobody was watching goes out now.
   after(() => deliverDue().catch(() => undefined));
   const data: ShellData = {
-    me: { name: me.name, email: me.email, isAdmin: me.isAdmin, initial: (me.name[0] ?? "?").toUpperCase() },
+    me: { name: me.name, email: me.email, isAdmin: me.isAdmin, initial: (me.name[0] ?? "?").toUpperCase(), role: me.isSuper ? "Super admin" : me.isAdmin ? "Mail admin" : "Member" },
     mailboxes: mailboxes.map((m) => ({ id: m.id, name: m.name, address: m.address, kind: m.kind, visibility: m.visibility, unread: m.unread, color: m.color })),
     sendFrom: own ? [sendFrom.find((s) => s.id === own.id)!, ...sendFrom.filter((s) => s.id !== own.id)] : sendFrom,
     signatureHtml: signature.html,

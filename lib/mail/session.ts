@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { isAdminEmail } from "@/lib/admin/auth";
 import { prisma } from "@/lib/db";
 import { createClient } from "@/lib/supabase/server";
-import { canUseMail, isMailAdmin, sendableDepartmentIds, visibleMailboxIds, type Viewer } from "./access-rules";
+import { canUseMail, isMailAdmin, isSuperAdmin, sendableDepartmentIds, visibleMailboxIds, type Viewer } from "./access-rules";
 
 // The B Mail page and action guard (docs/MAIL_CRM.md "Mail console": the normal BuPulse sign-in plus the authenticator
 // code). Served at /mail on bupulse.com (mail.bupulse.com later). Every page and server action calls requireMail().
@@ -16,6 +16,7 @@ export type MailMe = {
   memberId: string | null;
   isOwner: boolean;
   isAdmin: boolean;
+  isSuper: boolean;
   /** Mailboxes this person sees and may send from. */
   mailboxIds: string[];
   /** Departments this person may send to as a whole. */
@@ -63,6 +64,7 @@ async function gate(): Promise<Gate> {
       memberId: member?.id ?? null,
       isOwner,
       isAdmin: isMailAdmin(viewer),
+      isSuper: isSuperAdmin(viewer),
       mailboxIds: visibleMailboxIds(viewer, mailboxes),
       departmentIds: sendableDepartmentIds(viewer, departments),
       photoPath: member?.photoPath ?? null,

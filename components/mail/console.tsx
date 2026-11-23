@@ -2,7 +2,8 @@
 
 import { useActionState, useTransition } from "react";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { addForwarder, createMailUser, removeForwarder, saveCompany, setDepartmentHead, toggleForwarder, updateMailUser, type ConsoleState } from "@/app/mail/(app)/console/actions";
+import { useState } from "react";
+import { addForwarder, createMailUser, newMailPassword, removeForwarder, saveCompany, setDepartmentHead, toggleForwarder, updateMailUser, type ConsoleState } from "@/app/mail/(app)/console/actions";
 
 type Dept = { id: string; name: string; color: string; headMemberId: string | null };
 type Member = { id: string; name: string; email: string; role: string; departmentId: string | null; quotaMb: number; status: string };
@@ -25,12 +26,14 @@ function Note({ s }: { s: ConsoleState }) {
   return null;
 }
 
-export function ConsoleView({ depts, members, forwarders, company, mailboxAddresses }: { depts: Dept[]; members: Member[]; forwarders: Fwd[]; company: Company; mailboxAddresses: string[] }) {
+export function ConsoleView({ depts, members, forwarders, company, mailboxAddresses, isSuper, myEmail }: { depts: Dept[]; members: Member[]; forwarders: Fwd[]; company: Company; mailboxAddresses: string[]; isSuper: boolean; myEmail: string }) {
   const [userState, userAction, userPending] = useActionState<ConsoleState, FormData>(createMailUser, {});
   const [fwdState, fwdAction, fwdPending] = useActionState<ConsoleState, FormData>(addForwarder, {});
   const [coState, coAction, coPending] = useActionState<ConsoleState, FormData>(saveCompany, {});
-  const [, edit] = useActionState<ConsoleState, FormData>(updateMailUser, {});
+  const [editResult, edit] = useActionState<ConsoleState, FormData>(updateMailUser, {});
   const [pending, start] = useTransition();
+  const [pwFor, setPwFor] = useState<string | null>(null);
+  const [pwState, setPwState] = useState<ConsoleState>({});
   const deptName = new Map(depts.map((d) => [d.id, d.name]));
 
   return (
@@ -41,7 +44,7 @@ export function ConsoleView({ depts, members, forwarders, company, mailboxAddres
         <h2 id="users" className="mb-3 text-[18px] font-semibold">Users</h2>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] border-collapse text-[14px]">
-            <thead><tr className="text-left text-[12px] text-muted"><th className="py-2 pr-3">Person</th><th className="pr-3">Department</th><th className="pr-3">Role</th><th className="pr-3">Storage</th><th className="pr-3">Status</th></tr></thead>
+            <thead><tr className="text-left text-[12px] text-muted"><th className="py-2 pr-3">Person</th><th className="pr-3">Department</th><th className="pr-3">Role</th><th className="pr-3">Storage</th><th className="pr-3">Status</th><th className="pr-3"><span className="sr-only">Login</span></th></tr></thead>
             <tbody>
               {members.map((m) => (
                 <tr key={m.id} className="border-t border-black/[0.07] dark:border-white/10">
@@ -53,7 +56,7 @@ export function ConsoleView({ depts, members, forwarders, company, mailboxAddres
                   </td>
                   <td className="pr-3">
                     <form action={edit}><input type="hidden" name="id" value={m.id} />
-                      <select name="role" defaultValue={m.role} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="h-9 cursor-pointer rounded-lg border border-black/10 bg-transparent px-2"><option value="member">Member</option><option value="admin">Mail admin</option></select>
+                      <select name="role" defaultValue={m.role} disabled={!isSuper || m.email === myEmail} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="h-9 cursor-pointer rounded-lg border border-black/10 bg-transparent px-2 disabled:cursor-default disabled:opacity-70"><option value="member">Member</option><option value="admin">Mail admin</option><option value="owner">Super admin</option></select>
                     </form>
                   </td>
                   <td className="pr-3">
@@ -66,12 +69,23 @@ export function ConsoleView({ depts, members, forwarders, company, mailboxAddres
                       <select name="status" defaultValue={m.status === "suspended" ? "suspended" : "active"} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="h-9 cursor-pointer rounded-lg border border-black/10 bg-transparent px-2"><option value="active">{m.status === "invited" ? "Invited" : "Active"}</option><option value="suspended">Suspended</option></select>
                     </form>
                   </td>
+                  <td className="pr-1 text-right">
+                    {isSuper && (pwFor === m.id ? (
+                      <span className="inline-flex items-center gap-1">
+                        <button type="button" disabled={pending} onClick={() => start(async () => { setPwState(await newMailPassword(m.id)); setPwFor(null); })} className="h-8 cursor-pointer rounded-full bg-[#b42318] px-3 text-[12.5px] font-semibold text-white">Yes, new password</button>
+                        <button type="button" onClick={() => setPwFor(null)} className="h-8 cursor-pointer rounded-full px-3 text-[12.5px]">Cancel</button>
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => setPwFor(m.id)} className="h-8 cursor-pointer rounded-full border border-black/15 px-3 text-[12.5px] font-medium hover:bg-black/5">New password</button>
+                    ))}
+                  </td>
                 </tr>
               ))}
-              {members.length === 0 && <tr><td colSpan={5} className="py-4 text-muted">No users yet. The owner (ADMIN_EMAILS) always has access.</td></tr>}
+              {members.length === 0 && <tr><td colSpan={6} className="py-4 text-muted">No users yet. The owner (ADMIN_EMAILS) always has access.</td></tr>}
             </tbody>
           </table>
         </div>
+        <div className="mt-2 flex flex-col gap-2"><Note s={editResult} /><Note s={pwState} /></div>
         <form action={userAction} className="mt-4 grid grid-cols-1 gap-3 border-t border-black/[0.07] pt-4 md:grid-cols-3 dark:border-white/10">
           <h3 className="text-[15px] font-semibold md:col-span-3">Create a user</h3>
           <label className={label}>Full name<input name="name" required className={input} /></label>
@@ -79,7 +93,7 @@ export function ConsoleView({ depts, members, forwarders, company, mailboxAddres
           <label className={label}>Job title<input name="title" className={input} /></label>
           <div className={label}><span>Personal phone (optional)</span><PhoneInput name="phone" placeholder="720 123 456" countryLabel="Country" /></div>
           <label className={label}>Department<select name="departmentId" className={input}><option value="">None</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
-          <label className={label}>Role<select name="role" className={input}><option value="member">Member</option><option value="admin">Mail admin</option></select></label>
+          <label className={label}>Role<select name="role" className={input}><option value="member">Member</option><option value="admin">Mail admin</option>{isSuper && <option value="owner">Super admin</option>}</select></label>
           <label className={label}>Storage<select name="quotaMb" defaultValue="250" className={input}>{[50, 100, 250, 500, 1000].map((q) => <option key={q} value={q}>{q >= 1000 ? "1 GB" : `${q} MB`}</option>)}</select></label>
           <div className="flex items-end md:col-span-2"><button disabled={userPending} className={btn}>{userPending ? "Creating…" : "Create user"}</button></div>
           <div className="md:col-span-3"><Note s={userState} /></div>

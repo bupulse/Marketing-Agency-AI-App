@@ -7,6 +7,7 @@ import { formatPhone } from "@/lib/phone";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 import { formatAddress, MAIL_DOMAIN, type Addr } from "./addresses";
 import { forwardBlock, quoteBlock, textToHtml } from "./html";
+import { sanitizeComposerHtml } from "./sanitize";
 import { makeSnippet } from "./parse";
 import { signatureHtml, signatureText } from "./signature-render";
 import { getObject } from "./storage";
@@ -35,6 +36,8 @@ export type Outgoing = {
   bcc: Addr[];
   subject: string;
   text: string;
+  /** Formatted body from the composer (cleaned with sanitizeComposerHtml before use). */
+  html?: string;
   /** The message being answered or forwarded. */
   parentId?: string | null;
   mode?: "new" | "reply" | "all" | "forward";
@@ -81,7 +84,8 @@ export async function queueMessage(me: MailMe, o: Outgoing): Promise<QueueResult
   const sig = await signatureFor(me, mailbox.address);
   // Our text first, then the signature, then the earlier message (owner's rule, docs/MAIL_CRM.md).
   let text = `${o.text.trim()}\n\n${sig.text}`;
-  let html = `<div style="font:15px/1.6 Arial,Helvetica,sans-serif;color:#1d1d1f">${textToHtml(o.text.trim())}<br>${sig.html}`;
+  const body = o.html && o.html.trim() ? sanitizeComposerHtml(o.html) : textToHtml(o.text.trim());
+  let html = `<div style="font:15px/1.6 Arial,Helvetica,sans-serif;color:#1d1d1f">${body}<br>${sig.html}`;
   if (parent && o.includeQuote !== false) {
     const block = o.mode === "forward"
       ? forwardBlock({ date: parent.date, fromName: parent.fromName, fromAddress: parent.fromAddress, subject: parent.subject, to: (parent.to as Addr[]).map(formatAddress).join(", "), text: parent.text })

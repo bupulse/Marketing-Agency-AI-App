@@ -706,3 +706,4 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
 @media (prefers-reduced-motion: reduce) {
   .bmail-pulse, .bmail-rise, .bmail-pop { animation: none !important; }
 }
+.bmail-editor:empty::before { content: attr(data-placeholder); color: var(--color-muted); pointer-events: none; }
