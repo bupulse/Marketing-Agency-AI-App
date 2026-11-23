@@ -1,4 +1,4 @@
-# BuPulse Mail + CRM
+# BuPulse Mail + CRM (B Mail, B Drive, B CRM)
 
 Two new BuPulse services, built inside this app (same code, same database, same login), served at
 **mail.bupulse.com** and **crm.bupulse.com**. Owner decisions from the grill on 23 Nov 2026 are final unless the owner
@@ -155,13 +155,15 @@ the support sidebar is the reference (memory: design-real-logo-apple).
 
 ## Drive (after Mail, before the CRM; owner, 23 Nov 2026)
 
-- Its name is **B.Drive** (owner, 23 Nov): the "B" is the BuPulse mark with its pulse line animating all the time (a calm loop, paused for people who ask for reduced motion), followed by ".Drive".
-- **B.Drive** inside BuPulse (later drive.bupulse.com), files on **Cloudflare R2** (10 GB free, no download fees,
+- **Names (owner, 23 Nov): B Mail, B Drive, B CRM.** The logo is the BuPulse "B" mark with its pulse line animating all
+  the time (a calm loop, paused for "reduce motion"), followed by the word, **no dot** (the owner let Claude choose;
+  without the dot it reads cleanly as "B Mail"). The real build traces the real BuPulse mark as an SVG for the animation.
+- **B Drive** inside BuPulse (later drive.bupulse.com), files on **Cloudflare R2** (10 GB free, no download fees,
   then about $0.015 per GB a month; free while under 10 GB). Not Supabase Storage (1 GB for the whole project).
 - **Folders like the mailboxes:** "My files" per person; one shared folder per department, seen by the same people as
   the department mailbox; "Company" for everyone. The Accounting folder fills itself with bank, invoice, payment and
   receipt attachments.
-- **Save to Drive** on every attachment (one click, no download and upload).
+- **Save to B Drive** on every attachment (one click, no download and upload).
 - **Online editing with ONLYOFFICE Docs** (free community edition, about 20 people editing at once, about 4 GB of memory)
   on the office PC; check the edition's current limits and the PC's memory before installing.
 - Its own grill and phase when Mail is done.
