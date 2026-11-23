@@ -70,6 +70,34 @@ the support sidebar is the reference (memory: design-real-logo-apple).
 - Design: the canvas "BuPulse Mail design" (claude.ai artifact, private to the owner) with the inbox, compose, phone
   screens and the console (users, create user, forwarding, signature).
 
+## Second grill (owner, 23 Nov 2026): inboxes, departments, signatures, look
+
+- **What each person sees:** only their own mailbox(es) plus mail an admin forwards to them. Forwarders are set **only in
+  the Mail console**. Forwarded mail gets its **own folder per source** in the receiver's rail (e.g. "Grace") **and**
+  shows in **All inboxes**, which combines everything with a "from <account>" tag. Clicking Cyusa / Office / Sales
+  shows only mail sent to that address.
+- **Staff notice:** an employee whose mail is forwarded sees a small note in their Settings ("Mail to grace@ is also
+  delivered to cyusa@, set by your admin"), for Rwanda's 2021 data protection law.
+- **Tags:** automatic tags (Bank, Payments, Leads, Partners, Updates...) and an Important mark from **free rules first**
+  (sender domains and keywords), AI later (paid; ask first).
+- **Departments:** every user is in a department; a department has a head (chosen when creating the user or in the
+  console). In To, a **department** (or Everyone) can be picked: Mail sends **one personal email per member** with an
+  automatic "Hello {first_name}," greeting, and {first_name} works anywhere; each copy is one of the 100 daily sends and
+  a preview lists who gets it. **Owner + Mail admins** may pick any department; a **head** only their own; members type
+  addresses one by one.
+- **Signatures:** the default is the owner's reference layout (logo left, accent bar, name, "Title, BuPulse" in the
+  accent colour, website | email | phone, address, LinkedIn / Instagram / Facebook, a "Get your free BuPulse quote"
+  button). **5 templates**. Each employee, in Settings, picks a template and edits their own lines (name, job title,
+  phone, one optional line); company parts (logo, website, address, the three company social links, the quote button)
+  are edited **only in the Mail console**. Phone numbers are written like the quote form: `formatPhone`
+  (libphonenumber international, "+250 788 191 802").
+- **Attachments preview inside BuPulse only** (files never sent to another company): PDF, images, Word (.docx) and Excel
+  (.xlsx) open in a preview window, then Download; PowerPoint and old .doc show "Download to open".
+- **Look:** Gmail-like and lightly branded (the logo small, brand colour only as an accent), Apple.com principles
+  (space, type, calm, motion with meaning), liquid glass panels, smooth animations. **Preloader:** the BuPulse logo with
+  a pulse when Mail opens; opening an email plays a quick pulse line and a slide-in (about 0.3 s). **Backgrounds:** a
+  gallery of about 12 plus each person's own photo (shrunk to about 300 KB, counts toward their storage).
+
 ## CRM (after Mail)
 
 Linked to Mail from the start: every email to or from a contact shows on its page; "Add to CRM" from any email.
