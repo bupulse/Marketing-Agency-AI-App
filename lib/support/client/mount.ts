@@ -6,7 +6,7 @@ import { marketingAppPath } from "@/lib/platform/app-hosts";
  * Never the floating chat: Admin, the support app, the full-page chat (it is the chat), link-in-bio pages (they get
  * the "Made with BuPulse" corner link instead), the client's website-chat frame, the sales-room TV and the API.
  */
-export const EXCLUDED_PREFIXES = ["/admin", "/support", "/help-chat", "/b", "/widget", "/screen", "/api"] as const;
+export const EXCLUDED_PREFIXES = ["/mail", "/admin", "/support", "/help-chat", "/b", "/widget", "/screen", "/api"] as const;
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
 

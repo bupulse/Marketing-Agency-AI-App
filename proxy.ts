@@ -146,7 +146,7 @@ function noindexOnApp(response: NextResponse, host: string | null) {
 export const config = {
   matcher: [
     // Everything except static files, images and the public machine-to-machine routes
-    // (chat widget and its page, the support chat API with its own visit token or bearer token, the link-in-bio pages, the tracked links (go/), the REST API with its own bearer keys, payment webhooks, scheduled jobs, the video robot, the status check), which never use a browser session.
-    "/((?!_next/static|_next/image|favicon.ico|api/widget|api/support|api/v1|api/admin/v1|api/mcp|api/collect|t\\.js|sw\\.js|manifest\\.webmanifest|widget\\.js|widget-chat\\.js|widget/|b/|go/|bio\\.js|api/billing/webhooks|api/meta/webhook|api/cron|api/robot|api/status|api/ui|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2)$).*)",
+    // (the Mail inbound route signed by the Cloudflare Email Worker, chat widget and its page, the support chat API with its own visit token or bearer token, the link-in-bio pages, the tracked links (go/), the REST API with its own bearer keys, payment webhooks, scheduled jobs, the video robot, the status check), which never use a browser session.
+    "/((?!_next/static|_next/image|favicon.ico|api/mail/inbound|api/widget|api/support|api/v1|api/admin/v1|api/mcp|api/collect|t\\.js|sw\\.js|manifest\\.webmanifest|widget\\.js|widget-chat\\.js|widget/|b/|go/|bio\\.js|api/billing/webhooks|api/meta/webhook|api/cron|api/robot|api/status|api/ui|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2)$).*)",
   ],
 };
