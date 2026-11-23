@@ -11,7 +11,7 @@
 // cron-secret.txt (readable by this Windows user only, written by install.ps1), so Netlify's old scheduled functions
 // and the Mac's loop are refused here.
 import { execSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, mkdirSync, openSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, openSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -79,9 +79,27 @@ const readCache = () => {
     return null;
   }
 };
+// One background refresh at a time: on the PC's HDD a refresh (npx netlify-cli) can outlast a server start, and every
+// restart of a server that never came up started another one, so they piled up and kept the disk at 100% (23 November
+// 2026). The lock is ignored once it is 30 minutes old (a refresh that died without removing it).
+const refreshLock = join(logs, "refresh-env.lock");
+const ageMs = (file) => {
+  try {
+    return Date.now() - statSync(file).mtimeMs;
+  } catch {
+    return Infinity;
+  }
+};
 if (mode === "refresh-env") {
-  // Started in the background by `start`: brings the saved copy up to date for the next start.
-  process.exit(readLive() ? 0 : 1);
+  // Started in the background by `start` (or by hand): brings the saved copy up to date for the next start.
+  writeFileSync(refreshLock, String(process.pid));
+  let ok = false;
+  try {
+    ok = Boolean(readLive());
+  } finally {
+    rmSync(refreshLock, { force: true });
+  }
+  process.exit(ok ? 0 : 1);
 }
 // The server and the render worker start from the saved copy when there is one, and refresh it in the background: on the
 // slow disk after the Windows 11 upgrade each npx run took minutes, so the supervisor stopped every start after 8.5
@@ -89,7 +107,11 @@ if (mode === "refresh-env") {
 // Netlify live first, so a changed setting is in the next build.
 let vars = null;
 if ((mode === "start" || mode === "videos") && (vars = readCache())) {
-  if (mode === "start") spawn(process.execPath, [import.meta.filename, "refresh-env"], { cwd: dir, detached: true, stdio: "ignore", windowsHide: true }).unref();
+  // Refreshed at most every 6 hours, and never while another refresh runs. A changed setting reaches the server at the
+  // next update anyway (build reads Netlify live) or by running `server.mjs refresh-env` by hand.
+  const fresh = ageMs(envCache) < 6 * 3600_000;
+  const running = ageMs(refreshLock) < 30 * 60_000;
+  if (mode === "start" && !fresh && !running) spawn(process.execPath, [import.meta.filename, "refresh-env"], { cwd: dir, detached: true, stdio: "ignore", windowsHide: true }).unref();
 } else {
   vars = readLive();
   if (!vars && (vars = readCache())) console.error("Netlify settings unreadable here (no production database); using the saved copy prod-env.json");

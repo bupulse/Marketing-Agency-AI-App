@@ -17,7 +17,7 @@ $pause = Join-Path $logs "pause-server"
 Set-Location $repo
 
 function Get-SupervisorState {
-  try { return Invoke-RestMethod -Uri "http://127.0.0.1:3019/" -TimeoutSec 5 } catch { return $null }
+  try { return Invoke-RestMethod -Uri "http://127.0.0.1:3019/" -TimeoutSec 30 } catch { return $null }
 }
 
 function Wait-SiteUp([int]$seconds) {

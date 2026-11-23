@@ -61,6 +61,10 @@ export const TIMING = {
   /** No answer at all from the server for this long: it hangs, restart it. 5 minutes, not 2: on the PC's slow disk a
    * fresh server can take minutes to answer, and each restart only started the wait over (17 November 2026). */
   hangMs: 5 * 60_000,
+  /** A server that has not answered even once since it started gets this long in all before it is called hung: on the
+   * PC's HDD (100% busy, ~1.4 MB/s) `next start` needed more than 11 minutes, so the 6 + 5 minute rule restarted it
+   * forever and the site never came back (23 November 2026). Once it has answered, `hangMs` applies. */
+  firstAnswerMs: 25 * 60_000,
   /** How long one health check waits for /api/status. */
   probeTimeoutMs: 20_000,
   /** cloudflared not ready for this long: restart it. */
@@ -101,6 +105,7 @@ export function afterExit({ startedAt, exitedAt, quickCrashes }, timing = TIMING
  * of the grace or the last answer, whichever is later).
  */
 export function serverHangs({ startedAt, lastAnswerAt, now }, timing = TIMING) {
+  if (lastAnswerAt == null && timing.firstAnswerMs) return now - startedAt >= Math.max(timing.firstAnswerMs, timing.startGraceMs + timing.hangMs);
   const graceEnd = startedAt + timing.startGraceMs;
   if (now < graceEnd) return false;
   return now - Math.max(graceEnd, lastAnswerAt ?? 0) >= timing.hangMs;
@@ -636,7 +641,8 @@ export class Supervisor {
           if (server.listener) this.writeState();
         }
       } else if (serverHangs({ startedAt: server.startedAt, lastAnswerAt: server.lastAnswerAt, now }, this.timing)) {
-        this.stop("server", `no answer from ${this.localUrl}/api/status for ${Math.round(this.timing.hangMs / 60_000)} minutes`, { restart: true });
+        const why = server.lastAnswerAt == null ? `no answer from ${this.localUrl}/api/status since it started ${Math.round((now - server.startedAt) / 60_000)} minutes ago` : `no answer from ${this.localUrl}/api/status for ${Math.round(this.timing.hangMs / 60_000)} minutes`;
+        this.stop("server", why, { restart: true });
       }
     }
     const tunnel = this.children.tunnel;

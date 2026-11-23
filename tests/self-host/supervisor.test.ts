@@ -34,7 +34,10 @@ describe("restart arithmetic", () => {
     const g = TIMING.startGraceMs;
     expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: g - 1 })).toBe(false);
     expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: g + 120_000 })).toBe(false);
-    expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: g + 300_000 })).toBe(true);
+    // Never answered yet: a slow first start gets 25 minutes in all (the PC's HDD, 23 November 2026).
+    expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: g + 300_000 })).toBe(false);
+    expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: 25 * 60_000 - 1 })).toBe(false);
+    expect(serverHangs({ startedAt: 0, lastAnswerAt: null, now: 25 * 60_000 })).toBe(true);
     expect(serverHangs({ startedAt: 0, lastAnswerAt: g + 100_000, now: g + 380_000 })).toBe(false);
     expect(serverHangs({ startedAt: 0, lastAnswerAt: g + 100_000, now: g + 400_000 })).toBe(true);
   });
@@ -231,12 +234,12 @@ describe("the supervisor with real child processes", () => {
     expect(sup!.children.server.pid).toBeTruthy();
   });
 
-  it("restarts a hung server (no answer for 5 minutes after the grace) by its PID", async () => {
+  it("restarts a hung server (never answered within 25 minutes of its start) by its PID", async () => {
     const { kills, log } = make({ server: spec("setInterval(() => {}, 1000)") }, { fetchImpl: async () => Promise.reject(new Error("no answer")) });
     await sup!.controlRound();
     const pid = sup!.children.server.pid!;
     // Pretend it started long ago.
-    sup!.children.server.startedAt = Date.now() - TIMING.startGraceMs - TIMING.hangMs - 1_000;
+    sup!.children.server.startedAt = Date.now() - TIMING.firstAnswerMs - 1_000;
     await sup!.healthRound();
     expect(kills).toEqual([pid]);
     expect(log()).toMatch(/restarting server: pid \d+ \(no answer from/);
