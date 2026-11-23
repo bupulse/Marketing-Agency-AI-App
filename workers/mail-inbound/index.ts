@@ -8,7 +8,12 @@
 
 import { signInbound } from "../../lib/mail/signature";
 
-type Env = { MAIL_INBOUND_URL: string; MAIL_INBOUND_SECRET: string };
+type Env = {
+  MAIL_INBOUND_URL: string;
+  MAIL_INBOUND_SECRET: string;
+  /** Optional safety net while B Mail starts: every message is also forwarded here (a confirmed Cloudflare destination). */
+  SAFETY_COPY_TO?: string;
+};
 
 type ForwardableEmailMessage = {
   readonly from: string;
@@ -30,6 +35,8 @@ export default {
     const raw = new Uint8Array(await new Response(message.raw).arrayBuffer());
     const recipient = message.to.toLowerCase();
     const signature = await signInbound(env.MAIL_INBOUND_SECRET, recipient, raw);
+    // The safety copy goes out first, so the owner still gets the message even if the app is down.
+    if (env.SAFETY_COPY_TO) await message.forward(env.SAFETY_COPY_TO).catch(() => undefined);
     let response: Response;
     try {
       response = await fetch(env.MAIL_INBOUND_URL, {
