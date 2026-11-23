@@ -108,6 +108,21 @@ the support sidebar is the reference (memory: design-real-logo-apple).
   Blue), and "each person may change it in their own Settings". Text contrast always stays readable.
 - **Phone = an Apple-style app** (iOS look): large titles, round glass buttons, inset grouped lists, iOS swipe actions
   (More / Flag / Archive), a floating glass bottom bar with Mailboxes, Search (with dictation) and Compose.
+- **Picture backgrounds** (owner, 23 Nov): Kigali hills, Kigali at night, Lake Kivu beach, Virunga volcanoes (plus the
+  gradients) and a **Random** choice that shows a new picture every day. The canvas uses original drawings; real photos
+  only with a checked free licence (Unsplash/Pakutaso terms per photo; some Rwandan photos are not free to reuse) or
+  photos the team takes.
+- **Profile photos:** every person adds their photo during first sign-in (step 1 of 3: photo, signature, look): take
+  or upload, zoom/move, made small (about 60 KB). Option to put the photo in their signature.
+- **Senders' pictures in our inbox:** our team's photos, CRM contact photos, Gravatar, verified brand logos (BIMI), else
+  the sender company's website icon, else initials. Gmail does not let other apps read its users' photos.
+- **Our photos in Gmail (free):** each person makes a free Google account with their @bupulse.com address ("use my
+  current email"; Google's code arrives in BuPulse Mail) and sets the same photo, visible to anyone. The first-sign-in
+  screen guides them. Paid later (written down, not bought): BIMI company logo in Gmail needs DMARC enforcement plus a
+  CMC (about $650–1,400/year) or a VMC with a registered trademark (blue check).
+- **Attachment viewer:** a dark glass Quick Look-style window: page thumbnails, page arrows, zoom, Fit width / Fit page,
+  rotate, find in document with highlights, print, details panel (type, size, sender, "safe preview"), Save to CRM,
+  Download, and a strip to switch between the email's files; PDF, Word, Excel (sheet tabs) and photos.
 
 ## CRM (after Mail)
 
