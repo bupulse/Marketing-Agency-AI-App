@@ -194,9 +194,9 @@ describe("transport switch", () => {
     process.env.FACEBOOK_APP_ID = "fb-app";
     const scopeOf = (url: string) => new URL(url).searchParams.get("scope");
     expect(scopeOf(instagramProvider.authorizeUrl({ state: "s", redirectUri: "https://x/cb" }))).toBe("instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights");
-    expect(scopeOf(facebookProvider.authorizeUrl({ state: "s", redirectUri: "https://x/cb" }))).toBe("pages_show_list,pages_read_engagement,pages_manage_posts");
+    expect(scopeOf(facebookProvider.authorizeUrl({ state: "s", redirectUri: "https://x/cb" }))).toBe("pages_show_list,pages_read_engagement,pages_manage_posts,business_management");
     expect(scopeOf(facebookProvider.authorizeUrl({ state: "s", redirectUri: "https://x/cb", extraScopes: inboxScopesFor("facebook", undefined, "meta") }))).toBe(
-      "pages_show_list,pages_read_engagement,pages_manage_posts,pages_messaging,pages_manage_metadata,pages_read_user_content,pages_manage_engagement",
+      "pages_show_list,pages_read_engagement,pages_manage_posts,business_management,pages_messaging,pages_manage_metadata,pages_read_user_content,pages_manage_engagement",
     );
   });
 });

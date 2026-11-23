@@ -149,7 +149,7 @@ describe("Instagram through Facebook", () => {
     delete process.env.INSTAGRAM_APP_ID;
     const url = location(await connect(new Request(`${SITE}/api/social/instagram/connect?variant=facebook`), params("instagram")));
     expect(url.hostname).toBe("www.facebook.com");
-    expect(url.searchParams.get("scope")!.split(",").sort()).toEqual(["instagram_basic", "instagram_content_publish", "instagram_manage_insights", "pages_read_engagement", "pages_show_list"]);
+    expect(url.searchParams.get("scope")!.split(",").sort()).toEqual(["business_management", "instagram_basic", "instagram_content_publish", "instagram_manage_insights", "pages_read_engagement", "pages_show_list"]);
   });
 
   it("lists only Instagram accounts linked to the user's Pages and saves a single one directly", async () => {

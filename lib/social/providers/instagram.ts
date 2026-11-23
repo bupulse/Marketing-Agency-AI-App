@@ -23,7 +23,8 @@ import {
 const rules: NetworkRules = { network: "instagram", label: "Instagram", maxText: 2200, maxHashtags: 30, requiresMedia: true, maxImages: 10, formats: ["POST", "CAROUSEL", "SCRIPT"], videoOnly: false };
 
 export const INSTAGRAM_SCOPES = ["instagram_business_basic", "instagram_business_content_publish", "instagram_business_manage_insights"];
-export const INSTAGRAM_VIA_FACEBOOK_SCOPES = ["pages_show_list", "pages_read_engagement", "instagram_basic", "instagram_content_publish", "instagram_manage_insights"];
+// business_management: Pages owned by a business portfolio are missing from /me/accounts without it (see facebook.ts).
+export const INSTAGRAM_VIA_FACEBOOK_SCOPES = ["pages_show_list", "pages_read_engagement", "business_management", "instagram_basic", "instagram_content_publish", "instagram_manage_insights"];
 
 const IG_AUTHORIZE = "https://www.instagram.com/oauth/authorize";
 const IG_TOKEN = "https://api.instagram.com/oauth/access_token";

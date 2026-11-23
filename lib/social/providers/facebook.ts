@@ -7,8 +7,10 @@ import { finalStage, SocialError, type ConnectionCredentials, type MetricsSnapsh
 const rules: NetworkRules = { network: "facebook", label: "Facebook", maxText: 63206, requiresMedia: false, maxImages: 10, formats: ["POST", "CAROUSEL"], videoOnly: false };
 
 // read_insights is left out on purpose: likes, comments and shares come from the post itself, and every
-// extra permission is one more thing Meta's review can reject (docs/PLATFORM_APPS.md).
-export const FACEBOOK_SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts"];
+// extra permission is one more thing Meta's review can reject (docs/PLATFORM_APPS.md). business_management is needed
+// because /me/accounts leaves out Pages owned by a business portfolio without it (BuPulse's own Page, 23 Nov 2026:
+// Facebook Login for Business granted the Page, but /me/accounts came back empty).
+export const FACEBOOK_SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "business_management"];
 
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const E = "facebook" as const;

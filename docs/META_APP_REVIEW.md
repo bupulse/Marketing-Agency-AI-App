@@ -108,9 +108,9 @@ Login (only ads audio, which BuPulse does not use, needs more).
 | `instagram_basic` | Linked IG account id, username, picture; `GET /ig_audio` trending sounds | A2 |
 | `instagram_content_publish` | `/{ig-user-id}/media` (image, carousel, REELS with `audio_configuration`) and `/media_publish` | A2 |
 | `instagram_manage_insights` | `/{ig-media-id}/insights` (views, reach, likes, comments, saves) | A3 |
+| `business_management` | Lets `/me/accounts` list Pages owned by a business portfolio (BuPulse's own Page came back empty without it, 23 November 2026) | A1 |
 
-Do **not** request: `business_management` (not used; add it only if a tester's business-owned Page does not appear in
-the Page list), `read_insights` (not used), `ads_management`, any `instagram_business_*` (Instagram Login).
+Do **not** request: `read_insights` (not used), `ads_management`, any `instagram_business_*` (Instagram Login).
 
 **Check in the form:** Meta's permissions reference lists `pages_read_user_content` as a dependency of
 `instagram_basic`, and Meta says a dependency must be included in the submission. If the form marks it as required,
@@ -124,6 +124,12 @@ ask for it too.
 > Channels page and logs in with Facebook, BuPulse lists the Facebook Pages they manage so they can choose the Page
 > BuPulse should publish to. We store only the chosen Page's id, name, picture and access token. We never act on a
 > Page the owner did not choose.
+
+**business_management**
+> Many small businesses manage their Facebook Page through a Meta business portfolio. Without this permission those
+> Pages are missing from the list of Pages the owner can choose when connecting. BuPulse uses it only to list the Pages
+> the owner manages through their business portfolio, so they can choose the Page BuPulse should publish to. BuPulse does
+> not read or change anything else in the business portfolio.
 
 **pages_read_engagement**
 > After a post goes out, BuPulse reads that post's reactions, comment count and shares, and the Page's name and
