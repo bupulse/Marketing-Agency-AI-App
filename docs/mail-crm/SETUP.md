@@ -30,6 +30,11 @@ routing: only the catch-all, forwarding to the owner's Gmail (no custom address 
 
 ## 3. Switch the routing (Cloudflare dashboard → bupulse.com → Email → Email Routing → Routing rules)
 
+**Done 23 Nov 2026 (~20:20Z):** catch-all switched to the Worker through the API. Checked: a signed POST to
+bupulse.com stored a message (200), then a real email sent through Resend to bmail-route-check@bupulse.com reached the
+Worker and the app answered 200 (wrangler tail: `inbound 200`). The Gmail safety copy is on. Check mail left in the
+production "Other" mailbox: "B Mail live check" and "B Mail routing check" 1 to 3 (can be deleted).
+
 1. **Catch-all address**: Edit → Action **Send to a Worker** → `bupulse-mail-inbound` → Save, Enabled. (Or the API:
    `PUT /zones/<zone>/email/routing/rules/catch_all` with `{"matchers":[{"type":"all"}],"actions":[{"type":"worker","value":["bupulse-mail-inbound"]}],"enabled":true}`.)
 2. Every **custom address** rule that forwards to Gmail (cyusa@, office@...): Edit → Send to a Worker →
