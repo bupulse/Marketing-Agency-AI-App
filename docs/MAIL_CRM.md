@@ -145,8 +145,27 @@ the support sidebar is the reference (memory: design-real-logo-apple).
   earlier message quoted below** ("On <date>, <name> wrote:" with a left bar), **hidden behind a "···" button** until
   clicked. A forward carries the "Forwarded message" header block. Earlier messages of the conversation fold into an
   "N older messages" marker and open on click.
+- **Attachment cards** (owner, 23 Nov): attachments show as a grid of cards with a small preview of the first page (or
+  the photo), the type badge (PDF, DOC, XLS, PPT, JPG...) and the file name with size; hovering gives Preview, Download
+  and Save to CRM (and Save to Drive once Drive exists). Above the grid: "N attachments", "Checked, safe to open",
+  Download all (ZIP), Save all to the CRM. Clicking a card opens the viewer, whose bottom strip lists the email's files
+  with their badges and names.
+- **Full screen:** 10px margin on every side, a Return button, a menu icon that slides the left menu in, the sender card
+  can be hidden, and the text column stays at a comfortable reading width (about 72 characters).
 
-## CRM (after Mail)
+## Drive (after Mail, before the CRM; owner, 23 Nov 2026)
+
+- **BuPulse Drive** inside BuPulse (later drive.bupulse.com), files on **Cloudflare R2** (10 GB free, no download fees,
+  then about $0.015 per GB a month; free while under 10 GB). Not Supabase Storage (1 GB for the whole project).
+- **Folders like the mailboxes:** "My files" per person; one shared folder per department, seen by the same people as
+  the department mailbox; "Company" for everyone. The Accounting folder fills itself with bank, invoice, payment and
+  receipt attachments.
+- **Save to Drive** on every attachment (one click, no download and upload).
+- **Online editing with ONLYOFFICE Docs** (free community edition, about 20 people editing at once, about 4 GB of memory)
+  on the office PC; check the edition's current limits and the PC's memory before installing.
+- Its own grill and phase when Mail is done.
+
+## CRM (after Drive)
 
 Linked to Mail from the start: every email to or from a contact shows on its page; "Add to CRM" from any email.
 Then the scope from decision 4. The admin's existing Sales leads move into the CRM without losing data.
