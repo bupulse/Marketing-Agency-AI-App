@@ -155,7 +155,8 @@ the support sidebar is the reference (memory: design-real-logo-apple).
 
 ## Drive (after Mail, before the CRM; owner, 23 Nov 2026)
 
-- **BuPulse Drive** inside BuPulse (later drive.bupulse.com), files on **Cloudflare R2** (10 GB free, no download fees,
+- Its name is **B.Drive** (owner, 23 Nov): the "B" is the BuPulse mark with its pulse line animating all the time (a calm loop, paused for people who ask for reduced motion), followed by ".Drive".
+- **B.Drive** inside BuPulse (later drive.bupulse.com), files on **Cloudflare R2** (10 GB free, no download fees,
   then about $0.015 per GB a month; free while under 10 GB). Not Supabase Storage (1 GB for the whole project).
 - **Folders like the mailboxes:** "My files" per person; one shared folder per department, seen by the same people as
   the department mailbox; "Company" for everyone. The Accounting folder fills itself with bank, invoice, payment and
