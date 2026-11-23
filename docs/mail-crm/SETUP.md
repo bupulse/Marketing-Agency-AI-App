@@ -19,6 +19,10 @@ Resend is verified for bupulse.com (DKIM resend._domainkey, MAIL FROM send.bupul
 
 ## 2. The Email Worker (Cloudflare; the owner logs in once: `npx wrangler login`)
 
+**Done 23 Nov 2026:** wrangler logged in (BuPulse Cloudflare account, OAuth with email_routing:write), Worker
+`bupulse-mail-inbound` deployed (no workers.dev address), secrets MAIL_INBOUND_SECRET and SAFETY_COPY_TO set. Today's
+routing: only the catch-all, forwarding to the owner's Gmail (no custom address rules).
+
 1. `npx wrangler deploy --config workers/mail-inbound/wrangler.toml` (Worker `bupulse-mail-inbound`, free plan).
 2. Safety copy for the first days: `npx wrangler secret put SAFETY_COPY_TO --config workers/mail-inbound/wrangler.toml`
    with the owner's current Gmail (already a confirmed destination in Email Routing). Kept out of the repository.
@@ -26,7 +30,8 @@ Resend is verified for bupulse.com (DKIM resend._domainkey, MAIL FROM send.bupul
 
 ## 3. Switch the routing (Cloudflare dashboard → bupulse.com → Email → Email Routing → Routing rules)
 
-1. **Catch-all address**: Edit → Action **Send to a Worker** → `bupulse-mail-inbound` → Save, Enabled.
+1. **Catch-all address**: Edit → Action **Send to a Worker** → `bupulse-mail-inbound` → Save, Enabled. (Or the API:
+   `PUT /zones/<zone>/email/routing/rules/catch_all` with `{"matchers":[{"type":"all"}],"actions":[{"type":"worker","value":["bupulse-mail-inbound"]}],"enabled":true}`.)
 2. Every **custom address** rule that forwards to Gmail (cyusa@, office@...): Edit → Send to a Worker →
    `bupulse-mail-inbound` (custom rules win over the catch-all), or delete it so the catch-all takes it.
 3. Test: send from Gmail to cyusa@bupulse.com, office@bupulse.com and a made-up name@bupulse.com. Each shows in B Mail

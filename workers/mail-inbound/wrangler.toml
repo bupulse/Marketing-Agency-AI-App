@@ -4,6 +4,8 @@
 name = "bupulse-mail-inbound"
 main = "index.ts"
 compatibility_date = "2026-10-01"
+# Email only: no public workers.dev address.
+workers_dev = false
 
 [vars]
 MAIL_INBOUND_URL = "https://bupulse.com/api/mail/inbound"
