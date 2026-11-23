@@ -132,6 +132,13 @@ the support sidebar is the reference (memory: design-real-logo-apple).
   table; SQLite databases (.db/.sqlite) read-only (tables list + rows, in the browser); code/text with colours;
   audio/video players; ZIP contents list; 3D: .glb/.gltf/.obj/.stl spin in the browser, **.blend converted by Blender on
   the server** (free, Blender installed on the office PC; info card + Download until then).
+- **Phones in signatures** (owner, 23 Nov): the **company phone** is set once in the Mail console and is in **every**
+  signature; staff cannot change or remove it. Each person may add a **personal (mobile) phone** in Settings or when the
+  admin creates them; it shows as "Mobile" next to the company number. Both inputs look like the quote form's: a large
+  field with the country picker (flag, +250, chevron) and the placeholder "720 123 456"; numbers are stored in E.164 and
+  written with `formatPhone`.
+- **Reading layouts:** split preview (list + reading pane, "Split") and **full screen** (one centred email, the sender's
+  CRM card beside it, previous/next), switchable in the top bar.
 
 ## CRM (after Mail)
 
