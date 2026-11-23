@@ -3768,6 +3768,9 @@ model Mailbox {
   signature String? // plain text, added below new mail and replies
   sortOrder Int             @default(0)
   memberId  String?         @unique // a user's own mailbox (MailMember.id); null for shared mailboxes and the catch-all
+  // Who sees a shared mailbox: everyone (support@), its department (sales@, accounting@), or only members given access.
+  visibility   String  @default("members") // everyone | department | members
+  departmentId String?
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
   access    MailboxAccess[]
@@ -3789,6 +3792,10 @@ model MailMember {
   phone     String? // for the signature
   signature String? // their filled-in signature (from MailSettings.signatureTemplate)
   inviteTo  String? // personal address the sign-in invite went to
+  departmentId String?
+  photoPath    String? // profile photo in the "mail" bucket (photos/<memberId>.jpg)
+  // Personal look and signature choices: { mode, background, clarity, signatureTemplate, signatureExtra, photoInSignature }
+  prefs        Json    @default("{}")
   status    String          @default("active") // invited | active | suspended | disabled
   createdBy String
   createdAt DateTime        @default(now())
@@ -3824,6 +3831,10 @@ model MailThread {
   hasSent       Boolean       @default(false)
   hasDraft      Boolean       @default(false)
   labelIds      String[]      @default([])
+  tags          String[]      @default([]) // automatic tags from lib/mail/tags.ts (bank, payments, invoices, receipts...)
+  important     Boolean       @default(false)
+  copiedFrom    String? // a copy made by a rule or a forwarder: the source mailbox address ("Also in Accounting", "from grace@")
+  copyKind      String? // rule | forward
   messageCount  Int           @default(0) // received + sent, drafts not counted
   assignee      String? // email of the teammate who took it (shared mailboxes)
   lastMessageAt DateTime      @default(now())
@@ -3924,6 +3935,19 @@ model MailSettings {
   defaultQuotaMb     Int      @default(250)
   poolMb             Int      @default(1000) // Supabase Free: 1 GB of file storage for the whole project
   catchAll           String   @default("other") // other (the Other inbox) | refuse
+  // Company details in every signature (the console only; staff cannot change them).
+  companyPhone       String? // E.164
+  website            String   @default("bupulse.com")
+  address            String   @default("Kigali, Rwanda")
+  linkedinUrl        String?
+  instagramUrl       String?
+  facebookUrl        String?
+  ctaText            String   @default("Get your free BuPulse quote")
+  ctaUrl             String   @default("https://bupulse.com/quote")
+  defaultTemplate    String   @default("classic") // classic | compact | card | simple | banner
+  glassClarity       Int      @default(60) // 0 clear .. 100 frosted
+  glassTint          String   @default("light") // light | dark | blue
+  usersChangeGlass   Boolean  @default(true)
   updatedBy          String?
   updatedAt          DateTime @updatedAt
 }
@@ -3956,4 +3980,29 @@ model MailAlias {
   createdAt DateTime @default(now())
 
   @@index([mailboxId])
+}
+
+// A department: its people, its head (may send to the whole department) and its shared mailbox.
+model MailDepartment {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  color        String   @default("#2f6bff")
+  headMemberId String?
+  mailboxId    String?  @unique
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// "Every email with tag X reaching any company mailbox is also copied into mailbox Y" (Bank, Invoices, Payments and
+// Receipts into accounting@).
+model MailCopyRule {
+  id        String   @id @default(cuid())
+  tag       String
+  mailboxId String
+  enabled   Boolean  @default(true)
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@unique([tag, mailboxId])
 }

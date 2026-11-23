@@ -139,6 +139,12 @@ the support sidebar is the reference (memory: design-real-logo-apple).
   written with `formatPhone`.
 - **Reading layouts:** split preview (list + reading pane, "Split") and **full screen** (one centred email, the sender's
   CRM card beside it, previous/next), switchable in the top bar.
+- **Reading and replying, Gmail-style** (owner, 23 Nov): under each message **Reply** (sender only), **Reply all** (the
+  sender plus everyone in To and Cc, minus our own address) and **Forward**. Received emails show the sender's own
+  signature as written. A reply opens inline under the message: **our text at the top, then our signature, then the
+  earlier message quoted below** ("On <date>, <name> wrote:" with a left bar), **hidden behind a "···" button** until
+  clicked. A forward carries the "Forwarded message" header block. Earlier messages of the conversation fold into an
+  "N older messages" marker and open on click.
 
 ## CRM (after Mail)
 
