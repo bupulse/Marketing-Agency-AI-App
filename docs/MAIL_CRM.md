@@ -97,12 +97,13 @@ the support sidebar is the reference (memory: design-real-logo-apple).
   (space, type, calm, motion with meaning), liquid glass panels, smooth animations. **Preloader:** the BuPulse logo with
   a pulse when Mail opens; opening an email plays a quick pulse line and a slide-in (about 0.3 s). **Backgrounds:** a
   gallery of about 12 plus each person's own photo (shrunk to about 300 KB, counts toward their storage).
-- **Our own layout, not a Gmail copy** (owner, 23 Nov): a floating liquid-glass **dock** on the left (logo, Compose,
-  Inbox, Starred, Sent, Drafts, Archive, Spam, Trash, CRM, Settings); **mailbox lanes** across the top (All · Cyusa ·
-  Office · Support · Sales · Other | Forwarded: Grace · Eric) with unread counts; **the Pulse**, a one-line "today at a
-  glance" strip with the animated pulse line (new, important, leads waiting) and quick filters; the list **grouped by
-  day** (Today / Yesterday / Earlier) as soft cards; a **Peek** pane that previews the chosen mail with Open / Reply /
-  Archive and its CRM line.
+- **Layout: Gmail-style** (owner, 23 Nov, after trying a dock layout: "bring back how it was, more like Gmail"): top bar
+  (menu, small logo + "Mail", search pill, light/dark switch, Quick settings, services, avatar), left list (Compose,
+  mailboxes with unread counts, "Forwarded to you" folders, folders, tags), one-line rows in a glass panel, and a
+  **Quick settings** panel on the right (Appearance Light / Dark / Auto, background thumbnails, glass slider, "See all
+  settings"). Our touches stay: "from" tags in All inboxes, forwarded folders, tags, glass, the preloader.
+- **Light and dark mode** for every screen (Auto follows the device). Dark mode lays a soft dark layer over any
+  background; the logo switches to the white version; tags and chips have dark variants.
 - **Liquid glass clarity** set in the Mail console (Company and look): a Clear ↔ Frosted slider, a tint (Light, Dark,
   Blue), and "each person may change it in their own Settings". Text contrast always stays readable.
 - **Phone = an Apple-style app** (iOS look): large titles, round glass buttons, inset grouped lists, iOS swipe actions
