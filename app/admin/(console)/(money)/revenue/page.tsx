@@ -27,7 +27,7 @@ export default async function RevenuePage() {
         icon={Coins}
         tone="green"
         title="Revenue and profit"
-        description="What clients paid (card, Mobile Money, invoices) before VAT, what BuPulse spent, and what is left. The 18% VAT goes to RRA."
+        description="What clients paid (card, Mobile Money, invoices) before VAT, what BuPulse spent, and what is left. Any VAT collected (only in regions with VAT switched on) goes to RRA."
         actions={
           <Link href="/admin/costs" className={buttonClasses({ variant: "outline" })}>
             <Receipt aria-hidden className="size-4" /> Costs

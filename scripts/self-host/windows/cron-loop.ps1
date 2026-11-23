@@ -198,6 +198,15 @@ try {
 while ($true) {
   try {
     $secret = (Get-Content (Join-Path $logs "cron-secret.txt") -Raw).Trim()
+    try {
+      # B Mail: sends queued mail whose undo window is over (app/api/cron/mail-send). Quick, so it goes before the
+      # tick, which can take up to 25 minutes; sending and page loads also send, so this is only the safety net.
+      $mail = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:3002/api/cron/mail-send" -Headers @{ Authorization = "Bearer $secret" } -TimeoutSec 120
+      $mailText = ($mail | ConvertTo-Json -Compress -Depth 4)
+      if ($mailText -ne '{"sent":0,"failed":0}') { Add-Content $log "mail-send $($mailText.Substring(0, [Math]::Min(200, $mailText.Length))) $((Get-Date).ToUniversalTime().ToString('s'))Z" }
+    } catch {
+      Add-Content $log "mail-send failed: $($_.Exception.Message) $((Get-Date).ToUniversalTime().ToString('s'))Z"
+    }
     $answer = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:3002/api/cron/tick" -Headers @{ Authorization = "Bearer $secret" } -TimeoutSec 1500
     $text = ($answer | ConvertTo-Json -Compress -Depth 6)
     Add-Content $log "$($text.Substring(0, [Math]::Min(300, $text.Length))) $((Get-Date).ToUniversalTime().ToString('s'))Z"

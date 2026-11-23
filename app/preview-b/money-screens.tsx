@@ -13,7 +13,7 @@ import type { RegionalPlan } from "@/lib/region-prices";
 
 type Sp = Record<string, string | string[] | undefined>;
 
-/** Rwanda's plans as a client sees them: RWF prices with 18% VAT included (net 50,000 / 80,000 a month). */
+/** Rwanda's plans as a client sees them: RWF prices (net 50,000 / 80,000 a month; VAT is added only when the Rwanda region has VAT switched on, 0% since 17 Nov 2026). */
 function rwPlans(): RegionalPlan[] {
   const vat = { rateBps: 1800, label: "VAT" };
   const net: Record<string, [number, number]> = { STANDARD: [50_000, 500_000], PRO: [80_000, 800_000] };
