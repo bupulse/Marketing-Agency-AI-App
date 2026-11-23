@@ -1,0 +1,9 @@
+# BuPulse Mail inbound Email Worker. Deploy only with the owner's OK (docs/mail-crm/SETUP.md):
+#   npx wrangler deploy --config workers/mail-inbound/wrangler.toml
+#   npx wrangler secret put MAIL_INBOUND_SECRET --config workers/mail-inbound/wrangler.toml
+name = "bupulse-mail-inbound"
+main = "index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+MAIL_INBOUND_URL = "https://bupulse.com/api/mail/inbound"
