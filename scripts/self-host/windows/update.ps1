@@ -34,7 +34,26 @@ function Wait-SiteUp([int]$seconds) {
 $script:setAside = $false      # .next was renamed to .next-prev by this run
 $script:asideFailed = $false   # .next could not be renamed (a locked file): nothing was built
 $script:restored = $false
+
+# New packages (package.json) are installed before the build, with the site stopped: the 23 Nov 2026 update failed
+# with "Can't resolve 'postal-mime'" because nothing installed it. Runs only when a listed package is missing from
+# node_modules or package-lock.json changed since the last update ($before). `npm install`, not `npm ci`: ci deletes
+# node_modules first, which takes very long on this PC's disk. Throws before anything is set aside, so a failed install
+# leaves the current build to start again unchanged.
+function Install-NewPackages {
+  $pkg = Get-Content -LiteralPath (Join-Path $repo "package.json") -Raw | ConvertFrom-Json
+  $names = @()
+  foreach ($section in @($pkg.dependencies, $pkg.devDependencies)) { if ($section) { $names += $section.PSObject.Properties.Name } }
+  $missing = @($names | Where-Object { -not (Test-Path -LiteralPath (Join-Path (Join-Path $repo "node_modules") $_)) })
+  $lockChanged = [bool](git diff --name-only $before HEAD -- package-lock.json)
+  if (-not $missing.Count -and -not $lockChanged) { return }
+  if ($missing.Count) { Write-Host "    new packages: $($missing -join ', ') - installing" } else { Write-Host "    package-lock.json changed - installing" }
+  npm.cmd install --no-audit --no-fund | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "npm install failed (see the messages above): nothing was built; the current version is started again. Send the messages to Claude." }
+}
+
 function Invoke-SafeBuild {
+  Install-NewPackages
   $next = Join-Path $repo ".next"
   $prev = Join-Path $repo ".next-prev"
   if (Test-Path -LiteralPath $prev) {
