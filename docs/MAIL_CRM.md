@@ -97,6 +97,16 @@ the support sidebar is the reference (memory: design-real-logo-apple).
   (space, type, calm, motion with meaning), liquid glass panels, smooth animations. **Preloader:** the BuPulse logo with
   a pulse when Mail opens; opening an email plays a quick pulse line and a slide-in (about 0.3 s). **Backgrounds:** a
   gallery of about 12 plus each person's own photo (shrunk to about 300 KB, counts toward their storage).
+- **Our own layout, not a Gmail copy** (owner, 23 Nov): a floating liquid-glass **dock** on the left (logo, Compose,
+  Inbox, Starred, Sent, Drafts, Archive, Spam, Trash, CRM, Settings); **mailbox lanes** across the top (All · Cyusa ·
+  Office · Support · Sales · Other | Forwarded: Grace · Eric) with unread counts; **the Pulse**, a one-line "today at a
+  glance" strip with the animated pulse line (new, important, leads waiting) and quick filters; the list **grouped by
+  day** (Today / Yesterday / Earlier) as soft cards; a **Peek** pane that previews the chosen mail with Open / Reply /
+  Archive and its CRM line.
+- **Liquid glass clarity** set in the Mail console (Company and look): a Clear ↔ Frosted slider, a tint (Light, Dark,
+  Blue), and "each person may change it in their own Settings". Text contrast always stays readable.
+- **Phone = an Apple-style app** (iOS look): large titles, round glass buttons, inset grouped lists, iOS swipe actions
+  (More / Flag / Archive), a floating glass bottom bar with Mailboxes, Search (with dictation) and Compose.
 
 ## CRM (after Mail)
 
