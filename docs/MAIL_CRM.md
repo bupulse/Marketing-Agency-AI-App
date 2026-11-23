@@ -123,6 +123,15 @@ the support sidebar is the reference (memory: design-real-logo-apple).
 - **Attachment viewer:** a dark glass Quick Look-style window: page thumbnails, page arrows, zoom, Fit width / Fit page,
   rotate, find in document with highlights, print, details panel (type, size, sender, "safe preview"), Save to CRM,
   Download, and a strip to switch between the email's files; PDF, Word, Excel (sheet tabs) and photos.
+- **Department mailboxes** (owner, 23 Nov): **support@ is visible to everyone, who may read and reply** ("Assign to me"
+  prevents double answers). Each department sees its own department mailbox (sales@ for Sales, **accounting@** for
+  Accounting...). **accounting@** is a shared mailbox for the Accounting department **plus automatic copies** of every
+  Bank / Invoices / Payments / Receipts email that reaches any company mailbox (tag rules). Owner and Mail admins see all.
+- **File previews, all inside BuPulse:** PDF and images in the browser; **Word, Excel, PowerPoint (new and old) through
+  LibreOffice on the server** (free, installed once on the office PC; 2–10 s the first time, then cached); CSV as a
+  table; SQLite databases (.db/.sqlite) read-only (tables list + rows, in the browser); code/text with colours;
+  audio/video players; ZIP contents list; 3D: .glb/.gltf/.obj/.stl spin in the browser, **.blend converted by Blender on
+  the server** (free, Blender installed on the office PC; info card + Download until then).
 
 ## CRM (after Mail)
 
