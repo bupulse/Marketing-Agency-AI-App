@@ -27,7 +27,7 @@ export function SettingsForm({ profile, signatureHtml, companyPhone }: { profile
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className={label}>Name<input name="name" defaultValue={profile.name} required className={input} /></label>
           <label className={label}>Job title<input name="title" defaultValue={profile.title} placeholder="Founder" className={input} /></label>
-          <div className={`${label} md:col-span-2`}><span>Personal phone (optional)</span><PhoneInput name="phone" defaultValue={profile.phone} placeholder="720 123 456" countryLabel="Country" /><span className="text-[12.5px] font-normal text-muted">Shown as "Mobile" in your signature, next to the company number.</span></div>
+          <div className={`${label} md:col-span-2`}><span>Personal phone (optional)</span><PhoneInput name="phone" defaultValue={profile.phone} placeholder="720 123 456" countryLabel="Country" /><span className="text-[12.5px] font-normal text-muted">Shown as &ldquo;Mobile&rdquo; in your signature, next to the company number.</span></div>
           <label className={`${label} md:col-span-2`}>Extra line (optional)<input name="signatureExtra" defaultValue={profile.extra} placeholder="Available Monday to Saturday, 8:00 to 18:00" className={input} /></label>
         </div>
         <div className="mt-4 flex items-center gap-3 rounded-2xl bg-black/[0.04] px-4 py-3 text-[14px] dark:bg-white/[0.06]">
