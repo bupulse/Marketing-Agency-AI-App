@@ -1,8 +1,10 @@
 name: Refresh social tokens
 
 on:
-  schedule:
-    - cron: "43 4 * * *"
+  # Schedule off (23 Nov 2026): the office PC runs this job itself (worker-crons.ts via its jobs loop) and checks its own
+  # private cron key, so this GitHub copy always got 401. Run it by hand from the Actions tab if ever needed.
+  # schedule:
+  #  - cron: "43 4 * * *"
   workflow_dispatch:
 
 permissions: {}
