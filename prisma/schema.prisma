@@ -3753,3 +3753,207 @@ model AdAsset {
 
   @@index([kind, createdAt])
 }
+
+// ---- BuPulse Mail (docs/MAIL_CRM.md) ---------------------------------------------------------------------------
+// Mail for @bupulse.com: Cloudflare Email Routing hands each message to /api/mail/inbound (raw MIME, signed), Resend
+// sends. Raw messages and attachments live in the private "mail" bucket (raw/<mailboxId>/<messageId>.eml,
+// att/<messageId>/<attachmentId>). Every table is server-only (RLS on, no policies).
+
+// One address (cyusa@, office@, support@, sales@...) or the catch-all for every other @bupulse.com address.
+model Mailbox {
+  id        String          @id @default(cuid())
+  address   String?         @unique // lower case; null for the catch-all
+  name      String
+  kind      String          @default("personal") // personal | shared | catchall
+  signature String? // plain text, added below new mail and replies
+  sortOrder Int             @default(0)
+  memberId  String?         @unique // a user's own mailbox (MailMember.id); null for shared mailboxes and the catch-all
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  access    MailboxAccess[]
+  threads   MailThread[]
+}
+
+// A person allowed into Mail and/or the CRM (the owner, ADMIN_EMAILS, always is). Signs in with the normal BuPulse
+// login at bupulse.com/login, plus an authenticator code.
+model MailMember {
+  id        String          @id @default(cuid())
+  email     String          @unique // lower case
+  name      String?
+  userId    String?         @unique @db.Uuid
+  mail      Boolean         @default(true)
+  crm       Boolean         @default(false)
+  role      String          @default("member") // member | admin (opens the Mail console)
+  quotaMb   Int             @default(250) // storage allowance: attachments and raw messages
+  title     String? // job title, for the signature
+  phone     String? // for the signature
+  signature String? // their filled-in signature (from MailSettings.signatureTemplate)
+  inviteTo  String? // personal address the sign-in invite went to
+  status    String          @default("active") // invited | active | suspended | disabled
+  createdBy String
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  access    MailboxAccess[]
+}
+
+// Which mailboxes a member may read and send from.
+model MailboxAccess {
+  mailboxId String
+  mailbox   Mailbox    @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    MailMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@id([mailboxId, memberId])
+  @@index([memberId])
+}
+
+// A conversation in one mailbox (a message sent to two of our mailboxes is two threads, one each).
+model MailThread {
+  id            String        @id @default(cuid())
+  mailboxId     String
+  mailbox       Mailbox       @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  subject       String        @default("")
+  subjectKey    String        @default("") // lower case, without Re:/Fwd: (lib/mail/threading.ts)
+  snippet       String        @default("")
+  participants  Json          @default("[]") // [{ name, address }], newest first, our own addresses left out
+  folder        String        @default("inbox") // inbox | archive | spam | trash
+  unread        Boolean       @default(true)
+  starred       Boolean       @default(false)
+  hasAttachment Boolean       @default(false)
+  hasSent       Boolean       @default(false)
+  hasDraft      Boolean       @default(false)
+  labelIds      String[]      @default([])
+  messageCount  Int           @default(0) // received + sent, drafts not counted
+  assignee      String? // email of the teammate who took it (shared mailboxes)
+  lastMessageAt DateTime      @default(now())
+  trashedAt     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  messages      MailMessage[]
+
+  @@index([mailboxId, folder, lastMessageAt])
+  @@index([mailboxId, subjectKey])
+  @@index([folder, trashedAt])
+}
+
+model MailMessage {
+  id          String           @id @default(cuid())
+  threadId    String
+  thread      MailThread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  mailboxId   String
+  direction   String // in | out
+  status      String           @default("received") // received | draft | queued | sending | sent | failed
+  messageId   String? // RFC 5322 Message-ID without the angle brackets
+  inReplyTo   String?
+  references  String[]         @default([])
+  fromAddress String
+  fromName    String           @default("")
+  to          Json             @default("[]") // [{ name, address }]
+  cc          Json             @default("[]")
+  bcc         Json             @default("[]")
+  replyTo     String?
+  subject     String           @default("")
+  text        String           @default("")
+  html        String?
+  snippet     String           @default("")
+  date        DateTime         @default(now()) // sent or received
+  sendAt      DateTime? // queued: delivered at this time (the undo-send window)
+  authorEmail String? // the teammate who wrote an outgoing mail
+  providerId  String? // Resend's id
+  error       String?
+  rawPath     String?
+  sizeBytes   Int              @default(0)
+  authResults String? // "spf=pass dkim=pass dmarc=pass" from the receiving side
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  attachments MailAttachment[]
+
+  @@unique([mailboxId, messageId])
+  @@index([threadId, date])
+  @@index([status, sendAt])
+  @@index([fromAddress])
+}
+
+model MailAttachment {
+  id          String      @id @default(cuid())
+  messageId   String
+  message     MailMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  filename    String
+  contentType String      @default("application/octet-stream")
+  size        Int         @default(0)
+  path        String // object path in the "mail" bucket
+  contentId   String? // inline images: cid
+  inline      Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+
+  @@index([messageId])
+}
+
+// Team-wide labels (a thread keeps their ids in MailThread.labelIds).
+model MailLabel {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("blue")
+  createdAt DateTime @default(now())
+}
+
+// "Report spam" / "Not spam" on a sender address or a whole domain ("@example.com").
+model MailSenderRule {
+  id        String   @id @default(cuid())
+  pattern   String   @unique // lower case address, or "@domain"
+  action    String // spam | allow
+  createdBy String
+  createdAt DateTime @default(now())
+}
+
+// Emails Mail and bulk sending gave Resend per UTC day (the free plan sends 100 a day).
+model MailSendDay {
+  day  String @id // YYYY-MM-DD (UTC)
+  sent Int    @default(0)
+}
+
+// The Mail console's settings (one row, id "default"): the default signature every new user gets, and storage.
+model MailSettings {
+  id                 String   @id @default("default")
+  signatureTemplate  String   @default("{name}\n{title} · BuPulse LTD\n{phone} · bupulse.com")
+  signatureLogo      Boolean  @default(true)
+  signatureOnReplies Boolean  @default(true)
+  usersEditSignature Boolean  @default(false)
+  sharedSignAsTeam   Boolean  @default(true)
+  defaultQuotaMb     Int      @default(250)
+  poolMb             Int      @default(1000) // Supabase Free: 1 GB of file storage for the whole project
+  catchAll           String   @default("other") // other (the Other inbox) | refuse
+  updatedBy          String?
+  updatedAt          DateTime @updatedAt
+}
+
+// "Everything that reaches <source> also goes to <target>". An internal target (@bupulse.com) is copied in the app;
+// an outside one is forwarded by the Cloudflare Email Worker once Cloudflare has confirmed the address (free, never
+// counted against the 100 daily sends).
+model MailForwarder {
+  id         String    @id @default(cuid())
+  source     String // lower-case address at bupulse.com
+  target     String // lower-case address
+  external   Boolean   @default(false)
+  keepCopy   Boolean   @default(true)
+  enabled    Boolean   @default(true)
+  verifiedAt DateTime? // outside targets: when Cloudflare confirmed it
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([source, target])
+  @@index([source])
+}
+
+// An extra address that lands in an existing mailbox (info@ into support@) without a new user.
+model MailAlias {
+  id        String   @id @default(cuid())
+  address   String   @unique // lower case
+  mailboxId String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([mailboxId])
+}

@@ -50,6 +50,26 @@ the support sidebar is the reference (memory: design-real-logo-apple).
   (autosave), attachments, signatures, undo send, keyboard shortcuts → mobile layout.
 - Owner's first real use: the I&M bank and IremboPay emails from cyusa@bupulse.com (texts are in ~/BuPulse-company/emails).
 
+## Mail console (owner, 23 Nov 2026, after the grill)
+
+- **Sign-in:** the normal BuPulse login **plus the 6-digit authenticator code** (owner's choice, multiple choice): Mail
+  holds bank emails.
+- **Mail console** for mail admins (a user with role "Mail admin"; the owner always is): create users, each with their
+  own @bupulse.com mailbox, a role (Member / Mail admin), the shared mailboxes they may use, a **storage allowance that
+  admins raise or lower** (100 MB, 250 MB, 500 MB, 1 GB or custom), and an invite to a personal address.
+- **Default signature:** one team template (`{name}`, `{title}`, `{phone}`, `{email}`, `{mailbox}`, the real BuPulse
+  logo) filled in for **every user when they are created**; "apply to all users" updates existing ones; shared mailboxes
+  sign as the team.
+- **Forwarding:** rules "mail to X also goes to Y" (keep a copy or not, on/off). A @bupulse.com target is copied in the
+  app; an outside target is forwarded by the Cloudflare Email Worker after Cloudflare confirms the address (free, not
+  counted in the 100 daily sends). **Extra addresses** (info@ into support@) and the catch-all choice (Other inbox, or
+  refuse later).
+- **Storage honesty:** Supabase Free has 1 GB of file storage for the whole project; the console shows the pool,
+  what is given out and what is used. Message text lives in the database (500 MB free). Paid upgrade path written down,
+  not bought: Supabase Pro (100 GB).
+- Design: the canvas "BuPulse Mail design" (claude.ai artifact, private to the owner) with the inbox, compose, phone
+  screens and the console (users, create user, forwarding, signature).
+
 ## CRM (after Mail)
 
 Linked to Mail from the start: every email to or from a contact shows on its page; "Add to CRM" from any email.
