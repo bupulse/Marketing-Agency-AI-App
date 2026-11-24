@@ -3876,6 +3876,9 @@ model MailMessage {
   rawPath     String?
   sizeBytes   Int              @default(0)
   authResults String? // "spf=pass dkim=pass dmarc=pass" from the receiving side
+  // The composer's state on a draft (and on the first message of a send, for Undo): recipients as typed (departments
+  // included), the body without the signature, the message answered or forwarded and the mode (lib/mail/drafts.ts).
+  draft       Json?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   attachments MailAttachment[]

@@ -38,6 +38,23 @@ export async function signedUrl(path: string, opts: { download?: string } = {}):
   }
 }
 
+/** A one-time upload link for one path: the composer sends the file straight to Storage, not through our server. */
+export async function createUploadSlot(path: string): Promise<{ signedUrl: string; token: string }> {
+  const { data, error } = await bucket().createSignedUploadUrl(path);
+  if (error || !data) throw error ?? new Error("createSignedUploadUrl returned nothing");
+  return { signedUrl: data.signedUrl, token: data.token };
+}
+
+/** The stored object's size, or null when nothing was uploaded there. */
+export async function objectSize(path: string): Promise<number | null> {
+  const slash = path.lastIndexOf("/");
+  const name = path.slice(slash + 1);
+  const { data, error } = await bucket().list(path.slice(0, slash), { search: name, limit: 5 });
+  if (error) throw error;
+  const hit = data?.find((o) => o.name === name);
+  return hit ? Number((hit.metadata as { size?: number } | null)?.size ?? 0) : null;
+}
+
 export async function removeObjects(paths: string[]): Promise<void> {
   for (let i = 0; i < paths.length; i += 100) {
     const { error } = await bucket().remove(paths.slice(i, i + 100));
