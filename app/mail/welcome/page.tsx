@@ -24,7 +24,7 @@ export default async function MailWelcomePage() {
         email: me.email,
         look: typeof p.signatureTemplate === "string" ? p.signatureTemplate : settings?.defaultTemplate ?? "classic",
         photo: member ? photoUrl(member.id, member.photoPath) : null,
-        photoInSignature: p.photoInSignature === true,
+        photoInSignature: p.photoInSignature !== false,
         background: typeof p.background === "string" ? p.background : "kigali-hills",
       }}
       company={{

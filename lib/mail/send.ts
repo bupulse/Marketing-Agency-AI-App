@@ -83,7 +83,7 @@ export async function signatureFor(me: MailMe, fromAddress: string) {
   const person = { name: member?.name || me.name, title: member?.title ?? null, email: fromAddress, mobile: member?.phone ? formatPhone(member.phone) : null, extra: typeof prefs.signatureExtra === "string" ? prefs.signatureExtra : null };
   // The person's look (Settings), else the company default (Mail console); their photo when they switched it on.
   const look = typeof prefs.signatureTemplate === "string" ? prefs.signatureTemplate : settings?.defaultTemplate;
-  const photo = prefs.photoInSignature === true && member ? photoUrl(member.id, member.photoPath, publicSiteUrl()) : null;
+  const photo = prefs.photoInSignature !== false && member ? photoUrl(member.id, member.photoPath, publicSiteUrl()) : null;
   return { text: signatureText(company, person), html: withPhoto(signatureHtmlFor(look, company, person), photo, person.name) };
 }
 

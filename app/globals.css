@@ -733,6 +733,10 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
   .bmail-on-dark .bmail-menu { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
   .bmail-on-dark .bmail-menu .text-muted { color: rgba(255, 255, 255, 0.72); }
   .bmail-on-dark .bmail-menu a[aria-current="page"] { background: rgba(255, 255, 255, 0.22); color: #fff; }
+  /* The left menu scrolls on its own when it is taller than the screen: a thin bar that shows on hover. */
+  .bmail-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .bmail-scroll:hover, .bmail-scroll:focus-within { scrollbar-color: rgba(0, 0, 0, 0.28) transparent; }
+  .dark .bmail-scroll:hover, .bmail-on-dark .bmail-scroll:hover { scrollbar-color: rgba(255, 255, 255, 0.35) transparent; }
   .bmail-on-dark .bmail-menu a:hover { background: rgba(255, 255, 255, 0.12); }
   .bmail-on-dark .bmail-menu > button { color: #1d1d1f; text-shadow: none; }
 }

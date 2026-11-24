@@ -7,7 +7,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { useTheme } from "@/components/theme";
 import { cn } from "@/lib/cn";
 import { formatPhone } from "@/lib/phone";
-import { MAIL_BACKGROUNDS, RANDOM_BACKGROUND } from "@/lib/mail/backgrounds";
+import { MAIL_BACKGROUNDS, RANDOM_BACKGROUND, swatchCss } from "@/lib/mail/backgrounds";
 import { SIGNATURE_LOOKS, signatureHtmlFor, withPhoto, type SignatureCompany } from "@/lib/mail/signature-render";
 import { saveProfile, setMailLook, setMailPref, type ProfileState } from "@/app/mail/(app)/actions";
 import { BMark } from "./brand";
@@ -112,7 +112,7 @@ export function WelcomeSteps({ profile, company }: { profile: Profile; company: 
                 ))}
               </div>
               <div role="radiogroup" aria-label="Background" className="grid grid-cols-3 gap-2.5 sm:grid-cols-5">
-                {MAIL_BACKGROUNDS.map((b) => <button key={b.id} type="button" role="radio" aria-checked={bg === b.id} aria-label={b.name} title={b.name} onClick={() => { setBg(b.id); start(async () => { await setMailLook({ background: b.id }); }); }} className={cn("h-[72px] cursor-pointer rounded-xl transition hover:scale-[1.03]", bg === b.id ? "ring-2 ring-[#4c8dff] ring-offset-2" : "ring-1 ring-inset ring-black/10")} style={{ background: b.css }} />)}
+                {MAIL_BACKGROUNDS.map((b) => <button key={b.id} type="button" role="radio" aria-checked={bg === b.id} aria-label={b.name} title={b.name} onClick={() => { setBg(b.id); start(async () => { await setMailLook({ background: b.id }); }); }} className={cn("h-[72px] cursor-pointer rounded-xl transition hover:scale-[1.03]", bg === b.id ? "ring-2 ring-[#4c8dff] ring-offset-2" : "ring-1 ring-inset ring-black/10")} style={{ background: swatchCss(b) }} />)}
                 <button type="button" role="radio" aria-checked={bg === RANDOM_BACKGROUND} aria-label="Random" title="Random: a Kigali scene each day" onClick={() => { setBg(RANDOM_BACKGROUND); start(async () => { await setMailLook({ background: RANDOM_BACKGROUND }); }); }} className={cn("flex h-[72px] cursor-pointer items-center justify-center rounded-xl bg-[conic-gradient(from_0deg,#ffd2b8,#bfd2ff,#b8e6c0,#d6c6ff,#ffd2b8)]", bg === RANDOM_BACKGROUND ? "ring-2 ring-[#4c8dff] ring-offset-2" : "ring-1 ring-inset ring-black/10")}><Shuffle className="size-5 text-[#1d1d1f]" /></button>
               </div>
             </>

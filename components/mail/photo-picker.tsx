@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Camera, ImageUp, X } from "lucide-react";
 import { removeMailPhoto, saveBackgroundPhoto, saveMailPhoto } from "@/app/mail/(app)/actions";
@@ -29,6 +30,7 @@ export function PhotoPicker({ name, photo, onChange }: { name: string; photo: st
   const [zoom, setZoom] = useState(120);
   const [off, setOff] = useState({ x: 0, y: 0 });
   const [saved, setSaved] = useState<string | null>(photo);
+  const router = useRouter();
   const [camera, setCamera] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -79,8 +81,10 @@ export function PhotoPicker({ name, photo, onChange }: { name: string; photo: st
     setSrc(null);
     setImg(null);
     onChange?.(r.url ?? null);
+    // The top bar, the account menu and the signature pick up the new photo straight away.
+    router.refresh();
   });
-  const remove = () => start(async () => { await removeMailPhoto(); setSaved(null); setSrc(null); setImg(null); onChange?.(null); });
+  const remove = () => start(async () => { await removeMailPhoto(); setSaved(null); setSrc(null); setImg(null); onChange?.(null); router.refresh(); });
 
   const btn = "inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-black/15 px-4 text-[14px] font-semibold hover:bg-black/5 disabled:opacity-50 dark:border-white/15 dark:hover:bg-white/10";
   return (
