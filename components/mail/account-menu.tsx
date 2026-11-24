@@ -7,7 +7,7 @@ import { signOutMail } from "@/app/mail/(app)/actions";
 
 // The menu behind the profile picture (owner, 23 Nov 2026): profile and signature, the Mail console for admins, the
 // BuPulse account, all services, sign out.
-export function AccountMenu({ name, email, initial, isAdmin, role }: { name: string; email: string; initial: string; isAdmin: boolean; role: string }) {
+export function AccountMenu({ name, email, initial, isAdmin, role, photo }: { name: string; email: string; initial: string; isAdmin: boolean; role: string; photo?: string | null }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -22,11 +22,11 @@ export function AccountMenu({ name, email, initial, isAdmin, role }: { name: str
   const item = "flex h-11 items-center gap-3 rounded-xl px-3 text-[14.5px] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]";
   return (
     <div ref={box} className="relative">
-      <button type="button" aria-label="Your account" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex size-10 cursor-pointer items-center justify-center rounded-full bg-[#1f5ae6] text-[15px] font-semibold text-white ring-[3px] ring-white/80 transition hover:ring-white dark:ring-white/20">{initial}</button>
+      <button type="button" aria-label="Your account" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="inline-flex size-10 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-[#1f5ae6] text-[15px] font-semibold text-white ring-[3px] ring-white/80 transition hover:ring-white dark:ring-white/20"><Face photo={photo} initial={initial} /></button>
       {open && (
         <div role="menu" className="bmail-pop absolute right-0 top-12 z-50 w-[300px] rounded-[22px] border border-white/80 bg-white/95 p-2 text-text shadow-[0_24px_60px_-24px_rgba(15,23,42,0.5)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#1c1c22]/95">
           <div className="flex items-center gap-3 px-3 pb-3 pt-2">
-            <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-[#1f5ae6] text-[18px] font-semibold text-white">{initial}</span>
+            <Link href="/mail/settings#photo" aria-label="Change your photo" onClick={() => setOpen(false)} className="inline-flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1f5ae6] text-[18px] font-semibold text-white"><Face photo={photo} initial={initial} /></Link>
             <span className="flex min-w-0 flex-col"><span className="truncate text-[15px] font-semibold">{name}</span><span className="truncate text-[12.5px] text-muted">{email}</span><span className="text-[12px] font-semibold text-[#1f5ae6]">{role}</span></span>
           </div>
           <div className="h-px bg-black/[0.08] dark:bg-white/10" />
@@ -41,4 +41,10 @@ export function AccountMenu({ name, email, initial, isAdmin, role }: { name: str
       )}
     </div>
   );
+}
+
+function Face({ photo, initial }: { photo?: string | null; initial: string }) {
+  if (!photo) return <>{initial}</>;
+  // eslint-disable-next-line @next/next/no-img-element -- our own photo route
+  return <img src={photo} alt="" className="size-full object-cover" />;
 }

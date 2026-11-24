@@ -3,6 +3,7 @@
 
 import { isOurAddress, type Addr } from "./addresses";
 import { forwardSubject, replySubject } from "./threading";
+import type { QuotePreview, ReplyOption } from "./draft-rules";
 
 export type ReplyMode = "reply" | "all" | "forward";
 
@@ -34,4 +35,29 @@ export function replyRecipients(parent: ParentMessage, mode: ReplyMode, ourAddre
   if (mode === "reply") return { to, cc: [], subject };
   const others = uniq([...(fromUs ? [] : parent.to), ...parent.cc], skip).filter((a) => !(isOurAddress(a.address) && a.address.toLowerCase() === mine));
   return { to, cc: others, subject };
+}
+
+/** "Mon, 23 Nov 2026, 09:40" in Kigali time: the date in a quote or forward header. */
+export const longDate = (d: Date) => d.toLocaleString("en-GB", { timeZone: "Africa/Kigali", weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+export type QuoteSource = ParentMessage & { dateLong: string; text: string };
+
+/**
+ * The earlier message as the composer shows it behind ···: "On … wrote:" for a reply, the "Forwarded message" block
+ * for a forward (the same words the server adds when sending, lib/mail/html.ts).
+ */
+export function quotePreview(m: QuoteSource, mode: ReplyMode): QuotePreview {
+  const who = m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress;
+  if (mode !== "forward") return { head: `On ${m.dateLong}, ${who} wrote:`, body: m.text };
+  const to = m.to.map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(", ");
+  return { head: ["---------- Forwarded message ---------", `From: ${who}`, `Date: ${m.dateLong}`, `Subject: ${m.subject}`, ...(to ? [`To: ${to}`] : [])].join("\n"), body: m.text };
+}
+
+/** Reply, Reply all and Forward for one message, so the reply header can switch between them. */
+export function replyOptions(m: QuoteSource, ourAddress: string): Record<ReplyMode, ReplyOption> {
+  const one = (mode: ReplyMode): ReplyOption => {
+    const r = replyRecipients(m, mode, ourAddress);
+    return { to: r.to.map((a) => a.address), cc: r.cc.map((a) => a.address), subject: r.subject, quote: quotePreview(m, mode) };
+  };
+  return { reply: one("reply"), all: one("all"), forward: one("forward") };
 }

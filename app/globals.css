@@ -693,17 +693,63 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
 
 /* B Mail: the always-on pulse of the B mark (components/mail/brand.tsx) and the shared motion. */
 @keyframes bmail-beat {
-  0% { stroke-dashoffset: 150; }
+  0% { stroke-dashoffset: 720; }
   55% { stroke-dashoffset: 0; }
-  100% { stroke-dashoffset: -150; }
+  100% { stroke-dashoffset: -720; }
 }
 .bmail-pulse { animation: bmail-beat 2.2s cubic-bezier(0.45, 0.05, 0.35, 1) infinite; }
+/* The preloader (scratchpad design "Preloader"): breathing mark, two rings, a pulse line drawing, the words fading in. */
+@keyframes bmail-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes bmail-ring { 0% { transform: scale(0.7); opacity: 0.55; } 100% { transform: scale(1.9); opacity: 0; } }
+@keyframes bmail-draw { 0% { stroke-dashoffset: 520; } 55% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -520; } }
+@keyframes bmail-fade { 0%, 20% { opacity: 0; transform: translateY(6px); } 45%, 100% { opacity: 1; transform: none; } }
+@keyframes bmail-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+.bmail-preloader { background: radial-gradient(700px 500px at 20% 0%, #ffe9da 0%, rgba(255, 233, 218, 0) 60%), radial-gradient(700px 500px at 90% 10%, #dbe5ff 0%, rgba(219, 229, 255, 0) 60%), radial-gradient(800px 600px at 50% 110%, #e8defe 0%, rgba(232, 222, 254, 0) 60%), #f3f5fa; }
+.dark .bmail-preloader { background: radial-gradient(700px 500px at 20% 0%, #2a1d3f 0%, rgba(42, 29, 63, 0) 60%), radial-gradient(700px 500px at 90% 10%, #16244a 0%, rgba(22, 36, 74, 0) 60%), #0f1115; }
+.bmail-breathe { animation: bmail-breathe 1.8s ease-in-out infinite; }
+.bmail-ring { animation: bmail-ring 1.8s cubic-bezier(0.2, 0.7, 0.2, 1) infinite; }
+.bmail-ring-late { animation-delay: 0.9s; }
+.bmail-draw { animation: bmail-draw 1.8s cubic-bezier(0.45, 0.05, 0.35, 1) infinite; }
+.bmail-fade { animation: bmail-fade 1.8s ease both; }
+.bmail-bar { animation: bmail-bar 1.1s cubic-bezier(0.45, 0.05, 0.35, 1) infinite; }
+@keyframes bmail-slide { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+@keyframes bmail-slide-left { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+.bmail-slide { animation: bmail-slide 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.bmail-slide-left { animation: bmail-slide-left 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* Liquid glass panels: how clear or frosted follows the person's Glass slider (--bmail-a / --bmail-blur on .bmail-root). */
+.bmail-root { --bmail-plain: #f3f4f7; }
+.dark .bmail-root { --bmail-plain: #121214; }
+.bmail-glass {
+  background: rgba(var(--bmail-rgb, 255, 255, 255), var(--bmail-a, 0.72));
+  -webkit-backdrop-filter: blur(var(--bmail-blur, 24px)) saturate(1.7);
+  backdrop-filter: blur(var(--bmail-blur, 24px)) saturate(1.7);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 20px 50px -30px rgba(15, 23, 42, 0.45);
+}
+/* A dark picture in light mode: white text on the top bar and the menu (on computers; the phone sheet stays light). */
+.bmail-on-dark > header { color: #fff; }
+.bmail-on-dark > header .text-muted { color: rgba(255, 255, 255, 0.75); }
+@media (min-width: 768px) {
+  .bmail-on-dark .bmail-menu { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+  .bmail-on-dark .bmail-menu .text-muted { color: rgba(255, 255, 255, 0.72); }
+  .bmail-on-dark .bmail-menu a[aria-current="page"] { background: rgba(255, 255, 255, 0.22); color: #fff; }
+  .bmail-on-dark .bmail-menu a:hover { background: rgba(255, 255, 255, 0.12); }
+  .bmail-on-dark .bmail-menu > button { color: #1d1d1f; text-shadow: none; }
+}
+.dark .bmail-glass { background: rgba(30, 30, 36, var(--bmail-a, 0.72)); border-color: rgba(255, 255, 255, 0.1); }
 @keyframes bmail-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes bmail-pop { from { opacity: 0; transform: scale(0.97) translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes bmail-line { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
 .bmail-rise { animation: bmail-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .bmail-pop { animation: bmail-pop 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @media (prefers-reduced-motion: reduce) {
-  .bmail-pulse, .bmail-rise, .bmail-pop { animation: none !important; }
+  .bmail-pulse, .bmail-rise, .bmail-pop, .bmail-slide, .bmail-slide-left, .bmail-breathe, .bmail-ring, .bmail-draw, .bmail-fade, .bmail-bar { animation: none !important; }
 }
 .bmail-editor:empty::before { content: attr(data-placeholder); color: var(--color-muted); pointer-events: none; }
+
+/* Printing a conversation: only the conversation, black on white. */
+@media print {
+  .bmail-root { background: #fff !important; }
+  .bmail-root > header, .bmail-root nav, .bmail-root aside, .bmail-root [role="toolbar"], .bmail-root #bmail-reply, .bmail-noprint { display: none !important; }
+  .bmail-print { position: static !important; box-shadow: none !important; border: 0 !important; background: #fff !important; backdrop-filter: none !important; }
+}

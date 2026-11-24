@@ -169,3 +169,34 @@ describe("parsing", () => {
     expect(authSummary(["mx; spf=pass dkim=none", "other; spf=fail dmarc=pass"])).toBe("spf=pass dkim=none dmarc=pass");
   });
 });
+
+import { glassStyle, isMailBackground, resolveBackground } from "@/lib/mail/backgrounds";
+import { parseSearch as parseSearch2 } from "@/lib/mail/queries";
+
+describe("backgrounds and glass", () => {
+  it("knows the ids, and Random is one of the four scenes all day", () => {
+    expect(isMailBackground("aurora")).toBe(true);
+    expect(isMailBackground("nope")).toBe(false);
+    const a = resolveBackground("random", "x@bupulse.com", new Date("2026-11-24T08:00:00Z"));
+    const b = resolveBackground("random", "x@bupulse.com", new Date("2026-11-24T20:00:00Z"));
+    expect(a.id).toBe(b.id);
+    expect(["kigali-hills", "kigali-night", "kivu-beach", "virunga"]).toContain(a.id);
+    expect(resolveBackground("bad", "x").id).toBe("kigali-hills");
+  });
+  it("glass gets more opaque and blurred towards frosted", () => {
+    expect(glassStyle(100, false).alpha).toBeGreaterThan(glassStyle(0, false).alpha);
+    expect(glassStyle(100, false).blur).toBe(36);
+    expect(glassStyle(500, true).alpha).toBeLessThanOrEqual(0.9);
+  });
+});
+
+describe("search options", () => {
+  it("reads to:, subject: with quotes, and dates", () => {
+    const t = parseSearch2('from:irembo subject:"merchant onboarding" after:2026-11-01 before:2026-11-20 invoice');
+    expect(t.from).toBe("irembo");
+    expect(t.subject).toBe("merchant onboarding");
+    expect(t.after?.toISOString()).toBe("2026-10-31T22:00:00.000Z");
+    expect(t.before?.toISOString()).toBe("2026-11-20T22:00:00.000Z");
+    expect(t.text).toBe("invoice");
+  });
+});

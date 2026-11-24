@@ -36,7 +36,14 @@ export default {
     const recipient = message.to.toLowerCase();
     const signature = await signInbound(env.MAIL_INBOUND_SECRET, recipient, raw);
     // The safety copy goes out first, so the owner still gets the message even if the app is down.
-    if (env.SAFETY_COPY_TO) await message.forward(env.SAFETY_COPY_TO).catch(() => undefined);
+    let copied = false;
+    if (env.SAFETY_COPY_TO) copied = await message.forward(env.SAFETY_COPY_TO).then(() => true, () => false);
+    // When the app cannot take it but the safety copy went out, the message is accepted (not held): senders are not
+    // kept waiting while the office PC is updating. Without a safety copy it is held ("try again later") as before.
+    const holdOrAccept = (status: string) => {
+      console.log(`inbound ${status}${copied ? " (accepted: safety copy sent)" : " (held)"}`);
+      if (!copied) message.setReject("451 Temporary problem, please try again later.");
+    };
     let response: Response;
     try {
       response = await fetch(env.MAIL_INBOUND_URL, {
@@ -45,7 +52,7 @@ export default {
         body: raw,
       });
     } catch {
-      message.setReject("451 Temporary problem, please try again later.");
+      holdOrAccept("unreachable");
       return;
     }
     // Only the status goes to the log (wrangler tail), never addresses or content.
@@ -55,7 +62,7 @@ export default {
       return;
     }
     if (!response.ok) {
-      message.setReject("451 Temporary problem, please try again later.");
+      holdOrAccept(String(response.status));
       return;
     }
     const result = (await response.json().catch(() => ({}))) as { forwardTo?: string[] };

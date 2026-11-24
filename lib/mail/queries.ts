@@ -24,7 +24,10 @@ export async function mailboxesFor(me: MailMe): Promise<MailboxNav[]> {
   return boxes.map((b) => ({ id: b.id, name: b.name, address: b.address, kind: b.kind, visibility: b.visibility, departmentId: b.departmentId, unread: count.get(b.id) ?? 0, color: b.departmentId ? color.get(b.departmentId) ?? null : null }));
 }
 
-export type ListArgs = { box: string | "all"; folder: Folder; q?: string; tag?: string; page?: number };
+export type ListArgs = { box: string | "all"; folder: Folder; q?: string; tag?: string; page?: number; only?: string; fwd?: string; label?: string };
+
+/** The filter chips above the list (design "Main"): All, Unread, Important, Has attachment. */
+export const ONLY = ["unread", "important", "attachment"] as const;
 
 function where(me: MailMe, a: ListArgs): Prisma.MailThreadWhereInput {
   const boxes = a.box === "all" ? me.mailboxIds : me.mailboxIds.filter((id) => id === a.box);
@@ -40,10 +43,22 @@ function where(me: MailMe, a: ListArgs): Prisma.MailThreadWhereInput {
     case "all": w.folder = { notIn: ["trash", "spam"] }; break;
   }
   if (a.tag) w.tags = { has: a.tag };
+  if (a.label) w.labelIds = { has: a.label };
+  if (a.only === "unread") w.unread = true;
+  else if (a.only === "important") w.important = true;
+  else if (a.only === "attachment") w.hasAttachment = true;
+  // "Forwarded to you": mail an admin forwards from someone else's address (MailForwarder, copied in the app).
+  if (a.fwd) { w.copyKind = "forward"; w.copiedFrom = a.fwd; }
   const q = (a.q ?? "").trim();
   if (q) {
     const terms = parseSearch(q);
     const and: Prisma.MailThreadWhereInput[] = [];
+    // to: an exact address matches the recipients; a bare word ("to:grace") searches like plain text.
+    if (terms.to?.includes("@")) and.push({ messages: { some: { to: { array_contains: [{ address: terms.to.toLowerCase() }] } } } });
+    else if (terms.to) terms.text = [terms.text, terms.to].filter(Boolean).join(" ");
+    if (terms.subject) and.push({ subject: { contains: terms.subject, mode: "insensitive" } });
+    if (terms.after) and.push({ lastMessageAt: { gte: terms.after } });
+    if (terms.before) and.push({ lastMessageAt: { lt: terms.before } });
     if (terms.from) and.push({ messages: { some: { OR: [{ fromAddress: { contains: terms.from, mode: "insensitive" } }, { fromName: { contains: terms.from, mode: "insensitive" } }] } } });
     if (terms.hasAttachment) and.push({ hasAttachment: true });
     if (terms.unread) and.push({ unread: true });
@@ -54,12 +69,21 @@ function where(me: MailMe, a: ListArgs): Prisma.MailThreadWhereInput {
 }
 
 /** "from:irembo has:attachment invoice" -> parts. Plain words search subject, text, names and file names. */
-export function parseSearch(q: string): { from?: string; hasAttachment?: boolean; unread?: boolean; text?: string } {
-  const out: { from?: string; hasAttachment?: boolean; unread?: boolean; text?: string } = {};
+export type SearchTerms = { from?: string; to?: string; subject?: string; after?: Date; before?: Date; hasAttachment?: boolean; unread?: boolean; text?: string };
+
+/** "from:irembo has:attachment invoice" -> parts (also to:, subject:, after:2026-11-01, before:2026-11-20, is:unread). */
+export function parseSearch(q: string): SearchTerms {
+  const out: SearchTerms = {};
   const rest: string[] = [];
-  for (const part of q.split(/\s+/).filter(Boolean)) {
-    const m = /^(from|has|is):(.+)$/i.exec(part);
-    if (m && m[1].toLowerCase() === "from") out.from = m[2];
+  const day = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00+02:00`)) ? new Date(`${v}T00:00:00+02:00`) : undefined);
+  for (const part of q.match(/(\w+:"[^"]*"|\S+)/g) ?? []) {
+    const m = /^(from|to|subject|after|before|has|is):"?([^"]+)"?$/i.exec(part);
+    const key = m?.[1].toLowerCase();
+    if (m && key === "from") out.from = m[2];
+    else if (m && key === "to") out.to = m[2];
+    else if (m && key === "subject") out.subject = m[2];
+    else if (m && key === "after" && day(m[2])) out.after = day(m[2]);
+    else if (m && key === "before" && day(m[2])) out.before = new Date(day(m[2])!.getTime() + 86_400_000);
     else if (m && m[1].toLowerCase() === "has" && /^attach/i.test(m[2])) out.hasAttachment = true;
     else if (m && m[1].toLowerCase() === "is" && /^unread$/i.test(m[2])) out.unread = true;
     else rest.push(part);
@@ -70,7 +94,7 @@ export function parseSearch(q: string): { from?: string; hasAttachment?: boolean
 
 export type ThreadRow = {
   id: string; mailboxId: string; subject: string; snippet: string; participants: Addr[]; unread: boolean; starred: boolean; important: boolean;
-  hasAttachment: boolean; tags: string[]; messageCount: number; lastMessageAt: Date; copiedFrom: string | null; copyKind: string | null; folder: string; lastFrom: Addr | null;
+  hasAttachment: boolean; tags: string[]; labelIds: string[]; messageCount: number; lastMessageAt: Date; copiedFrom: string | null; copyKind: string | null; folder: string; lastFrom: Addr | null;
 };
 
 export async function listThreads(me: MailMe, a: ListArgs): Promise<{ rows: ThreadRow[]; total: number }> {
@@ -79,7 +103,7 @@ export async function listThreads(me: MailMe, a: ListArgs): Promise<{ rows: Thre
   const [rows, total] = await Promise.all([
     prisma.mailThread.findMany({
       where: w, orderBy: { lastMessageAt: "desc" }, skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE,
-      select: { id: true, mailboxId: true, subject: true, snippet: true, participants: true, unread: true, starred: true, important: true, hasAttachment: true, tags: true, messageCount: true, lastMessageAt: true, copiedFrom: true, copyKind: true, folder: true,
+      select: { id: true, mailboxId: true, subject: true, snippet: true, participants: true, unread: true, starred: true, important: true, hasAttachment: true, tags: true, labelIds: true, messageCount: true, lastMessageAt: true, copiedFrom: true, copyKind: true, folder: true,
         messages: { where: { status: { not: "draft" } }, orderBy: { date: "desc" }, take: 1, select: { fromAddress: true, fromName: true, direction: true } } },
     }),
     prisma.mailThread.count({ where: w }),
@@ -120,4 +144,34 @@ export async function actOnThreads(me: MailMe, ids: string[], action: ThreadActi
     action === "important" ? { important: true } : { important: false };
   const r = await prisma.mailThread.updateMany({ where: { id: { in: ids.slice(0, 200) }, mailboxId: { in: me.mailboxIds } }, data });
   return r.count;
+}
+
+/** The menu's extra numbers: "Forwarded to you" folders, Drafts count, and storage used in the person's own mailbox. */
+export async function navExtras(me: MailMe): Promise<{ forwarded: { address: string; unread: number; total: number }[]; drafts: number; usedBytes: number }> {
+  if (!me.mailboxIds.length) return { forwarded: [], drafts: 0, usedBytes: 0 };
+  const own = await prisma.mailbox.findFirst({ where: { id: { in: me.mailboxIds }, kind: "personal", address: me.email }, select: { id: true } });
+  const [fwd, fwdUnread, drafts, used] = await Promise.all([
+    prisma.mailThread.groupBy({ by: ["copiedFrom"], where: { mailboxId: { in: me.mailboxIds }, copyKind: "forward", copiedFrom: { not: null }, folder: { notIn: ["trash", "spam"] } }, _count: { _all: true } }),
+    prisma.mailThread.groupBy({ by: ["copiedFrom"], where: { mailboxId: { in: me.mailboxIds }, copyKind: "forward", folder: "inbox", unread: true }, _count: { _all: true } }),
+    prisma.mailThread.count({ where: { mailboxId: { in: me.mailboxIds }, hasDraft: true } }),
+    own ? prisma.mailMessage.aggregate({ where: { thread: { mailboxId: own.id } }, _sum: { sizeBytes: true } }) : null,
+  ]);
+  const unread = new Map(fwdUnread.map((u) => [u.copiedFrom, u._count._all]));
+  return {
+    forwarded: fwd.filter((f) => f.copiedFrom).map((f) => ({ address: f.copiedFrom!, unread: unread.get(f.copiedFrom) ?? 0, total: f._count._all })).sort((a, b) => a.address.localeCompare(b.address)),
+    drafts,
+    usedBytes: Number(used?._sum.sizeBytes ?? 0),
+  };
+}
+
+/** Previous / next conversation in the same list as the one open ("1 of 312"), newest first like the list. */
+export async function neighbours(me: MailMe, a: ListArgs, current: { id: string; lastMessageAt: Date }): Promise<{ index: number; total: number; newer: string | null; older: string | null }> {
+  const w = where(me, a);
+  const [newer, older, before, total] = await Promise.all([
+    prisma.mailThread.findFirst({ where: { AND: [w, { OR: [{ lastMessageAt: { gt: current.lastMessageAt } }, { lastMessageAt: current.lastMessageAt, id: { gt: current.id } }] }] }, orderBy: [{ lastMessageAt: "asc" }, { id: "asc" }], select: { id: true } }),
+    prisma.mailThread.findFirst({ where: { AND: [w, { OR: [{ lastMessageAt: { lt: current.lastMessageAt } }, { lastMessageAt: current.lastMessageAt, id: { lt: current.id } }] }] }, orderBy: [{ lastMessageAt: "desc" }, { id: "desc" }], select: { id: true } }),
+    prisma.mailThread.count({ where: { AND: [w, { OR: [{ lastMessageAt: { gt: current.lastMessageAt } }, { lastMessageAt: current.lastMessageAt, id: { gt: current.id } }] }] } }),
+    prisma.mailThread.count({ where: w }),
+  ]);
+  return { index: before + 1, total, newer: newer?.id ?? null, older: older?.id ?? null };
 }

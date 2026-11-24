@@ -7,7 +7,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 //   raw/<sha256>.eml               one raw message, shared by every copy (rule copies, forwards, two of our mailboxes)
 //   att/<sha256>/<n>-<filename>    attachments of that raw message
 //   out/<messageId>/<n>-<filename> attachments of mail we send
-//   photos/<memberId>.jpg          profile photos
+//   photos/<memberId>-<time>.jpg   profile photos (a new name each time, so browsers never show an old one)
+//   backgrounds/<memberId>-<time>.jpg  a person's own background photo
 
 export const MAIL_BUCKET = "mail";
 export const LINK_SECONDS = 15 * 60;
@@ -18,6 +19,12 @@ const bucket = () => createAdminClient().storage.from(MAIL_BUCKET);
 export async function putObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
   const { error } = await bucket().upload(path, bytes, { contentType, upsert: false });
   if (error && !/exists|duplicate/i.test(error.message)) throw error;
+}
+
+/** Stores bytes at a path, replacing what is there (profile and background photos). */
+export async function putObjectReplacing(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+  const { error } = await bucket().upload(path, bytes, { contentType, upsert: true });
+  if (error) throw error;
 }
 
 export async function getObject(path: string): Promise<Uint8Array> {
@@ -36,6 +43,23 @@ export async function signedUrl(path: string, opts: { download?: string } = {}):
     await logError(error, { source: "mail.storage.sign", level: "warn" });
     return null;
   }
+}
+
+/** A one-time upload link for one path: the composer sends the file straight to Storage, not through our server. */
+export async function createUploadSlot(path: string): Promise<{ signedUrl: string; token: string }> {
+  const { data, error } = await bucket().createSignedUploadUrl(path);
+  if (error || !data) throw error ?? new Error("createSignedUploadUrl returned nothing");
+  return { signedUrl: data.signedUrl, token: data.token };
+}
+
+/** The stored object's size, or null when nothing was uploaded there. */
+export async function objectSize(path: string): Promise<number | null> {
+  const slash = path.lastIndexOf("/");
+  const name = path.slice(slash + 1);
+  const { data, error } = await bucket().list(path.slice(0, slash), { search: name, limit: 5 });
+  if (error) throw error;
+  const hit = data?.find((o) => o.name === name);
+  return hit ? Number((hit.metadata as { size?: number } | null)?.size ?? 0) : null;
 }
 
 export async function removeObjects(paths: string[]): Promise<void> {
