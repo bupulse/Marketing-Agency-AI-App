@@ -1,5 +1,7 @@
 # B Mail: design artifact vs real app (24 Nov 2026)
 
+**Status 24 Nov (branch mail-crm):** everything below is built except the items marked ⚠ (deferred) and section B5–B7/B9 (attachment viewer, being finished). Done commits: 1d0e1137, f575d3d3, 29569238 (console), 3420161a, de7c8736 (compose), 91472069.
+
 The owner: "everything that was in the artifact is supposed to be functioning on the mail you created". Design screens:
 the "BuPulse Mail design" artifact (https://claude.ai/artifact/8ksBRm4qE6pFL9M6GgUpVC; local copy in the Mail session's
 scratchpad, `mail-design/project/*.dc.html`). ⚠ = needs a server tool, a paid service or a later phase: deferred.
