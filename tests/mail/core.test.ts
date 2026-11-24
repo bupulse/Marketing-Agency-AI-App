@@ -170,17 +170,18 @@ describe("parsing", () => {
   });
 });
 
-import { glassStyle, isMailBackground, resolveBackground } from "@/lib/mail/backgrounds";
+import { glassStyle, isMailBackground, MAIL_BACKGROUNDS, resolveBackground } from "@/lib/mail/backgrounds";
 import { parseSearch as parseSearch2 } from "@/lib/mail/queries";
 
 describe("backgrounds and glass", () => {
-  it("knows the ids, and Random is one of the four scenes all day", () => {
+  it("knows the ids, and Random is one of the public photos all day", () => {
     expect(isMailBackground("aurora")).toBe(true);
     expect(isMailBackground("nope")).toBe(false);
     const a = resolveBackground("random", "x@bupulse.com", new Date("2026-11-24T08:00:00Z"));
     const b = resolveBackground("random", "x@bupulse.com", new Date("2026-11-24T20:00:00Z"));
     expect(a.id).toBe(b.id);
-    expect(["kigali-hills", "kigali-night", "kivu-beach", "virunga"]).toContain(a.id);
+    expect(a.credit?.source).toMatch(/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/);
+    expect(MAIL_BACKGROUNDS.filter((x) => x.credit).every((x) => x.thumb && x.credit!.author && x.credit!.license)).toBe(true);
     expect(resolveBackground("bad", "x").id).toBe("kigali-hills");
   });
   it("glass gets more opaque and blurred towards frosted", () => {

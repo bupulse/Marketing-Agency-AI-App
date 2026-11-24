@@ -93,6 +93,18 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
   const allowDepartments = mode === "new" || mode === "forward";
   const options = init.options;
 
+  // A click on the signature or the empty space below puts the cursor at the end of the words.
+  const focusEnd = () => {
+    const el = editor.current;
+    if (!el) return;
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  };
   const payload = (): SendInput => ({ draftId: draftId.current, from, to, cc, bcc, subject, html: editor.current?.innerHTML ?? "", text: editor.current?.innerText ?? "", parentId: init.parentId ?? null, mode });
 
   /** Saves the draft (the first save creates it). Saves run one after another, so the id is known to the next one. */
@@ -257,8 +269,8 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrag(false); }}
       onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDrag(false); attach([...e.dataTransfer.files]); } }}
       className={cn(
-        "bmail-pop flex flex-col overflow-hidden border border-white/90 bg-white/95 text-text shadow-[0_40px_90px_-40px_rgba(15,23,42,0.55),0_2px_6px_rgba(15,23,42,0.06)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#1c1c22]/95",
-        inline ? "relative rounded-[18px]" : big ? "fixed inset-4 z-50 rounded-[22px] md:inset-x-[10%] md:inset-y-8" : "fixed bottom-0 right-4 z-50 w-[min(680px,calc(100vw-2rem))] rounded-t-[22px] max-md:inset-x-0 max-md:right-0 max-md:w-full",
+        "bmail-pop flex flex-col border border-white/90 [&>*]:shrink-0 bg-white/95 text-text shadow-[0_40px_90px_-40px_rgba(15,23,42,0.55),0_2px_6px_rgba(15,23,42,0.06)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#1c1c22]/95",
+        inline ? "relative overflow-hidden rounded-[18px]" : big ? "fixed inset-4 z-50 overflow-y-auto overscroll-contain rounded-[22px] md:inset-x-[10%] md:inset-y-8" : "fixed bottom-0 right-4 z-50 max-h-[calc(100dvh-12px)] w-[min(680px,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-t-[22px] max-md:inset-x-0 max-md:right-0 max-md:w-full",
       )}
     >
       {inline ? (
@@ -286,7 +298,7 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
           <button type="button" aria-label="Close" onClick={close} className={tb}><X className="size-4" /></button>
         </header>
       ) : (
-        <header className="flex items-center gap-1 bg-[rgba(242,244,250,0.9)] py-2.5 pl-5 pr-2.5 dark:bg-white/5">
+        <header className="sticky top-0 z-20 flex items-center gap-1 rounded-t-[inherit] bg-[rgb(242,244,250)] py-2.5 pl-5 pr-2.5 dark:bg-[#26262d]">
           <h2 className="flex-1 text-[15px] font-semibold">{title}</h2>
           <button type="button" aria-label="Minimise" onClick={() => setMin((v) => !v)} className={tb}><Minus className="size-4" /></button>
           <button type="button" aria-label="Full screen" onClick={() => setBig((v) => !v)} className={tb}><Maximize2 className="size-4" /></button>
@@ -356,7 +368,7 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
               <button type="button" aria-label="Clear formatting" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("removeFormat")} className={tb}><Eraser className="size-[17px]" /></button>
             </div>
           )}
-          <div className={cn("flex flex-col overflow-y-auto", big ? "flex-1" : "max-h-[52vh]")}>
+          <div className={cn("flex flex-col", big ? "flex-1" : "min-h-[200px]")}>
             {groupSend && (
               <p className="px-5 pt-4 text-[15px]">
                 <span className="inline-flex h-[26px] items-center rounded-lg bg-[#fdf0d9] px-2.5 text-[13.5px] font-semibold text-[#7d4c00]">Hello {FIRST_NAME},</span>{" "}
@@ -374,7 +386,7 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
               data-placeholder="Write your message"
               onInput={() => { setBodyVersion((v) => v + 1); touch(); }}
               onPaste={(e) => { const list = [...e.clipboardData.files]; if (list.length) { e.preventDefault(); attach(list); } }}
-              className={cn("bmail-editor w-full px-5 text-[15px] leading-relaxed outline-none [&_a]:text-[#1f5ae6] [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-[#d1d5db] [&_blockquote]:pl-3 [&_blockquote]:text-[#3c3c43] [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-6", groupSend ? "pt-2" : "pt-4", big ? "min-h-[40vh]" : inline ? "min-h-[120px]" : "min-h-[180px]")}
+              className={cn("bmail-editor w-full px-5 text-[15px] leading-relaxed outline-none [&_a]:text-[#1f5ae6] [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-[#d1d5db] [&_blockquote]:pl-3 [&_blockquote]:text-[#3c3c43] [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-6", groupSend ? "pt-2" : "pt-4", "min-h-[72px]")}
             />
             {(files.length > 0 || uploads.length > 0) && (
               <div aria-label="Attachments" className="flex flex-wrap gap-2 px-5 pb-2 pt-1">
@@ -382,7 +394,8 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
                 {uploads.map((u) => <FileCard key={u.key} name={u.name} note={`${fileSize(u.size)} · uploading…`} busy />)}
               </div>
             )}
-            <div aria-label="Your signature" className="mx-5 mb-2 mt-1 border-t border-dashed border-black/15 pt-3 text-[13px] dark:border-white/15" dangerouslySetInnerHTML={{ __html: data.signatureHtml }} />
+            {/* The signature sits right under the words, as one message (owner 24 Nov: "make it united"); it is added when the email goes out. */}
+            <div aria-label="Your signature (added when you send)" title="Your signature: change it in Settings" onClick={(e) => { e.preventDefault(); focusEnd(); }} className="cursor-text px-5 pb-2 pt-1 text-[14px] opacity-90" dangerouslySetInnerHTML={{ __html: data.signatureHtml }} />
             {quote && (
               <div className="px-5 pb-3">
                 <button type="button" onClick={() => setShowQuote((v) => !v)} aria-expanded={showQuote} aria-label={showQuote ? "Hide the earlier message" : "Show the earlier message"} className="inline-flex h-[18px] w-[34px] cursor-pointer items-center justify-center rounded-md bg-[#e8eaef] text-[14px] font-extrabold leading-none tracking-[1px] text-[#3c3c43] hover:bg-[#dcdfe6]">···</button>
@@ -395,8 +408,9 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
               </div>
             )}
           </div>
+          <div aria-hidden onClick={focusEnd} className={cn("cursor-text", big ? "min-h-6 flex-1" : "min-h-6")} />
           {error && <p role="alert" className="mx-5 mb-2 rounded-xl bg-[#fdecec] px-4 py-2.5 text-[13.5px] font-medium text-[#b42318]">{error}</p>}
-          <footer className="flex flex-wrap items-center gap-1.5 border-t border-black/[0.08] bg-[#fbfbfd] px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
+          <footer className="sticky bottom-0 z-10 flex flex-wrap items-center gap-1.5 border-t border-black/[0.08] bg-[#fbfbfd] px-4 py-3 dark:border-white/10 dark:bg-[#202027]">
             <button type="button" disabled={pending || uploads.length > 0} onClick={send} className="h-11 cursor-pointer rounded-full bg-[#1f5ae6] px-6 text-[15px] font-semibold text-white shadow-[0_8px_20px_-10px_rgba(31,90,230,0.9)] transition hover:bg-[#1a4fd0] disabled:opacity-60">
               {pending ? "Sending…" : groupSend && n > 0 ? `Send ${n} email${n === 1 ? "" : "s"}` : "Send"}
             </button>

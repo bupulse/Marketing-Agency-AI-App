@@ -8,11 +8,12 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { useTheme } from "@/components/theme";
 import { cn } from "@/lib/cn";
 import { formatPhone } from "@/lib/phone";
-import { MAIL_BACKGROUNDS, RANDOM_BACKGROUND } from "@/lib/mail/backgrounds";
+import { MAIL_BACKGROUNDS, RANDOM_BACKGROUND, swatchCss } from "@/lib/mail/backgrounds";
 import { SIGNATURE_LOOKS, signatureHtmlFor, withPhoto, type SignatureCompany } from "@/lib/mail/signature-render";
 import { changeMailPassword, saveProfile, setMailLook, setMailPref, type ProfileState } from "@/app/mail/(app)/actions";
 import { NewPasswordForm } from "./auth";
 import { BackgroundUpload, PhotoPicker } from "./photo-picker";
+import { showBackground, useMail } from "./shell";
 
 // Settings (design "Settings"): General (photo, password, reading), Look and signature (appearance, background,
 // signature look and lines with a live preview), Notifications (new mail in this browser).
@@ -101,7 +102,9 @@ function LookAndSignature({ profile, company, forwards, hasBackgroundPhoto }: Se
   const [extra, setExtra] = useState(profile.extra);
   const [withMyPhoto, setWithMyPhoto] = useState(profile.photoInSignature);
   const [, start] = useTransition();
-  const pickBg = (id: string) => { setBg(id); start(async () => { await setMailLook({ background: id }); router.refresh(); }); };
+  const { data: shell } = useMail();
+  // Paints at once; the save runs behind it (the server action refreshes the page when it is done).
+  const pickBg = (id: string) => { setBg(id); showBackground(id, shell.background); start(async () => { await setMailLook({ background: id }); }); };
   const mobile = phone ? formatPhone(phone) : null;
   const preview = withPhoto(signatureHtmlFor(look, company, { name: name || profile.name, title: title || null, email: profile.email, mobile: mobile || null, extra: extra || null }), withMyPhoto ? profile.photo : null, name);
   const thumb = "flex h-24 cursor-pointer items-end rounded-2xl p-2 transition hover:-translate-y-0.5";
@@ -120,7 +123,7 @@ function LookAndSignature({ profile, company, forwards, hasBackgroundPhoto }: Se
         <input type="hidden" name="background" value={bg === "photo" ? "kigali-hills" : bg} />
         <div role="radiogroup" aria-label="Background" className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
           {MAIL_BACKGROUNDS.map((b) => (
-            <button key={b.id} type="button" role="radio" aria-checked={bg === b.id} aria-label={b.name} onClick={() => pickBg(b.id)} className={cn(thumb, ring(bg === b.id))} style={{ background: b.css }}>
+            <button key={b.id} type="button" role="radio" aria-checked={bg === b.id} aria-label={b.name} onClick={() => pickBg(b.id)} className={cn(thumb, ring(bg === b.id))} style={{ background: swatchCss(b) }}>
               <span className="rounded-lg bg-white/85 px-2 py-0.5 text-[12px] font-semibold text-[#1d1d1f]">{b.name}</span>
             </button>
           ))}

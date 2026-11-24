@@ -726,15 +726,23 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
   border: 1px solid rgba(255, 255, 255, 0.75);
   box-shadow: 0 20px 50px -30px rgba(15, 23, 42, 0.45);
 }
-/* A dark picture in light mode: white text on the top bar and the menu (on computers; the phone sheet stays light). */
+/* A dark picture in light mode: white text on the top bar (on computers; the phone sheet stays light). */
 .bmail-on-dark > header { color: #fff; }
 .bmail-on-dark > header .text-muted { color: rgba(255, 255, 255, 0.75); }
 @media (min-width: 768px) {
-  .bmail-on-dark .bmail-menu { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
-  .bmail-on-dark .bmail-menu .text-muted { color: rgba(255, 255, 255, 0.72); }
+  /* No panel behind the menu (the live design); a soft halo keeps the words readable on busy photos. */
+  .bmail-menu a { font-weight: 500; text-shadow: 0 0 2px #fff, 0 0 6px #fff, 0 0 14px rgba(255, 255, 255, 0.85); }
+  .dark .bmail-menu a { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+  .bmail-menu > p { text-shadow: 0 0 2px #fff, 0 0 8px #fff; }
+  .bmail-on-dark .bmail-menu { color: #fff; }
+  .bmail-on-dark .bmail-menu a, .bmail-on-dark .bmail-menu > p { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55); }
+  .bmail-on-dark .bmail-menu .text-muted { color: rgba(255, 255, 255, 0.75); }
   .bmail-on-dark .bmail-menu a[aria-current="page"] { background: rgba(255, 255, 255, 0.22); color: #fff; }
   .bmail-on-dark .bmail-menu a:hover { background: rgba(255, 255, 255, 0.12); }
-  .bmail-on-dark .bmail-menu > button { color: #1d1d1f; text-shadow: none; }
+  /* The left menu scrolls on its own when it is taller than the screen: a thin bar that shows on hover. */
+  .bmail-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .bmail-scroll:hover, .bmail-scroll:focus-within { scrollbar-color: rgba(0, 0, 0, 0.28) transparent; }
+  .dark .bmail-scroll:hover { scrollbar-color: rgba(255, 255, 255, 0.35) transparent; }
 }
 .dark .bmail-glass { background: rgba(30, 30, 36, var(--bmail-a, 0.72)); border-color: rgba(255, 255, 255, 0.1); }
 @keyframes bmail-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

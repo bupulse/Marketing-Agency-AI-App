@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition, type CSSProperties, type ReactNode } from "react";
 import { Archive, CornerUpRight, File, Inbox, LayoutGrid, Menu, Moon, OctagonAlert, Pencil, Search, Send, Shuffle, SlidersHorizontal, Star, Sun, Tag, Trash2, X } from "lucide-react";
 import { useTheme } from "@/components/theme";
 import { cn } from "@/lib/cn";
-import { glassStyle, MAIL_BACKGROUNDS, RANDOM_BACKGROUND } from "@/lib/mail/backgrounds";
+import { glassStyle, MAIL_BACKGROUNDS, PHOTO_BACKGROUND, RANDOM_BACKGROUND, resolveBackground, swatchCss, type PhotoCredit } from "@/lib/mail/backgrounds";
 import { BLockup } from "./brand";
 import { NewMailNotices } from "./notices";
 import { AccountMenu } from "./account-menu";
@@ -27,7 +27,11 @@ export type ShellData = {
   backgroundName: string;
   /** A dark picture (night scenes, own photo): the menu and top bar switch to white text. */
   backgroundDark: boolean;
+  /** Who took the photo (public photos need their credit on screen). */
+  backgroundCredit: PhotoCredit | null;
   hasPhoto: boolean;
+  /** The person's own background photo (a signed link), so choosing it paints at once. */
+  photoBackgroundCss: string | null;
   glass: number;
   /** The company's glass tint (Mail console): light, dark (dark panels for everyone) or blue. */
   glassTint: string;
@@ -38,6 +42,25 @@ export type ShellData = {
   labels: { id: string; name: string; color: string }[];
   storage: { usedMb: number; quotaMb: number };
 };
+
+// A background picked in Quick settings, Settings or Welcome paints at once, before the server has saved it.
+// "from" is the saved choice at the moment of the pick: once the server sends the new choice, the saved one wins again.
+let picked: { id: string; from: string } | null = null;
+const pickedListeners = new Set<() => void>();
+export function showBackground(id: string, from: string) {
+  picked = { id, from };
+  pickedListeners.forEach((l) => l());
+}
+const subscribePicked = (l: () => void) => { pickedListeners.add(l); return () => { pickedListeners.delete(l); }; };
+
+type Painted = { css: string; dark: boolean; credit: PhotoCredit | null };
+function paintedBackground(data: ShellData, choice: { id: string; from: string } | null): Painted {
+  const saved = { css: data.backgroundCss, dark: data.backgroundDark, credit: data.backgroundCredit };
+  if (!choice || choice.from !== data.background || choice.id === data.background) return saved;
+  if (choice.id === PHOTO_BACKGROUND) return data.photoBackgroundCss ? { css: data.photoBackgroundCss, dark: true, credit: null } : saved;
+  const b = resolveBackground(choice.id, data.me.email);
+  return { css: b.css, dark: !!b.dark, credit: b.credit ?? null };
+}
 
 type Ctx = { compose: (init?: ComposeInit) => void; toastUndo: (messageId: string, seconds: number, count?: number) => void; data: ShellData; openMenu: () => void };
 const ShellCtx = createContext<Ctx | null>(null);
@@ -150,10 +173,12 @@ export function MailShell({ data, children }: { data: ShellData; children: React
   const personal = data.mailboxes.filter((m) => m.kind === "personal");
   const other = data.mailboxes.filter((m) => m.kind === "catchall");
   const g = glassStyle(glass, dark);
-  const plain = data.backgroundCss.startsWith("var(");
+  const pickedNow = useSyncExternalStore(subscribePicked, () => picked, () => null);
+  const painted = paintedBackground(data, pickedNow);
+  const plain = painted.css.startsWith("var(");
   const style = {
     // Dark mode darkens the picture a little (design "MainDark"), so the glass and the text stay readable.
-    background: dark && !plain ? `linear-gradient(rgba(8,8,12,.5), rgba(8,8,12,.5)), ${data.backgroundCss}` : data.backgroundCss,
+    background: dark && !plain ? `linear-gradient(rgba(8,8,12,.5), rgba(8,8,12,.5)), ${painted.css}` : painted.css,
     backgroundAttachment: "fixed",
     "--bmail-a": String(g.alpha),
     "--bmail-strong": String(g.strong),
@@ -163,23 +188,23 @@ export function MailShell({ data, children }: { data: ShellData; children: React
 
   const navBody = (
     <>
-              <button type="button" onClick={() => setCompose({})} className="mb-3 ml-1 mt-1 inline-flex h-14 w-fit cursor-pointer items-center gap-3.5 rounded-[18px] border border-white/80 bg-white/85 pl-[18px] pr-6 text-[15px] font-semibold shadow-[0_8px_24px_-12px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-[rgba(48,48,56,0.9)]"><Pencil className="size-5" />Compose</button>
+              <button type="button" onClick={() => setCompose({})} className="sticky top-0 z-10 mb-3 ml-1 mt-1 inline-flex h-14 w-fit shrink-0 cursor-pointer items-center gap-3.5 rounded-[18px] border border-white/80 bg-white pl-[18px] pr-6 text-[15px] font-semibold text-[#1d1d1f] shadow-[0_8px_24px_-12px_rgba(0,0,0,0.35)] transition hover:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-[#303038] dark:text-white"><Pencil className="size-5" />Compose</button>
               <NavLink href={href({ folder: "inbox" })} active={onList && box === "all" && folder === "inbox" && !tag && !fwd} icon={<Inbox className="size-[18px]" />} label="All inboxes" count={allUnread} />
               {personal.map((m) => <NavLink key={m.id} href={href({ box: m.id })} active={onList && box === m.id && folder === "inbox" && !fwd} dot="#2f6bff" label={m.name} count={m.unread} title={m.address ?? undefined} />)}
-              {shared.length > 0 && <p className="mb-1 mt-3 px-[18px] text-[12px] font-semibold text-muted">Departments</p>}
+              {shared.length > 0 && <p className="mb-1 mt-3.5 shrink-0 px-[18px] text-[12px] font-semibold text-muted">Departments</p>}
               {shared.map((m) => <NavLink key={m.id} href={href({ box: m.id })} active={onList && box === m.id && folder === "inbox" && !fwd} dot={m.color ?? "#7b5cff"} label={m.name} count={m.unread} note={m.visibility === "everyone" ? "everyone" : undefined} title={m.address ?? undefined} />)}
               {other.map((m) => <NavLink key={m.id} href={href({ box: m.id })} active={onList && box === m.id && folder === "inbox"} dot="#8e8e93" label={m.name} count={m.unread} note="other addresses" />)}
               {data.forwarded.length > 0 && (
                 <>
-                  <p className="mb-1 mt-3 px-[18px] text-[12px] font-semibold text-muted">Forwarded to you</p>
+                  <p className="mb-1 mt-3.5 shrink-0 px-[18px] text-[12px] font-semibold text-muted">Forwarded to you</p>
                   {data.forwarded.map((f) => (
                     <NavLink key={f.address} href={href({ folder: "all", fwd: f.address })} active={onList && fwd === f.address} icon={<CornerUpRight className="size-[17px] text-[#c46a00]" />} label={f.address.split("@")[0].replace(/^./, (c) => c.toUpperCase())} count={f.unread} title={`Mail sent to ${f.address}, forwarded to you`} />
                   ))}
                 </>
               )}
-              <div className="mx-3.5 my-3 h-px bg-black/10 dark:bg-white/10" />
+              <div className="mx-3.5 my-3 h-px shrink-0 bg-black/10 dark:bg-white/10" />
               {FOLDERS.map((f) => <NavLink key={f.id} href={href({ box: box === "all" ? null : box, folder: f.id })} active={onList && folder === f.id && !fwd && !tag} icon={<f.icon className="size-[18px]" />} label={f.label} count={f.id === "drafts" ? data.drafts : undefined} quiet={f.id === "drafts"} />)}
-              <p className="mb-1 mt-3 px-[18px] text-[12px] font-semibold text-muted">Tags</p>
+              <p className="mb-1 mt-3.5 shrink-0 px-[18px] text-[12px] font-semibold text-muted">Tags</p>
               {TAGS.map(([id, label, color]) => <NavLink key={id} href={href({ folder: "all", tag: id })} active={onList && tag === id} dot={color} square label={label} />)}
               {data.labels.map((l) => <NavLink key={l.id} href={href({ folder: "all", label: l.id })} active={onList && sp.get("label") === l.id} dot={LABEL_HEX[l.color] ?? LABEL_HEX.blue} square label={l.name} />)}
     </>
@@ -187,7 +212,7 @@ export function MailShell({ data, children }: { data: ShellData; children: React
 
   return (
     <ShellCtx.Provider value={ctx}>
-      <div className={cn("bmail-root flex min-h-dvh flex-col text-text", data.backgroundDark && "bmail-on-dark", data.glassTint === "dark" && "dark")} style={style}>
+      <div className={cn("bmail-root flex min-h-dvh flex-col text-text", painted.dark && "bmail-on-dark", data.glassTint === "dark" && "dark")} style={style}>
         <header className="flex items-center gap-1.5 px-3 pb-1.5 pt-2.5 max-md:flex-wrap">
           <button type="button" onClick={toggleMenu} aria-label="Main menu" aria-expanded={deskMenu} className="inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10"><Menu className="size-5" /></button>
           <Link href="/mail" className="mr-4 shrink-0 md:mr-8 md:min-w-[140px]"><BLockup size={34} /></Link>
@@ -202,18 +227,23 @@ export function MailShell({ data, children }: { data: ShellData; children: React
         <div className="flex flex-1 items-start gap-2 px-2 pb-3 pr-3 max-md:pr-2">
           {phoneMenu && <button type="button" aria-label="Close the menu" onClick={() => setPhoneMenu(false)} className="fixed inset-0 z-30 cursor-default bg-black/25 md:hidden" />}
           {(deskMenu || phoneMenu) && (
-            <nav aria-label="Mailboxes and folders" className={cn("bmail-menu bmail-slide sticky top-2 flex w-[256px] shrink-0 flex-col gap-0.5 pb-4 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:w-[280px] max-md:overflow-y-auto max-md:bg-white/95 max-md:p-3 max-md:shadow-2xl max-md:backdrop-blur-xl max-md:dark:bg-[#18181d]/95", !phoneMenu && "max-md:hidden", !deskMenu && "md:hidden")}>{navBody}</nav>
+            <nav aria-label="Mailboxes and folders" className={cn("bmail-menu bmail-scroll bmail-slide sticky top-2 flex w-[260px] shrink-0 flex-col gap-0.5 pb-4 md:max-h-[calc(100dvh-76px)] md:overflow-y-auto md:overscroll-contain max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:w-[280px] max-md:overflow-y-auto max-md:bg-white/95 max-md:p-3 max-md:shadow-2xl max-md:backdrop-blur-xl max-md:dark:bg-[#18181d]/95", !phoneMenu && "max-md:hidden", !deskMenu && "md:hidden")}>{navBody}</nav>
           )}
           {sheet && (
             <>
               <button type="button" aria-label="Close the menu" onClick={() => setSheet(false)} className="fixed inset-0 z-[65] cursor-default bg-black/25" />
-              <nav aria-label="Mailboxes and folders" className="bmail-sheet bmail-slide fixed inset-y-0 left-0 z-[70] flex w-[280px] flex-col gap-0.5 overflow-y-auto bg-white/95 p-3 shadow-2xl backdrop-blur-xl dark:bg-[#18181d]/95">{navBody}</nav>
+              <nav aria-label="Mailboxes and folders" className="bmail-sheet bmail-slide fixed inset-y-0 left-0 z-[70] flex w-[290px] flex-col gap-1 overflow-y-auto bg-white/95 p-3 shadow-2xl backdrop-blur-xl dark:bg-[#18181d]/95">{navBody}</nav>
             </>
           )}
           <main className="min-w-0 flex-1">{children}</main>
           {panel && <QuickSettings data={data} glass={glass} onGlass={setGlass} onClose={() => setPanel(false)} />}
         </div>
 
+        {painted.credit && (
+          <a href={painted.credit.source} target="_blank" rel="noopener noreferrer" className="bmail-noprint fixed bottom-1.5 right-3 z-10 rounded-md bg-black/35 px-2 py-0.5 text-[11px] text-white/90 backdrop-blur-sm hover:bg-black/55 max-md:hidden">
+            Photo: {painted.credit.author} · {painted.credit.license}
+          </a>
+        )}
         <NewMailNotices unread={data.mailboxes.reduce((n, m) => n + m.unread, 0)} />
         {compose && <Composer key={compose.draftId ?? "new"} init={compose} onClose={() => setCompose(null)} />}
         {undo && (
@@ -300,11 +330,10 @@ function SearchBar({ inputRef, box }: { inputRef: React.RefObject<HTMLInputEleme
 /** Quick settings (design "Main"): Light / Dark / Auto, background, Random, own photo, glass. */
 function QuickSettings({ data, glass, onGlass, onClose }: { data: ShellData; glass: number; onGlass: (n: number) => void; onClose: () => void }) {
   const { theme, setTheme } = useTheme();
-  const router = useRouter();
   const [bg, setBg] = useState(data.background);
   const [, start] = useTransition();
-  const save = (look: { background?: string; glass?: number }) => start(async () => { await setMailLook(look); router.refresh(); });
-  const pick = (id: string) => { setBg(id); save({ background: id }); };
+  const save = (look: { background?: string; glass?: number }) => start(async () => { await setMailLook(look); });
+  const pick = (id: string) => { setBg(id); showBackground(id, data.background); save({ background: id }); };
   const label = (bg === RANDOM_BACKGROUND ? "Random" : bg === "photo" ? "Your photo" : MAIL_BACKGROUNDS.find((b) => b.id === bg)?.name) ?? data.backgroundName;
   const thumb = "relative h-[58px] cursor-pointer rounded-xl transition hover:scale-[1.04]";
   const ring = (on: boolean) => (on ? "ring-2 ring-[#4c8dff] ring-offset-2 ring-offset-white dark:ring-offset-[#1c1c22]" : "ring-1 ring-inset ring-black/10");
@@ -325,9 +354,9 @@ function QuickSettings({ data, glass, onGlass, onClose }: { data: ShellData; gla
         <span className="text-[13px] font-semibold">Background <span className="font-normal text-muted">{label}</span></span>
         <div role="radiogroup" aria-label="Background" className="grid grid-cols-3 gap-2">
           {MAIL_BACKGROUNDS.map((b) => (
-            <button key={b.id} type="button" role="radio" aria-checked={bg === b.id} aria-label={b.name} title={b.name} onClick={() => pick(b.id)} className={cn(thumb, ring(bg === b.id))} style={{ background: b.css }} />
+            <button key={b.id} type="button" role="radio" aria-checked={bg === b.id} aria-label={b.name} title={b.name} onClick={() => pick(b.id)} className={cn(thumb, ring(bg === b.id))} style={{ background: swatchCss(b) }} />
           ))}
-          <button type="button" role="radio" aria-checked={bg === RANDOM_BACKGROUND} aria-label="Random" title="Random: a Kigali scene each day" onClick={() => pick(RANDOM_BACKGROUND)} className={cn(thumb, "flex items-center justify-center bg-[conic-gradient(from_0deg,#ffd2b8,#bfd2ff,#b8e6c0,#d6c6ff,#ffd2b8)]", ring(bg === RANDOM_BACKGROUND))}><Shuffle className="size-5 text-[#1d1d1f]" /></button>
+          <button type="button" role="radio" aria-checked={bg === RANDOM_BACKGROUND} aria-label="Random" title="Random: a different Rwanda photo each day" onClick={() => pick(RANDOM_BACKGROUND)} className={cn(thumb, "flex items-center justify-center bg-[conic-gradient(from_0deg,#ffd2b8,#bfd2ff,#b8e6c0,#d6c6ff,#ffd2b8)]", ring(bg === RANDOM_BACKGROUND))}><Shuffle className="size-5 text-[#1d1d1f]" /></button>
           {data.hasPhoto && <button type="button" role="radio" aria-checked={bg === "photo"} aria-label="Your photo" title="Your photo" onClick={() => pick("photo")} className={cn(thumb, "flex items-center justify-center bg-black/[0.06] text-[12px] font-semibold", ring(bg === "photo"))}>Photo</button>}
         </div>
         <Link href="/mail/settings#look" className="text-[13.5px] font-semibold text-[#1f5ae6] dark:text-[#8fb4ff]">Use your own photo</Link>
@@ -345,11 +374,11 @@ function QuickSettings({ data, glass, onGlass, onClose }: { data: ShellData; gla
 
 function NavLink({ href, active, icon, dot, square, label, count, note, title, quiet }: { href: string; active: boolean; icon?: ReactNode; dot?: string; square?: boolean; label: string; count?: number; note?: string; title?: string; quiet?: boolean }) {
   return (
-    <Link href={href} title={title} aria-current={active ? "page" : undefined} className={cn("flex h-9 items-center gap-3.5 rounded-full pl-[18px] pr-3.5 text-[14px] transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]", active && "bg-[rgba(31,90,230,0.14)] font-bold text-[#102a6b] dark:bg-[rgba(122,162,255,0.24)] dark:text-[#e6eeff]")}>
-      <span className="inline-flex w-5 justify-center">{icon ?? <span className={cn("inline-block size-2.5", square ? "rounded-[3px]" : "rounded-full")} style={{ background: dot }} />}</span>
+    <Link href={href} title={title} aria-current={active ? "page" : undefined} className={cn("flex min-h-10 shrink-0 items-center gap-3.5 rounded-full py-1.5 pl-[18px] pr-3.5 text-[14.5px] transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]", active && "bg-[rgba(31,90,230,0.14)] font-bold text-[#102a6b] dark:bg-[rgba(122,162,255,0.24)] dark:text-[#e6eeff]")}>
+      <span className="inline-flex w-5 shrink-0 justify-center">{icon ?? <span className={cn("inline-block size-3", square ? "rounded-[3px]" : "rounded-full")} style={{ background: dot }} />}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {note && <span className="text-[11px] font-normal text-muted">{note}</span>}
-      {!!count && <span className={cn("text-[12.5px]", quiet ? "font-normal text-muted" : "font-semibold")}>{count}</span>}
+      {!!count && <span className={cn("text-[13px]", quiet ? "font-normal text-muted" : "font-semibold")}>{count}</span>}
     </Link>
   );
 }

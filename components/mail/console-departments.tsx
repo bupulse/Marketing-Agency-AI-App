@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { MoreHorizontal, Plus } from "lucide-react";
+import { ChevronRight, MoreHorizontal, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { DEPT_COLORS, firstNames, initialOf } from "@/lib/mail/console-rules";
 import { createDepartment, deleteDepartment, setDepartmentHead, updateDepartment, type ConsoleState } from "@/app/mail/(console)/console/actions";
@@ -95,7 +96,7 @@ function DeptCard({ d, onNote }: { d: Dept; onNote: (s: ConsoleState) => void })
   const run = (fn: () => Promise<ConsoleState>) => start(async () => { const r = await fn(); onNote(r.error ? r : {}); });
 
   return (
-    <article className={cn(panel, "flex flex-col gap-3.5 p-5 transition duration-200 hover:-translate-y-[3px] hover:shadow-[0_22px_40px_-26px_rgba(15,23,42,0.5)]")}>
+    <article className={cn(panel, "relative flex flex-col gap-3.5 p-5 transition duration-200 hover:-translate-y-[3px] hover:shadow-[0_22px_40px_-26px_rgba(15,23,42,0.5)]")}>
       <div className="flex items-center gap-3">
         <span aria-hidden className="inline-flex size-11 shrink-0 items-center justify-center rounded-[14px] text-[17px] font-bold text-white" style={{ background: d.color }}>{initialOf(d.name)}</span>
         {renaming ? (
@@ -104,9 +105,9 @@ function DeptCard({ d, onNote }: { d: Dept; onNote: (s: ConsoleState) => void })
             <button disabled={pending} className="h-9 cursor-pointer rounded-lg bg-[#1f5ae6] px-3 text-[13px] font-semibold text-white">Save</button>
           </form>
         ) : (
-          <span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-[17px] font-bold">{d.name}</span><span className="text-[13px] text-muted">{count === 1 ? "1 person" : `${count} people`}</span></span>
+          <Link href={`/mail/console/departments/${d.id}`} aria-label={`Open ${d.name}: rename it and add people`} className="flex min-w-0 flex-1 flex-col rounded-lg outline-none after:absolute after:inset-0 after:rounded-[24px] after:content-[''] focus-visible:ring-2 focus-visible:ring-[#2f6bff]"><span className="truncate text-[17px] font-bold">{d.name}</span><span className="text-[13px] text-muted">{count === 1 ? "1 person" : `${count} people`}</span></Link>
         )}
-        <div ref={menuRef} className="relative">
+        <div ref={menuRef} className="relative z-10">
           <button type="button" aria-label={`More for ${d.name}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)} className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-[#3c3c43] hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10"><MoreHorizontal className="size-[18px]" /></button>
           {menu && (
             <div role="menu" className="absolute top-10 right-0 z-20 flex w-[248px] flex-col gap-1 rounded-2xl border border-white/80 bg-white/95 p-2 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:border-white/10 dark:bg-[#232329]/95">
@@ -119,7 +120,7 @@ function DeptCard({ d, onNote }: { d: Dept; onNote: (s: ConsoleState) => void })
       </div>
 
       {confirmDelete && (
-        <div role="alertdialog" aria-label={`Delete ${d.name}`} className="flex flex-col gap-2 rounded-[14px] bg-[#fdecec] px-3 py-2.5 text-[13.5px] text-[#7a1a12] dark:bg-[#b42318]/20 dark:text-[#ffb4ab]">
+        <div role="alertdialog" aria-label={`Delete ${d.name}`} className="relative z-10 flex flex-col gap-2 rounded-[14px] bg-[#fdecec] px-3 py-2.5 text-[13.5px] text-[#7a1a12] dark:bg-[#b42318]/20 dark:text-[#ffb4ab]">
           <span>{count ? `${count === 1 ? "1 person is" : `${count} people are`} in ${d.name}. They move to no department.` : `Delete ${d.name}?`}</span>
           <span className="flex gap-1.5">
             <button type="button" disabled={pending} onClick={() => run(() => deleteDepartment(d.id, count > 0))} className="h-8 cursor-pointer rounded-full bg-[#b42318] px-3 text-[12.5px] font-semibold text-white">{count ? "Move them and delete" : "Delete"}</button>
@@ -128,7 +129,7 @@ function DeptCard({ d, onNote }: { d: Dept; onNote: (s: ConsoleState) => void })
         </div>
       )}
 
-      <div className="flex items-center gap-2.5 rounded-[14px] bg-white/70 px-3 py-2.5 dark:bg-white/5">
+      <div className="relative z-10 flex items-center gap-2.5 rounded-[14px] bg-white/70 px-3 py-2.5 dark:bg-white/5">
         {head ? <Avatar name={head.name} seed={head.email} size={32} /> : <span aria-hidden className="inline-flex size-8 items-center justify-center rounded-full bg-black/[0.06] text-[13px] text-muted dark:bg-white/10">?</span>}
         <span className="flex min-w-0 flex-1 flex-col">
           <select aria-label={`Head of ${d.name}`} value={d.headMemberId ?? ""} disabled={pending || count === 0} onChange={(e) => { const v = e.target.value || null; start(async () => { await setDepartmentHead(d.id, v); }); }} className="h-6 w-full min-w-0 cursor-pointer appearance-none truncate bg-transparent text-[14px] font-semibold outline-none disabled:cursor-default">
@@ -141,8 +142,9 @@ function DeptCard({ d, onNote }: { d: Dept; onNote: (s: ConsoleState) => void })
 
       <div className="flex items-center gap-2">
         <span className="inline-flex">{d.members.slice(0, 6).map((m, i) => <span key={m.id} role="img" aria-label={m.name} className={cn("inline-flex", i > 0 && "-ml-1.5")}><Avatar name={m.name} seed={m.email} size={28} ring /></span>)}</span>
-        <span className="text-[13px] text-[#3c3c43] dark:text-white/70">{count ? firstNames(d.members.map((m) => m.name)) : "Nobody yet: pick this department when you create a user."}</span>
+        <span className="text-[13px] text-[#3c3c43] dark:text-white/70">{count ? firstNames(d.members.map((m) => m.name)) : "Nobody yet: open it and drag people in."}</span>
       </div>
+      <span className="-mt-1 inline-flex items-center gap-1 self-end text-[13px] font-semibold text-[#1f5ae6] dark:text-[#8fb4ff]">Open to edit and add people<ChevronRight className="size-4" /></span>
     </article>
   );
 }
