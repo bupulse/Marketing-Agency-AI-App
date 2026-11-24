@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { Archive, ArrowLeft, ChevronLeft, Columns2, ChevronRight, Download, Eye, Forward, MailOpen, Maximize2, Menu, Minimize2, OctagonAlert, Printer, Reply, ReplyAll, Star, Trash2, X } from "lucide-react";
+import { Archive, ArrowLeft, ChevronLeft, ChevronRight, Columns2, Eye, Forward, MailOpen, Maximize2, Menu, Minimize2, OctagonAlert, Printer, Reply, ReplyAll, Star, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { safeEmailDocument } from "@/lib/mail/html";
 import { threadAction } from "@/app/mail/(app)/actions";
 import { replyOptions, type ReplyMode } from "@/lib/mail/compose-rules";
 import type { ComposeMode } from "@/lib/mail/draft-rules";
+import { AttachmentCards } from "./attachment-viewer";
 import { Composer, type ComposeInit, type ComposerHandle } from "./composer";
 import { TAG_STYLE, useMail } from "./shell";
 import { Avatar } from "./thread-list";
@@ -23,11 +24,6 @@ export type ViewMessage = {
   date: string; dateLong: string; subject: string; text: string; html: string | null; snippet: string; attachments: ViewAttachment[]; error: string | null;
 };
 export type ViewThread = { id: string; subject: string; mailboxId: string; mailboxAddress: string | null; mailboxName: string; starred: boolean; tags: string[]; labelIds?: string[]; copiedFrom: string | null; copyKind: string | null; folder: string; messages: ViewMessage[] };
-
-const size = (n: number) => (n > 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-const ext = (a: ViewAttachment) => (a.filename.split(".").pop() ?? "file").slice(0, 5).toUpperCase();
-const EXT_COLOR: Record<string, string> = { PDF: "#e5483a", DOC: "#2f6bff", DOCX: "#2f6bff", XLS: "#1f9d55", XLSX: "#1f9d55", CSV: "#64748b", PPT: "#e0662a", PPTX: "#e0662a", JPG: "#a855f7", JPEG: "#a855f7", PNG: "#a855f7", ZIP: "#8e8e93" };
-const canPreview = (a: ViewAttachment) => /^(image\/|application\/pdf$|text\/plain$)/.test(a.contentType);
 
 /** Splits a plain-text email at the quoted earlier message ("On … wrote:" or "> " lines). */
 function splitQuote(text: string): [string, string] {
@@ -77,7 +73,6 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav, d
   const [reply, setReply] = useState<ComposeInit | null>(draft ?? null);
   const [replyMode, setReplyMode] = useState<ComposeMode | null>(draft?.mode ?? null);
   const replyBox = useRef<ComposerHandle>(null);
-  const [preview, setPreview] = useState<ViewAttachment | null>(null);
   const [pending, start] = useTransition();
   const last = thread.messages.at(-1)!;
   const act = (a: Parameters<typeof threadAction>[1], leave = true) => start(async () => { await threadAction([thread.id], a); if (leave) router.push(nav?.older ? `/mail/t/${nav.older}${nav.query ? `?${nav.query}` : ""}` : back); else router.refresh(); });
@@ -144,7 +139,7 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav, d
               <button type="button" onClick={() => setOlderOpen(true)} aria-label={`Show ${hiddenCount} older messages`} className="absolute left-6 top-0 inline-flex size-[34px] cursor-pointer items-center justify-center rounded-full border border-black/15 bg-white text-[12.5px] font-bold text-[#3c3c43] dark:bg-[#26262c] dark:text-white">{hiddenCount}</button>
             </div>
           )}
-          <MessageBlock m={m} open={open.has(m.id) || m.id === last.id} onToggle={() => setOpen((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })} onReply={(mode) => startReply(m, mode)} onPreview={setPreview} isLast={m.id === last.id} ours={ourAddresses} />
+          <MessageBlock m={m} open={open.has(m.id) || m.id === last.id} onToggle={() => setOpen((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })} onReply={(mode) => startReply(m, mode)} isLast={m.id === last.id} ours={ourAddresses} />
         </div>
       ))}
 
@@ -161,32 +156,13 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav, d
       </div>
 
       </div>
-      {preview && (
-        <div role="dialog" aria-modal="true" aria-label={preview.filename} className="fixed inset-0 z-50 flex flex-col bg-[rgba(14,14,18,0.78)] text-white backdrop-blur-xl">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <button type="button" aria-label="Close preview" onClick={() => setPreview(null)} className="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg hover:bg-white/10"><X className="size-5" /></button>
-            <span className="rounded-md px-1.5 py-1 text-[10.5px] font-extrabold" style={{ background: EXT_COLOR[ext(preview)] ?? "#8e8e93" }}>{ext(preview)}</span>
-            <span className="flex flex-col"><span className="text-[14.5px] font-semibold">{preview.filename}</span><span className="text-[12px] text-white/70">{size(preview.size)} · shown inside BuPulse</span></span>
-            <span className="flex-1" />
-            <a href={`/api/mail/attachments/${preview.id}?download=1`} className="inline-flex h-9 items-center gap-2 rounded-xl bg-white px-4 text-[13.5px] font-bold text-[#111114]"><Download className="size-4" />Download</a>
-          </div>
-          <div className="flex flex-1 items-center justify-center overflow-auto p-4">
-            {preview.contentType.startsWith("image/") ? (
-              // eslint-disable-next-line @next/next/no-img-element -- our own attachment route
-              <img src={`/api/mail/attachments/${preview.id}`} alt={preview.filename} className="max-h-full max-w-full rounded-lg shadow-2xl" />
-            ) : (
-              <iframe title={preview.filename} src={`/api/mail/attachments/${preview.id}`} className="h-full w-full max-w-[1000px] rounded-lg bg-white" />
-            )}
-          </div>
-        </div>
-      )}
     </article>
     <PhoneThreadBar onTrash={() => act("trash")} onArchive={() => act("archive")} onReply={() => startReply(last, "reply")} onMove={(to) => act(to)} />
     </>
   );
 }
 
-function MessageBlock({ m, open, onToggle, onReply, onPreview, isLast, ours }: { m: ViewMessage; open: boolean; onToggle: () => void; onReply: (mode: "reply" | "all" | "forward") => void; onPreview: (a: ViewAttachment) => void; isLast: boolean; ours: string[] }) {
+function MessageBlock({ m, open, onToggle, onReply, isLast, ours }: { m: ViewMessage; open: boolean; onToggle: () => void; onReply: (mode: "reply" | "all" | "forward") => void; isLast: boolean; ours: string[] }) {
   const [images, setImages] = useState(false);
   const [showQuote, setShowQuote] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
@@ -241,30 +217,7 @@ function MessageBlock({ m, open, onToggle, onReply, onPreview, isLast, ours }: {
             )}
           </div>
         )}
-        {files.length > 0 && (
-          <div className="flex flex-col gap-2.5 border-t border-black/[0.08] pt-3 dark:border-white/10">
-            <div className="flex items-center gap-2 text-[13px]"><strong>{files.length} attachment{files.length === 1 ? "" : "s"}</strong><span className="text-muted">· click to preview</span></div>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
-              {files.map((a) => (
-                <div key={a.id} className="group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-[0_0_0_1px_rgba(60,60,67,0.12)] transition hover:-translate-y-0.5 hover:shadow-[0_0_0_1px_rgba(60,60,67,0.12),0_14px_28px_-16px_rgba(15,23,42,0.5)] dark:bg-[#26262c]">
-                  <button type="button" onClick={() => (canPreview(a) ? onPreview(a) : window.open(`/api/mail/attachments/${a.id}?download=1`))} className="flex h-[112px] cursor-pointer items-center justify-center bg-[#eef0f4] dark:bg-white/5">
-                    {a.contentType.startsWith("image/") ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- our own attachment route
-                      <img src={`/api/mail/attachments/${a.id}`} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="flex h-[88px] w-[66px] flex-col gap-1.5 rounded-[3px] bg-white p-2.5 shadow-[0_6px_14px_-8px_rgba(0,0,0,0.3)]"><span className="h-1.5 w-3/5 rounded" style={{ background: EXT_COLOR[ext(a)] ?? "#8e8e93" }} /><span className="h-[3px] rounded bg-[#d4d6dc]" /><span className="h-[3px] w-4/5 rounded bg-[#d4d6dc]" /><span className="h-[3px] rounded bg-[#d4d6dc]" /></span>
-                    )}
-                  </button>
-                  <div className="flex items-center gap-2 border-t border-black/[0.06] px-3 py-2.5">
-                    <span className="rounded-md px-1.5 py-0.5 text-[10px] font-extrabold text-white" style={{ background: EXT_COLOR[ext(a)] ?? "#8e8e93" }}>{ext(a)}</span>
-                    <span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-[13px] font-semibold">{a.filename}</span><span className="text-[11.5px] text-muted">{size(a.size)}</span></span>
-                    <a href={`/api/mail/attachments/${a.id}?download=1`} aria-label={`Download ${a.filename}`} className="inline-flex size-8 items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/10"><Download className="size-4" /></a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {files.length > 0 && <AttachmentCards files={files} message={m} onForward={() => onReply("forward")} />}
       </div>
     </div>
   );
