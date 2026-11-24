@@ -25,12 +25,25 @@ const ALL_SQL = migrations()
   .map((m) => m.sql)
   .join("\n");
 
+/**
+ * Tables handled in a loop (the Mail migrations):
+ *   FOREACH t IN ARRAY ARRAY['Mailbox', ...] LOOP EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+ *   ... EXECUTE format('REVOKE ALL ON TABLE %I FROM PUBLIC, anon, authenticated, ...', t); END LOOP;
+ */
+const LOOPS = [...ALL_SQL.matchAll(/FOREACH\s+\w+\s+IN\s+ARRAY\s+ARRAY\[([^\]]*)\]\s+LOOP([\s\S]*?)END\s+LOOP/gi)].map(([, list, body]) => ({
+  tables: [...list.matchAll(/'([^']+)'/g)].map((m) => m[1]),
+  rls: /ALTER TABLE %I ENABLE ROW LEVEL SECURITY/i.test(body),
+  revoke: /REVOKE\s+ALL(?:\s+PRIVILEGES)?\s+ON\s+(?:TABLE\s+)?%I\s+FROM\s+[^']*\banon\b[^']*\bauthenticated\b/i.test(body),
+}));
+
 function hasRls(table: string): boolean {
+  if (LOOPS.some((l) => l.rls && l.tables.includes(table))) return true;
   return new RegExp(`ALTER TABLE (?:IF EXISTS )?(?:public\\.)?"${table}" ENABLE ROW LEVEL SECURITY`).test(ALL_SQL);
 }
 
 /** A REVOKE ... ON [TABLE] <list naming the table> FROM <roles including anon and authenticated>. */
 function hasRevoke(table: string): boolean {
+  if (LOOPS.some((l) => l.revoke && l.tables.includes(table))) return true;
   return [...ALL_SQL.matchAll(/REVOKE\s+ALL(?:\s+PRIVILEGES)?\s+ON\s+(?:TABLE\s+)?([^;]*?)\s+FROM\s+([^;]*);/gi)].some(
     ([, targets, roles]) => new RegExp(`(^|[\\s,])(?:public\\.)?"${table}"(?=[\\s,]|$)`).test(targets) && /\banon\b/.test(roles) && /\bauthenticated\b/.test(roles),
   );
