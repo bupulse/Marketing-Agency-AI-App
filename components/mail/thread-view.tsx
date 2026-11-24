@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Archive, ArrowLeft, Download, Eye, Forward, MailOpen, OctagonAlert, Reply, ReplyAll, Star, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { Archive, ArrowLeft, ChevronLeft, ChevronRight, Download, Eye, Forward, MailOpen, Maximize2, Menu, Minimize2, OctagonAlert, Printer, Reply, ReplyAll, Star, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { safeEmailDocument } from "@/lib/mail/html";
 import { threadAction } from "@/app/mail/(app)/actions";
 import { Composer, type ComposeInit } from "./composer";
-import { TAG_STYLE } from "./shell";
+import { TAG_STYLE, useMail } from "./shell";
+import { Avatar } from "./thread-list";
 
 export type ViewAttachment = { id: string; filename: string; contentType: string; size: number; inline: boolean; contentId: string | null };
 export type ViewMessage = {
@@ -30,8 +31,37 @@ function splitQuote(text: string): [string, string] {
   return i > 0 ? [lines.slice(0, i).join("\n").trimEnd(), lines.slice(i).join("\n")] : [text, ""];
 }
 
-export function ThreadView({ thread, ourAddresses, refreshOnOpen = false }: { thread: ViewThread; ourAddresses: string[]; refreshOnOpen?: boolean }) {
+/** The reading mode kept in this browser (full screen or in the frame); a private window simply starts in the frame. */
+const readMode = {
+  get: () => { try { return localStorage.getItem("bmail-read") === "full"; } catch { return false; } },
+  set: (v: boolean) => { try { localStorage.setItem("bmail-read", v ? "full" : "split"); } catch { /* private window */ } window.dispatchEvent(new Event("bmail-read")); },
+  subscribe: (cb: () => void) => { window.addEventListener("bmail-read", cb); window.addEventListener("storage", cb); return () => { window.removeEventListener("bmail-read", cb); window.removeEventListener("storage", cb); }; },
+};
+
+/** Where this conversation sits in the list it was opened from ("1 of 312", previous / next). */
+export type ThreadNav = { index: number; total: number; newer: string | null; older: string | null; query: string };
+
+export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav }: { thread: ViewThread; ourAddresses: string[]; refreshOnOpen?: boolean; nav?: ThreadNav }) {
   const router = useRouter();
+  const { openMenu } = useMail();
+  // Full screen reading (owner, 23 Nov 2026): 10px margins, Return, a button for the menu, a comfortable text width.
+  const full = useSyncExternalStore(readMode.subscribe, readMode.get, () => false);
+  const setFullMode = readMode.set;
+  const back = `/mail${nav?.query ? `?${nav.query}` : ""}`;
+  const go = (id: string | null | undefined) => id && router.push(`/mail/t/${id}${nav?.query ? `?${nav.query}` : ""}`);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]") || e.metaKey || e.ctrlKey) return;
+      if (e.key === "k" && nav?.newer) go(nav.newer);
+      else if (e.key === "j" && nav?.older) go(nav.older);
+      else if (e.key === "Escape" && full) setFullMode(false);
+      else if (e.key === "u") router.push(back);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
   useEffect(() => {
     if (refreshOnOpen) router.refresh();
   }, [refreshOnOpen, router]);
@@ -41,7 +71,7 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false }: { th
   const [preview, setPreview] = useState<ViewAttachment | null>(null);
   const [pending, start] = useTransition();
   const last = thread.messages.at(-1)!;
-  const act = (a: Parameters<typeof threadAction>[1], back = true) => start(async () => { await threadAction([thread.id], a); if (back) router.push("/mail"); else router.refresh(); });
+  const act = (a: Parameters<typeof threadAction>[1], leave = true) => start(async () => { await threadAction([thread.id], a); if (leave) router.push(nav?.older ? `/mail/t/${nav.older}${nav.query ? `?${nav.query}` : ""}` : back); else router.refresh(); });
 
   const startReply = (m: ViewMessage, mode: "reply" | "all" | "forward") => {
     const mine = (thread.mailboxAddress ?? "").toLowerCase();
@@ -59,16 +89,30 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false }: { th
   const ib = "inline-flex size-10 cursor-pointer items-center justify-center rounded-full text-[#3c3c43] transition hover:bg-black/[0.07] disabled:opacity-40 dark:text-white/80 dark:hover:bg-white/10";
 
   return (
-    <article aria-label="Conversation" className="bmail-pop overflow-hidden rounded-[24px] border border-white/80 bg-white/[0.86] shadow-[0_20px_50px_-30px_rgba(15,23,42,0.4)] backdrop-blur-2xl dark:border-white/10 dark:bg-[rgba(28,28,34,0.86)]">
-      <div className="h-[3px] overflow-hidden"><div className="h-full w-1/4 bg-gradient-to-r from-[#2f6bff] to-[#7b5cff]" style={{ animation: "bmail-line 1.1s ease-in-out 2 both" }} /></div>
-      <div className="flex items-center gap-0.5 px-3 py-1.5">
-        <Link href="/mail" aria-label="Back" className={ib}><ArrowLeft className="size-5" /></Link>
+    <article aria-label="Conversation" className={cn("bmail-pop bmail-glass bmail-print overflow-hidden rounded-[24px] [--bmail-a:var(--bmail-strong)]", full && "fixed inset-[10px] z-40 overflow-y-auto")}>
+      <div className="bmail-noprint h-[3px] overflow-hidden"><div className="h-full w-1/4 bg-gradient-to-r from-[#2f6bff] to-[#7b5cff]" style={{ animation: "bmail-line 1.1s ease-in-out 2 both" }} /></div>
+      <div className="bmail-noprint sticky top-0 z-10 flex items-center gap-0.5 px-3 py-1.5">
+        {full ? (
+          <>
+            <button type="button" aria-label="Menu" onClick={openMenu} className={ib}><Menu className="size-5" /></button>
+            <button type="button" onClick={() => setFullMode(false)} className="mr-1 inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-full pl-2.5 pr-4 text-[14px] font-semibold hover:bg-black/[0.07] dark:hover:bg-white/10"><ArrowLeft className="size-5" />Return</button>
+          </>
+        ) : (
+          <Link href={back} aria-label="Back to the list" className={ib}><ArrowLeft className="size-5" /></Link>
+        )}
         <button type="button" aria-label="Archive (e)" disabled={pending} onClick={() => act("archive")} className={ib}><Archive className="size-[19px]" /></button>
         <button type="button" aria-label="Report spam" disabled={pending} onClick={() => act(thread.folder === "spam" ? "notspam" : "spam")} className={ib}><OctagonAlert className="size-[19px]" /></button>
         <button type="button" aria-label="Delete" disabled={pending} onClick={() => act("trash")} className={ib}><Trash2 className="size-[19px]" /></button>
         <button type="button" aria-label="Mark as unread" disabled={pending} onClick={() => act("unread")} className={ib}><MailOpen className="size-[19px]" /></button>
         <button type="button" aria-label={thread.starred ? "Unstar" : "Star"} disabled={pending} onClick={() => act(thread.starred ? "unstar" : "star", false)} className={ib}><Star className={cn("size-[19px]", thread.starred && "fill-[#f4b400] text-[#e0a100]")} /></button>
+        <span className="flex-1" />
+        {nav && nav.total > 0 && <span className="mr-1 text-[12.5px] text-muted max-sm:hidden">{nav.index} of {nav.total}</span>}
+        {nav && <button type="button" aria-label="Newer (k)" disabled={!nav.newer} onClick={() => go(nav.newer)} className={ib}><ChevronLeft className="size-5" /></button>}
+        {nav && <button type="button" aria-label="Older (j)" disabled={!nav.older} onClick={() => go(nav.older)} className={ib}><ChevronRight className="size-5" /></button>}
+        <button type="button" aria-label="Print" onClick={() => window.print()} className={cn(ib, "max-sm:hidden")}><Printer className="size-[19px]" /></button>
+        <button type="button" aria-label={full ? "Leave full screen" : "Open full screen"} onClick={() => setFullMode(!full)} className={cn(ib, "max-sm:hidden")}>{full ? <Minimize2 className="size-[19px]" /> : <Maximize2 className="size-[19px]" />}</button>
       </div>
+      <div className={cn(full && "mx-auto w-full max-w-[860px]")}>
 
       <div className="flex flex-wrap items-center gap-2.5 px-6 pb-2 pt-1 md:pl-[76px]">
         <h1 className="text-[23px] font-semibold tracking-[-0.015em]">{thread.subject || "(no subject)"}</h1>
@@ -102,6 +146,7 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false }: { th
         )}
       </div>
 
+      </div>
       {preview && (
         <div role="dialog" aria-modal="true" aria-label={preview.filename} className="fixed inset-0 z-50 flex flex-col bg-[rgba(14,14,18,0.78)] text-white backdrop-blur-xl">
           <div className="flex items-center gap-3 px-4 py-3">
@@ -143,7 +188,7 @@ function MessageBlock({ m, open, onToggle, onReply, onPreview, isLast, ours }: {
   if (!open) {
     return (
       <button type="button" onClick={onToggle} className="flex w-full cursor-pointer items-center gap-3 border-t border-black/[0.07] px-5 py-3 text-left hover:bg-black/[0.03] dark:border-white/[0.07] dark:hover:bg-white/[0.04]">
-        <span className="inline-flex size-[34px] shrink-0 items-center justify-center rounded-full bg-[#5c6bff] text-[13px] font-semibold text-white">{(m.fromName || m.fromAddress)[0]?.toUpperCase()}</span>
+        <Avatar who={m.fromName || m.fromAddress} initial={(m.fromName || m.fromAddress)[0]?.toUpperCase() ?? "?"} size={34} />
         <span className="w-[170px] shrink-0 truncate text-[14px] font-bold">{fromUs ? "me" : m.fromName || m.fromAddress}</span>
         <span className="min-w-0 flex-1 truncate text-[14px] text-muted">{m.snippet}</span>
         <span className="text-[12.5px] text-muted">{m.date}</span>
@@ -152,7 +197,7 @@ function MessageBlock({ m, open, onToggle, onReply, onPreview, isLast, ours }: {
   }
   return (
     <div className="flex gap-3.5 border-t border-black/[0.07] px-5 pb-3 pt-4 dark:border-white/[0.07]">
-      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-[#5c6bff] text-[15px] font-semibold text-white">{(m.fromName || m.fromAddress)[0]?.toUpperCase()}</span>
+      <Avatar who={m.fromName || m.fromAddress} initial={(m.fromName || m.fromAddress)[0]?.toUpperCase() ?? "?"} size={40} />
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <div className="flex items-start gap-2">
           <button type="button" onClick={isLast ? undefined : onToggle} className={cn("flex min-w-0 flex-1 flex-col text-left", !isLast && "cursor-pointer")}>

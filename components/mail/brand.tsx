@@ -4,8 +4,8 @@ import { cn } from "@/lib/cn";
 // (calm loop, stopped for "reduce motion"), then the word, no dot. Traced from public/brand/mark.png (500 x 500: the
 // blue-to-violet pulse line running into the black B) so the pulse can move along the real mark.
 
-const PULSE = "M28 268H178L208 146L266 370L298 248H345";
-const B = "M246 122H390A63 63 0 0 1 390 248M330 248H392A63 63 0 0 1 392 374H296";
+const PULSE = "M28 268H176L205.5 150L266 343L301.5 248H345";
+const B = "M246 122H387A63 63 0 0 1 387 248M330 248H389A63 63 0 0 1 389 374H296";
 
 export function BMark({ size = 32, className, tone = "ink" }: { size?: number; className?: string; tone?: "ink" | "white" }) {
   const id = `bp-${size}-${tone}`;
@@ -18,8 +18,8 @@ export function BMark({ size = 32, className, tone = "ink" }: { size?: number; c
         </linearGradient>
       </defs>
       <path d={B} fill="none" stroke={tone === "white" ? "#fff" : "currentColor"} strokeWidth="27" strokeLinejoin="round" />
-      <path d={PULSE} fill="none" stroke={`url(#${id})`} strokeWidth="25" strokeLinejoin="miter" strokeMiterlimit="8" opacity="0.28" />
-      <path className="bmail-pulse" d={PULSE} fill="none" stroke={`url(#${id})`} strokeWidth="25" strokeLinejoin="miter" strokeMiterlimit="8" strokeDasharray="420 300" />
+      <path d={PULSE} fill="none" stroke={`url(#${id})`} strokeWidth="25" strokeLinejoin="miter" strokeMiterlimit="3.3" opacity="0.28" />
+      <path className="bmail-pulse" d={PULSE} fill="none" stroke={`url(#${id})`} strokeWidth="25" strokeLinejoin="miter" strokeMiterlimit="3.3" strokeDasharray="420 300" />
     </svg>
   );
 }

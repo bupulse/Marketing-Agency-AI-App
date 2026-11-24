@@ -8,7 +8,7 @@ const LINE = "M0 34H120L140 10L160 52L178 22L192 34H360";
 
 export function MailPreloader({ label = "Opening your mail…" }: { label?: string }) {
   return (
-    <div role="status" aria-live="polite" aria-label={label} className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-[26px] bg-[radial-gradient(700px_500px_at_20%_0%,#ffe9da_0%,rgba(255,233,218,0)_60%),radial-gradient(700px_500px_at_90%_10%,#dbe5ff_0%,rgba(219,229,255,0)_60%),radial-gradient(800px_600px_at_50%_110%,#e8defe_0%,rgba(232,222,254,0)_60%),#f3f5fa] dark:bg-[radial-gradient(700px_500px_at_20%_0%,#2a1d3f_0%,rgba(42,29,63,0)_60%),radial-gradient(700px_500px_at_90%_10%,#16244a_0%,rgba(22,36,74,0)_60%),#0f1115]">
+    <div role="status" aria-live="polite" aria-label={label} className="bmail-preloader fixed inset-0 z-[60] flex flex-col items-center justify-center gap-[26px]">
       <div className="relative flex size-[150px] items-center justify-center">
         <span aria-hidden className="bmail-ring absolute inset-0 rounded-full border-2 border-[rgba(47,107,255,0.45)]" />
         <span aria-hidden className="bmail-ring bmail-ring-late absolute inset-0 rounded-full border-2 border-[rgba(123,92,255,0.4)]" />

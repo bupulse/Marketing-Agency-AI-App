@@ -80,7 +80,8 @@ export async function saveProfile(_prev: ProfileState, form: FormData): Promise<
   const phone = rawPhone ? toE164(rawPhone, "RW") : null;
   if (rawPhone && !phone) return { error: "That phone number does not look right." };
   const extra = String(form.get("signatureExtra") ?? "").trim().slice(0, 120);
-  const background = ["kigali-hills", "kigali-night", "kivu-beach", "virunga", "plain"].includes(String(form.get("background"))) ? String(form.get("background")) : "kigali-hills";
+  const { isMailBackground } = await import("@/lib/mail/backgrounds");
+  const background = isMailBackground(form.get("background")) && form.get("background") !== "photo" ? String(form.get("background")) : typeof me.prefs.background === "string" ? me.prefs.background : "kigali-hills";
   const prefs = { ...me.prefs, signatureExtra: extra, background };
   if (me.memberId) {
     await prisma.mailMember.update({ where: { id: me.memberId }, data: { name, title, phone, prefs } });
@@ -113,4 +114,25 @@ export async function changeMailPassword(_prev: { error?: string; ok?: string },
     return { error: "Could not save the password. Please try again." };
   }
   return { ok: "Password changed. Use it next time you sign in with your password." };
+}
+
+/** Quick settings: background and glass, saved for this person (design "Main" quick settings panel). */
+export async function setMailLook(look: { background?: string; glass?: number }): Promise<{ ok: boolean }> {
+  const { isMailBackground } = await import("@/lib/mail/backgrounds");
+  const me = await requireMail();
+  const prefs: Record<string, unknown> = { ...me.prefs };
+  if (look.background !== undefined) {
+    if (!isMailBackground(look.background)) return { ok: false };
+    if (look.background === "photo" && typeof me.prefs.backgroundPhoto !== "string") return { ok: false };
+    prefs.background = look.background;
+  }
+  if (look.glass !== undefined) {
+    const settings = await prisma.mailSettings.findUnique({ where: { id: "default" }, select: { usersChangeGlass: true } });
+    if (settings && !settings.usersChangeGlass && !me.isAdmin) return { ok: false };
+    prefs.glass = Math.max(0, Math.min(100, Math.round(Number(look.glass) || 0)));
+  }
+  if (me.memberId) await prisma.mailMember.update({ where: { id: me.memberId }, data: { prefs: prefs as object } });
+  else await prisma.mailMember.create({ data: { email: me.email, name: me.name, prefs: prefs as object, role: "owner", status: "active", userId: me.userId, createdBy: me.email } });
+  revalidatePath("/mail", "layout");
+  return { ok: true };
 }

@@ -1,14 +1,29 @@
 import { after } from "next/server";
 import { Suspense } from "react";
 import { MailShell, type ShellData } from "@/components/mail/shell";
-import { mailboxesFor } from "@/lib/mail/queries";
+import { prisma } from "@/lib/db";
+import { resolveBackground } from "@/lib/mail/backgrounds";
+import { mailboxesFor, navExtras } from "@/lib/mail/queries";
+import { signedUrl } from "@/lib/mail/storage";
 import { deliverDue, sendsLeftToday, signatureFor } from "@/lib/mail/send";
 import { requireMail } from "@/lib/mail/session";
 
 // Every B Mail page: the signed-in person at AAL2 (lib/mail/session.ts), their mailboxes and the shared frame.
 export default async function MailAppLayout({ children }: { children: React.ReactNode }) {
   const me = await requireMail();
-  const [mailboxes, sendsLeft] = await Promise.all([mailboxesFor(me), sendsLeftToday()]);
+  const [mailboxes, sendsLeft, extras, settings, member] = await Promise.all([
+    mailboxesFor(me),
+    sendsLeftToday(),
+    navExtras(me),
+    prisma.mailSettings.findUnique({ where: { id: "default" }, select: { glassClarity: true, usersChangeGlass: true } }),
+    me.memberId ? prisma.mailMember.findUnique({ where: { id: me.memberId }, select: { quotaMb: true } }) : null,
+  ]);
+  const choice = typeof me.prefs.background === "string" ? me.prefs.background : "kigali-hills";
+  // Own photo background: a short-lived link to the private file; anything else is a scene or a gradient.
+  const photo = choice === "photo" && typeof me.prefs.backgroundPhoto === "string" ? await signedUrl(me.prefs.backgroundPhoto) : null;
+  const bg = resolveBackground(choice, me.email);
+  const canChangeGlass = settings?.usersChangeGlass !== false || me.isAdmin;
+  const glass = canChangeGlass && typeof me.prefs.glass === "number" ? me.prefs.glass : settings?.glassClarity ?? 60;
   const sendFrom = mailboxes.filter((m) => m.address).map((m) => ({ id: m.id, label: m.kind === "personal" && m.address === me.email ? me.name : m.name, address: m.address! }));
   const own = mailboxes.find((m) => m.kind === "personal" && m.address === me.email) ?? mailboxes.find((m) => m.address);
   const signature = await signatureFor(me, own?.address ?? me.email);
@@ -20,7 +35,16 @@ export default async function MailAppLayout({ children }: { children: React.Reac
     sendFrom: own ? [sendFrom.find((s) => s.id === own.id)!, ...sendFrom.filter((s) => s.id !== own.id)] : sendFrom,
     signatureHtml: signature.html,
     sendsLeft,
-    background: typeof me.prefs.background === "string" ? me.prefs.background : "kigali-hills",
+    background: choice,
+    backgroundCss: photo ? `url(${JSON.stringify(photo)}) center / cover no-repeat` : bg.css,
+    backgroundName: photo ? "Your photo" : bg.name,
+    backgroundDark: photo ? true : !!bg.dark,
+    hasPhoto: typeof me.prefs.backgroundPhoto === "string",
+    glass,
+    canChangeGlass,
+    forwarded: extras.forwarded,
+    drafts: extras.drafts,
+    storage: { usedMb: Math.round((extras.usedBytes / 1_048_576) * 10) / 10, quotaMb: member?.quotaMb ?? 1000 },
   };
   return (
     <Suspense>
