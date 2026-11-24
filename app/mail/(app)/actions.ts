@@ -286,3 +286,35 @@ export async function setMailPref(key: "photoInSignature" | "signatureTemplate" 
   revalidatePath("/mail", "layout");
   return { ok: true };
 }
+
+/** Tags by hand (design "ReadSplit" Tags button): the built-in tags and the team's own tags (MailLabel). */
+export async function setThreadTag(threadId: string, tag: string, on: boolean): Promise<{ ok: boolean }> {
+  const { TAGS } = await import("@/lib/mail/tags");
+  const me = await requireMail();
+  const thread = await prisma.mailThread.findFirst({ where: { id: threadId, mailboxId: { in: me.mailboxIds } }, select: { tags: true, labelIds: true } });
+  if (!thread) return { ok: false };
+  if ((TAGS as readonly string[]).includes(tag)) {
+    const tags = on ? [...new Set([...thread.tags, tag])] : thread.tags.filter((t) => t !== tag);
+    await prisma.mailThread.update({ where: { id: threadId }, data: { tags } });
+  } else {
+    if (!(await prisma.mailLabel.findUnique({ where: { id: tag }, select: { id: true } }))) return { ok: false };
+    const labelIds = on ? [...new Set([...thread.labelIds, tag])] : thread.labelIds.filter((t) => t !== tag);
+    await prisma.mailThread.update({ where: { id: threadId }, data: { labelIds } });
+  }
+  revalidatePath("/mail", "layout");
+  return { ok: true };
+}
+
+const LABEL_COLORS = ["blue", "green", "orange", "violet", "teal", "pink", "gray"] as const;
+
+/** A new team tag (everyone in B Mail sees it in the menu); names are short and unique. */
+export async function createMailLabel(name: string, color: string): Promise<{ ok: boolean; id?: string; error?: string }> {
+  await requireMail();
+  const clean = name.trim().replace(/\s+/g, " ").slice(0, 30);
+  if (!clean) return { ok: false, error: "Give the tag a name." };
+  const exists = await prisma.mailLabel.findFirst({ where: { name: { equals: clean, mode: "insensitive" } }, select: { id: true } });
+  if (exists) return { ok: true, id: exists.id };
+  const row = await prisma.mailLabel.create({ data: { name: clean, color: (LABEL_COLORS as readonly string[]).includes(color) ? color : "blue" } });
+  revalidatePath("/mail", "layout");
+  return { ok: true, id: row.id };
+}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { Archive, ArrowLeft, ChevronLeft, ChevronRight, Download, Eye, Forward, MailOpen, Maximize2, Menu, Minimize2, OctagonAlert, Printer, Reply, ReplyAll, Star, Trash2, X } from "lucide-react";
+import { Archive, ArrowLeft, ChevronLeft, Columns2, ChevronRight, Download, Eye, Forward, MailOpen, Maximize2, Menu, Minimize2, OctagonAlert, Printer, Reply, ReplyAll, Star, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { safeEmailDocument } from "@/lib/mail/html";
 import { threadAction } from "@/app/mail/(app)/actions";
@@ -12,6 +12,9 @@ import type { ComposeMode } from "@/lib/mail/draft-rules";
 import { Composer, type ComposeInit, type ComposerHandle } from "./composer";
 import { TAG_STYLE, useMail } from "./shell";
 import { Avatar } from "./thread-list";
+import { TagMenu } from "./tag-menu";
+import { PhoneThreadBar } from "./phone";
+import { splitMode } from "./split-frame";
 
 export type ViewAttachment = { id: string; filename: string; contentType: string; size: number; inline: boolean; contentId: string | null };
 export type ViewMessage = {
@@ -19,7 +22,7 @@ export type ViewMessage = {
   to: { name: string; address: string }[]; cc: { name: string; address: string }[];
   date: string; dateLong: string; subject: string; text: string; html: string | null; snippet: string; attachments: ViewAttachment[]; error: string | null;
 };
-export type ViewThread = { id: string; subject: string; mailboxId: string; mailboxAddress: string | null; mailboxName: string; starred: boolean; tags: string[]; copiedFrom: string | null; copyKind: string | null; folder: string; messages: ViewMessage[] };
+export type ViewThread = { id: string; subject: string; mailboxId: string; mailboxAddress: string | null; mailboxName: string; starred: boolean; tags: string[]; labelIds?: string[]; copiedFrom: string | null; copyKind: string | null; folder: string; messages: ViewMessage[] };
 
 const size = (n: number) => (n > 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const ext = (a: ViewAttachment) => (a.filename.split(".").pop() ?? "file").slice(0, 5).toUpperCase();
@@ -48,6 +51,7 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav, d
   const { openMenu } = useMail();
   // Full screen reading (owner, 23 Nov 2026): 10px margins, Return, a button for the menu, a comfortable text width.
   const full = useSyncExternalStore(readMode.subscribe, readMode.get, () => false);
+  const split = useSyncExternalStore(splitMode.subscribe, splitMode.get, () => false);
   const setFullMode = readMode.set;
   const back = `/mail${nav?.query ? `?${nav.query}` : ""}`;
   const go = (id: string | null | undefined) => id && router.push(`/mail/t/${id}${nav?.query ? `?${nav.query}` : ""}`);
@@ -96,6 +100,7 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav, d
   const ib = "inline-flex size-10 cursor-pointer items-center justify-center rounded-full text-[#3c3c43] transition hover:bg-black/[0.07] disabled:opacity-40 dark:text-white/80 dark:hover:bg-white/10";
 
   return (
+    <>
     <article aria-label="Conversation" className={cn("bmail-pop bmail-glass bmail-print overflow-hidden rounded-[24px] [--bmail-a:var(--bmail-strong)]", full && "fixed inset-[10px] z-40 overflow-y-auto")}>
       <div className="bmail-noprint h-[3px] overflow-hidden"><div className="h-full w-1/4 bg-gradient-to-r from-[#2f6bff] to-[#7b5cff]" style={{ animation: "bmail-line 1.1s ease-in-out 2 both" }} /></div>
       <div className="bmail-noprint sticky top-0 z-10 flex items-center gap-0.5 px-3 py-1.5">
@@ -107,15 +112,17 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav, d
         ) : (
           <Link href={back} aria-label="Back to the list" className={ib}><ArrowLeft className="size-5" /></Link>
         )}
-        <button type="button" aria-label="Archive (e)" disabled={pending} onClick={() => act("archive")} className={ib}><Archive className="size-[19px]" /></button>
-        <button type="button" aria-label="Report spam" disabled={pending} onClick={() => act(thread.folder === "spam" ? "notspam" : "spam")} className={ib}><OctagonAlert className="size-[19px]" /></button>
-        <button type="button" aria-label="Delete" disabled={pending} onClick={() => act("trash")} className={ib}><Trash2 className="size-[19px]" /></button>
-        <button type="button" aria-label="Mark as unread" disabled={pending} onClick={() => act("unread")} className={ib}><MailOpen className="size-[19px]" /></button>
+        <button type="button" aria-label="Archive (e)" disabled={pending} onClick={() => act("archive")} className={cn(ib, "max-md:hidden")}><Archive className="size-[19px]" /></button>
+        <button type="button" aria-label="Report spam" disabled={pending} onClick={() => act(thread.folder === "spam" ? "notspam" : "spam")} className={cn(ib, "max-md:hidden")}><OctagonAlert className="size-[19px]" /></button>
+        <button type="button" aria-label="Delete" disabled={pending} onClick={() => act("trash")} className={cn(ib, "max-md:hidden")}><Trash2 className="size-[19px]" /></button>
+        <button type="button" aria-label="Mark as unread" disabled={pending} onClick={() => act("unread")} className={cn(ib, "max-md:hidden")}><MailOpen className="size-[19px]" /></button>
         <button type="button" aria-label={thread.starred ? "Unstar" : "Star"} disabled={pending} onClick={() => act(thread.starred ? "unstar" : "star", false)} className={ib}><Star className={cn("size-[19px]", thread.starred && "fill-[#f4b400] text-[#e0a100]")} /></button>
+        <TagMenu threadId={thread.id} tags={thread.tags} labelIds={thread.labelIds ?? []} className={ib} />
         <span className="flex-1" />
         {nav && nav.total > 0 && <span className="mr-1 text-[12.5px] text-muted max-sm:hidden">{nav.index} of {nav.total}</span>}
         {nav && <button type="button" aria-label="Newer (k)" disabled={!nav.newer} onClick={() => go(nav.newer)} className={ib}><ChevronLeft className="size-5" /></button>}
         {nav && <button type="button" aria-label="Older (j)" disabled={!nav.older} onClick={() => go(nav.older)} className={ib}><ChevronRight className="size-5" /></button>}
+        {!full && <button type="button" aria-label={split ? "Hide the list" : "Show the list beside the email"} aria-pressed={split} onClick={() => splitMode.set(!split)} className={cn(ib, "max-lg:hidden", split && "bg-black/[0.07] dark:bg-white/10")}><Columns2 className="size-[19px]" /></button>}
         <button type="button" aria-label="Print" onClick={() => window.print()} className={cn(ib, "max-sm:hidden")}><Printer className="size-[19px]" /></button>
         <button type="button" aria-label={full ? "Leave full screen" : "Open full screen"} onClick={() => setFullMode(!full)} className={cn(ib, "max-sm:hidden")}>{full ? <Minimize2 className="size-[19px]" /> : <Maximize2 className="size-[19px]" />}</button>
       </div>
@@ -174,6 +181,8 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav, d
         </div>
       )}
     </article>
+    <PhoneThreadBar onTrash={() => act("trash")} onArchive={() => act("archive")} onReply={() => startReply(last, "reply")} onMove={(to) => act(to)} />
+    </>
   );
 }
 

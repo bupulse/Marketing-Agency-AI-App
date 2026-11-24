@@ -34,6 +34,8 @@ export type ShellData = {
   canChangeGlass: boolean;
   forwarded: { address: string; unread: number; total: number }[];
   drafts: number;
+  /** The team's own tags (MailLabel). */
+  labels: { id: string; name: string; color: string }[];
   storage: { usedMb: number; quotaMb: number };
 };
 
@@ -60,6 +62,8 @@ const TAGS = [
 ] as const;
 
 const PHONE = "(max-width: 767px)";
+/** Colours of the team's own tags. */
+export const LABEL_HEX: Record<string, string> = { blue: "#2f6bff", green: "#1f9d55", orange: "#d98a00", violet: "#7b5cff", teal: "#14a3a6", pink: "#d6336c", gray: "#8e8e93" };
 
 export function MailShell({ data, children }: { data: ShellData; children: ReactNode }) {
   // Two menu states, chosen by CSS so nothing flashes: open on computers, a closed sheet on phones.
@@ -177,6 +181,7 @@ export function MailShell({ data, children }: { data: ShellData; children: React
               {FOLDERS.map((f) => <NavLink key={f.id} href={href({ box: box === "all" ? null : box, folder: f.id })} active={onList && folder === f.id && !fwd && !tag} icon={<f.icon className="size-[18px]" />} label={f.label} count={f.id === "drafts" ? data.drafts : undefined} quiet={f.id === "drafts"} />)}
               <p className="mb-1 mt-3 px-[18px] text-[12px] font-semibold text-muted">Tags</p>
               {TAGS.map(([id, label, color]) => <NavLink key={id} href={href({ folder: "all", tag: id })} active={onList && tag === id} dot={color} square label={label} />)}
+              {data.labels.map((l) => <NavLink key={l.id} href={href({ folder: "all", label: l.id })} active={onList && sp.get("label") === l.id} dot={LABEL_HEX[l.color] ?? LABEL_HEX.blue} square label={l.name} />)}
     </>
   );
 
@@ -260,7 +265,7 @@ function SearchBar({ inputRef, box }: { inputRef: React.RefObject<HTMLInputEleme
   };
   const field = "h-10 w-full rounded-xl border border-black/12 bg-white/90 px-3 text-[14.5px] outline-none focus:border-[#2f6bff] dark:border-white/15 dark:bg-white/5";
   return (
-    <div ref={wrap} className="relative flex max-w-[760px] flex-[1_1_380px] max-md:order-last max-md:basis-full">
+    <div ref={wrap} className="relative flex max-w-[760px] flex-[1_1_380px] max-md:hidden">
       <form action="/mail" className="flex h-12 w-full items-center gap-3 rounded-full border border-white/70 bg-[rgba(var(--bmail-rgb,255,255,255),var(--bmail-a))] pl-4 pr-1.5 backdrop-blur-xl dark:border-white/10 dark:bg-[rgba(40,40,46,var(--bmail-a))]">
         <Search className="size-5 shrink-0 text-muted" aria-hidden />
         {box !== "all" && <input type="hidden" name="box" value={box} />}

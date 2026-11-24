@@ -7,13 +7,17 @@ import { Archive, ChevronLeft, ChevronRight, Ellipsis, MailOpen, OctagonAlert, P
 import { cn } from "@/lib/cn";
 import { threadAction } from "@/app/mail/(app)/actions";
 import { BMark } from "./brand";
-import { TAG_STYLE, useMail } from "./shell";
+import { PhoneBottomBar, PhoneListHeader, SwipeRow } from "./phone";
+import { LABEL_HEX, TAG_STYLE, useMail } from "./shell";
 
 export type ListRow = {
   id: string; subject: string; snippet: string; unread: boolean; starred: boolean; important: boolean; hasAttachment: boolean;
   tags: string[]; messageCount: number; time: string; who: string; initial: string; source: string | null; forwarded: boolean; copied: string | null;
   /** A team member's photo (signed link), when the sender is one of us. */
   photo?: string | null;
+  /** In Drafts: the row reads "Draft" in red, like Gmail. */
+  draft?: boolean;
+  labelIds?: string[];
 };
 
 const CHIPS = [["", "All"], ["unread", "Unread"], ["important", "Important"], ["attachment", "Has attachment"]] as const;
@@ -87,8 +91,10 @@ export function ThreadList({ title, subtitle, rows, total, page, pageSize, showS
   const quota = data.storage.quotaMb >= 1000 ? `${data.storage.quotaMb / 1000} GB` : `${data.storage.quotaMb} MB`;
 
   return (
+    <>
     <section aria-label={title} className="bmail-glass overflow-hidden rounded-[24px]">
-      <div className="flex items-center gap-1 px-3 pb-1 pt-2">
+      <PhoneListHeader title={title} unread={rows.filter((r) => r.unread).length} />
+      <div className="flex items-center gap-1 px-3 pb-1 pt-2 max-md:hidden">
         <input type="checkbox" aria-label="Select all" checked={!!rows.length && sel.size === rows.length} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())} className="mx-2 size-[18px] cursor-pointer accent-[#1f5ae6]" />
         {sel.size > 0 ? (
           <>
@@ -126,10 +132,10 @@ export function ThreadList({ title, subtitle, rows, total, page, pageSize, showS
         <Link aria-label="Newer" href={withParam("page", String(Math.max(1, page - 1)))} aria-disabled={page <= 1} className={cn(btn, page <= 1 && "pointer-events-none opacity-40")}><ChevronLeft className="size-[18px]" /></Link>
         <Link aria-label="Older" href={withParam("page", String(page + 1))} aria-disabled={to >= total} className={cn(btn, to >= total && "pointer-events-none opacity-40")}><ChevronRight className="size-[18px]" /></Link>
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-black/[0.08] px-5 pb-3 dark:border-white/10">
-        <h1 className="text-[20px] font-semibold tracking-[-0.01em]">{title}</h1>
-        <span className="text-[13px] text-muted">{subtitle}</span>
-        <span className="flex-1" />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-black/[0.08] px-5 pb-3 max-md:px-4 dark:border-white/10">
+        <h1 className="text-[20px] font-semibold tracking-[-0.01em] max-md:hidden">{title}</h1>
+        <span className="text-[13px] text-muted max-md:hidden">{subtitle}</span>
+        <span className="flex-1 max-md:hidden" />
         <span className="flex flex-wrap gap-1.5" role="group" aria-label="Show">
           {CHIPS.map(([id, name]) => (
             <Link key={id || "all"} href={withParam("only", id || null)} aria-pressed={only === id} className={cn("inline-flex h-8 items-center rounded-full px-3.5 text-[13px] font-medium transition", only === id ? "bg-[#1f5ae6] text-white" : "bg-black/[0.06] hover:bg-black/[0.1] dark:bg-white/10 dark:hover:bg-white/15")}>{name}</Link>
@@ -147,27 +153,30 @@ export function ThreadList({ title, subtitle, rows, total, page, pageSize, showS
           {rows.map((r, i) => {
             const open = `/mail/t/${r.id}${q ? `?${q}` : ""}`;
             return (
-              <li key={r.id} style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }} className={cn("bmail-rise group relative flex items-center gap-1.5 border-b border-black/[0.06] pl-2 pr-3 transition-shadow hover:z-[1] hover:shadow-[inset_1px_0_0_rgba(60,60,67,0.12),inset_-1px_0_0_rgba(60,60,67,0.12),0_2px_6px_-2px_rgba(0,0,0,0.25)] md:h-[50px] max-md:py-2.5 dark:border-white/[0.06]", r.unread ? "bg-white/70 dark:bg-white/[0.06]" : "bg-transparent", (sel.has(r.id) || i === cursor) && "bg-[rgba(31,90,230,0.08)] dark:bg-[rgba(122,162,255,0.12)]")}>
+              <li key={r.id} style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }} className={cn("bmail-rise group relative flex items-center gap-1.5 border-b border-black/[0.06] pl-2 pr-3 transition-shadow hover:z-[1] hover:shadow-[inset_1px_0_0_rgba(60,60,67,0.12),inset_-1px_0_0_rgba(60,60,67,0.12),0_2px_6px_-2px_rgba(0,0,0,0.25)] md:h-[50px] max-md:p-0 dark:border-white/[0.06]", r.unread ? "bg-white/70 dark:bg-white/[0.06]" : "bg-transparent", (sel.has(r.id) || i === cursor) && "bg-[rgba(31,90,230,0.08)] dark:bg-[rgba(122,162,255,0.12)]")}>
                 <input type="checkbox" aria-label={`Select ${r.subject}`} checked={sel.has(r.id)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} className="ml-2.5 mr-1 size-[18px] cursor-pointer accent-[#1f5ae6] max-md:hidden" />
                 <button type="button" aria-label={r.starred ? "Starred" : "Not starred"} onClick={() => act([r.id], r.starred ? "unstar" : "star")} className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full hover:bg-black/5 max-md:hidden"><Star className={cn("size-[18px]", r.starred ? "fill-[#f4b400] text-[#e0a100]" : "text-[#8e8e93]")} /></button>
+                <SwipeRow starred={r.starred} unread={r.unread} onStar={() => act([r.id], r.starred ? "unstar" : "star")} onArchive={() => act([r.id], "archive")} onRead={() => act([r.id], r.unread ? "read" : "unread")}>
                 {/* Phones: two lines with the blue unread dot (design "MobileInbox"). */}
-                <Link href={open} className="flex min-w-0 flex-1 items-start gap-3 text-text md:hidden">
+                <Link href={open} className="flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 text-text md:hidden">
                   <span className={cn("mt-4 size-2.5 shrink-0 rounded-full", r.unread ? "bg-[#1f6bff]" : "bg-transparent")} aria-label={r.unread ? "Unread" : undefined} />
                   <Avatar who={r.who} initial={r.initial} photo={r.photo} size={40} />
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="flex items-baseline gap-2"><span className={cn("min-w-0 flex-1 truncate text-[15.5px]", r.unread ? "font-bold" : "font-semibold")}>{r.who}</span>{r.hasAttachment && <Paperclip className="size-[14px] text-muted" />}<span className="shrink-0 text-[13px] text-muted">{r.time}</span></span>
+                    <span className="flex items-baseline gap-2"><span className={cn("min-w-0 flex-1 truncate text-[15.5px]", r.unread ? "font-bold" : "font-semibold")}>{r.draft ? <span className="text-[#d93025]">Draft</span> : r.who}</span>{r.hasAttachment && <Paperclip className="size-[14px] text-muted" />}<span className="shrink-0 text-[13px] text-muted">{r.time}</span></span>
                     <span className={cn("truncate text-[14.5px]", r.unread && "font-semibold")}>{r.subject}</span>
                     <span className="line-clamp-2 text-[14px] leading-snug text-muted">{r.snippet}</span>
                   </span>
                 </Link>
+                </SwipeRow>
                 <Link href={open} className="flex h-full min-w-0 flex-1 items-center gap-3 text-text max-md:hidden">
                   <span className={cn("inline-block w-3 text-[#f4b400]", !r.important && "invisible")} title={r.important ? "Important" : undefined}>▸</span>
                   <Avatar who={r.who} initial={r.initial} photo={r.photo} />
-                  <span className={cn("w-[160px] shrink-0 truncate text-[14px]", r.unread ? "font-bold" : "font-medium")}>{r.who}{r.messageCount > 1 && <span className="ml-1 font-normal text-muted">{r.messageCount}</span>}</span>
+                  <span className={cn("w-[160px] shrink-0 truncate text-[14px]", r.unread ? "font-bold" : "font-medium")}>{r.draft ? <span className="text-[#d93025]">Draft</span> : r.who}{r.messageCount > 1 && <span className="ml-1 font-normal text-muted">{r.messageCount}</span>}</span>
                   {showSource && r.source && <span className={cn("shrink-0 rounded-md px-2 py-0.5 text-[12px] font-semibold", r.forwarded ? "bg-[#fff4e5] text-[#8a4b00] dark:bg-[rgba(255,170,60,0.2)] dark:text-[#ffd29a]" : "bg-[rgba(31,90,230,0.1)] text-[#1946b8] dark:bg-[rgba(120,160,255,0.2)] dark:text-[#c7d8ff]")}>{r.forwarded ? "↪ " : ""}{r.source}</span>}
                   <span className="min-w-0 flex-1 truncate text-[14px]"><span className={r.unread ? "font-bold" : "font-medium"}>{r.subject}</span><span className="text-muted"> — {r.snippet}</span></span>
                   {r.copied && <span className="shrink-0 rounded-md bg-[#e2f5ea] px-2 py-0.5 text-[12px] font-semibold text-[#11633a]">also in {r.copied}</span>}
                   {r.tags.slice(0, 2).map((t) => TAG_STYLE[t] && <span key={t} className="shrink-0 rounded-md px-2 py-0.5 text-[12px] font-semibold" style={{ background: `${TAG_STYLE[t].color}1f`, color: TAG_STYLE[t].color }}>{TAG_STYLE[t].label}</span>)}
+                  {(r.labelIds ?? []).map((id) => { const l = data.labels.find((x) => x.id === id); return l && <span key={id} className="shrink-0 rounded-md px-2 py-0.5 text-[12px] font-semibold" style={{ background: `${LABEL_HEX[l.color] ?? LABEL_HEX.blue}1f`, color: LABEL_HEX[l.color] ?? LABEL_HEX.blue }}>{l.name}</span>; })}
                   {r.hasAttachment && <Paperclip aria-label="Has attachment" className="size-[15px] shrink-0 text-muted" />}
                   <span className={cn("w-[72px] shrink-0 text-right text-[12.5px] group-hover:hidden", r.unread ? "font-bold" : "text-muted")}>{r.time}</span>
                 </Link>
@@ -181,7 +190,7 @@ export function ThreadList({ title, subtitle, rows, total, page, pageSize, showS
           })}
         </ul>
       )}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-5 py-3 text-[12.5px] text-muted">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-5 py-3 text-[12.5px] text-muted max-md:pb-24">
         <span className="inline-flex items-center gap-2" title={`${data.storage.usedMb} MB of your ${quota}`}>
           <span aria-hidden className="h-1.5 w-20 overflow-hidden rounded-full bg-black/10 dark:bg-white/15"><span className={cn("block h-full rounded-full", usedPct > 90 ? "bg-[#d92d20]" : "bg-[#1f5ae6]")} style={{ width: `${Math.max(2, usedPct)}%` }} /></span>
           {data.storage.usedMb < 1 ? "Under 1 MB" : `${Math.round(data.storage.usedMb)} MB`} of {quota} used
@@ -190,6 +199,8 @@ export function ThreadList({ title, subtitle, rows, total, page, pageSize, showS
         <span>{data.sendsLeft} of 100 sends left today</span>
       </div>
     </section>
+    <PhoneBottomBar />
+    </>
   );
 }
 

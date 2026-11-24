@@ -12,12 +12,13 @@ import { requireMail } from "@/lib/mail/session";
 // Every B Mail page: the signed-in person at AAL2 (lib/mail/session.ts), their mailboxes and the shared frame.
 export default async function MailAppLayout({ children }: { children: React.ReactNode }) {
   const me = await requireMail();
-  const [mailboxes, sendsLeft, extras, settings, member] = await Promise.all([
+  const [mailboxes, sendsLeft, extras, settings, member, labels] = await Promise.all([
     mailboxesFor(me),
     sendsLeftToday(),
     navExtras(me),
     prisma.mailSettings.findUnique({ where: { id: "default" }, select: { glassClarity: true, glassTint: true, usersChangeGlass: true } }),
     me.memberId ? prisma.mailMember.findUnique({ where: { id: me.memberId }, select: { quotaMb: true, photoPath: true } }) : null,
+    prisma.mailLabel.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, color: true } }),
   ]);
   const choice = typeof me.prefs.background === "string" ? me.prefs.background : "kigali-hills";
   // Own photo background: a short-lived link to the private file; anything else is a scene or a gradient.
@@ -46,6 +47,7 @@ export default async function MailAppLayout({ children }: { children: React.Reac
     canChangeGlass,
     forwarded: extras.forwarded,
     drafts: extras.drafts,
+    labels,
     storage: { usedMb: Math.round((extras.usedBytes / 1_048_576) * 10) / 10, quotaMb: member?.quotaMb ?? 1000 },
   };
   return (

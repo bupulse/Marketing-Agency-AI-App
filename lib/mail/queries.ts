@@ -24,7 +24,7 @@ export async function mailboxesFor(me: MailMe): Promise<MailboxNav[]> {
   return boxes.map((b) => ({ id: b.id, name: b.name, address: b.address, kind: b.kind, visibility: b.visibility, departmentId: b.departmentId, unread: count.get(b.id) ?? 0, color: b.departmentId ? color.get(b.departmentId) ?? null : null }));
 }
 
-export type ListArgs = { box: string | "all"; folder: Folder; q?: string; tag?: string; page?: number; only?: string; fwd?: string };
+export type ListArgs = { box: string | "all"; folder: Folder; q?: string; tag?: string; page?: number; only?: string; fwd?: string; label?: string };
 
 /** The filter chips above the list (design "Main"): All, Unread, Important, Has attachment. */
 export const ONLY = ["unread", "important", "attachment"] as const;
@@ -43,6 +43,7 @@ function where(me: MailMe, a: ListArgs): Prisma.MailThreadWhereInput {
     case "all": w.folder = { notIn: ["trash", "spam"] }; break;
   }
   if (a.tag) w.tags = { has: a.tag };
+  if (a.label) w.labelIds = { has: a.label };
   if (a.only === "unread") w.unread = true;
   else if (a.only === "important") w.important = true;
   else if (a.only === "attachment") w.hasAttachment = true;
@@ -93,7 +94,7 @@ export function parseSearch(q: string): SearchTerms {
 
 export type ThreadRow = {
   id: string; mailboxId: string; subject: string; snippet: string; participants: Addr[]; unread: boolean; starred: boolean; important: boolean;
-  hasAttachment: boolean; tags: string[]; messageCount: number; lastMessageAt: Date; copiedFrom: string | null; copyKind: string | null; folder: string; lastFrom: Addr | null;
+  hasAttachment: boolean; tags: string[]; labelIds: string[]; messageCount: number; lastMessageAt: Date; copiedFrom: string | null; copyKind: string | null; folder: string; lastFrom: Addr | null;
 };
 
 export async function listThreads(me: MailMe, a: ListArgs): Promise<{ rows: ThreadRow[]; total: number }> {
@@ -102,7 +103,7 @@ export async function listThreads(me: MailMe, a: ListArgs): Promise<{ rows: Thre
   const [rows, total] = await Promise.all([
     prisma.mailThread.findMany({
       where: w, orderBy: { lastMessageAt: "desc" }, skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE,
-      select: { id: true, mailboxId: true, subject: true, snippet: true, participants: true, unread: true, starred: true, important: true, hasAttachment: true, tags: true, messageCount: true, lastMessageAt: true, copiedFrom: true, copyKind: true, folder: true,
+      select: { id: true, mailboxId: true, subject: true, snippet: true, participants: true, unread: true, starred: true, important: true, hasAttachment: true, tags: true, labelIds: true, messageCount: true, lastMessageAt: true, copiedFrom: true, copyKind: true, folder: true,
         messages: { where: { status: { not: "draft" } }, orderBy: { date: "desc" }, take: 1, select: { fromAddress: true, fromName: true, direction: true } } },
     }),
     prisma.mailThread.count({ where: w }),
