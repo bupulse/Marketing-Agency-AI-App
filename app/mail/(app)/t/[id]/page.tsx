@@ -1,4 +1,5 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { loadDraft } from "@/lib/mail/drafts";
 import { ThreadView, type ViewThread } from "@/components/mail/thread-view";
 import type { Addr } from "@/lib/mail/addresses";
 import { FOLDERS, getThread, mailboxesFor, neighbours, ONLY, type Folder } from "@/lib/mail/queries";
@@ -25,6 +26,14 @@ export default async function MailThreadPage({ params, searchParams }: { params:
   const near = await neighbours(me, { box, folder, q: sp.q, tag: sp.tag, only, fwd }, { id: thread.id, lastMessageAt: thread.lastMessageAt });
   const query = new URLSearchParams(Object.entries({ box: box === "all" ? "" : box, folder: sp.folder ?? "", q: sp.q ?? "", tag: sp.tag ?? "", only: only ?? "", fwd: fwd ?? "" }).filter(([, v]) => v)).toString();
   const messages = thread.messages.filter((m) => m.status !== "draft");
+  // Drafts (docs/mail-crm/GAPS.md C3): a new message's draft opens in the composer over the Drafts folder; a reply
+  // draft opens in this conversation's reply box.
+  const ownDraft = thread.messages.find((m) => m.status === "draft" && m.authorEmail === me.email);
+  if (!messages.length) {
+    if (ownDraft) redirect(`/mail?folder=drafts&draft=${ownDraft.id}`);
+    notFound();
+  }
+  const draft = ownDraft ? await loadDraft(me, ownDraft.id) : null;
   const view: ViewThread = {
     id: thread.id, subject: thread.subject, mailboxId: thread.mailboxId, mailboxAddress: thread.mailbox.address, mailboxName: thread.mailbox.name,
     starred: thread.starred, tags: thread.tags, copiedFrom: thread.copiedFrom, copyKind: thread.copyKind, folder: thread.folder,
@@ -39,5 +48,5 @@ export default async function MailThreadPage({ params, searchParams }: { params:
       };
     }),
   };
-  return <ThreadView refreshOnOpen={thread.wasUnread} thread={view} nav={{ ...near, query }} ourAddresses={boxes.map((b) => (b.address ?? "").toLowerCase()).filter(Boolean)} />;
+  return <ThreadView refreshOnOpen={thread.wasUnread} thread={view} nav={{ ...near, query }} draft={draft} ourAddresses={boxes.map((b) => (b.address ?? "").toLowerCase()).filter(Boolean)} />;
 }

@@ -7,7 +7,9 @@ import { Archive, ArrowLeft, ChevronLeft, ChevronRight, Download, Eye, Forward, 
 import { cn } from "@/lib/cn";
 import { safeEmailDocument } from "@/lib/mail/html";
 import { threadAction } from "@/app/mail/(app)/actions";
-import { Composer, type ComposeInit } from "./composer";
+import { replyOptions, type ReplyMode } from "@/lib/mail/compose-rules";
+import type { ComposeMode } from "@/lib/mail/draft-rules";
+import { Composer, type ComposeInit, type ComposerHandle } from "./composer";
 import { TAG_STYLE, useMail } from "./shell";
 import { Avatar } from "./thread-list";
 
@@ -41,7 +43,7 @@ const readMode = {
 /** Where this conversation sits in the list it was opened from ("1 of 312", previous / next). */
 export type ThreadNav = { index: number; total: number; newer: string | null; older: string | null; query: string };
 
-export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav }: { thread: ViewThread; ourAddresses: string[]; refreshOnOpen?: boolean; nav?: ThreadNav }) {
+export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav, draft }: { thread: ViewThread; ourAddresses: string[]; refreshOnOpen?: boolean; nav?: ThreadNav; draft?: ComposeInit | null }) {
   const router = useRouter();
   const { openMenu } = useMail();
   // Full screen reading (owner, 23 Nov 2026): 10px margins, Return, a button for the menu, a comfortable text width.
@@ -67,20 +69,25 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav }:
   }, [refreshOnOpen, router]);
   const [olderOpen, setOlderOpen] = useState(thread.messages.length <= 3);
   const [open, setOpen] = useState<Set<string>>(new Set([thread.messages.at(-1)?.id ?? ""]));
-  const [reply, setReply] = useState<ComposeInit | null>(null);
+  // A reply draft of this person's in this conversation opens in the reply box (docs/mail-crm/GAPS.md C3).
+  const [reply, setReply] = useState<ComposeInit | null>(draft ?? null);
+  const [replyMode, setReplyMode] = useState<ComposeMode | null>(draft?.mode ?? null);
+  const replyBox = useRef<ComposerHandle>(null);
   const [preview, setPreview] = useState<ViewAttachment | null>(null);
   const [pending, start] = useTransition();
   const last = thread.messages.at(-1)!;
   const act = (a: Parameters<typeof threadAction>[1], leave = true) => start(async () => { await threadAction([thread.id], a); if (leave) router.push(nav?.older ? `/mail/t/${nav.older}${nav.query ? `?${nav.query}` : ""}` : back); else router.refresh(); });
 
-  const startReply = (m: ViewMessage, mode: "reply" | "all" | "forward") => {
-    const mine = (thread.mailboxAddress ?? "").toLowerCase();
-    const fromUs = m.direction === "out";
-    const sender = m.replyTo ?? m.fromAddress;
-    const toList = mode === "forward" ? [] : fromUs ? m.to.map((a) => a.address) : [sender];
-    const ccList = mode === "all" ? [...(fromUs ? [] : m.to.map((a) => a.address)), ...m.cc.map((a) => a.address)].filter((a) => a.toLowerCase() !== mine && !toList.includes(a)) : [];
-    const subject = mode === "forward" ? (/^\s*fwd?\s*:/i.test(thread.subject) ? thread.subject : `Fwd: ${thread.subject}`) : /^\s*re\s*:/i.test(thread.subject) ? thread.subject : `Re: ${thread.subject}`;
-    setReply({ from: thread.mailboxId, to: [...new Set(toList)].join(", "), cc: [...new Set(ccList)].join(", "), subject, parentId: m.id, mode, quote: `On ${m.dateLong}, ${m.fromName || m.fromAddress} wrote:\n${m.text}` });
+  const startReply = (m: ViewMessage, mode: ReplyMode) => {
+    // Already answering this message: Reply / Reply all / Forward switch the open box and keep what was typed.
+    if (reply && reply.parentId === m.id && replyBox.current) {
+      replyBox.current.switchMode(mode);
+      return;
+    }
+    const options = replyOptions({ ...m, subject: m.subject || thread.subject }, thread.mailboxAddress ?? "");
+    const o = options[mode];
+    setReply({ from: thread.mailboxId, to: o.to, cc: o.cc, subject: o.subject, parentId: m.id, mode, quote: o.quote, options, parentFiles: m.attachments.filter((a) => !a.inline).length });
+    setReplyMode(mode);
     setTimeout(() => document.getElementById("bmail-reply")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
   };
 
@@ -134,16 +141,16 @@ export function ThreadView({ thread, ourAddresses, refreshOnOpen = false, nav }:
         </div>
       ))}
 
-      <div id="bmail-reply" className="px-5 pb-6 pt-2 md:pl-[70px]">
-        {reply ? (
-          <Composer key={`${reply.parentId}-${reply.mode}`} init={reply} inline onClose={() => setReply(null)} />
-        ) : (
-          <div className="flex flex-wrap gap-2.5">
-            <button type="button" onClick={() => startReply(last, "reply")} className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-black/20 px-5 text-[14px] font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"><Reply className="size-[17px]" />Reply</button>
-            <button type="button" onClick={() => startReply(last, "all")} className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-black/20 px-5 text-[14px] font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"><ReplyAll className="size-[17px]" />Reply all</button>
-            <button type="button" onClick={() => startReply(last, "forward")} className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-black/20 px-5 text-[14px] font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"><Forward className="size-[17px]" />Forward</button>
-          </div>
-        )}
+      <div id="bmail-reply" className="flex flex-col gap-3 px-5 pb-6 pt-2 md:pl-[70px]">
+        <div className="flex flex-wrap gap-2.5">
+          {([["reply", "Reply", Reply], ["all", "Reply all", ReplyAll], ["forward", "Forward", Forward]] as const).map(([mode, label, Icon]) => {
+            const on = !!reply && reply.parentId === last.id && replyMode === mode;
+            return (
+              <button key={mode} type="button" aria-pressed={on} onClick={() => startReply(last, mode)} className={cn("inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border px-5 text-[14px] font-medium transition-colors", on ? "border-[#1d1d1f] bg-[#1d1d1f] text-white dark:border-white dark:bg-white dark:text-[#1d1d1f]" : "border-black/20 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10")}><Icon className="size-[17px]" />{label}</button>
+            );
+          })}
+        </div>
+        {reply && <Composer key={`reply-${reply.parentId}`} ref={replyBox} init={reply} inline onModeChange={setReplyMode} onClose={() => { setReply(null); setReplyMode(null); }} />}
       </div>
 
       </div>

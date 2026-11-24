@@ -4,6 +4,12 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { parseAddressList, type Addr } from "@/lib/mail/addresses";
+import { addressBook } from "@/lib/mail/address-book";
+import type { ComposeAttachment, ComposeInit, ComposeMode, DraftMeta } from "@/lib/mail/draft-rules";
+import { discardDraft, finishAttachment, loadDraft, removeAttachment, saveDraft, startAttachment, type SaveDraftResult, type UploadSlot } from "@/lib/mail/drafts";
+import { isDeptToken, splitTokens } from "@/lib/mail/personal";
+import { sanitizeComposerHtml } from "@/lib/mail/sanitize";
+import type { AddressBook } from "@/lib/mail/suggest";
 import { actOnThreads, type ThreadAction } from "@/lib/mail/queries";
 import { deliverDue, queueMessage, undoSend, UNDO_SECONDS } from "@/lib/mail/send";
 import { requireMail } from "@/lib/mail/session";
@@ -11,37 +17,103 @@ import { rateLimit } from "@/lib/rate-limit";
 
 // B Mail's server actions. Each one checks the person again (requireMail): server actions are public POST endpoints.
 
-export type SendInput = { from: string; to: string; cc: string; bcc: string; subject: string; text: string; html?: string; parentId?: string | null; mode?: "new" | "reply" | "all" | "forward" };
-export type SendState = { ok: true; messageId: string; threadId: string; undoSeconds: number } | { ok: false; error: string };
+/** What the composer sends and saves. To holds addresses and department chips ("dept:<id>"). */
+export type SendInput = { draftId?: string | null; from: string; to: string[]; cc: string[]; bcc: string[]; subject: string; text: string; html?: string; parentId?: string | null; mode?: ComposeMode };
+export type SendState = { ok: true; messageId: string; threadId: string; undoSeconds: number; count: number } | { ok: false; error: string };
 
-const list = (raw: string, field: string): Addr[] | string => {
-  const { list: l, invalid } = parseAddressList(raw ?? "");
+const MODES: readonly ComposeMode[] = ["new", "reply", "all", "forward"];
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 300) : []);
+const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+const mode = (v: unknown): ComposeMode => (MODES.includes(v as ComposeMode) ? (v as ComposeMode) : "new");
+
+const list = (raw: string[], field: string): Addr[] | string => {
+  const { list: l, invalid } = parseAddressList(raw.join(", "));
   return invalid.length ? `${field}: "${invalid[0]}" is not an email address.` : l;
 };
 
 export async function sendMailAction(input: SendInput): Promise<SendState> {
   const me = await requireMail();
-  const to = list(input.to, "To");
-  const cc = list(input.cc, "Cc");
-  const bcc = list(input.bcc, "Bcc");
+  const { addresses, departments } = splitTokens(strings(input.to));
+  const to = list(addresses, "To");
+  const cc = list(strings(input.cc).filter((s) => !isDeptToken(s)), "Cc");
+  const bcc = list(strings(input.bcc).filter((s) => !isDeptToken(s)), "Bcc");
   for (const x of [to, cc, bcc]) if (typeof x === "string") return { ok: false, error: x };
-  const subject = (input.subject ?? "").trim() || "(no subject)";
-  const r = await queueMessage(me, { fromMailboxId: input.from, to: to as Addr[], cc: cc as Addr[], bcc: bcc as Addr[], subject, text: input.text ?? "", html: input.html, parentId: input.parentId ?? null, mode: input.mode ?? "new" });
+  const subject = str(input.subject, 500).trim() || "(no subject)";
+  const html = str(input.html, 400_000);
+  const composer: DraftMeta = { v: 1, to: strings(input.to), cc: strings(input.cc), bcc: strings(input.bcc), subject: str(input.subject, 500), body: sanitizeComposerHtml(html), parentId: typeof input.parentId === "string" ? input.parentId : null, mode: mode(input.mode), dropped: [] };
+  const r = await queueMessage(me, {
+    fromMailboxId: str(input.from, 100), to: to as Addr[], cc: cc as Addr[], bcc: bcc as Addr[], subject, text: str(input.text, 200_000), html,
+    parentId: composer.parentId, mode: composer.mode, departments, draftId: typeof input.draftId === "string" ? input.draftId : null, composer,
+  });
   if (!r.ok) return r;
   // Deliver right after the undo window, from this request; page loads and the cron route catch anything left.
   after(async () => {
     await new Promise((resolve) => setTimeout(resolve, UNDO_SECONDS * 1000 + 800));
-    await deliverDue();
+    // A department send queues one email per person: keep going while full batches come back.
+    for (let i = 0; i < Math.ceil(r.count / 20) + 1; i++) {
+      const done = await deliverDue();
+      if (done.sent + done.failed < 20) break;
+    }
   });
   revalidatePath("/mail");
-  return { ok: true, messageId: r.messageId, threadId: r.threadId, undoSeconds: UNDO_SECONDS };
+  return { ok: true, messageId: r.messageId, threadId: r.threadId, undoSeconds: UNDO_SECONDS, count: r.count };
 }
 
-export async function undoSendAction(messageId: string): Promise<{ ok: boolean }> {
+/** Undo: the send stops and its draft comes back (the shell reopens it in the composer). */
+export async function undoSendAction(messageId: string): Promise<{ ok: boolean; draftId: string | null }> {
   const me = await requireMail();
-  const ok = await undoSend(me, messageId);
+  const draftId = await undoSend(me, str(messageId, 100));
+  revalidatePath("/mail");
+  return { ok: !!draftId, draftId };
+}
+
+/** Autosave: creates the draft the first time, then keeps it up to date. */
+export async function saveDraftAction(input: SendInput): Promise<SaveDraftResult> {
+  const me = await requireMail();
+  return saveDraft(me, {
+    draftId: typeof input.draftId === "string" ? input.draftId : null, from: str(input.from, 100), to: strings(input.to), cc: strings(input.cc), bcc: strings(input.bcc),
+    subject: str(input.subject, 500), html: str(input.html, 400_000), text: str(input.text, 200_000), parentId: typeof input.parentId === "string" ? input.parentId : null, mode: mode(input.mode),
+  });
+}
+
+export async function loadDraftAction(draftId: string): Promise<ComposeInit | null> {
+  const me = await requireMail();
+  return loadDraft(me, str(draftId, 100));
+}
+
+export async function discardDraftAction(draftId: string): Promise<{ ok: boolean }> {
+  const me = await requireMail();
+  const ok = await discardDraft(me, str(draftId, 100));
   revalidatePath("/mail");
   return { ok };
+}
+
+/** Attaching, step 1: a one-time upload link (the file goes straight to the private mail bucket). */
+export async function startAttachmentAction(draftId: string, file: { filename: string; size: number }): Promise<UploadSlot> {
+  const me = await requireMail();
+  try {
+    await rateLimit(`mail-attach:${me.userId}`, { limit: 60, windowSeconds: 600 });
+  } catch {
+    return { ok: false, error: "Too many files at once. Wait a few minutes and try again." };
+  }
+  return startAttachment(me, str(draftId, 100), { filename: str(file?.filename, 300) || "file", size: Number(file?.size) || 0 });
+}
+
+/** Attaching, step 2: the upload is done; the server checks what arrived and adds it to the draft. */
+export async function finishAttachmentAction(draftId: string, file: { path: string; filename: string; contentType: string }): Promise<{ ok: true; attachment: ComposeAttachment } | { ok: false; error: string }> {
+  const me = await requireMail();
+  return finishAttachment(me, str(draftId, 100), { path: str(file?.path, 400), filename: str(file?.filename, 300) || "file", contentType: str(file?.contentType, 120) });
+}
+
+export async function removeAttachmentAction(attachmentId: string): Promise<{ ok: boolean }> {
+  const me = await requireMail();
+  return { ok: await removeAttachment(me, str(attachmentId, 100)) };
+}
+
+/** Team members, shared mailboxes, departments this person may send to, and recent contacts, for suggestions. */
+export async function addressBookAction(): Promise<AddressBook> {
+  const me = await requireMail();
+  return addressBook(me);
 }
 
 export async function threadAction(ids: string[], action: ThreadAction): Promise<{ count: number }> {
