@@ -74,3 +74,12 @@ describe("signature and html", () => {
     expect(d).toContain("img-src data: blob: 'self'");
   });
 });
+
+import { sanitizeComposerHtml } from "@/lib/mail/sanitize";
+describe("composer html", () => {
+  it("keeps simple formatting and drops everything else", () => {
+    expect(sanitizeComposerHtml('<p style="x">Hi <b>there</b> <a href="https://x.rw" onclick="evil()">link</a></p><script>bad()</script><img src=x onerror=y><a href="javascript:alert(1)">no</a>'))
+      .toBe('<p>Hi <b>there</b> <a href="https://x.rw" target="_blank" rel="noopener noreferrer">link</a></p><a>no</a>');
+    expect(sanitizeComposerHtml("<ul><li>a</li></ul><blockquote>q</blockquote><div><br></div>")).toBe("<ul><li>a</li></ul><blockquote>q</blockquote><div><br></div>");
+  });
+});

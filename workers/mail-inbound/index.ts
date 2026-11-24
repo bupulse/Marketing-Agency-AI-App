@@ -48,6 +48,8 @@ export default {
       message.setReject("451 Temporary problem, please try again later.");
       return;
     }
+    // Only the status goes to the log (wrangler tail), never addresses or content.
+    console.log(`inbound ${response.status}`);
     if (response.status === 422) {
       message.setReject("550 No such mailbox here.");
       return;

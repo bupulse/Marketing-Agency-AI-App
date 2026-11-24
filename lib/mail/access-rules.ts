@@ -13,7 +13,11 @@ export type Viewer = {
   grants: string[];
 };
 
-export const isMailAdmin = (v: Viewer) => v.isOwner || v.member?.role === "admin";
+/** Roles: member, admin ("Mail admin"), owner ("Super admin": office@ as system administrator, cyusa@). */
+export const MAIL_ROLES = ["member", "admin", "owner"] as const;
+export const isMailAdmin = (v: Viewer) => v.isOwner || v.member?.role === "admin" || v.member?.role === "owner";
+/** Super admins (and the ADMIN_EMAILS owner) may make other people admins or super admins. */
+export const isSuperAdmin = (v: Viewer) => v.isOwner || v.member?.role === "owner";
 
 /** May this person open B Mail at all: the owner, or an active/invited member with Mail switched on. */
 export function canUseMail(v: Viewer): boolean {
