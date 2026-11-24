@@ -141,6 +141,26 @@ export async function setDepartmentHead(departmentId: string, memberId: string |
   refreshConsole();
 }
 
+/**
+ * Puts a person in a department (or in none) from the department page's drag and drop. One department per person, so
+ * this moves them out of their old one; if they were its head, that department has no head until one is picked.
+ */
+export async function setMemberDepartment(memberId: string, departmentId: string | null): Promise<ConsoleState & { from?: string | null }> {
+  const me = await requireMailAdmin();
+  const target = await prisma.mailMember.findUnique({ where: { id: memberId }, select: { role: true, departmentId: true, name: true, email: true } });
+  if (!target) return { error: "That person is no longer here. Reload the page." };
+  if (target.role === "owner" && !me.isSuper) return { error: "Only a super admin can change a super admin." };
+  if (departmentId && !(await prisma.mailDepartment.findUnique({ where: { id: departmentId }, select: { id: true } }))) return { error: "That department was deleted. Reload the page." };
+  if (target.departmentId === departmentId) return { ok: "Saved.", from: departmentId };
+  await prisma.$transaction([
+    ...(target.departmentId ? [prisma.mailDepartment.updateMany({ where: { id: target.departmentId, headMemberId: memberId }, data: { headMemberId: null } })] : []),
+    prisma.mailMember.update({ where: { id: memberId }, data: { departmentId } }),
+  ]);
+  revalidatePath("/mail");
+  refreshConsole();
+  return { ok: "Saved.", from: target.departmentId };
+}
+
 const deptName = (v: FormDataEntryValue | string | null) => String(v ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
 
 export async function createDepartment(nameIn: string, colorIn?: string): Promise<ConsoleState & { id?: string; name?: string; color?: string }> {

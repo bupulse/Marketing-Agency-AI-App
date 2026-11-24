@@ -188,23 +188,23 @@ export function MailShell({ data, children }: { data: ShellData; children: React
 
   const navBody = (
     <>
-              <button type="button" onClick={() => setCompose({})} className="mb-3 ml-1 mt-1 inline-flex h-14 w-fit cursor-pointer items-center gap-3.5 rounded-[18px] bg-[#d6e3ff] pl-[18px] pr-6 text-[15px] font-semibold text-[#0b2a6f] shadow-[0_8px_24px_-14px_rgba(31,90,230,0.6)] transition hover:bg-[#c7d8ff] hover:shadow-[0_12px_28px_-12px_rgba(31,90,230,0.55)] dark:bg-[#2d3f6b] dark:text-[#e6eeff] dark:hover:bg-[#34497c]"><Pencil className="size-5" />Compose</button>
+              <button type="button" onClick={() => setCompose({})} className="sticky top-0 z-10 mb-3 ml-1 mt-1 inline-flex h-14 w-fit shrink-0 cursor-pointer items-center gap-3.5 rounded-[18px] border border-white/80 bg-white pl-[18px] pr-6 text-[15px] font-semibold text-[#1d1d1f] shadow-[0_8px_24px_-12px_rgba(0,0,0,0.35)] transition hover:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-[#303038] dark:text-white"><Pencil className="size-5" />Compose</button>
               <NavLink href={href({ folder: "inbox" })} active={onList && box === "all" && folder === "inbox" && !tag && !fwd} icon={<Inbox className="size-[18px]" />} label="All inboxes" count={allUnread} />
               {personal.map((m) => <NavLink key={m.id} href={href({ box: m.id })} active={onList && box === m.id && folder === "inbox" && !fwd} dot="#2f6bff" label={m.name} count={m.unread} title={m.address ?? undefined} />)}
-              {shared.length > 0 && <p className="mb-1.5 mt-5 px-5 text-[12.5px] font-semibold uppercase tracking-[0.04em] text-muted">Departments</p>}
+              {shared.length > 0 && <p className="mb-1 mt-3.5 shrink-0 px-[18px] text-[12px] font-semibold text-muted">Departments</p>}
               {shared.map((m) => <NavLink key={m.id} href={href({ box: m.id })} active={onList && box === m.id && folder === "inbox" && !fwd} dot={m.color ?? "#7b5cff"} label={m.name} count={m.unread} note={m.visibility === "everyone" ? "everyone" : undefined} title={m.address ?? undefined} />)}
               {other.map((m) => <NavLink key={m.id} href={href({ box: m.id })} active={onList && box === m.id && folder === "inbox"} dot="#8e8e93" label={m.name} count={m.unread} note="other addresses" />)}
               {data.forwarded.length > 0 && (
                 <>
-                  <p className="mb-1.5 mt-5 px-5 text-[12.5px] font-semibold uppercase tracking-[0.04em] text-muted">Forwarded to you</p>
+                  <p className="mb-1 mt-3.5 shrink-0 px-[18px] text-[12px] font-semibold text-muted">Forwarded to you</p>
                   {data.forwarded.map((f) => (
                     <NavLink key={f.address} href={href({ folder: "all", fwd: f.address })} active={onList && fwd === f.address} icon={<CornerUpRight className="size-[17px] text-[#c46a00]" />} label={f.address.split("@")[0].replace(/^./, (c) => c.toUpperCase())} count={f.unread} title={`Mail sent to ${f.address}, forwarded to you`} />
                   ))}
                 </>
               )}
-              <div className="mx-4 my-4 h-px bg-black/10 dark:bg-white/10" />
+              <div className="mx-3.5 my-3 h-px shrink-0 bg-black/10 dark:bg-white/10" />
               {FOLDERS.map((f) => <NavLink key={f.id} href={href({ box: box === "all" ? null : box, folder: f.id })} active={onList && folder === f.id && !fwd && !tag} icon={<f.icon className="size-[18px]" />} label={f.label} count={f.id === "drafts" ? data.drafts : undefined} quiet={f.id === "drafts"} />)}
-              <p className="mb-1.5 mt-5 px-5 text-[12.5px] font-semibold uppercase tracking-[0.04em] text-muted">Tags</p>
+              <p className="mb-1 mt-3.5 shrink-0 px-[18px] text-[12px] font-semibold text-muted">Tags</p>
               {TAGS.map(([id, label, color]) => <NavLink key={id} href={href({ folder: "all", tag: id })} active={onList && tag === id} dot={color} square label={label} />)}
               {data.labels.map((l) => <NavLink key={l.id} href={href({ folder: "all", label: l.id })} active={onList && sp.get("label") === l.id} dot={LABEL_HEX[l.color] ?? LABEL_HEX.blue} square label={l.name} />)}
     </>
@@ -227,7 +227,7 @@ export function MailShell({ data, children }: { data: ShellData; children: React
         <div className="flex flex-1 items-start gap-2 px-2 pb-3 pr-3 max-md:pr-2">
           {phoneMenu && <button type="button" aria-label="Close the menu" onClick={() => setPhoneMenu(false)} className="fixed inset-0 z-30 cursor-default bg-black/25 md:hidden" />}
           {(deskMenu || phoneMenu) && (
-            <nav aria-label="Mailboxes and folders" className={cn("bmail-menu bmail-scroll bmail-slide sticky top-2 flex w-[272px] shrink-0 flex-col gap-1 pb-4 md:max-h-[calc(100dvh-76px)] md:overflow-y-auto md:overscroll-contain max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:w-[280px] max-md:overflow-y-auto max-md:bg-white/95 max-md:p-3 max-md:shadow-2xl max-md:backdrop-blur-xl max-md:dark:bg-[#18181d]/95", !phoneMenu && "max-md:hidden", !deskMenu && "md:hidden")}>{navBody}</nav>
+            <nav aria-label="Mailboxes and folders" className={cn("bmail-menu bmail-scroll bmail-slide sticky top-2 flex w-[260px] shrink-0 flex-col gap-0.5 pb-4 md:max-h-[calc(100dvh-76px)] md:overflow-y-auto md:overscroll-contain max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:w-[280px] max-md:overflow-y-auto max-md:bg-white/95 max-md:p-3 max-md:shadow-2xl max-md:backdrop-blur-xl max-md:dark:bg-[#18181d]/95", !phoneMenu && "max-md:hidden", !deskMenu && "md:hidden")}>{navBody}</nav>
           )}
           {sheet && (
             <>
@@ -374,7 +374,7 @@ function QuickSettings({ data, glass, onGlass, onClose }: { data: ShellData; gla
 
 function NavLink({ href, active, icon, dot, square, label, count, note, title, quiet }: { href: string; active: boolean; icon?: ReactNode; dot?: string; square?: boolean; label: string; count?: number; note?: string; title?: string; quiet?: boolean }) {
   return (
-    <Link href={href} title={title} aria-current={active ? "page" : undefined} className={cn("flex min-h-11 items-center gap-4 rounded-full py-2 pl-5 pr-4 text-[15px] transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]", active && "bg-[rgba(31,90,230,0.14)] font-bold text-[#102a6b] dark:bg-[rgba(122,162,255,0.24)] dark:text-[#e6eeff]")}>
+    <Link href={href} title={title} aria-current={active ? "page" : undefined} className={cn("flex min-h-10 shrink-0 items-center gap-3.5 rounded-full py-1.5 pl-[18px] pr-3.5 text-[14.5px] transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]", active && "bg-[rgba(31,90,230,0.14)] font-bold text-[#102a6b] dark:bg-[rgba(122,162,255,0.24)] dark:text-[#e6eeff]")}>
       <span className="inline-flex w-5 shrink-0 justify-center">{icon ?? <span className={cn("inline-block size-3", square ? "rounded-[3px]" : "rounded-full")} style={{ background: dot }} />}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {note && <span className="text-[11px] font-normal text-muted">{note}</span>}

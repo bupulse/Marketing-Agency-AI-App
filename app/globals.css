@@ -730,17 +730,15 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
 .bmail-on-dark > header { color: #fff; }
 .bmail-on-dark > header .text-muted { color: rgba(255, 255, 255, 0.75); }
 @media (min-width: 768px) {
-  /* The left menu sits on its own glass panel, so it reads well on any photo (owner 24 Nov: real photos). */
-  .bmail-menu {
-    padding: 10px 8px 12px;
-    border-radius: 24px;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    background: rgba(var(--bmail-rgb, 255, 255, 255), var(--bmail-a, 0.72));
-    -webkit-backdrop-filter: blur(var(--bmail-blur, 24px)) saturate(1.4);
-    backdrop-filter: blur(var(--bmail-blur, 24px)) saturate(1.4);
-    box-shadow: 0 20px 50px -30px rgba(15, 23, 42, 0.5);
-  }
-  .dark .bmail-menu { background: rgba(30, 30, 36, var(--bmail-a, 0.72)); border-color: rgba(255, 255, 255, 0.1); }
+  /* No panel behind the menu (the live design); a soft halo keeps the words readable on busy photos. */
+  .bmail-menu a { font-weight: 500; text-shadow: 0 0 2px #fff, 0 0 6px #fff, 0 0 14px rgba(255, 255, 255, 0.85); }
+  .dark .bmail-menu a { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+  .bmail-menu > p { text-shadow: 0 0 2px #fff, 0 0 8px #fff; }
+  .bmail-on-dark .bmail-menu { color: #fff; }
+  .bmail-on-dark .bmail-menu a, .bmail-on-dark .bmail-menu > p { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55); }
+  .bmail-on-dark .bmail-menu .text-muted { color: rgba(255, 255, 255, 0.75); }
+  .bmail-on-dark .bmail-menu a[aria-current="page"] { background: rgba(255, 255, 255, 0.22); color: #fff; }
+  .bmail-on-dark .bmail-menu a:hover { background: rgba(255, 255, 255, 0.12); }
   /* The left menu scrolls on its own when it is taller than the screen: a thin bar that shows on hover. */
   .bmail-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
   .bmail-scroll:hover, .bmail-scroll:focus-within { scrollbar-color: rgba(0, 0, 0, 0.28) transparent; }
