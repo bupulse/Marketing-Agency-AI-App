@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { BLockup } from "./brand";
 import { AccountMenu } from "./account-menu";
 import { Composer, type ComposeInit } from "./composer";
-import { undoSendAction } from "@/app/mail/(app)/actions";
+import { loadDraftAction, undoSendAction } from "@/app/mail/(app)/actions";
 
 export type NavMailbox = { id: string; name: string; address: string | null; kind: string; visibility: string; unread: number; color: string | null };
 export type ShellData = {
@@ -21,7 +21,7 @@ export type ShellData = {
   background: string;
 };
 
-type Ctx = { compose: (init?: ComposeInit) => void; toastUndo: (messageId: string, seconds: number) => void; data: ShellData };
+type Ctx = { compose: (init?: ComposeInit) => void; toastUndo: (messageId: string, seconds: number, count?: number) => void; data: ShellData };
 const ShellCtx = createContext<Ctx | null>(null);
 export const useMail = () => {
   const c = useContext(ShellCtx);
@@ -54,7 +54,7 @@ export const BACKGROUNDS: Record<string, string> = {
 export function MailShell({ data, children }: { data: ShellData; children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(true);
   const [compose, setCompose] = useState<ComposeInit | null>(null);
-  const [undo, setUndo] = useState<{ id: string; left: number } | null>(null);
+  const [undo, setUndo] = useState<{ id: string; left: number; count: number } | null>(null);
   const router = useRouter();
   const path = usePathname();
   const sp = useSearchParams();
@@ -64,7 +64,16 @@ export function MailShell({ data, children }: { data: ShellData; children: React
   const { resolvedTheme, setTheme } = useTheme();
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const toastUndo = useCallback((id: string, seconds: number) => setUndo({ id, left: seconds }), []);
+  const toastUndo = useCallback((id: string, seconds: number, count = 1) => setUndo({ id, left: seconds, count }), []);
+  // A draft opened from the Drafts folder (/mail?draft=<id>, via the conversation page) opens in the composer.
+  const draftParam = sp.get("draft");
+  useEffect(() => {
+    if (!draftParam) return;
+    void loadDraftAction(draftParam).then((init) => init && setCompose(init));
+    const p = new URLSearchParams(window.location.search);
+    p.delete("draft");
+    router.replace(`/mail${p.size ? `?${p}` : ""}`, { scroll: false });
+  }, [draftParam, router]);
   useEffect(() => {
     if (!undo) return;
     if (undo.left <= 0) {
@@ -142,12 +151,12 @@ export function MailShell({ data, children }: { data: ShellData; children: React
           </div>
         </div>
 
-        {compose && <Composer init={compose} onClose={() => setCompose(null)} />}
+        {compose && <Composer key={compose.draftId ?? "new"} init={compose} onClose={() => setCompose(null)} />}
         {undo && (
           <div role="status" className="bmail-pop fixed bottom-6 left-6 z-50 flex items-center gap-4 rounded-2xl bg-[rgba(29,29,31,0.94)] py-3 pl-5 pr-3 text-[14px] text-white shadow-2xl backdrop-blur-xl">
-            {undo.left > 0 ? `Sending in ${undo.left} s` : "Sent"}
+            {undo.left > 0 ? `Sending${undo.count > 1 ? ` ${undo.count} emails` : ""} in ${undo.left} s` : undo.count > 1 ? `${undo.count} emails sent` : "Sent"}
             {undo.left > 0 && (
-              <button type="button" onClick={async () => { const id = undo.id; setUndo(null); const r = await undoSendAction(id); if (r.ok) router.push("/mail?folder=drafts"); }} className="h-8 cursor-pointer rounded-lg px-3 font-semibold text-[#9dbbff] hover:bg-white/10">Undo</button>
+              <button type="button" onClick={async () => { const id = undo.id; setUndo(null); const r = await undoSendAction(id); const init = r.draftId ? await loadDraftAction(r.draftId) : null; if (init) setCompose(init); router.refresh(); }} className="h-8 cursor-pointer rounded-lg px-3 font-semibold text-[#9dbbff] hover:bg-white/10">Undo</button>
             )}
           </div>
         )}
