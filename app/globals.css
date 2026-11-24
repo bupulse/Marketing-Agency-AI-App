@@ -720,7 +720,7 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
 .bmail-root { --bmail-plain: #f3f4f7; }
 .dark .bmail-root { --bmail-plain: #121214; }
 .bmail-glass {
-  background: rgba(255, 255, 255, var(--bmail-a, 0.72));
+  background: rgba(var(--bmail-rgb, 255, 255, 255), var(--bmail-a, 0.72));
   -webkit-backdrop-filter: blur(var(--bmail-blur, 24px)) saturate(1.7);
   backdrop-filter: blur(var(--bmail-blur, 24px)) saturate(1.7);
   border: 1px solid rgba(255, 255, 255, 0.75);

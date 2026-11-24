@@ -8,13 +8,14 @@ import { useTheme } from "@/components/theme";
 import { cn } from "@/lib/cn";
 import { glassStyle, MAIL_BACKGROUNDS, RANDOM_BACKGROUND } from "@/lib/mail/backgrounds";
 import { BLockup } from "./brand";
+import { NewMailNotices } from "./notices";
 import { AccountMenu } from "./account-menu";
 import { Composer, type ComposeInit } from "./composer";
 import { setMailLook, undoSendAction } from "@/app/mail/(app)/actions";
 
 export type NavMailbox = { id: string; name: string; address: string | null; kind: string; visibility: string; unread: number; color: string | null };
 export type ShellData = {
-  me: { name: string; email: string; isAdmin: boolean; initial: string; role: string };
+  me: { name: string; email: string; isAdmin: boolean; initial: string; role: string; photo: string | null };
   mailboxes: NavMailbox[];
   sendFrom: { id: string; label: string; address: string }[];
   signatureHtml: string;
@@ -28,6 +29,8 @@ export type ShellData = {
   backgroundDark: boolean;
   hasPhoto: boolean;
   glass: number;
+  /** The company's glass tint (Mail console): light, dark (dark panels for everyone) or blue. */
+  glassTint: string;
   canChangeGlass: boolean;
   forwarded: { address: string; unread: number; total: number }[];
   drafts: number;
@@ -142,6 +145,7 @@ export function MailShell({ data, children }: { data: ShellData; children: React
     "--bmail-a": String(g.alpha),
     "--bmail-strong": String(g.strong),
     "--bmail-blur": `${g.blur}px`,
+    ...(data.glassTint === "blue" && !dark ? { "--bmail-rgb": "232, 238, 255" } : {}),
   } as CSSProperties;
 
   const navBody = (
@@ -169,7 +173,7 @@ export function MailShell({ data, children }: { data: ShellData; children: React
 
   return (
     <ShellCtx.Provider value={ctx}>
-      <div className={cn("bmail-root flex min-h-dvh flex-col text-text", data.backgroundDark && "bmail-on-dark")} style={style}>
+      <div className={cn("bmail-root flex min-h-dvh flex-col text-text", data.backgroundDark && "bmail-on-dark", data.glassTint === "dark" && "dark")} style={style}>
         <header className="flex items-center gap-1.5 px-3 pb-1.5 pt-2.5 max-md:flex-wrap">
           <button type="button" onClick={toggleMenu} aria-label="Main menu" aria-expanded={deskMenu} className="inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10"><Menu className="size-5" /></button>
           <Link href="/mail" className="mr-4 shrink-0 md:mr-8 md:min-w-[140px]"><BLockup size={34} /></Link>
@@ -178,7 +182,7 @@ export function MailShell({ data, children }: { data: ShellData; children: React
           <button type="button" aria-label="Switch light and dark" onClick={() => setTheme(dark ? "light" : "dark")} className="inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10">{dark ? <Sun className="size-5" /> : <Moon className="size-5" />}</button>
           <button type="button" aria-label="Quick settings" aria-expanded={panel} onClick={() => setPanel((v) => !v)} className={cn("inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10", panel && "bg-black/[0.07] dark:bg-white/10")}><SlidersHorizontal className="size-5" /></button>
           <Link href="/apps" aria-label="BuPulse services" title="BuPulse services" className="inline-flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-black/5 max-sm:hidden dark:hover:bg-white/10"><LayoutGrid className="size-5" /></Link>
-          <AccountMenu name={data.me.name} email={data.me.email} initial={data.me.initial} isAdmin={data.me.isAdmin} role={data.me.role} />
+          <AccountMenu name={data.me.name} email={data.me.email} initial={data.me.initial} isAdmin={data.me.isAdmin} role={data.me.role} photo={data.me.photo} />
         </header>
 
         <div className="flex flex-1 items-start gap-2 px-2 pb-3 pr-3 max-md:pr-2">
@@ -196,6 +200,7 @@ export function MailShell({ data, children }: { data: ShellData; children: React
           {panel && <QuickSettings data={data} glass={glass} onGlass={setGlass} onClose={() => setPanel(false)} />}
         </div>
 
+        <NewMailNotices unread={data.mailboxes.reduce((n, m) => n + m.unread, 0)} />
         {compose && <Composer init={compose} onClose={() => setCompose(null)} />}
         {undo && (
           <div role="status" className="bmail-pop fixed bottom-6 left-6 z-50 flex items-center gap-4 rounded-2xl bg-[rgba(29,29,31,0.94)] py-3 pl-5 pr-3 text-[14px] text-white shadow-2xl backdrop-blur-xl">
@@ -247,7 +252,7 @@ function SearchBar({ inputRef, box }: { inputRef: React.RefObject<HTMLInputEleme
   const field = "h-10 w-full rounded-xl border border-black/12 bg-white/90 px-3 text-[14.5px] outline-none focus:border-[#2f6bff] dark:border-white/15 dark:bg-white/5";
   return (
     <div ref={wrap} className="relative flex max-w-[760px] flex-[1_1_380px] max-md:order-last max-md:basis-full">
-      <form action="/mail" className="flex h-12 w-full items-center gap-3 rounded-full border border-white/70 bg-[rgba(255,255,255,var(--bmail-a))] pl-4 pr-1.5 backdrop-blur-xl dark:border-white/10 dark:bg-[rgba(40,40,46,var(--bmail-a))]">
+      <form action="/mail" className="flex h-12 w-full items-center gap-3 rounded-full border border-white/70 bg-[rgba(var(--bmail-rgb,255,255,255),var(--bmail-a))] pl-4 pr-1.5 backdrop-blur-xl dark:border-white/10 dark:bg-[rgba(40,40,46,var(--bmail-a))]">
         <Search className="size-5 shrink-0 text-muted" aria-hidden />
         {box !== "all" && <input type="hidden" name="box" value={box} />}
         <label className="sr-only" htmlFor="mail-q">Search mail</label>
@@ -290,7 +295,7 @@ function QuickSettings({ data, glass, onGlass, onClose }: { data: ShellData; gla
   const thumb = "relative h-[58px] cursor-pointer rounded-xl transition hover:scale-[1.04]";
   const ring = (on: boolean) => (on ? "ring-2 ring-[#4c8dff] ring-offset-2 ring-offset-white dark:ring-offset-[#1c1c22]" : "ring-1 ring-inset ring-black/10");
   return (
-    <aside aria-label="Quick settings" className="bmail-slide-left sticky top-2 flex w-[300px] shrink-0 flex-col gap-5 rounded-[24px] border border-white/75 bg-[rgba(255,255,255,var(--bmail-strong))] p-5 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.5)] backdrop-blur-[var(--bmail-blur)] max-lg:fixed max-lg:inset-y-2 max-lg:right-2 max-lg:z-40 max-lg:overflow-y-auto dark:border-white/10 dark:bg-[rgba(30,30,36,var(--bmail-strong))]">
+    <aside aria-label="Quick settings" className="bmail-slide-left sticky top-2 flex w-[300px] shrink-0 flex-col gap-5 rounded-[24px] border border-white/75 bg-[rgba(var(--bmail-rgb,255,255,255),var(--bmail-strong))] p-5 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.5)] backdrop-blur-[var(--bmail-blur)] max-lg:fixed max-lg:inset-y-2 max-lg:right-2 max-lg:z-40 max-lg:overflow-y-auto dark:border-white/10 dark:bg-[rgba(30,30,36,var(--bmail-strong))]">
       <div className="flex items-center"><h2 className="flex-1 text-[17px] font-semibold">Quick settings</h2><button type="button" aria-label="Close quick settings" onClick={onClose} className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10"><X className="size-[18px]" /></button></div>
       <Link href="/mail/settings" className="-mt-3 inline-flex h-10 items-center justify-center rounded-full border border-black/12 text-[14px] font-semibold text-[#1f5ae6] hover:bg-black/[0.04] dark:border-white/15 dark:text-[#8fb4ff]">See all settings</Link>
       <div className="flex flex-col gap-2">

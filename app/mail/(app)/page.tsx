@@ -1,6 +1,9 @@
+import { redirect } from "next/navigation";
 import { ThreadList, type ListRow } from "@/components/mail/thread-list";
 import { FOLDERS, listThreads, mailboxesFor, ONLY, PAGE_SIZE, type Folder } from "@/lib/mail/queries";
 import { requireMail } from "@/lib/mail/session";
+import { prisma } from "@/lib/db";
+import { photoUrl } from "@/lib/mail/photo";
 import { TAG_LABEL, type Tag } from "@/lib/mail/tags";
 import { displayName } from "@/lib/mail/addresses";
 
@@ -19,6 +22,8 @@ function when(d: Date): string {
 
 export default async function MailListPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const me = await requireMail();
+  // The welcome steps (photo, signature, look) once, after the first sign-in.
+  if (me.prefs.welcomed !== true) redirect("/mail/welcome");
   const sp = await searchParams;
   const folder = (FOLDERS as readonly string[]).includes(sp.folder ?? "") ? (sp.folder as Folder) : "inbox";
   const box = sp.box && me.mailboxIds.includes(sp.box) ? sp.box : "all";
@@ -27,6 +32,10 @@ export default async function MailListPage({ searchParams }: { searchParams: Pro
   const fwd = sp.fwd && /^[^\s@]+@[^\s@]+$/.test(sp.fwd) ? sp.fwd.toLowerCase() : undefined;
   const [{ rows, total }, boxes] = await Promise.all([listThreads(me, { box, folder: fwd ? "all" : folder, q: sp.q, tag: sp.tag, page, only, fwd }), mailboxesFor(me)]);
   const byId = new Map(boxes.map((b) => [b.id, b]));
+  // Team photos next to mail from teammates (and "me").
+  const senders = [...new Set(rows.map((r) => (r.lastFrom?.name === "me" ? me.email : r.lastFrom?.address ?? "").toLowerCase()).filter(Boolean))];
+  const team = senders.length ? await prisma.mailMember.findMany({ where: { email: { in: senders }, photoPath: { not: null } }, select: { id: true, email: true, photoPath: true } }) : [];
+  const photoOf = new Map(team.map((t) => [t.email, photoUrl(t.id, t.photoPath)]));
   const mbox = box === "all" ? null : byId.get(box);
   const title = fwd ? `Forwarded from ${fwd.split("@")[0].replace(/^./, (c) => c.toUpperCase())}` : sp.q ? `Search: ${sp.q}` : sp.tag ? TAG_LABEL[sp.tag as Tag] ?? "Tag" : folder !== "inbox" ? FOLDER_TITLE[folder] : mbox ? mbox.name : "All inboxes";
   const subtitle = fwd ? `Mail sent to ${fwd}, forwarded to you` : mbox ? `${mbox.address ?? "every other @bupulse.com address"}${mbox.visibility === "everyone" ? " · everyone sees it" : ""}` : `${boxes.length} mailbox${boxes.length === 1 ? "" : "es"}`;
@@ -34,6 +43,7 @@ export default async function MailListPage({ searchParams }: { searchParams: Pro
     const who = r.lastFrom ? (r.lastFrom.name === "me" ? "me" : displayName(r.lastFrom)) : r.participants[0] ? displayName(r.participants[0]) : "(nobody)";
     const b = byId.get(r.mailboxId);
     return {
+      photo: photoOf.get((r.lastFrom?.name === "me" ? me.email : r.lastFrom?.address ?? "").toLowerCase()) ?? null,
       id: r.id, subject: r.subject || "(no subject)", snippet: r.snippet, unread: r.unread, starred: r.starred, important: r.important, hasAttachment: r.hasAttachment,
       tags: r.tags, messageCount: r.messageCount, time: when(r.lastMessageAt), who, initial: (who[0] ?? "?").toUpperCase(),
       source: r.copyKind === "forward" ? (r.copiedFrom?.split("@")[0] ?? null) + "@" : b?.address ? `${b.address.split("@")[0]}@` : b?.name ?? null,

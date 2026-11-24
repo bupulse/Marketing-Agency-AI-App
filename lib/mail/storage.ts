@@ -7,7 +7,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 //   raw/<sha256>.eml               one raw message, shared by every copy (rule copies, forwards, two of our mailboxes)
 //   att/<sha256>/<n>-<filename>    attachments of that raw message
 //   out/<messageId>/<n>-<filename> attachments of mail we send
-//   photos/<memberId>.jpg          profile photos
+//   photos/<memberId>-<time>.jpg   profile photos (a new name each time, so browsers never show an old one)
+//   backgrounds/<memberId>-<time>.jpg  a person's own background photo
 
 export const MAIL_BUCKET = "mail";
 export const LINK_SECONDS = 15 * 60;
@@ -18,6 +19,12 @@ const bucket = () => createAdminClient().storage.from(MAIL_BUCKET);
 export async function putObject(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
   const { error } = await bucket().upload(path, bytes, { contentType, upsert: false });
   if (error && !/exists|duplicate/i.test(error.message)) throw error;
+}
+
+/** Stores bytes at a path, replacing what is there (profile and background photos). */
+export async function putObjectReplacing(path: string, bytes: Uint8Array, contentType: string): Promise<void> {
+  const { error } = await bucket().upload(path, bytes, { contentType, upsert: true });
+  if (error) throw error;
 }
 
 export async function getObject(path: string): Promise<Uint8Array> {

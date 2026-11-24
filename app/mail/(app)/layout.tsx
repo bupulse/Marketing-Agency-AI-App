@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { resolveBackground } from "@/lib/mail/backgrounds";
 import { mailboxesFor, navExtras } from "@/lib/mail/queries";
 import { signedUrl } from "@/lib/mail/storage";
+import { photoUrl } from "@/lib/mail/photo";
 import { deliverDue, sendsLeftToday, signatureFor } from "@/lib/mail/send";
 import { requireMail } from "@/lib/mail/session";
 
@@ -15,8 +16,8 @@ export default async function MailAppLayout({ children }: { children: React.Reac
     mailboxesFor(me),
     sendsLeftToday(),
     navExtras(me),
-    prisma.mailSettings.findUnique({ where: { id: "default" }, select: { glassClarity: true, usersChangeGlass: true } }),
-    me.memberId ? prisma.mailMember.findUnique({ where: { id: me.memberId }, select: { quotaMb: true } }) : null,
+    prisma.mailSettings.findUnique({ where: { id: "default" }, select: { glassClarity: true, glassTint: true, usersChangeGlass: true } }),
+    me.memberId ? prisma.mailMember.findUnique({ where: { id: me.memberId }, select: { quotaMb: true, photoPath: true } }) : null,
   ]);
   const choice = typeof me.prefs.background === "string" ? me.prefs.background : "kigali-hills";
   // Own photo background: a short-lived link to the private file; anything else is a scene or a gradient.
@@ -30,7 +31,7 @@ export default async function MailAppLayout({ children }: { children: React.Reac
   // Anything whose undo window ended while nobody was watching goes out now.
   after(() => deliverDue().catch(() => undefined));
   const data: ShellData = {
-    me: { name: me.name, email: me.email, isAdmin: me.isAdmin, initial: (me.name[0] ?? "?").toUpperCase(), role: me.isSuper ? "Super admin" : me.isAdmin ? "Mail admin" : "Member" },
+    me: { name: me.name, email: me.email, isAdmin: me.isAdmin, initial: (me.name[0] ?? "?").toUpperCase(), role: me.isSuper ? "Super admin" : me.isAdmin ? "Mail admin" : "Member", photo: me.memberId ? photoUrl(me.memberId, member?.photoPath) : null },
     mailboxes: mailboxes.map((m) => ({ id: m.id, name: m.name, address: m.address, kind: m.kind, visibility: m.visibility, unread: m.unread, color: m.color })),
     sendFrom: own ? [sendFrom.find((s) => s.id === own.id)!, ...sendFrom.filter((s) => s.id !== own.id)] : sendFrom,
     signatureHtml: signature.html,
@@ -41,6 +42,7 @@ export default async function MailAppLayout({ children }: { children: React.Reac
     backgroundDark: photo ? true : !!bg.dark,
     hasPhoto: typeof me.prefs.backgroundPhoto === "string",
     glass,
+    glassTint: settings?.glassTint ?? "light",
     canChangeGlass,
     forwarded: extras.forwarded,
     drafts: extras.drafts,

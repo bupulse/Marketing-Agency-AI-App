@@ -157,3 +157,12 @@ export function signatureHtmlFor(look: string | null | undefined, c: SignatureCo
     default: return signatureHtml(c, p);
   }
 }
+
+/** "Put my photo in my signature" (design "Welcome"): the person's round photo before the signature, any look. */
+export function withPhoto(html: string, photoUrl: string | null | undefined, name: string): string {
+  if (!photoUrl) return html;
+  const e = escapeHtml;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr>
+<td style="vertical-align:middle;padding-right:16px"><img src="${e(photoUrl)}" alt="${e(name)}" width="64" height="64" style="display:block;width:64px;height:64px;border-radius:32px;border:0;object-fit:cover"></td>
+<td style="vertical-align:middle">${html}</td></tr></table>`;
+}

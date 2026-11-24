@@ -82,7 +82,9 @@ export async function saveProfile(_prev: ProfileState, form: FormData): Promise<
   const extra = String(form.get("signatureExtra") ?? "").trim().slice(0, 120);
   const { isMailBackground } = await import("@/lib/mail/backgrounds");
   const background = isMailBackground(form.get("background")) && form.get("background") !== "photo" ? String(form.get("background")) : typeof me.prefs.background === "string" ? me.prefs.background : "kigali-hills";
-  const prefs = { ...me.prefs, signatureExtra: extra, background };
+  const { isSignatureLook } = await import("@/lib/mail/signature-render");
+  const look = form.get("signatureTemplate");
+  const prefs = { ...me.prefs, signatureExtra: extra, background, ...(isSignatureLook(look) ? { signatureTemplate: look } : {}) };
   if (me.memberId) {
     await prisma.mailMember.update({ where: { id: me.memberId }, data: { name, title, phone, prefs } });
   } else {
@@ -133,6 +135,82 @@ export async function setMailLook(look: { background?: string; glass?: number })
   }
   if (me.memberId) await prisma.mailMember.update({ where: { id: me.memberId }, data: { prefs: prefs as object } });
   else await prisma.mailMember.create({ data: { email: me.email, name: me.name, prefs: prefs as object, role: "owner", status: "active", userId: me.userId, createdBy: me.email } });
+  revalidatePath("/mail", "layout");
+  return { ok: true };
+}
+
+/** The person's member row (the ADMIN_EMAILS owner gets one, as a super admin, the first time they save anything). */
+async function ensureMember(me: Awaited<ReturnType<typeof requireMail>>): Promise<string> {
+  if (me.memberId) return me.memberId;
+  const row = await prisma.mailMember.upsert({ where: { email: me.email }, update: {}, create: { email: me.email, name: me.name, prefs: me.prefs as object, role: "owner", status: "active", userId: me.userId, createdBy: me.email } });
+  return row.id;
+}
+
+async function mergePrefs(memberId: string, patch: Record<string, unknown>): Promise<void> {
+  const row = await prisma.mailMember.findUnique({ where: { id: memberId }, select: { prefs: true } });
+  await prisma.mailMember.update({ where: { id: memberId }, data: { prefs: { ...((row?.prefs as Record<string, unknown> | null) ?? {}), ...patch } as object } });
+}
+
+export type PhotoState = { ok?: boolean; error?: string; url?: string | null };
+
+/** Profile photo (design "Welcome" step 1, Settings > General): a small square JPEG made in the browser. */
+export async function saveMailPhoto(form: FormData): Promise<PhotoState> {
+  const { photoProblem, PROFILE_MAX_BYTES, photoUrl } = await import("@/lib/mail/photo");
+  const { putObjectReplacing, removeObjects } = await import("@/lib/mail/storage");
+  const me = await requireMail();
+  const file = form.get("photo");
+  if (!(file instanceof Blob)) return { error: "Choose a photo first." };
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const problem = photoProblem(bytes, PROFILE_MAX_BYTES);
+  if (problem) return { error: problem };
+  const id = await ensureMember(me);
+  const old = await prisma.mailMember.findUnique({ where: { id }, select: { photoPath: true } });
+  const path = `photos/${id}-${Date.now()}.jpg`;
+  await putObjectReplacing(path, bytes, "image/jpeg");
+  await prisma.mailMember.update({ where: { id }, data: { photoPath: path } });
+  if (old?.photoPath) await removeObjects([old.photoPath]).catch(() => undefined);
+  revalidatePath("/mail", "layout");
+  return { ok: true, url: photoUrl(id, path) };
+}
+
+export async function removeMailPhoto(): Promise<PhotoState> {
+  const { removeObjects } = await import("@/lib/mail/storage");
+  const me = await requireMail();
+  if (!me.memberId) return { ok: true, url: null };
+  const old = await prisma.mailMember.findUnique({ where: { id: me.memberId }, select: { photoPath: true } });
+  await prisma.mailMember.update({ where: { id: me.memberId }, data: { photoPath: null } });
+  if (old?.photoPath) await removeObjects([old.photoPath]).catch(() => undefined);
+  revalidatePath("/mail", "layout");
+  return { ok: true, url: null };
+}
+
+/** Own background photo (design "Settings": made smaller, about 300 KB, counts toward storage; only they see it). */
+export async function saveBackgroundPhoto(form: FormData): Promise<PhotoState> {
+  const { photoProblem, BACKGROUND_MAX_BYTES } = await import("@/lib/mail/photo");
+  const { putObjectReplacing, removeObjects } = await import("@/lib/mail/storage");
+  const me = await requireMail();
+  const file = form.get("photo");
+  if (!(file instanceof Blob)) return { error: "Choose a photo first." };
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const problem = photoProblem(bytes, BACKGROUND_MAX_BYTES);
+  if (problem) return { error: problem };
+  const id = await ensureMember(me);
+  const path = `backgrounds/${id}-${Date.now()}.jpg`;
+  await putObjectReplacing(path, bytes, "image/jpeg");
+  const old = typeof me.prefs.backgroundPhoto === "string" ? me.prefs.backgroundPhoto : null;
+  await mergePrefs(id, { backgroundPhoto: path, backgroundPhotoBytes: bytes.length, background: "photo" });
+  if (old) await removeObjects([old]).catch(() => undefined);
+  revalidatePath("/mail", "layout");
+  return { ok: true };
+}
+
+/** Small personal switches: photo in signature, signature look, finished the welcome steps. */
+export async function setMailPref(key: "photoInSignature" | "signatureTemplate" | "welcomed", value: boolean | string): Promise<{ ok: boolean }> {
+  const { isSignatureLook } = await import("@/lib/mail/signature-render");
+  const me = await requireMail();
+  if (key === "signatureTemplate" && !isSignatureLook(value)) return { ok: false };
+  if (key !== "signatureTemplate" && typeof value !== "boolean") return { ok: false };
+  await mergePrefs(await ensureMember(me), { [key]: value });
   revalidatePath("/mail", "layout");
   return { ok: true };
 }

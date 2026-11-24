@@ -9,7 +9,8 @@ import { formatAddress, MAIL_DOMAIN, type Addr } from "./addresses";
 import { forwardBlock, quoteBlock, textToHtml } from "./html";
 import { sanitizeComposerHtml } from "./sanitize";
 import { makeSnippet } from "./parse";
-import { signatureHtml, signatureText } from "./signature-render";
+import { signatureHtmlFor, signatureText, withPhoto } from "./signature-render";
+import { photoUrl } from "./photo";
 import { getObject } from "./storage";
 import { replyReferences, subjectKey } from "./threading";
 import type { MailMe } from "./session";
@@ -50,7 +51,7 @@ export type QueueResult = { ok: true; messageId: string; threadId: string; sendA
 export async function signatureFor(me: MailMe, fromAddress: string) {
   const [settings, member] = await Promise.all([
     prisma.mailSettings.findUnique({ where: { id: "default" } }),
-    me.memberId ? prisma.mailMember.findUnique({ where: { id: me.memberId }, select: { name: true, title: true, phone: true, prefs: true } }) : null,
+    me.memberId ? prisma.mailMember.findUnique({ where: { id: me.memberId }, select: { id: true, name: true, title: true, phone: true, prefs: true, photoPath: true } }) : null,
   ]);
   const prefs = (member?.prefs as Record<string, unknown> | null) ?? {};
   const company = {
@@ -65,7 +66,10 @@ export async function signatureFor(me: MailMe, fromAddress: string) {
     logoUrl: `${publicSiteUrl()}/brand/logo.png`,
   };
   const person = { name: member?.name || me.name, title: member?.title ?? null, email: fromAddress, mobile: member?.phone ? formatPhone(member.phone) : null, extra: typeof prefs.signatureExtra === "string" ? prefs.signatureExtra : null };
-  return { text: signatureText(company, person), html: signatureHtml(company, person) };
+  // The person's look (Settings), else the company default (Mail console); their photo when they switched it on.
+  const look = typeof prefs.signatureTemplate === "string" ? prefs.signatureTemplate : settings?.defaultTemplate;
+  const photo = prefs.photoInSignature === true && member ? photoUrl(member.id, member.photoPath, publicSiteUrl()) : null;
+  return { text: signatureText(company, person), html: withPhoto(signatureHtmlFor(look, company, person), photo, person.name) };
 }
 
 /** Queues a message: checks the mailbox and recipients, builds the body, files it in its conversation. */
