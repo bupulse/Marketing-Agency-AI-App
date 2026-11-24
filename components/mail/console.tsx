@@ -1,169 +1,149 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
-import { PhoneInput } from "@/components/ui/phone-input";
-import { useState } from "react";
-import { addForwarder, createMailUser, newMailPassword, resetMailAuthenticator, removeForwarder, saveCompany, setDepartmentHead, toggleForwarder, updateMailUser, type ConsoleState } from "@/app/mail/(app)/console/actions";
+import Link from "next/link";
+import { useOptimistic, useState, useTransition } from "react";
+import { Plus } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { formatMb, bytesToMb, quotaUse, stepQuota, type StorageSummary } from "@/lib/mail/console-rules";
+import { newMailPassword, resetMailAuthenticator, updateMailUser, type ConsoleState } from "@/app/mail/(console)/console/actions";
+import { card, darkBtn, h1, smallBtn, STATUS_STYLE, sub } from "./console-styles";
+import { Avatar, Note } from "./console-ui";
+
+// Mail console: Users (design ConsoleUsers): summary cards, then everyone with a @bupulse.com address.
 
 type Dept = { id: string; name: string; color: string; headMemberId: string | null };
-type Member = { id: string; name: string; email: string; role: string; departmentId: string | null; quotaMb: number; status: string };
-type Fwd = { id: string; source: string; target: string; external: boolean; keepCopy: boolean; enabled: boolean; verified: boolean };
-type Company = { companyPhone: string; website: string; address: string; linkedinUrl: string; instagramUrl: string; facebookUrl: string; ctaText: string; ctaUrl: string };
+export type ConsoleMember = { id: string; name: string; email: string; role: string; departmentId: string | null; quotaMb: number; status: string; isHead: boolean; usedBytes: number; forwards: string };
 
-const card = "rounded-[22px] border border-white/80 bg-white/[0.86] p-5 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.4)] backdrop-blur-2xl dark:border-white/10 dark:bg-[rgba(28,28,34,0.86)]";
-const input = "h-11 w-full rounded-xl border border-black/15 bg-white px-3 text-[15px] outline-none focus:border-[#2f6bff] focus:ring-2 focus:ring-[#2f6bff]/25 dark:border-white/15 dark:bg-white/5";
-const label = "flex flex-col gap-1.5 text-[13px] font-semibold";
-const btn = "h-11 cursor-pointer rounded-full bg-[#1f5ae6] px-5 text-[14.5px] font-semibold text-white hover:bg-[#1a4fd0] disabled:opacity-60";
+const ROLE_LABEL: Record<string, string> = { member: "Member", admin: "Mail admin", owner: "Super admin" };
+const selectPill = "h-7 cursor-pointer appearance-none rounded-full border-0 px-2.5 text-[12.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff] disabled:cursor-default";
+const step = "inline-flex size-[30px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/90 text-[16px] font-semibold shadow-[inset_0_0_0_1px_rgba(60,60,67,0.18)] transition-transform hover:scale-[1.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2f6bff] disabled:cursor-default disabled:opacity-40 disabled:hover:scale-100 dark:bg-white/10 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]";
 
-function Note({ s }: { s: ConsoleState }) {
-  if (s.error) return <p role="alert" className="rounded-xl bg-[#fdecec] px-4 py-2.5 text-[13.5px] font-medium text-[#b42318]">{s.error}</p>;
-  if (s.ok) return (
-    <div role="status" className="flex flex-col gap-2 rounded-xl bg-[#e9f7ef] px-4 py-2.5 text-[13.5px] text-[#11633a]">
-      <span>{s.ok}</span>
-      {s.password && <code className="w-fit select-all rounded-lg bg-white px-3 py-1.5 font-mono text-[15px] text-[#1d1d1f]">{s.password}</code>}
-    </div>
-  );
-  return null;
-}
-
-export function ConsoleView({ depts, members, forwarders, company, mailboxAddresses, isSuper, myEmail }: { depts: Dept[]; members: Member[]; forwarders: Fwd[]; company: Company; mailboxAddresses: string[]; isSuper: boolean; myEmail: string }) {
-  const [userState, userAction, userPending] = useActionState<ConsoleState, FormData>(createMailUser, {});
-  const [fwdState, fwdAction, fwdPending] = useActionState<ConsoleState, FormData>(addForwarder, {});
-  const [coState, coAction, coPending] = useActionState<ConsoleState, FormData>(saveCompany, {});
-  const [editResult, edit] = useActionState<ConsoleState, FormData>(updateMailUser, {});
+export function UsersView({ depts, members, summary, admins, sentToday, dailyLimit, isSuper, myEmail }: { depts: Dept[]; members: ConsoleMember[]; summary: StorageSummary; admins: number; sentToday: number; dailyLimit: number; isSuper: boolean; myEmail: string }) {
+  const [list, patch] = useOptimistic(members, (rows: ConsoleMember[], p: { id: string; data: Partial<ConsoleMember> }) => rows.map((m) => (m.id === p.id ? { ...m, ...p.data } : m)));
   const [pending, start] = useTransition();
+  const [note, setNote] = useState<ConsoleState>({});
   const [authFor, setAuthFor] = useState<string | null>(null);
   const [pwFor, setPwFor] = useState<string | null>(null);
-  const [pwState, setPwState] = useState<ConsoleState>({});
-  const deptName = new Map(depts.map((d) => [d.id, d.name]));
+  const dept = new Map(depts.map((d) => [d.id, d]));
+
+  const save = (m: ConsoleMember, field: "role" | "departmentId" | "quotaMb" | "status", value: string) =>
+    start(async () => {
+      patch({ id: m.id, data: { [field]: field === "quotaMb" ? Number(value) : value || null } });
+      const fd = new FormData();
+      fd.set("id", m.id);
+      fd.set(field, value);
+      setNote(await updateMailUser({}, fd));
+    });
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="px-1 text-[28px] font-bold tracking-[-0.025em]">Mail console</h1>
+    <>
+      <header className="flex flex-wrap items-end gap-3">
+        <div className="flex-[1_1_320px]"><h1 className={h1}>Users</h1><p className={sub}>Everyone with a @bupulse.com address.</p></div>
+        <Link href="/mail/console/new" className={darkBtn}><Plus className="size-[17px]" strokeWidth={2.2} aria-hidden />Create user</Link>
+      </header>
 
-      <section className={card} aria-labelledby="users">
-        <h2 id="users" className="mb-3 text-[18px] font-semibold">Users</h2>
+      <section aria-label="Summary" className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3.5">
+        <div className={card}>
+          <span className="text-[13px] text-muted">Users</span>
+          <span className="text-[28px] font-bold tracking-[-0.02em]">{members.length}</span>
+          <span className="text-[13px] text-[#3c3c43] dark:text-white/70">{depts.length === 1 ? "1 department" : `${depts.length} departments`} · {admins === 1 ? "1 admin" : `${admins} admins`}</span>
+        </div>
+        <div className={card}>
+          <span className="text-[13px] text-muted">Storage given out</span>
+          <span className="text-[28px] font-bold tracking-[-0.02em]">{formatMb(summary.givenMb)}{summary.over && <span className="text-[15px] font-medium text-[#b42318]"> (over the pool)</span>}</span>
+          <div className="flex h-2 overflow-hidden rounded-full bg-[rgba(60,60,67,0.1)] dark:bg-white/10" role="img" aria-label={`${formatMb(summary.usedMb)} used, ${formatMb(summary.givenMb)} given out of a ${formatMb(summary.poolMb)} pool`}>
+            <div className="h-2 bg-[#1f5ae6]" style={{ width: `${summary.usedPct}%` }} />
+            <div className="h-2 bg-[#b9ccff] transition-[width] duration-300 dark:bg-[#3d5bb0]" style={{ width: `${Math.max(0, summary.givenPct - summary.usedPct)}%` }} />
+          </div>
+          <span className="text-[13px] text-[#3c3c43] dark:text-white/70">{formatMb(summary.usedMb)} used · {formatMb(summary.poolMb)} pool (free plan)</span>
+        </div>
+        <div className={card}>
+          <span className="text-[13px] text-muted">Sent today</span>
+          <span className="text-[28px] font-bold tracking-[-0.02em]">{sentToday} <span className="text-[15px] font-medium text-muted">/ {dailyLimit}</span></span>
+          <span className="text-[13px] text-[#3c3c43] dark:text-white/70">Resets at 02:00 Kigali time</span>
+        </div>
+      </section>
+
+      <section aria-label="All users" className="overflow-hidden rounded-[24px] border border-white/80 bg-white/[0.72] backdrop-blur-[26px] backdrop-saturate-[1.8] dark:border-white/10 dark:bg-[rgba(28,28,34,0.78)]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse text-[14px]">
-            <thead><tr className="text-left text-[12px] text-muted"><th className="py-2 pr-3">Person</th><th className="pr-3">Department</th><th className="pr-3">Role</th><th className="pr-3">Storage</th><th className="pr-3">Status</th><th className="pr-3"><span className="sr-only">Login</span></th></tr></thead>
+          <table className="w-full min-w-[1040px] border-collapse text-[14px]">
+            <thead>
+              <tr className="text-left text-[12px] font-semibold whitespace-nowrap text-muted [&>th]:px-3.5 [&>th]:py-3">
+                <th>User</th><th>Department</th><th>Role</th><th>Storage (− and + to change)</th><th>Forwards to</th><th>Status</th><th><span className="sr-only">Sign-in</span></th>
+              </tr>
+            </thead>
             <tbody>
-              {members.map((m) => (
-                <tr key={m.id} className="border-t border-black/[0.07] dark:border-white/10">
-                  <td className="py-2.5 pr-3"><div className="font-semibold">{m.name}</div><div className="text-[12.5px] text-muted">{m.email}</div></td>
-                  <td className="pr-3">
-                    <form action={edit}><input type="hidden" name="id" value={m.id} />
-                      <select name="departmentId" defaultValue={m.departmentId ?? ""} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="h-9 cursor-pointer rounded-lg border border-black/10 bg-transparent px-2"><option value="">None</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
-                    </form>
-                  </td>
-                  <td className="pr-3">
-                    <form action={edit}><input type="hidden" name="id" value={m.id} />
-                      <select name="role" defaultValue={m.role} disabled={!isSuper || m.email === myEmail} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="h-9 cursor-pointer rounded-lg border border-black/10 bg-transparent px-2 disabled:cursor-default disabled:opacity-70"><option value="member">Member</option><option value="admin">Mail admin</option><option value="owner">Super admin</option></select>
-                    </form>
-                  </td>
-                  <td className="pr-3">
-                    <form action={edit}><input type="hidden" name="id" value={m.id} />
-                      <select name="quotaMb" defaultValue={String(m.quotaMb)} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="h-9 cursor-pointer rounded-lg border border-black/10 bg-transparent px-2">{[50, 100, 250, 500, 1000].map((q) => <option key={q} value={q}>{q >= 1000 ? "1 GB" : `${q} MB`}</option>)}</select>
-                    </form>
-                  </td>
-                  <td className="pr-3">
-                    <form action={edit}><input type="hidden" name="id" value={m.id} />
-                      <select name="status" defaultValue={m.status === "suspended" ? "suspended" : "active"} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="h-9 cursor-pointer rounded-lg border border-black/10 bg-transparent px-2"><option value="active">{m.status === "invited" ? "Invited" : "Active"}</option><option value="suspended">Suspended</option></select>
-                    </form>
-                  </td>
-                  <td className="whitespace-nowrap pr-1 text-right">
-                    {m.email !== myEmail && (isSuper || m.role === "member") && (authFor === m.id ? (
-                      <span className="mr-1 inline-flex items-center gap-1">
-                        <button type="button" disabled={pending} onClick={() => start(async () => { setPwState(await resetMailAuthenticator(m.id)); setAuthFor(null); })} className="h-8 cursor-pointer rounded-full bg-[#b42318] px-3 text-[12.5px] font-semibold text-white">Yes, reset</button>
-                        <button type="button" onClick={() => setAuthFor(null)} className="h-8 cursor-pointer rounded-full px-3 text-[12.5px]">Cancel</button>
+              {list.map((m) => {
+                const d = m.departmentId ? dept.get(m.departmentId) : undefined;
+                const use = quotaUse(m.usedBytes, m.quotaMb);
+                const usedMb = bytesToMb(m.usedBytes);
+                const less = stepQuota(m.quotaMb, -1, usedMb);
+                const more = stepQuota(m.quotaMb, 1);
+                const locked = m.role === "owner" && !isSuper;
+                return (
+                  <tr key={m.id} className="border-t border-[rgba(60,60,67,0.08)] align-middle dark:border-white/10 [&>td]:px-3.5 [&>td]:py-[13px]">
+                    <td>
+                      <span className="flex items-center gap-3"><Avatar name={m.name} seed={m.email} /><span className="flex flex-col"><span className="font-semibold">{m.name}</span><span className="text-[13px] text-muted">{m.email}</span></span></span>
+                    </td>
+                    <td>
+                      <span className="flex items-center gap-2">
+                        <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: d?.color ?? "#c7c7cc" }} />
+                        <select aria-label={`Department of ${m.name}`} value={m.departmentId ?? ""} disabled={locked} onChange={(e) => save(m, "departmentId", e.target.value)} className={cn(selectPill, "bg-transparent px-0 text-[14px] font-normal hover:underline")}>
+                          <option value="">None</option>
+                          {depts.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                        </select>
+                        {m.isHead && <span className="inline-flex h-5 items-center rounded-md bg-[#fff4e5] px-[7px] text-[11.5px] font-bold text-[#8a4b00] dark:bg-[#8a4b00]/40 dark:text-[#ffd8a8]">Head</span>}
                       </span>
-                    ) : (
-                      <button type="button" title="Lost phone: they add a new authenticator at the next sign-in" onClick={() => setAuthFor(m.id)} className="mr-1 h-8 cursor-pointer rounded-full border border-black/15 px-3 text-[12.5px] font-medium hover:bg-black/5">Reset authenticator</button>
-                    ))}
-                    {isSuper && (pwFor === m.id ? (
-                      <span className="inline-flex items-center gap-1">
-                        <button type="button" disabled={pending} onClick={() => start(async () => { setPwState(await newMailPassword(m.id)); setPwFor(null); })} className="h-8 cursor-pointer rounded-full bg-[#b42318] px-3 text-[12.5px] font-semibold text-white">Yes, new password</button>
-                        <button type="button" onClick={() => setPwFor(null)} className="h-8 cursor-pointer rounded-full px-3 text-[12.5px]">Cancel</button>
+                    </td>
+                    <td>
+                      <select aria-label={`Role of ${m.name}`} value={m.role} disabled={!isSuper || m.email === myEmail} title={!isSuper ? "Only a super admin can change roles" : undefined} onChange={(e) => save(m, "role", e.target.value)} className={cn(selectPill, m.role === "member" ? "bg-[rgba(60,60,67,0.08)] dark:bg-white/10" : "bg-[#1d1d1f] text-white dark:bg-white dark:text-[#1d1d1f]")}>
+                        {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <span className="flex items-center gap-2.5">
+                        <button type="button" className={step} aria-label={`Less storage for ${m.name}`} disabled={!less || locked || pending} title={!less && m.quotaMb > 50 ? "They already use more than the next step down" : undefined} onClick={() => less && save(m, "quotaMb", String(less))}>−</button>
+                        <span className="flex w-[130px] flex-col gap-[5px]">
+                          <span className="flex justify-between text-[12.5px]"><span className="text-[#3c3c43] dark:text-white/70">{formatMb(usedMb)}</span><span className="font-bold">{formatMb(m.quotaMb)}</span></span>
+                          <span className="block h-1.5 overflow-hidden rounded-full bg-[rgba(60,60,67,0.1)] dark:bg-white/10"><span className={cn("block h-1.5 rounded-full transition-[width] duration-300", use.warn ? "bg-[#ff9500]" : "bg-[#1f5ae6]")} style={{ width: `${use.pct}%` }} /></span>
+                        </span>
+                        <button type="button" className={step} aria-label={`More storage for ${m.name}`} disabled={!more || locked || pending} onClick={() => more && save(m, "quotaMb", String(more))}>+</button>
                       </span>
-                    ) : (
-                      <button type="button" onClick={() => setPwFor(m.id)} className="h-8 cursor-pointer rounded-full border border-black/15 px-3 text-[12.5px] font-medium hover:bg-black/5">New password</button>
-                    ))}
-                  </td>
-                </tr>
-              ))}
-              {members.length === 0 && <tr><td colSpan={6} className="py-4 text-muted">No users yet. The owner (ADMIN_EMAILS) always has access.</td></tr>}
+                    </td>
+                    <td className="text-[13.5px] text-[#3c3c43] dark:text-white/70">{m.forwards || "—"}</td>
+                    <td>
+                      <select aria-label={`Status of ${m.name}`} value={m.status === "suspended" ? "suspended" : "active"} disabled={locked || m.email === myEmail} onChange={(e) => save(m, "status", e.target.value)} className={cn(selectPill, STATUS_STYLE[m.status] ?? STATUS_STYLE.active)}>
+                        <option value="active">{m.status === "invited" ? "Invited" : "Active"}</option>
+                        <option value="suspended">Suspended</option>
+                      </select>
+                    </td>
+                    <td className="text-right whitespace-nowrap">
+                      {m.email !== myEmail && (isSuper || m.role === "member") && (authFor === m.id ? (
+                        <span className="mr-1 inline-flex items-center gap-1">
+                          <button type="button" disabled={pending} onClick={() => start(async () => { setNote(await resetMailAuthenticator(m.id)); setAuthFor(null); })} className="h-8 cursor-pointer rounded-full bg-[#b42318] px-3 text-[12.5px] font-semibold text-white">Yes, reset</button>
+                          <button type="button" onClick={() => setAuthFor(null)} className="h-8 cursor-pointer rounded-full px-3 text-[12.5px]">Cancel</button>
+                        </span>
+                      ) : (
+                        <button type="button" title="Lost phone: they add a new authenticator at the next sign-in" onClick={() => setAuthFor(m.id)} className={cn(smallBtn, "mr-1")}>Reset authenticator</button>
+                      ))}
+                      {isSuper && (pwFor === m.id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <button type="button" disabled={pending} onClick={() => start(async () => { setNote(await newMailPassword(m.id)); setPwFor(null); })} className="h-8 cursor-pointer rounded-full bg-[#b42318] px-3 text-[12.5px] font-semibold text-white">Yes, new password</button>
+                          <button type="button" onClick={() => setPwFor(null)} className="h-8 cursor-pointer rounded-full px-3 text-[12.5px]">Cancel</button>
+                        </span>
+                      ) : (
+                        <button type="button" onClick={() => setPwFor(m.id)} className={smallBtn}>New password</button>
+                      ))}
+                    </td>
+                  </tr>
+                );
+              })}
+              {members.length === 0 && <tr><td colSpan={7} className="px-3.5 py-5 text-muted">No users yet. The owner (ADMIN_EMAILS) always has access. <Link href="/mail/console/new" className="font-semibold text-[#1f5ae6]">Create the first one</Link>.</td></tr>}
             </tbody>
           </table>
         </div>
-        <div className="mt-2 flex flex-col gap-2"><Note s={editResult} /><Note s={pwState} /></div>
-        <form action={userAction} className="mt-4 grid grid-cols-1 gap-3 border-t border-black/[0.07] pt-4 md:grid-cols-3 dark:border-white/10">
-          <h3 className="text-[15px] font-semibold md:col-span-3">Create a user</h3>
-          <label className={label}>Full name<input name="name" required className={input} /></label>
-          <label className={label}>Email address<span className="flex items-stretch overflow-hidden rounded-xl border border-black/15 dark:border-white/15"><input name="local" required placeholder="grace" className="h-11 min-w-0 flex-1 bg-white px-3 text-[15px] outline-none dark:bg-white/5" /><span className="flex items-center bg-black/[0.04] px-3 text-[14px] text-muted">@bupulse.com</span></span></label>
-          <label className={label}>Job title<input name="title" className={input} /></label>
-          <div className={label}><span>Personal phone (optional)</span><PhoneInput name="phone" placeholder="720 123 456" countryLabel="Country" /></div>
-          <label className={label}>Department<select name="departmentId" className={input}><option value="">None</option>{depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
-          <label className={label}>Role<select name="role" className={input}><option value="member">Member</option><option value="admin">Mail admin</option>{isSuper && <option value="owner">Super admin</option>}</select></label>
-          <label className={label}>Storage<select name="quotaMb" defaultValue="250" className={input}>{[50, 100, 250, 500, 1000].map((q) => <option key={q} value={q}>{q >= 1000 ? "1 GB" : `${q} MB`}</option>)}</select></label>
-          <div className="flex items-end md:col-span-2"><button disabled={userPending} className={btn}>{userPending ? "Creating…" : "Create user"}</button></div>
-          <div className="md:col-span-3"><Note s={userState} /></div>
-        </form>
       </section>
-
-      <section className={card} aria-labelledby="depts">
-        <h2 id="depts" className="mb-3 text-[18px] font-semibold">Departments and heads</h2>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          {depts.map((d) => (
-            <div key={d.id} className="flex flex-col gap-2 rounded-2xl bg-white/70 p-4 dark:bg-white/5">
-              <span className="flex items-center gap-2 font-semibold"><span className="inline-block size-3 rounded" style={{ background: d.color }} />{d.name}</span>
-              <span className="text-[12.5px] text-muted">{members.filter((m) => m.departmentId === d.id).length} people</span>
-              <select aria-label={`Head of ${d.name}`} defaultValue={d.headMemberId ?? ""} disabled={pending} onChange={(e) => start(() => setDepartmentHead(d.id, e.target.value || null))} className="h-9 cursor-pointer rounded-lg border border-black/10 bg-transparent px-2 text-[14px]"><option value="">No head</option>{members.filter((m) => m.departmentId === d.id).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className={card} aria-labelledby="fwd">
-        <h2 id="fwd" className="mb-1 text-[18px] font-semibold">Forwarding</h2>
-        <p className="mb-3 text-[13.5px] text-muted">To a @bupulse.com address: instant, shown as its own folder. To an outside address: free through Cloudflare, once Cloudflare has confirmed that address.</p>
-        <ul className="mb-3 flex flex-col">
-          {forwarders.map((f) => (
-            <li key={f.id} className="flex flex-wrap items-center gap-3 border-t border-black/[0.07] py-2.5 text-[14px] dark:border-white/10">
-              <span className="font-semibold">{f.source}</span><span className="text-muted">→</span><span>{f.target}</span>
-              {f.external && <span className={f.verified ? "rounded-md bg-[#e2f5ea] px-2 py-0.5 text-[12px] font-semibold text-[#11633a]" : "rounded-md bg-[#fff4e5] px-2 py-0.5 text-[12px] font-semibold text-[#8a4b00]"}>{f.verified ? "Confirmed" : "Waiting for Cloudflare"}</span>}
-              {!f.keepCopy && <span className="text-[12.5px] text-muted">no copy kept</span>}
-              <span className="flex-1" />
-              <button type="button" disabled={pending} onClick={() => start(() => toggleForwarder(f.id, !f.enabled))} className="h-8 cursor-pointer rounded-full border border-black/15 px-3 text-[13px]">{f.enabled ? "On" : "Off"}</button>
-              <button type="button" disabled={pending} onClick={() => start(() => removeForwarder(f.id))} className="h-8 cursor-pointer rounded-full px-3 text-[13px] text-[#b42318] hover:bg-[#fdecec]">Remove</button>
-            </li>
-          ))}
-        </ul>
-        <form action={fwdAction} className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <label className={label}>Mail that reaches<input name="source" list="bmail-boxes" required placeholder="grace@bupulse.com" className={input} /></label>
-          <datalist id="bmail-boxes">{mailboxAddresses.map((a) => <option key={a} value={a} />)}</datalist>
-          <label className={label}>Also goes to<input name="target" required placeholder="cyusa@bupulse.com" className={input} /></label>
-          <label className="flex items-center gap-2 self-end pb-3 text-[13.5px]"><input type="checkbox" name="confirmed" className="size-4 accent-[#1f5ae6]" />Outside address is confirmed in Cloudflare</label>
-          <div className="flex items-end"><button disabled={fwdPending} className={btn}>Add rule</button></div>
-          <div className="md:col-span-4"><Note s={fwdState} /></div>
-        </form>
-      </section>
-
-      <section className={card} aria-labelledby="company">
-        <h2 id="company" className="mb-1 text-[18px] font-semibold">Company details in every signature</h2>
-        <p className="mb-3 text-[13.5px] text-muted">Staff cannot change these. Each person adds their own mobile number.</p>
-        <form action={coAction} className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div className={label}><span>Company phone</span><PhoneInput name="companyPhone" defaultValue={company.companyPhone} placeholder="720 123 456" countryLabel="Country" /></div>
-          <label className={label}>Website<input name="website" defaultValue={company.website} className={input} /></label>
-          <label className={`${label} md:col-span-2`}>Address<input name="address" defaultValue={company.address} className={input} /></label>
-          <label className={label}>LinkedIn page<input name="linkedinUrl" defaultValue={company.linkedinUrl} placeholder="linkedin.com/company/bupulse" className={input} /></label>
-          <label className={label}>Instagram<input name="instagramUrl" defaultValue={company.instagramUrl} placeholder="instagram.com/bupulse" className={input} /></label>
-          <label className={label}>Facebook page<input name="facebookUrl" defaultValue={company.facebookUrl} placeholder="facebook.com/bupulse" className={input} /></label>
-          <label className={label}>Button text<input name="ctaText" defaultValue={company.ctaText} className={input} /></label>
-          <label className={`${label} md:col-span-2`}>Button link<input name="ctaUrl" defaultValue={company.ctaUrl} className={input} /></label>
-          <div><button disabled={coPending} className={btn}>Save</button></div>
-          <div className="md:col-span-2"><Note s={coState} /></div>
-        </form>
-      </section>
-      <p className="px-1 text-[12.5px] text-muted">Departments shown: {depts.map((d) => deptName.get(d.id)).join(", ")}.</p>
-    </div>
+      <div aria-live="polite"><Note s={note} /></div>
+    </>
   );
 }

@@ -1,25 +1,38 @@
-import { ConsoleView } from "@/components/mail/console";
+import { UsersView } from "@/components/mail/console";
 import { prisma } from "@/lib/db";
+import { forwardShort, storageSummary } from "@/lib/mail/console-rules";
+import { loadStorage } from "@/lib/mail/console-data";
+import { DAILY_LIMIT, today } from "@/lib/mail/send";
 import { requireMailAdmin } from "@/lib/mail/session";
 
 export const metadata = { title: "Mail console" };
 
-export default async function MailConsolePage() {
+export default async function MailConsoleUsersPage() {
   const me = await requireMailAdmin();
-  const [depts, members, forwarders, settings, boxes] = await Promise.all([
+  const [depts, members, forwarders, settings, storage, sendDay] = await Promise.all([
     prisma.mailDepartment.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, name: true, color: true, headMemberId: true } }),
     prisma.mailMember.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, name: true, email: true, role: true, departmentId: true, quotaMb: true, status: true } }),
-    prisma.mailForwarder.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.mailSettings.findUnique({ where: { id: "default" } }),
-    prisma.mailbox.findMany({ where: { address: { not: null } }, select: { address: true } }),
+    prisma.mailForwarder.findMany({ where: { enabled: true }, orderBy: { createdAt: "asc" }, select: { source: true, target: true, keepCopy: true } }),
+    prisma.mailSettings.findUnique({ where: { id: "default" }, select: { poolMb: true } }),
+    loadStorage(),
+    prisma.mailSendDay.findUnique({ where: { day: today() } }),
   ]);
+  const heads = new Set(depts.map((d) => d.headMemberId).filter(Boolean));
+  const summary = storageSummary(members.map((m) => m.quotaMb), storage.totalBytes, settings?.poolMb ?? 1000);
   return (
-    <ConsoleView
+    <UsersView
       depts={depts}
-      members={members.map((m) => ({ ...m, name: m.name ?? m.email }))}
-      forwarders={forwarders.map((f) => ({ id: f.id, source: f.source, target: f.target, external: f.external, keepCopy: f.keepCopy, enabled: f.enabled, verified: !!f.verifiedAt }))}
-      company={{ companyPhone: settings?.companyPhone ?? "", website: settings?.website ?? "bupulse.com", address: settings?.address ?? "Kigali, Rwanda", linkedinUrl: settings?.linkedinUrl ?? "", instagramUrl: settings?.instagramUrl ?? "", facebookUrl: settings?.facebookUrl ?? "", ctaText: settings?.ctaText ?? "Get your free BuPulse quote", ctaUrl: settings?.ctaUrl ?? "https://bupulse.com/quote" }}
-      mailboxAddresses={boxes.map((b) => b.address!).filter(Boolean)}
+      members={members.map((m) => ({
+        ...m,
+        name: m.name ?? m.email,
+        isHead: heads.has(m.id),
+        usedBytes: storage.byMember[m.id] ?? 0,
+        forwards: forwarders.filter((f) => f.source === m.email).map((f) => forwardShort(f.target, f.keepCopy)).join(", "),
+      }))}
+      summary={summary}
+      admins={members.filter((m) => m.role !== "member").length}
+      sentToday={sendDay?.sent ?? 0}
+      dailyLimit={DAILY_LIMIT}
       isSuper={me.isSuper}
       myEmail={me.email}
     />
