@@ -1,13 +1,13 @@
-import { MailAuthShell, MailSignInForm } from "@/components/mail/auth";
-import { signInMailWithCode } from "../actions";
+import { MailAuthShell, MailSignIn } from "@/components/mail/auth";
+import { signInMailWithCode, signInMailWithPassword } from "../actions";
 
 export const metadata = { title: "Sign in" };
 
-export default function MailSignInPage() {
+export default async function MailSignInPage({ searchParams }: { searchParams: Promise<{ with?: string }> }) {
+  const { with: how } = await searchParams;
   return (
     <MailAuthShell title="Sign in to B Mail" intro="Your BuPulse address and the 6-digit code from your authenticator app.">
-      <MailSignInForm action={signInMailWithCode} />
-      <a href="/login?next=%2Fmail" className="text-center text-[14px] font-semibold text-[#1f5ae6]">Sign in with your password instead</a>
+      <MailSignIn codeAction={signInMailWithCode} passwordAction={signInMailWithPassword} initial={how === "password" ? "password" : "code"} />
     </MailAuthShell>
   );
 }

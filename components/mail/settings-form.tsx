@@ -3,7 +3,8 @@
 import { useActionState, useState } from "react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { cn } from "@/lib/cn";
-import { saveProfile, type ProfileState } from "@/app/mail/(app)/actions";
+import { changeMailPassword, saveProfile, type ProfileState } from "@/app/mail/(app)/actions";
+import { NewPasswordForm } from "./auth";
 
 const BGS = [
   ["kigali-hills", "Kigali hills", "bg-[url(/mail/backgrounds/kigali-hills.svg)] bg-cover bg-bottom"],
@@ -57,5 +58,22 @@ export function SettingsForm({ profile, signatureHtml, companyPhone }: { profile
         {state.error && <span role="alert" className="text-[14px] font-medium text-[#b42318]">{state.error}</span>}
       </div>
     </form>
+  );
+}
+
+/** Password: changed here after signing in with the authenticator (outside the profile form: forms cannot nest). */
+export function PasswordCard() {
+  const [open, setOpen] = useState(false);
+  return (
+    <section id="password" aria-labelledby="pwh" className="rounded-[24px] border border-white/80 bg-white/[0.86] p-6 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.4)] backdrop-blur-2xl dark:border-white/10 dark:bg-[rgba(28,28,34,0.86)]">
+      <div className="flex items-center gap-3">
+        <span className="flex-1">
+          <h2 id="pwh" className="text-[18px] font-semibold">Password and sign-in</h2>
+          <p className="text-[13.5px] text-muted">You sign in with your authenticator code, or your password and then the code.</p>
+        </span>
+        {!open && <button type="button" onClick={() => setOpen(true)} className="h-10 cursor-pointer rounded-full border border-black/15 px-5 text-[14px] font-semibold hover:bg-black/5 dark:border-white/15">Change password</button>}
+      </div>
+      {open && <div className="mt-4 max-w-[420px]"><NewPasswordForm action={changeMailPassword} label="Save new password" /></div>}
+    </section>
   );
 }

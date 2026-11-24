@@ -8,7 +8,7 @@ import { requireMailIdentity } from "@/lib/mail/session";
 
 // The B Mail authenticator steps. Server actions are public POST endpoints: each one checks the person again.
 
-export type CodeState = { error?: string };
+export type CodeState = { error?: string; ok?: string };
 export type EnrollState = { factorId?: string; qr?: string; secret?: string; error?: string; needEmail?: boolean };
 
 const CODE_RULE = { limit: 8, windowSeconds: 10 * 60 };
@@ -122,4 +122,58 @@ export async function signInMailWithCode(_prev: CodeState, formData: FormData): 
     throw e;
   }
   redirect("/mail");
+}
+
+/**
+ * Signing in with the password (a new person with the one-time password from the Mail console, or anyone without
+ * an authenticator yet). Then: the code if they have an authenticator, else choosing their own password (one-time
+ * password) and adding an authenticator. Every wrong address or password gets the same answer.
+ */
+export async function signInMailWithPassword(_prev: CodeState, formData: FormData): Promise<CodeState> {
+  const { isAdminEmail } = await import("@/lib/admin/auth");
+  const { prisma } = await import("@/lib/db");
+  const { canUseMail } = await import("@/lib/mail/access-rules");
+  const { createClient } = await import("@/lib/supabase/server");
+  const { hasTempPassword, nextMailStep } = await import("@/lib/mail/temp-password");
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const wrong = "That address or password did not work.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password) return { error: "Enter your email address and password." };
+  try {
+    await rateLimit(`mail-password:${email}`, CODE_RULE);
+  } catch (e) {
+    if (e instanceof RateLimitError) return { error: tooMany };
+    throw e;
+  }
+  const member = await prisma.mailMember.findUnique({ where: { email }, select: { id: true, role: true, departmentId: true, status: true, mail: true } });
+  if (!canUseMail({ isOwner: isAdminEmail(email), member, grants: [] })) return { error: wrong };
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error || !data.user) return { error: wrong };
+  const { data: factors } = await supabase.auth.mfa.listFactors();
+  const hasTotp = !!factors?.totp?.some((f) => f.status === "verified");
+  const step = nextMailStep({ temp: hasTempPassword(data.user.app_metadata), hasTotp, aal2: false });
+  redirect(`/mail/${step === "ok" ? "verify" : step}`);
+}
+
+/** Choosing their own password after signing in with the one-time password; then the authenticator (or B Mail). */
+export async function setMailPassword(_prev: CodeState, formData: FormData): Promise<CodeState> {
+  const { mailPasswordProblem, TEMP_PASSWORD_KEY } = await import("@/lib/mail/temp-password");
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const { supabase, user, hasTotp, tempPassword, aal } = await requireMailIdentity();
+  if (!tempPassword) redirect("/mail");
+  if (hasTotp && aal?.currentLevel !== "aal2") redirect("/mail/verify");
+  const password = String(formData.get("password") ?? "");
+  const problem = mailPasswordProblem(password, String(formData.get("confirm") ?? ""));
+  if (problem) return { error: problem };
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    if (error.code === "same_password") return { error: "Choose a new password, not the one you were given." };
+    if (error.code === "weak_password") return { error: "That password is too easy to guess. Try a longer one." };
+    if (error.code === "insufficient_aal") redirect("/mail/verify");
+    return { error: "Could not save the password. Please try again." };
+  }
+  const admin = createAdminClient();
+  await admin.auth.admin.updateUserById(user.id, { app_metadata: { [TEMP_PASSWORD_KEY]: false } });
+  redirect(hasTotp ? "/mail" : "/mail/setup");
 }

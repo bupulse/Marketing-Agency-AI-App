@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { isAdminEmail } from "@/lib/admin/auth";
 import { prisma } from "@/lib/db";
 import { createClient } from "@/lib/supabase/server";
+import { hasTempPassword, nextMailStep } from "./temp-password";
 import { canUseMail, isMailAdmin, isSuperAdmin, sendableDepartmentIds, visibleMailboxIds, type Viewer } from "./access-rules";
 
 // The B Mail page and action guard (docs/MAIL_CRM.md "Mail console": the normal BuPulse sign-in plus the authenticator
@@ -25,7 +26,7 @@ export type MailMe = {
   prefs: Record<string, unknown>;
 };
 
-type Gate = { ok: true; me: MailMe } | { ok: false; to: "login" | "no-access" | "verify" | "setup" };
+type Gate = { ok: true; me: MailMe } | { ok: false; to: "login" | "no-access" | "verify" | "setup" | "password" };
 
 async function gate(): Promise<Gate> {
   const supabase = await createClient();
@@ -44,8 +45,8 @@ async function gate(): Promise<Gate> {
 
   const [aal, factors] = await Promise.all([supabase.auth.mfa.getAuthenticatorAssuranceLevel(), supabase.auth.mfa.listFactors()]);
   const hasTotp = !!factors.data?.totp?.some((f) => f.status === "verified");
-  if (!hasTotp) return { ok: false, to: "setup" };
-  if (aal.data?.currentLevel !== "aal2") return { ok: false, to: "verify" };
+  const step = nextMailStep({ temp: hasTempPassword(user.app_metadata), hasTotp, aal2: aal.data?.currentLevel === "aal2" });
+  if (step !== "ok") return { ok: false, to: step };
 
   const [mailboxes, departments] = await Promise.all([
     prisma.mailbox.findMany({ select: { id: true, kind: true, visibility: true, departmentId: true, memberId: true } }),
@@ -104,6 +105,7 @@ export async function requireMailIdentity() {
     aal: aal.data ?? null,
     methods: aal.data?.currentAuthenticationMethods ?? null,
     hasTotp: !!factors.data?.totp?.some((f) => f.status === "verified"),
+    tempPassword: hasTempPassword(user.app_metadata),
   };
 }
 

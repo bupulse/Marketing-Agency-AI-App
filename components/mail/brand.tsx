@@ -1,22 +1,25 @@
 import { cn } from "@/lib/cn";
 
 // The B Mail / B Drive / B CRM lockup (owner, 23 Nov 2026): the BuPulse "B" with its pulse line running all the time
-// (calm loop, stopped for "reduce motion"), then the word, no dot. The B is drawn as an SVG so the pulse can move.
-// TODO: replace these paths with a trace of public/brand/mark.png before launch to match the real mark exactly.
+// (calm loop, stopped for "reduce motion"), then the word, no dot. Traced from public/brand/mark.png (500 x 500: the
+// blue-to-violet pulse line running into the black B) so the pulse can move along the real mark.
+
+const PULSE = "M28 268H178L208 146L266 370L298 248H345";
+const B = "M246 122H390A63 63 0 0 1 390 248M330 248H392A63 63 0 0 1 392 374H296";
 
 export function BMark({ size = 32, className, tone = "ink" }: { size?: number; className?: string; tone?: "ink" | "white" }) {
   const id = `bp-${size}-${tone}`;
   return (
-    <svg width={size} height={size} viewBox="0 0 120 120" aria-hidden className={cn("shrink-0", className)}>
+    <svg width={size} height={size} viewBox="20 100 470 300" aria-hidden className={cn("shrink-0", className)}>
       <defs>
-        <linearGradient id={id} x1="0" x2="1">
-          <stop offset="0" stopColor="#1f5bff" />
-          <stop offset="1" stopColor="#7b5cff" />
+        <linearGradient id={id} gradientUnits="userSpaceOnUse" x1="190" y1="200" x2="290" y2="330">
+          <stop offset="0" stopColor="#0854fd" />
+          <stop offset="1" stopColor="#7654fc" />
         </linearGradient>
       </defs>
-      <path d="M60 26h22a18 18 0 010 36H66M66 62h20a19 19 0 010 38H62" fill="none" stroke={tone === "white" ? "#fff" : "currentColor"} strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M6 64H30L40 36L52 92L62 62H70" fill="none" stroke={`url(#${id})`} strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" opacity="0.16" />
-      <path className="bmail-pulse" d="M6 64H30L40 36L52 92L62 62H70" fill="none" stroke={`url(#${id})`} strokeWidth="11" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="90 60" />
+      <path d={B} fill="none" stroke={tone === "white" ? "#fff" : "currentColor"} strokeWidth="27" strokeLinejoin="round" />
+      <path d={PULSE} fill="none" stroke={`url(#${id})`} strokeWidth="25" strokeLinejoin="miter" strokeMiterlimit="8" opacity="0.28" />
+      <path className="bmail-pulse" d={PULSE} fill="none" stroke={`url(#${id})`} strokeWidth="25" strokeLinejoin="miter" strokeMiterlimit="8" strokeDasharray="420 300" />
     </svg>
   );
 }

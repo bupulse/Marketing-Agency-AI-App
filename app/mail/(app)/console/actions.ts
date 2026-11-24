@@ -9,6 +9,7 @@ import { requireMailAdmin } from "@/lib/mail/session";
 import { toE164 } from "@/lib/phone";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SETUP_GRANT_KEY, setupGrantUntil, suggestPassword } from "@/lib/support/setup-grant";
+import { TEMP_PASSWORD_KEY } from "@/lib/mail/temp-password";
 
 // The Mail console (docs/MAIL_CRM.md "Mail console"): mail admins only. Every action checks again.
 
@@ -42,7 +43,7 @@ export async function createMailUser(_prev: ConsoleState, form: FormData): Promi
 
   const password = suggestPassword((n) => randomInt(n));
   const admin = createAdminClient();
-  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: name }, app_metadata: { [SETUP_GRANT_KEY]: setupGrantUntil() } });
+  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: name }, app_metadata: { [SETUP_GRANT_KEY]: setupGrantUntil(), [TEMP_PASSWORD_KEY]: true } });
   let userId = data.user?.id ?? null;
   if (error) {
     // The login may exist already (a BuPulse account with this address): keep it, and do not change its password.
@@ -60,7 +61,7 @@ export async function createMailUser(_prev: ConsoleState, form: FormData): Promi
   else await prisma.mailbox.create({ data: { address: email, name, kind: "personal", memberId: member.id, sortOrder: 15 } });
   revalidatePath("/mail");
   return userId
-    ? { ok: `${email} is ready. Give ${name.split(" ")[0]} this password once; they add an authenticator at the first sign-in on bupulse.com/mail.`, password }
+    ? { ok: `${email} is ready. Give ${name.split(" ")[0]} this password once; at the first sign-in on bupulse.com/mail (Password tab) they choose their own password, then add an authenticator.`, password }
     : { ok: `${email} is ready. This address already had a BuPulse login: they sign in with it.` };
 }
 
@@ -163,7 +164,7 @@ export async function newMailPassword(memberId: string): Promise<ConsoleState> {
   const password = suggestPassword((n) => randomInt(n));
   const admin = createAdminClient();
   const rows = await prisma.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM auth.users WHERE lower(email) = ${member.email} LIMIT 1`;
-  const grant = { [SETUP_GRANT_KEY]: setupGrantUntil() };
+  const grant = { [SETUP_GRANT_KEY]: setupGrantUntil(), [TEMP_PASSWORD_KEY]: true };
   if (rows[0]) {
     const { error } = await admin.auth.admin.updateUserById(rows[0].id, { password, app_metadata: grant });
     if (error) return { error: "Could not change the password. Please try again." };
@@ -172,5 +173,26 @@ export async function newMailPassword(memberId: string): Promise<ConsoleState> {
     if (error || !data.user) return { error: "Could not create the login. Please try again." };
     await prisma.mailMember.update({ where: { id: memberId }, data: { userId: data.user.id } });
   }
-  return { ok: `New one-time password for ${member.email}. Give it to them once; they sign in at bupulse.com/mail.`, password };
+  return { ok: `New one-time password for ${member.email}. Give it to them once: they sign in at bupulse.com/mail (Password tab) and choose their own.`, password };
+}
+
+/**
+ * A lost phone: removes the person's authenticator so they add a new one at the next sign-in (with the 7-day
+ * permission instead of an emailed code). Mail admins may do it for members; only a super admin for an admin or a
+ * super admin. Nobody resets their own (that would let a stolen session drop the second step).
+ */
+export async function resetMailAuthenticator(memberId: string): Promise<ConsoleState> {
+  const me = await requireMailAdmin();
+  const member = await prisma.mailMember.findUnique({ where: { id: memberId }, select: { email: true, role: true } });
+  if (!member) return { error: "Not found." };
+  if (member.email === me.email) return { error: "You cannot reset your own authenticator. Ask another admin." };
+  if (member.role !== "member" && !me.isSuper) return { error: "Only a super admin can reset an admin's authenticator." };
+  const rows = await prisma.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM auth.users WHERE lower(email) = ${member.email} LIMIT 1`;
+  if (!rows[0]) return { error: "This person has no login yet. Use New password." };
+  const admin = createAdminClient();
+  const { data, error } = await admin.auth.admin.mfa.listFactors({ userId: rows[0].id });
+  if (error) return { error: "Could not reach the sign-in service. Please try again." };
+  for (const f of data?.factors ?? []) await admin.auth.admin.mfa.deleteFactor({ userId: rows[0].id, id: f.id });
+  await admin.auth.admin.updateUserById(rows[0].id, { app_metadata: { [SETUP_GRANT_KEY]: setupGrantUntil() } });
+  return { ok: `${member.email} adds a new authenticator at the next sign-in (within 7 days).` };
 }

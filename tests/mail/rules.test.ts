@@ -83,3 +83,27 @@ describe("composer html", () => {
     expect(sanitizeComposerHtml("<ul><li>a</li></ul><blockquote>q</blockquote><div><br></div>")).toBe("<ul><li>a</li></ul><blockquote>q</blockquote><div><br></div>");
   });
 });
+
+import { hasTempPassword, mailPasswordProblem, nextMailStep, TEMP_PASSWORD_KEY } from "@/lib/mail/temp-password";
+
+describe("first sign-in with a one-time password", () => {
+  it("reads the flag only when it is exactly true", () => {
+    expect(hasTempPassword({ [TEMP_PASSWORD_KEY]: true })).toBe(true);
+    expect(hasTempPassword({ [TEMP_PASSWORD_KEY]: false })).toBe(false);
+    expect(hasTempPassword({ [TEMP_PASSWORD_KEY]: "true" })).toBe(false);
+    expect(hasTempPassword(null)).toBe(false);
+  });
+  it("orders the steps: own password, then authenticator; code before a password change", () => {
+    expect(nextMailStep({ temp: true, hasTotp: false, aal2: false })).toBe("password");
+    expect(nextMailStep({ temp: false, hasTotp: false, aal2: false })).toBe("setup");
+    expect(nextMailStep({ temp: true, hasTotp: true, aal2: false })).toBe("verify");
+    expect(nextMailStep({ temp: true, hasTotp: true, aal2: true })).toBe("password");
+    expect(nextMailStep({ temp: false, hasTotp: true, aal2: true })).toBe("ok");
+  });
+  it("checks the new password", () => {
+    expect(mailPasswordProblem("short1", "short1")).toMatch(/10 characters/);
+    expect(mailPasswordProblem("onlyletterslong", "onlyletterslong")).toMatch(/letter and one number/);
+    expect(mailPasswordProblem("goodpassword1", "goodpassword2")).toMatch(/not the same/);
+    expect(mailPasswordProblem("goodpassword1", "goodpassword1")).toBeNull();
+  });
+});

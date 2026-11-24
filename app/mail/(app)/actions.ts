@@ -7,6 +7,7 @@ import { parseAddressList, type Addr } from "@/lib/mail/addresses";
 import { actOnThreads, type ThreadAction } from "@/lib/mail/queries";
 import { deliverDue, queueMessage, undoSend, UNDO_SECONDS } from "@/lib/mail/send";
 import { requireMail } from "@/lib/mail/session";
+import { rateLimit } from "@/lib/rate-limit";
 
 // B Mail's server actions. Each one checks the person again (requireMail): server actions are public POST endpoints.
 
@@ -89,4 +90,27 @@ export async function saveProfile(_prev: ProfileState, form: FormData): Promise<
   }
   revalidatePath("/mail");
   return { ok: "Saved." };
+}
+
+/** Changing the password from Settings (signed in with the authenticator code, so the session is AAL2). */
+export async function changeMailPassword(_prev: { error?: string; ok?: string }, formData: FormData): Promise<{ error?: string; ok?: string }> {
+  const { mailPasswordProblem } = await import("@/lib/mail/temp-password");
+  const { createClient } = await import("@/lib/supabase/server");
+  const me = await requireMail();
+  const password = String(formData.get("password") ?? "");
+  const problem = mailPasswordProblem(password, String(formData.get("confirm") ?? ""));
+  if (problem) return { error: problem };
+  try {
+    await rateLimit(`mail-change-password:${me.userId}`, { limit: 5, windowSeconds: 600 });
+  } catch {
+    return { error: "Too many tries. Wait a few minutes and try again." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    if (error.code === "same_password") return { error: "That is already your password. Choose a new one." };
+    if (error.code === "weak_password") return { error: "That password is too easy to guess. Try a longer one." };
+    return { error: "Could not save the password. Please try again." };
+  }
+  return { ok: "Password changed. Use it next time you sign in with your password." };
 }

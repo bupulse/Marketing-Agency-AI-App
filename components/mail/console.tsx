@@ -3,7 +3,7 @@
 import { useActionState, useTransition } from "react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { useState } from "react";
-import { addForwarder, createMailUser, newMailPassword, removeForwarder, saveCompany, setDepartmentHead, toggleForwarder, updateMailUser, type ConsoleState } from "@/app/mail/(app)/console/actions";
+import { addForwarder, createMailUser, newMailPassword, resetMailAuthenticator, removeForwarder, saveCompany, setDepartmentHead, toggleForwarder, updateMailUser, type ConsoleState } from "@/app/mail/(app)/console/actions";
 
 type Dept = { id: string; name: string; color: string; headMemberId: string | null };
 type Member = { id: string; name: string; email: string; role: string; departmentId: string | null; quotaMb: number; status: string };
@@ -32,6 +32,7 @@ export function ConsoleView({ depts, members, forwarders, company, mailboxAddres
   const [coState, coAction, coPending] = useActionState<ConsoleState, FormData>(saveCompany, {});
   const [editResult, edit] = useActionState<ConsoleState, FormData>(updateMailUser, {});
   const [pending, start] = useTransition();
+  const [authFor, setAuthFor] = useState<string | null>(null);
   const [pwFor, setPwFor] = useState<string | null>(null);
   const [pwState, setPwState] = useState<ConsoleState>({});
   const deptName = new Map(depts.map((d) => [d.id, d.name]));
@@ -69,7 +70,15 @@ export function ConsoleView({ depts, members, forwarders, company, mailboxAddres
                       <select name="status" defaultValue={m.status === "suspended" ? "suspended" : "active"} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="h-9 cursor-pointer rounded-lg border border-black/10 bg-transparent px-2"><option value="active">{m.status === "invited" ? "Invited" : "Active"}</option><option value="suspended">Suspended</option></select>
                     </form>
                   </td>
-                  <td className="pr-1 text-right">
+                  <td className="whitespace-nowrap pr-1 text-right">
+                    {m.email !== myEmail && (isSuper || m.role === "member") && (authFor === m.id ? (
+                      <span className="mr-1 inline-flex items-center gap-1">
+                        <button type="button" disabled={pending} onClick={() => start(async () => { setPwState(await resetMailAuthenticator(m.id)); setAuthFor(null); })} className="h-8 cursor-pointer rounded-full bg-[#b42318] px-3 text-[12.5px] font-semibold text-white">Yes, reset</button>
+                        <button type="button" onClick={() => setAuthFor(null)} className="h-8 cursor-pointer rounded-full px-3 text-[12.5px]">Cancel</button>
+                      </span>
+                    ) : (
+                      <button type="button" title="Lost phone: they add a new authenticator at the next sign-in" onClick={() => setAuthFor(m.id)} className="mr-1 h-8 cursor-pointer rounded-full border border-black/15 px-3 text-[12.5px] font-medium hover:bg-black/5">Reset authenticator</button>
+                    ))}
                     {isSuper && (pwFor === m.id ? (
                       <span className="inline-flex items-center gap-1">
                         <button type="button" disabled={pending} onClick={() => start(async () => { setPwState(await newMailPassword(m.id)); setPwFor(null); })} className="h-8 cursor-pointer rounded-full bg-[#b42318] px-3 text-[12.5px] font-semibold text-white">Yes, new password</button>
