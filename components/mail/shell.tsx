@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Archive, CornerUpRight, File, Inbox, LayoutGrid, Menu, Moon, OctagonAlert, Pencil, Search, Send, Shuffle, SlidersHorizontal, Star, Sun, Tag, Trash2, X } from "lucide-react";
 import { useTheme } from "@/components/theme";
 import { cn } from "@/lib/cn";
+import { mailAppPath } from "@/lib/platform/app-hosts";
 import { glassStyle, MAIL_BACKGROUNDS, PHOTO_BACKGROUND, RANDOM_BACKGROUND, resolveBackground, swatchCss, type PhotoCredit } from "@/lib/mail/backgrounds";
 import { BLockup } from "./brand";
 import { NewMailNotices } from "./notices";
@@ -102,7 +103,8 @@ export function MailShell({ data, children }: { data: ShellData; children: React
   const [undo, setUndo] = useState<{ id: string; left: number; count: number } | null>(null);
   const [glass, setGlass] = useState(data.glass);
   const router = useRouter();
-  const path = usePathname();
+  // On mail.bupulse.com the address is clean ("/settings"); the menu compares app paths ("/mail/settings").
+  const path = mailAppPath(usePathname());
   const sp = useSearchParams();
   const box = sp.get("box") ?? "all";
   const folder = sp.get("folder") ?? "inbox";
@@ -222,7 +224,7 @@ export function MailShell({ data, children }: { data: ShellData; children: React
           <span className="flex-1" />
           <button type="button" aria-label="Switch light and dark" onClick={() => setTheme(dark ? "light" : "dark")} className="inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10">{dark ? <Sun className="size-5" /> : <Moon className="size-5" />}</button>
           <button type="button" aria-label="Quick settings" aria-expanded={panel} onClick={() => setPanel((v) => !v)} className={cn("inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10", panel && "bg-black/[0.07] dark:bg-white/10")}><SlidersHorizontal className="size-5" /></button>
-          <Link href="/apps" aria-label="BuPulse services" title="BuPulse services" className="inline-flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-black/5 max-sm:hidden dark:hover:bg-white/10"><LayoutGrid className="size-5" /></Link>
+          <a href="/apps" aria-label="BuPulse services" title="BuPulse services" className="inline-flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-black/5 max-sm:hidden dark:hover:bg-white/10"><LayoutGrid className="size-5" /></a>
           <AccountMenu name={data.me.name} email={data.me.email} initial={data.me.initial} isAdmin={data.me.isAdmin} role={data.me.role} photo={data.me.photo} />
         </header>
 

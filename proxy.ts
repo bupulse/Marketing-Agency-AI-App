@@ -86,8 +86,8 @@ export async function proxy(request: NextRequest) {
   const signedIn = Boolean(data?.claims?.sub);
 
   const kind = support ? "support" : hostKind(host);
-  // The support app is never indexed, on its own host or at /support; nor are the Marketing and admin hosts.
-  if (support || isSupportPath(path) || kind === "marketing" || kind === "admin") response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  // The support app is never indexed, on its own host or at /support; nor are the Marketing, admin and Mail hosts.
+  if (support || isSupportPath(path) || kind === "marketing" || kind === "admin" || kind === "mail") response.headers.set("X-Robots-Tag", "noindex, nofollow");
 
   if (kind === "marketing" && !signedIn) {
     // Signed out on the Marketing host: the one client sign-in on bupulse.com, back to this clean address afterwards
@@ -139,7 +139,7 @@ function leaveToBrowser() {
 
 function noindexOnApp(response: NextResponse, host: string | null) {
   const kind = hostKind(host);
-  if (kind === "marketing" || kind === "admin") response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  if (kind === "marketing" || kind === "admin" || kind === "mail") response.headers.set("X-Robots-Tag", "noindex, nofollow");
   return response;
 }
 
