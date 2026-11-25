@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, useTransition, type Ref } from "react";
-import { Bold, ChevronDown, Eraser, Forward, Italic, Link2, List, ListOrdered, Loader2, Maximize2, Minimize2, Minus, Paperclip, Quote, Reply, ReplyAll, Trash2, Type, Underline, X } from "lucide-react";
+import { ChevronDown, Forward, Link2, Loader2, Maximize2, Minimize2, Minus, Paperclip, Reply, ReplyAll, Trash2, Type, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -12,6 +12,7 @@ import type { ReplyMode } from "@/lib/mail/compose-rules";
 import { attachmentProblem, fileSize, isDraftEmpty, MAIL_BUCKET_NAME, type ComposeAttachment, type ComposeInit, type ComposeMode } from "@/lib/mail/draft-rules";
 import { FIRST_NAME, personalRecipients, splitTokens } from "@/lib/mail/personal";
 import type { AddressBook } from "@/lib/mail/suggest";
+import { FormatBar, formatShortcut } from "./format-bar";
 import { RecipientInput } from "./recipients";
 import { useMail } from "./shell";
 
@@ -59,7 +60,7 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
   const [quote, setQuote] = useState(init.quote);
   const [showQuote, setShowQuote] = useState(false);
   const [modeMenu, setModeMenu] = useState(false);
-  const [toolbar, setToolbar] = useState(false); // Gmail: formatting bar hidden until the A button
+  const [toolbar, setToolbar] = useState(true); // owner 25 Nov 2026: the formatting bar is needed, so it shows from the start
   const [error, setError] = useState<string | null>(null);
   const [min, setMin] = useState(false);
   const [big, setBig] = useState(false);
@@ -267,14 +268,17 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
   return (
     <section
       aria-label={title}
-      onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); send(); } }}
+      onKeyDown={(e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); send(); return; }
+        if (editor.current?.contains(e.target as Node)) formatShortcut(e, cmd);
+      }}
       onDragOver={(e) => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); setDrag(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrag(false); }}
       onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDrag(false); attach([...e.dataTransfer.files]); } }}
       className={cn(
         "bmail-pop bmail-compose flex flex-col [&>*]:shrink-0 bg-white text-text dark:bg-[#1f1f24]",
         inline
-          ? "relative overflow-hidden rounded-[18px] border border-black/[0.08] shadow-[0_20px_50px_-30px_rgba(15,23,42,0.45)] dark:border-white/10"
+          ? "relative rounded-[18px] border border-black/[0.08] shadow-[0_20px_50px_-30px_rgba(15,23,42,0.45)] dark:border-white/10"
           : "shadow-[0_8px_10px_1px_rgba(0,0,0,0.14),0_3px_14px_2px_rgba(0,0,0,0.12)]",
         !inline && (big ? "fixed inset-4 z-50 overflow-y-auto overscroll-contain rounded-xl md:inset-x-[10%] md:inset-y-8" : cn("fixed bottom-0 right-6 z-50 max-h-[calc(100dvh-12px)] overflow-y-auto overscroll-contain rounded-t-xl max-md:inset-x-0 max-md:right-0 max-md:w-full", min ? "w-[280px]" : "w-[min(560px,calc(100vw-2rem))]")),
       )}
@@ -402,21 +406,8 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
           </div>
           <div aria-hidden onClick={focusEnd} className={cn("cursor-text", big ? "min-h-6 flex-1" : "min-h-6")} />
           {error && <p role="alert" className="mx-4 mb-2 rounded-xl bg-[#fdecec] px-4 py-2.5 text-[13.5px] font-medium text-[#b42318]">{error}</p>}
-          <div className="sticky bottom-0 z-10 bg-white dark:bg-[#1f1f24]">
-            {toolbar && (
-              <div role="toolbar" aria-label="Formatting" className="mx-3 mt-1 flex flex-wrap items-center gap-0.5 rounded-lg bg-white px-1 py-0.5 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_1px_3px_1px_rgba(0,0,0,0.15)] dark:bg-[#2a2a31]">
-                <button type="button" aria-label="Bold" title="Bold (⌘B)" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("bold")} className={fb}><Bold className="size-4" /></button>
-                <button type="button" aria-label="Italic" title="Italic (⌘I)" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("italic")} className={fb}><Italic className="size-4" /></button>
-                <button type="button" aria-label="Underline" title="Underline (⌘U)" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("underline")} className={fb}><Underline className="size-4" /></button>
-                <span aria-hidden className="mx-1.5 h-5 w-px bg-black/15 dark:bg-white/15" />
-                <button type="button" aria-label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("insertUnorderedList")} className={fb}><List className="size-4" /></button>
-                <button type="button" aria-label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("insertOrderedList")} className={fb}><ListOrdered className="size-4" /></button>
-                <button type="button" aria-label="Quote" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("formatBlock", "blockquote")} className={fb}><Quote className="size-4" /></button>
-                <button type="button" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={link} className={fb}><Link2 className="size-4" /></button>
-                <span aria-hidden className="mx-1.5 h-5 w-px bg-black/15 dark:bg-white/15" />
-                <button type="button" aria-label="Clear formatting" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("removeFormat")} className={fb}><Eraser className="size-4" /></button>
-              </div>
-            )}
+          <div className="sticky bottom-0 z-10 rounded-b-[inherit] bg-white dark:bg-[#1f1f24]">
+            {toolbar && <FormatBar cmd={cmd} link={link} editor={editor} />}
             <footer className="flex flex-wrap items-center gap-0.5 px-4 pb-3 pt-2">
               <button type="button" disabled={pending || uploads.length > 0} onClick={send} title={`⌘ Enter${groupSend ? "" : ` · ${data.sendsLeft} sends left today`}`} className="mr-2 h-9 cursor-pointer rounded-full bg-[#0b57d0] px-6 text-[14px] font-medium text-white transition hover:bg-[#0a4fbd] hover:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-60">
                 {pending ? "Sending…" : groupSend && n > 0 ? `Send ${n} email${n === 1 ? "" : "s"}` : "Send"}
