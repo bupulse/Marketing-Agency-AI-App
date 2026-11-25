@@ -66,6 +66,10 @@ describe("where the chat mounts", () => {
     expect(chatSurface("/dashboard/connections")).toBe("dashboard");
     expect(chatSurface("/creator")).toBe("creator");
     expect(chatSurface("/creator/campaigns/1")).toBe("creator");
+    // B Mail on its own host: clean paths ("/" is the inbox), never the chat (owner 25 Nov 2026).
+    expect(chatSurface("/", "mail.bupulse.com")).toBeNull();
+    expect(chatSurface("/settings", "mail.bupulse.com")).toBeNull();
+    expect(chatSurface("/mail", "bupulse.com")).toBeNull();
   });
 
   it("never on Admin, the support app, bio pages, the chat page, the website-chat frame or the TV screen", () => {
