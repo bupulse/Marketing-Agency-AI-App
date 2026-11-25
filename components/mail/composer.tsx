@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, useTransition, type Ref } from "react";
-import { Bold, ChevronDown, Eraser, Forward, Italic, Link2, List, ListOrdered, Loader2, Maximize2, Minus, Paperclip, Quote, Reply, ReplyAll, Trash2, Type, Underline, X } from "lucide-react";
+import { Bold, ChevronDown, Eraser, Forward, Italic, Link2, List, ListOrdered, Loader2, Maximize2, Minimize2, Minus, Paperclip, Quote, Reply, ReplyAll, Trash2, Type, Underline, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -59,7 +59,7 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
   const [quote, setQuote] = useState(init.quote);
   const [showQuote, setShowQuote] = useState(false);
   const [modeMenu, setModeMenu] = useState(false);
-  const [toolbar, setToolbar] = useState(true);
+  const [toolbar, setToolbar] = useState(false); // Gmail: formatting bar hidden until the A button
   const [error, setError] = useState<string | null>(null);
   const [min, setMin] = useState(false);
   const [big, setBig] = useState(false);
@@ -254,8 +254,11 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
     });
   };
 
-  const field = "flex min-h-[46px] items-center gap-3 border-b border-black/[0.08] px-5 text-[14.5px] dark:border-white/10";
-  const title = mode === "reply" ? "Reply" : mode === "all" ? "Reply all" : mode === "forward" ? "Forward" : init.draftId ? "Draft" : "New message";
+  // Gmail look (owner 25 Nov 2026): thin lines inset 16px, small grey labels, Subject as a placeholder.
+  const field = "mx-4 flex min-h-[40px] items-center gap-2 border-b border-[#e3e3e3] text-[14px] dark:border-white/10";
+  const hb = "inline-flex size-7 cursor-pointer items-center justify-center rounded text-[#444746] hover:bg-black/[0.08] dark:text-white/80 dark:hover:bg-white/10";
+  const fb = "inline-flex size-9 cursor-pointer items-center justify-center rounded-full text-[#444746] hover:bg-black/[0.07] dark:text-white/80 dark:hover:bg-white/10";
+  const title = mode === "reply" ? "Reply" : mode === "all" ? "Reply all" : mode === "forward" ? "Forward" : init.draftId ? "Draft" : "New Message";
   const tb = "inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-[#2c2c30] hover:bg-black/[0.07] dark:text-white/85 dark:hover:bg-white/10";
   const n = personal?.length ?? 0;
   const saveLabel = saveState === "saving" ? "Saving…" : saveState === "saved" ? "Draft saved" : saveState === "error" ? "Not saved yet" : "";
@@ -269,8 +272,11 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrag(false); }}
       onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDrag(false); attach([...e.dataTransfer.files]); } }}
       className={cn(
-        "bmail-pop flex flex-col border border-white/90 [&>*]:shrink-0 bg-white/95 text-text shadow-[0_40px_90px_-40px_rgba(15,23,42,0.55),0_2px_6px_rgba(15,23,42,0.06)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#1c1c22]/95",
-        inline ? "relative overflow-hidden rounded-[18px]" : big ? "fixed inset-4 z-50 overflow-y-auto overscroll-contain rounded-[22px] md:inset-x-[10%] md:inset-y-8" : "fixed bottom-0 right-4 z-50 max-h-[calc(100dvh-12px)] w-[min(680px,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-t-[22px] max-md:inset-x-0 max-md:right-0 max-md:w-full",
+        "bmail-pop bmail-compose flex flex-col [&>*]:shrink-0 bg-white text-text dark:bg-[#1f1f24]",
+        inline
+          ? "relative overflow-hidden rounded-[18px] border border-black/[0.08] shadow-[0_20px_50px_-30px_rgba(15,23,42,0.45)] dark:border-white/10"
+          : "shadow-[0_8px_10px_1px_rgba(0,0,0,0.14),0_3px_14px_2px_rgba(0,0,0,0.12)]",
+        !inline && (big ? "fixed inset-4 z-50 overflow-y-auto overscroll-contain rounded-xl md:inset-x-[10%] md:inset-y-8" : cn("fixed bottom-0 right-6 z-50 max-h-[calc(100dvh-12px)] overflow-y-auto overscroll-contain rounded-t-xl max-md:inset-x-0 max-md:right-0 max-md:w-full", min ? "w-[280px]" : "w-[min(560px,calc(100vw-2rem))]")),
       )}
     >
       {inline ? (
@@ -298,35 +304,35 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
           <button type="button" aria-label="Close" onClick={close} className={tb}><X className="size-4" /></button>
         </header>
       ) : (
-        <header className="sticky top-0 z-20 flex items-center gap-1 rounded-t-[inherit] bg-[rgb(242,244,250)] py-2.5 pl-5 pr-2.5 dark:bg-[#26262d]">
-          <h2 className="flex-1 text-[15px] font-semibold">{title}</h2>
-          <button type="button" aria-label="Minimise" onClick={() => setMin((v) => !v)} className={tb}><Minus className="size-4" /></button>
-          <button type="button" aria-label="Full screen" onClick={() => setBig((v) => !v)} className={tb}><Maximize2 className="size-4" /></button>
-          <button type="button" aria-label="Close" onClick={close} className={tb}><X className="size-4" /></button>
+        <header onClick={() => setMin((v) => !v)} className="sticky top-0 z-20 flex h-10 cursor-pointer select-none items-center gap-0.5 rounded-t-[inherit] bg-[#f2f6fc] pl-4 pr-2 dark:bg-[#2a2a31]">
+          <h2 className="flex-1 truncate text-[14px] font-medium text-[#041e49] dark:text-white">{title}</h2>
+          <button type="button" aria-label={min ? "Open" : "Minimise"} onClick={(e) => { e.stopPropagation(); setMin((v) => !v); }} className={hb}><Minus className="size-4" /></button>
+          <button type="button" aria-label={big ? "Exit full screen" : "Full screen"} onClick={(e) => { e.stopPropagation(); setMin(false); setBig((v) => !v); }} className={hb}>{big ? <Minimize2 className="size-[15px]" /> : <Maximize2 className="size-[15px]" />}</button>
+          <button type="button" aria-label="Save and close" title="Save and close" onClick={(e) => { e.stopPropagation(); close(); }} className={hb}><X className="size-[17px]" /></button>
         </header>
       )}
       {!min && (
         <>
-          {!inline && (
-            <label className={field}><span className="w-14 text-muted">From</span>
+          {!inline && data.sendFrom.length > 1 && (
+            <label className={field}><span className="shrink-0 text-[#444746] dark:text-white/60">From</span>
               <select value={from} onChange={(e) => { setFrom(e.target.value); touch(); }} className="min-w-0 flex-1 cursor-pointer bg-transparent font-medium outline-none">
                 {data.sendFrom.map((s) => <option key={s.id} value={s.id}>{s.label} &lt;{s.address}&gt;</option>)}
               </select>
             </label>
           )}
           <div className={cn(field, "relative")}>
-            <label htmlFor={`c-to-${inline ? "r" : "n"}`} className="w-14 text-muted">To</label>
+            <label htmlFor={`c-to-${inline ? "r" : "n"}`} className="shrink-0 text-[#444746] dark:text-white/60">To</label>
             <RecipientInput id={`c-to-${inline ? "r" : "n"}`} value={to} onChange={(v) => { setTo(v); touch(); }} book={book} departments={allowDepartments} autoFocus={!init.draftId && (!init.mode || init.mode === "new" || init.mode === "forward")} placeholder={allowDepartments && book?.departments.length ? "Type a name, address or department" : "Type a name or address"} />
-            {!showCc && !groupSend && <button type="button" onClick={() => setShowCc(true)} className="cursor-pointer text-[13.5px] text-[#1f5ae6]">Cc Bcc</button>}
+            {!showCc && !groupSend && <button type="button" onClick={() => setShowCc(true)} className="shrink-0 cursor-pointer text-[14px] text-[#444746] hover:underline dark:text-white/60">Cc Bcc</button>}
           </div>
           {showCc && !groupSend && (
             <>
-              <div className={field}><label htmlFor={`c-cc-${inline ? "r" : "n"}`} className="w-14 text-muted">Cc</label><RecipientInput id={`c-cc-${inline ? "r" : "n"}`} value={cc} onChange={(v) => { setCc(v); touch(); }} book={book} /></div>
-              <div className={field}><label htmlFor={`c-bcc-${inline ? "r" : "n"}`} className="w-14 text-muted">Bcc</label><RecipientInput id={`c-bcc-${inline ? "r" : "n"}`} value={bcc} onChange={(v) => { setBcc(v); touch(); }} book={book} /></div>
+              <div className={field}><label htmlFor={`c-cc-${inline ? "r" : "n"}`} className="shrink-0 text-[#444746] dark:text-white/60">Cc</label><RecipientInput id={`c-cc-${inline ? "r" : "n"}`} value={cc} onChange={(v) => { setCc(v); touch(); }} book={book} /></div>
+              <div className={field}><label htmlFor={`c-bcc-${inline ? "r" : "n"}`} className="shrink-0 text-[#444746] dark:text-white/60">Bcc</label><RecipientInput id={`c-bcc-${inline ? "r" : "n"}`} value={bcc} onChange={(v) => { setBcc(v); touch(); }} book={book} /></div>
             </>
           )}
           {groupSend && (
-            <div className="mx-5 mt-2.5 flex flex-wrap items-center gap-3 rounded-[14px] bg-[rgba(31,90,230,0.07)] px-3.5 py-3 text-[13.5px] dark:bg-[rgba(122,162,255,0.12)]">
+            <div className="mx-4 mt-2.5 flex flex-wrap items-center gap-3 rounded-[14px] bg-[rgba(31,90,230,0.07)] px-3.5 py-3 text-[13.5px] dark:bg-[rgba(122,162,255,0.12)]">
               {personal && n > 0 && (
                 <span className="inline-flex" aria-hidden>
                   {personal.slice(0, 4).map((p, i) => <span key={p.address} className={cn("inline-flex size-[26px] items-center justify-center rounded-full text-[11px] font-semibold text-white shadow-[0_0_0_2px_#fff] dark:shadow-[0_0_0_2px_#1c1c22]", i > 0 && "-ml-1.5")} style={{ background: tint(p.address) }}>{p.firstName[0]?.toUpperCase()}</span>)}
@@ -352,25 +358,11 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
             </div>
           )}
           {(!inline || mode === "forward") && (
-            <div className={cn(field, groupSend && "border-t-0")}><label htmlFor={`c-sub-${inline ? "r" : "n"}`} className="w-14 text-muted">Subject</label><input id={`c-sub-${inline ? "r" : "n"}`} value={subject} onChange={(e) => { setSubject(e.target.value); touch(); }} className="min-w-0 flex-1 bg-transparent font-medium outline-none" /></div>
-          )}
-          {toolbar && (
-            <div role="toolbar" aria-label="Formatting" className="flex flex-wrap items-center gap-0.5 border-b border-black/[0.08] px-3 py-1.5 dark:border-white/10">
-              <button type="button" aria-label="Bold" title="Bold (⌘B)" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("bold")} className={tb}><Bold className="size-[17px]" /></button>
-              <button type="button" aria-label="Italic" title="Italic (⌘I)" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("italic")} className={tb}><Italic className="size-[17px]" /></button>
-              <button type="button" aria-label="Underline" title="Underline (⌘U)" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("underline")} className={tb}><Underline className="size-[17px]" /></button>
-              <span aria-hidden className="mx-1.5 h-5 w-px bg-black/15 dark:bg-white/15" />
-              <button type="button" aria-label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("insertUnorderedList")} className={tb}><List className="size-[17px]" /></button>
-              <button type="button" aria-label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("insertOrderedList")} className={tb}><ListOrdered className="size-[17px]" /></button>
-              <button type="button" aria-label="Quote" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("formatBlock", "blockquote")} className={tb}><Quote className="size-[17px]" /></button>
-              <button type="button" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={link} className={tb}><Link2 className="size-[17px]" /></button>
-              <span aria-hidden className="mx-1.5 h-5 w-px bg-black/15 dark:bg-white/15" />
-              <button type="button" aria-label="Clear formatting" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("removeFormat")} className={tb}><Eraser className="size-[17px]" /></button>
-            </div>
+            <div className={cn(field, groupSend && "border-t-0")}><label htmlFor={`c-sub-${inline ? "r" : "n"}`} className="sr-only">Subject</label><input id={`c-sub-${inline ? "r" : "n"}`} value={subject} placeholder="Subject" onChange={(e) => { setSubject(e.target.value); touch(); }} className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#444746] dark:placeholder:text-white/60" /></div>
           )}
           <div className={cn("flex flex-col", big ? "flex-1" : "min-h-[200px]")}>
             {groupSend && (
-              <p className="px-5 pt-4 text-[15px]">
+              <p className="px-4 pt-3 text-[14px]">
                 <span className="inline-flex h-[26px] items-center rounded-lg bg-[#fdf0d9] px-2.5 text-[13.5px] font-semibold text-[#7d4c00]">Hello {FIRST_NAME},</span>{" "}
                 <span className="text-[12.5px] text-muted">added for each person</span>
               </p>
@@ -386,18 +378,18 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
               data-placeholder="Write your message"
               onInput={() => { setBodyVersion((v) => v + 1); touch(); }}
               onPaste={(e) => { const list = [...e.clipboardData.files]; if (list.length) { e.preventDefault(); attach(list); } }}
-              className={cn("bmail-editor w-full px-5 text-[15px] leading-relaxed outline-none [&_a]:text-[#1f5ae6] [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-[#d1d5db] [&_blockquote]:pl-3 [&_blockquote]:text-[#3c3c43] [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-6", groupSend ? "pt-2" : "pt-4", "min-h-[72px]")}
+              className={cn("bmail-editor w-full px-4 text-[14px] leading-relaxed outline-none [&_a]:text-[#1f5ae6] [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-[#d1d5db] [&_blockquote]:pl-3 [&_blockquote]:text-[#3c3c43] [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-6", groupSend ? "pt-2" : "pt-3", "min-h-[72px]")}
             />
             {(files.length > 0 || uploads.length > 0) && (
-              <div aria-label="Attachments" className="flex flex-wrap gap-2 px-5 pb-2 pt-1">
+              <div aria-label="Attachments" className="flex flex-wrap gap-2 px-4 pb-2 pt-1">
                 {files.map((f) => <FileCard key={f.id} name={f.filename} note={`${fileSize(f.size)}${f.forwarded ? " · forwarded" : ""}`} onRemove={() => removeFile(f)} />)}
                 {uploads.map((u) => <FileCard key={u.key} name={u.name} note={`${fileSize(u.size)} · uploading…`} busy />)}
               </div>
             )}
             {/* The signature sits right under the words, as one message (owner 24 Nov: "make it united"); it is added when the email goes out. */}
-            <div aria-label="Your signature (added when you send)" title="Your signature: change it in Settings" onClick={(e) => { e.preventDefault(); focusEnd(); }} className="cursor-text px-5 pb-2 pt-1 text-[14px] opacity-90" dangerouslySetInnerHTML={{ __html: data.signatureHtml }} />
+            <div aria-label="Your signature (added when you send)" title="Your signature: change it in Settings" onClick={(e) => { e.preventDefault(); focusEnd(); }} className="cursor-text px-4 pb-2 pt-1 text-[14px] opacity-90" dangerouslySetInnerHTML={{ __html: data.signatureHtml }} />
             {quote && (
-              <div className="px-5 pb-3">
+              <div className="px-4 pb-3">
                 <button type="button" onClick={() => setShowQuote((v) => !v)} aria-expanded={showQuote} aria-label={showQuote ? "Hide the earlier message" : "Show the earlier message"} className="inline-flex h-[18px] w-[34px] cursor-pointer items-center justify-center rounded-md bg-[#e8eaef] text-[14px] font-extrabold leading-none tracking-[1px] text-[#3c3c43] hover:bg-[#dcdfe6]">···</button>
                 {showQuote && (
                   <div className="bmail-rise mt-3 text-[14px] leading-relaxed text-[#3c3c43] dark:text-white/70">
@@ -409,20 +401,36 @@ export function Composer({ init, onClose, inline = false, onModeChange, ref }: {
             )}
           </div>
           <div aria-hidden onClick={focusEnd} className={cn("cursor-text", big ? "min-h-6 flex-1" : "min-h-6")} />
-          {error && <p role="alert" className="mx-5 mb-2 rounded-xl bg-[#fdecec] px-4 py-2.5 text-[13.5px] font-medium text-[#b42318]">{error}</p>}
-          <footer className="sticky bottom-0 z-10 flex flex-wrap items-center gap-1.5 border-t border-black/[0.08] bg-[#fbfbfd] px-4 py-3 dark:border-white/10 dark:bg-[#202027]">
-            <button type="button" disabled={pending || uploads.length > 0} onClick={send} className="h-11 cursor-pointer rounded-full bg-[#1f5ae6] px-6 text-[15px] font-semibold text-white shadow-[0_8px_20px_-10px_rgba(31,90,230,0.9)] transition hover:bg-[#1a4fd0] disabled:opacity-60">
-              {pending ? "Sending…" : groupSend && n > 0 ? `Send ${n} email${n === 1 ? "" : "s"}` : "Send"}
-            </button>
-            <button type="button" aria-label="Formatting" aria-pressed={toolbar} onClick={() => setToolbar((v) => !v)} className={cn(tb, toolbar && "bg-black/[0.07] dark:bg-white/10")}><Type className="size-[18px]" /></button>
-            <button type="button" aria-label="Attach files" title="Attach files (or drop them here)" onClick={() => fileInput.current?.click()} className={tb}><Paperclip className="size-[18px]" /></button>
-            <input ref={fileInput} type="file" multiple hidden onChange={(e) => { attach([...(e.target.files ?? [])]); e.target.value = ""; }} />
-            {groupSend && <button type="button" aria-label="Insert {first_name}" title="Put the person's first name here" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("insertText", FIRST_NAME)} className="inline-flex h-9 cursor-pointer items-center rounded-lg px-3 text-[13px] font-semibold text-[#2c2c30] hover:bg-black/[0.07] dark:text-white/85 dark:hover:bg-white/10">{FIRST_NAME}</button>}
-            <span className="ml-1 text-[12.5px] text-muted max-sm:hidden">⌘ Enter{groupSend ? "" : ` · ${data.sendsLeft} sends left today`}</span>
-            <span className="flex-1" />
-            <span aria-live="polite" className="text-[12.5px] text-muted">{saveLabel}</span>
-            <button type="button" aria-label="Discard draft" title="Discard draft" onClick={discard} className={tb}><Trash2 className="size-[18px]" /></button>
-          </footer>
+          {error && <p role="alert" className="mx-4 mb-2 rounded-xl bg-[#fdecec] px-4 py-2.5 text-[13.5px] font-medium text-[#b42318]">{error}</p>}
+          <div className="sticky bottom-0 z-10 bg-white dark:bg-[#1f1f24]">
+            {toolbar && (
+              <div role="toolbar" aria-label="Formatting" className="mx-3 mt-1 flex flex-wrap items-center gap-0.5 rounded-lg bg-white px-1 py-0.5 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_1px_3px_1px_rgba(0,0,0,0.15)] dark:bg-[#2a2a31]">
+                <button type="button" aria-label="Bold" title="Bold (⌘B)" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("bold")} className={fb}><Bold className="size-4" /></button>
+                <button type="button" aria-label="Italic" title="Italic (⌘I)" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("italic")} className={fb}><Italic className="size-4" /></button>
+                <button type="button" aria-label="Underline" title="Underline (⌘U)" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("underline")} className={fb}><Underline className="size-4" /></button>
+                <span aria-hidden className="mx-1.5 h-5 w-px bg-black/15 dark:bg-white/15" />
+                <button type="button" aria-label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("insertUnorderedList")} className={fb}><List className="size-4" /></button>
+                <button type="button" aria-label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("insertOrderedList")} className={fb}><ListOrdered className="size-4" /></button>
+                <button type="button" aria-label="Quote" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("formatBlock", "blockquote")} className={fb}><Quote className="size-4" /></button>
+                <button type="button" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={link} className={fb}><Link2 className="size-4" /></button>
+                <span aria-hidden className="mx-1.5 h-5 w-px bg-black/15 dark:bg-white/15" />
+                <button type="button" aria-label="Clear formatting" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("removeFormat")} className={fb}><Eraser className="size-4" /></button>
+              </div>
+            )}
+            <footer className="flex flex-wrap items-center gap-0.5 px-4 pb-3 pt-2">
+              <button type="button" disabled={pending || uploads.length > 0} onClick={send} title={`⌘ Enter${groupSend ? "" : ` · ${data.sendsLeft} sends left today`}`} className="mr-2 h-9 cursor-pointer rounded-full bg-[#0b57d0] px-6 text-[14px] font-medium text-white transition hover:bg-[#0a4fbd] hover:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-60">
+                {pending ? "Sending…" : groupSend && n > 0 ? `Send ${n} email${n === 1 ? "" : "s"}` : "Send"}
+              </button>
+              <button type="button" aria-label="Formatting options" title="Formatting options" aria-pressed={toolbar} onClick={() => setToolbar((v) => !v)} className={cn(fb, toolbar && "bg-black/[0.07] dark:bg-white/10")}><Type className="size-[18px]" /></button>
+              <button type="button" aria-label="Attach files" title="Attach files (or drop them here)" onClick={() => fileInput.current?.click()} className={fb}><Paperclip className="size-[18px]" /></button>
+              <button type="button" aria-label="Insert link" title="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={link} className={fb}><Link2 className="size-[18px]" /></button>
+              <input ref={fileInput} type="file" multiple hidden onChange={(e) => { attach([...(e.target.files ?? [])]); e.target.value = ""; }} />
+              {groupSend && <button type="button" aria-label="Insert {first_name}" title="Put the person's first name here" onMouseDown={(e) => e.preventDefault()} onClick={() => cmd("insertText", FIRST_NAME)} className="inline-flex h-9 cursor-pointer items-center rounded-full px-3 text-[13px] font-semibold text-[#444746] hover:bg-black/[0.07] dark:text-white/80 dark:hover:bg-white/10">{FIRST_NAME}</button>}
+              <span className="flex-1" />
+              <span aria-live="polite" className="mr-1 text-[12.5px] text-muted">{saveLabel}</span>
+              <button type="button" aria-label="Discard draft" title="Discard draft" onClick={discard} className={fb}><Trash2 className="size-[18px]" /></button>
+            </footer>
+          </div>
         </>
       )}
       {drag && (

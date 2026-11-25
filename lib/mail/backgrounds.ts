@@ -18,15 +18,21 @@ const photo = (id: string, name: string, credit: PhotoCredit, dark?: boolean): M
   thumb: `url(/mail/backgrounds/${id}-thumb.jpg) center / cover no-repeat, #6b7f99`,
 });
 
+// Menu text colour (owner 25 Nov 2026: "if the background is dark then white, if it is light then black"). `dark` comes from
+// the measured brightness of each photo's left fifth, where the menu sits (0–255, from the thumbs): white text reads
+// better than black below about 118 (equal WCAG contrast). dusk 71, hills 110, night 46, beach 87, sunset 87,
+// sunrise 76, virunga 54 → white; clouds 123 → black. Own photos are measured in the browser on upload.
+export const MENU_DARK_BELOW = 118;
+
 export const MAIL_BACKGROUNDS: MailBackground[] = [
-  photo("kigali-hills", "Hills of Rwanda", { author: "Ericnkurunziza", ...BY_SA_4, source: commons("Hills_of_Nyamagabe_in_Rwanda.jpg") }),
+  photo("kigali-hills", "Hills of Rwanda", { author: "Ericnkurunziza", ...BY_SA_4, source: commons("Hills_of_Nyamagabe_in_Rwanda.jpg") }, true),
   photo("kigali-night", "Kigali at night", { author: "Cyr", ...BY_SA_3, source: commons("The_view_across_Kigali_in_Rwanda_at_night.jpg") }, true),
   photo("kivu-beach", "Lake Kivu", { author: "Ludovic Hirlimann", ...BY_SA_4, source: commons("Boating_on_lake_Kivu.jpg") }, true),
-  photo("virunga", "Virunga volcanoes", { author: "flöschen", ...BY_2, source: commons("Virunga_Volcanoes_(5444965000).jpg") }),
+  photo("virunga", "Virunga volcanoes", { author: "flöschen", ...BY_2, source: commons("Virunga_Volcanoes_(5444965000).jpg") }, true),
   photo("kigali-dusk", "Kigali at dusk", { author: "Adrien K", ...BY_2, source: commons("Kigali2018.jpg") }, true),
   photo("nyungwe-sunrise", "Nyungwe sunrise", { author: "Jonkmania", ...BY_SA_4, source: commons("Sunrisenyungwe.jpg") }, true),
   photo("nyungwe-clouds", "Nyungwe clouds", { author: "Dpiskho", ...BY_SA_4, source: commons("NYUNGWE_CLOUDS.jpg") }),
-  photo("kivu-sunset", "Kivu sunset", { author: "NicyK20", ...CC0, source: commons("Sunset_on_lake_Kivu.jpg") }),
+  photo("kivu-sunset", "Kivu sunset", { author: "NicyK20", ...CC0, source: commons("Sunset_on_lake_Kivu.jpg") }, true),
   { id: "kivu-dusk", name: "Kivu dusk", css: "radial-gradient(1100px 700px at 8% -10%, #ffd2b8 0%, rgba(255,210,184,0) 60%), radial-gradient(900px 700px at 95% 0%, #bfd2ff 0%, rgba(191,210,255,0) 58%), radial-gradient(1100px 800px at 55% 110%, #d6c6ff 0%, rgba(214,198,255,0) 62%), #eef1f8" },
   { id: "nyungwe", name: "Nyungwe", css: "radial-gradient(1000px 700px at 15% 0%, #b8e6c0 0%, rgba(184,230,192,0) 60%), radial-gradient(1000px 800px at 90% 100%, #7cc59a 0%, rgba(124,197,154,0) 60%), #e3f1e7" },
   { id: "sunrise", name: "Sunrise", css: "linear-gradient(150deg, #ffd8bd 0%, #ffbfcb 50%, #dcc8ff 100%)" },

@@ -146,6 +146,10 @@ body {
 .dark :focus-visible {
   outline-color: #8db0ff;
 }
+/* Compose (Gmail look): typing fields show the caret, not a blue box; buttons keep the ring for keyboard users. */
+.bmail-compose input:focus-visible,
+.bmail-compose select:focus-visible,
+.bmail-compose [contenteditable]:focus-visible { outline: none; }
 
 /* ---------- Glass utilities ---------- */
 @utility glass {
