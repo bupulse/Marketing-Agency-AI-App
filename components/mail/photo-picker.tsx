@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Camera, ImageUp, X } from "lucide-react";
 import { removeMailPhoto, saveBackgroundPhoto, saveMailPhoto } from "@/app/mail/(app)/actions";
+import { MENU_DARK_BELOW } from "@/lib/mail/backgrounds";
 import { avatarColor } from "./thread-list";
 
 // Photos in B Mail (design "Welcome" step 1 and "Settings"): take one with the camera or upload, zoom and drag inside
@@ -186,11 +187,13 @@ export function BackgroundUpload({ onDone }: { onDone?: () => void }) {
         const c = document.createElement("canvas");
         c.width = Math.round(img.width * k);
         c.height = Math.round(img.height * k);
-        c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+        const ctx = c.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, c.width, c.height);
         let blob = await toJpeg(c, 0.8);
         for (const q of [0.7, 0.6, 0.5]) if (blob.size > 380 * 1024) blob = await toJpeg(c, q);
         const fd = new FormData();
         fd.set("photo", blob, "background.jpg");
+        fd.set("dark", menuSideIsDark(ctx, c.width, c.height) ? "1" : "0");
         const r = await saveBackgroundPhoto(fd);
         if (r.error) setError(r.error);
         else onDone?.();
@@ -208,4 +211,16 @@ export function BackgroundUpload({ onDone }: { onDone?: () => void }) {
       {error && <p role="alert" className="col-span-full rounded-xl bg-[#fdecec] px-3 py-2 text-[13px] font-medium text-[#b42318]">{error}</p>}
     </>
   );
+}
+
+/** How bright the left fifth of the photo is (where the menu sits): dark → white menu text, light → black. */
+function menuSideIsDark(ctx: CanvasRenderingContext2D, w: number, h: number): boolean {
+  const top = Math.round(h * 0.08);
+  const sw = Math.max(1, Math.round(w * 0.2));
+  const sh = Math.max(1, h - top);
+  const { data } = ctx.getImageData(0, top, sw, sh);
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < data.length; i += 16) { sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]; n++; }
+  return n === 0 || sum / n < MENU_DARK_BELOW;
 }

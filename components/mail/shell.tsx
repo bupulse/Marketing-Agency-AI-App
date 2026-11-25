@@ -25,13 +25,15 @@ export type ShellData = {
   /** What is painted today (Random resolved, own photo as a signed link). */
   backgroundCss: string;
   backgroundName: string;
-  /** A dark picture (night scenes, own photo): the menu and top bar switch to white text. */
+  /** A dark picture (measured on the menu side): the menu and top bar switch to white text; light ones keep black. */
   backgroundDark: boolean;
   /** Who took the photo (public photos need their credit on screen). */
   backgroundCredit: PhotoCredit | null;
   hasPhoto: boolean;
   /** The person's own background photo (a signed link), so choosing it paints at once. */
   photoBackgroundCss: string | null;
+  /** Whether their own photo is dark on the menu side (measured on upload). */
+  photoBackgroundDark: boolean;
   glass: number;
   /** The company's glass tint (Mail console): light, dark (dark panels for everyone) or blue. */
   glassTint: string;
@@ -57,7 +59,7 @@ type Painted = { css: string; dark: boolean; credit: PhotoCredit | null };
 function paintedBackground(data: ShellData, choice: { id: string; from: string } | null): Painted {
   const saved = { css: data.backgroundCss, dark: data.backgroundDark, credit: data.backgroundCredit };
   if (!choice || choice.from !== data.background || choice.id === data.background) return saved;
-  if (choice.id === PHOTO_BACKGROUND) return data.photoBackgroundCss ? { css: data.photoBackgroundCss, dark: true, credit: null } : saved;
+  if (choice.id === PHOTO_BACKGROUND) return data.photoBackgroundCss ? { css: data.photoBackgroundCss, dark: data.photoBackgroundDark, credit: null } : saved;
   const b = resolveBackground(choice.id, data.me.email);
   return { css: b.css, dark: !!b.dark, credit: b.credit ?? null };
 }

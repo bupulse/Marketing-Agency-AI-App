@@ -25,6 +25,7 @@ export default async function MailAppLayout({ children }: { children: React.Reac
   // Signed whenever they have one, so picking "Your photo" paints at once (it is only shown when chosen).
   const ownPhoto = typeof me.prefs.backgroundPhoto === "string" ? await signedUrl(me.prefs.backgroundPhoto) : null;
   const photo = choice === "photo" ? ownPhoto : null;
+  const photoDark = me.prefs.backgroundPhotoDark !== false;
   const bg = resolveBackground(choice, me.email);
   const canChangeGlass = settings?.usersChangeGlass !== false || me.isAdmin;
   const glass = canChangeGlass && typeof me.prefs.glass === "number" ? me.prefs.glass : settings?.glassClarity ?? 60;
@@ -42,10 +43,11 @@ export default async function MailAppLayout({ children }: { children: React.Reac
     background: choice,
     backgroundCss: photo ? `url(${JSON.stringify(photo)}) center / cover no-repeat` : bg.css,
     backgroundName: photo ? "Your photo" : bg.name,
-    backgroundDark: photo ? true : !!bg.dark,
+    backgroundDark: photo ? photoDark : !!bg.dark,
     backgroundCredit: photo ? null : bg.credit ?? null,
     hasPhoto: typeof me.prefs.backgroundPhoto === "string",
     photoBackgroundCss: ownPhoto ? `url(${JSON.stringify(ownPhoto)}) center / cover no-repeat` : null,
+    photoBackgroundDark: photoDark,
     glass,
     glassTint: settings?.glassTint ?? "light",
     canChangeGlass,

@@ -270,7 +270,9 @@ export async function saveBackgroundPhoto(form: FormData): Promise<PhotoState> {
   const path = `backgrounds/${id}-${Date.now()}.jpg`;
   await putObjectReplacing(path, bytes, "image/jpeg");
   const old = typeof me.prefs.backgroundPhoto === "string" ? me.prefs.backgroundPhoto : null;
-  await mergePrefs(id, { backgroundPhoto: path, backgroundPhotoBytes: bytes.length, background: "photo" });
+  // Measured in the browser on upload (left side brightness): dark → white menu text. Missing → dark, as before.
+  const dark = form.get("dark") !== "0";
+  await mergePrefs(id, { backgroundPhoto: path, backgroundPhotoBytes: bytes.length, backgroundPhotoDark: dark, background: "photo" });
   if (old) await removeObjects([old]).catch(() => undefined);
   revalidatePath("/mail", "layout");
   return { ok: true };
