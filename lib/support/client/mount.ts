@@ -16,6 +16,8 @@ export function chatSurface(pathname: string, host = ""): Surface | null {
   // The admin console's own host never shows the chat; on the Marketing host every address is the dashboard (clean
   // paths: "/posts" is /dashboard/posts) or its set-up pages (docs/HOSTS.md).
   if (/^admin\./i.test(host)) return null;
+  // B Mail's own host (mail.bupulse.com, clean paths: "/" is the inbox) never shows it either, like /mail on bupulse.com.
+  if (/^mail\./i.test(host)) return null;
   const path = /^marketing\./i.test(host) ? marketingAppPath(pathname || "/") : pathname || "/";
   if (EXCLUDED_PREFIXES.some((p) => under(path, p))) return null;
   if (under(path, "/dashboard")) return "dashboard";
