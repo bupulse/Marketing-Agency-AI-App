@@ -740,9 +740,10 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
   .bmail-on-dark .bmail-menu a[aria-current="page"] { background: rgba(255, 255, 255, 0.22); color: #fff; }
   .bmail-on-dark .bmail-menu a:hover { background: rgba(255, 255, 255, 0.12); }
   /* The left menu scrolls on its own when it is taller than the screen: a thin bar that shows on hover. */
-  .bmail-scroll { scrollbar-width: thin; scrollbar-color: transparent transparent; }
-  .bmail-scroll:hover, .bmail-scroll:focus-within { scrollbar-color: rgba(0, 0, 0, 0.28) transparent; }
-  .dark .bmail-scroll:hover { scrollbar-color: rgba(255, 255, 255, 0.35) transparent; }
+  .bmail-scroll { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.22) transparent; }
+  .bmail-scroll:hover, .bmail-scroll:focus-within { scrollbar-color: rgba(0, 0, 0, 0.4) transparent; }
+  .dark .bmail-scroll, .bmail-on-dark .bmail-scroll { scrollbar-color: rgba(255, 255, 255, 0.3) transparent; }
+  .dark .bmail-scroll:hover, .bmail-on-dark .bmail-scroll:hover { scrollbar-color: rgba(255, 255, 255, 0.5) transparent; }
 }
 .dark .bmail-glass { background: rgba(30, 30, 36, var(--bmail-a, 0.72)); border-color: rgba(255, 255, 255, 0.1); }
 @keyframes bmail-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
