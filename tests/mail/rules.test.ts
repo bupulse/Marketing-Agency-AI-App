@@ -82,6 +82,26 @@ describe("composer html", () => {
       .toBe('<p>Hi <b>there</b> <a href="https://x.rw" target="_blank" rel="noopener noreferrer">link</a></p><a>no</a>');
     expect(sanitizeComposerHtml("<ul><li>a</li></ul><blockquote>q</blockquote><div><br></div>")).toBe("<ul><li>a</li></ul><blockquote>q</blockquote><div><br></div>");
   });
+
+  it("keeps Gmail-style font, size, colour, alignment and indents", () => {
+    expect(sanitizeComposerHtml('<font face="georgia, serif" size="4" color="#cc0000">Hi</font>')).toBe('<font face="georgia, serif" size="4" color="#cc0000">Hi</font>');
+    expect(sanitizeComposerHtml('<div style="text-align: center;">c</div>')).toBe('<div style="text-align: center">c</div>');
+    expect(sanitizeComposerHtml('<blockquote style="margin: 0 0 0 40px; border: none; padding: 0px;">x</blockquote>')).toBe('<blockquote style="margin: 0 0 0 40px; border: none; padding: 0px">x</blockquote>');
+    expect(sanitizeComposerHtml('<span style="background-color: rgb(255, 255, 0);">h</span>')).toBe('<span style="background-color: rgb(255, 255, 0)">h</span>');
+    expect(sanitizeComposerHtml("<strike>old</strike><s>gone</s>")).toBe("<s>old</s><s>gone</s>");
+    // Exactly what the browser wrote in a real test of the toolbar (Georgia, Large, red, bold, numbered list).
+    const real = '<ol><li><font face="georgia, serif" size="4" color="#cc0000"><b>Hello team, this line is formatted</b></font></li></ol>';
+    expect(sanitizeComposerHtml(real)).toBe(real);
+  });
+
+  it("drops unsafe styles and attributes", () => {
+    expect(sanitizeComposerHtml('<span style="background-image: url(https://x.rw/t.gif); color: red">a</span>')).toBe("<span>a</span>");
+    expect(sanitizeComposerHtml('<span style="color: red; position: fixed; width: expression(alert(1))">a</span>')).toBe("<span>a</span>");
+    expect(sanitizeComposerHtml('<span style="color: red; position: fixed">a</span>')).toBe('<span style="color: red">a</span>');
+    expect(sanitizeComposerHtml('<font face="x\" onmouseover=alert(1)" size="9" color="red;x">a</font>')).toBe('<font face="x">a</font>');
+    expect(sanitizeComposerHtml('<div style="font-family: a&quot;&gt;&lt;script&gt;">a</div>')).toBe("<div>a</div>");
+    expect(sanitizeComposerHtml('<a href="https://x.rw" style="color: red">l</a>')).toBe('<a href="https://x.rw" target="_blank" rel="noopener noreferrer">l</a>');
+  });
 });
 
 import { hasTempPassword, mailPasswordProblem, nextMailStep, TEMP_PASSWORD_KEY } from "@/lib/mail/temp-password";
