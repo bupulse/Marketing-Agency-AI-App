@@ -11,6 +11,7 @@ exactly as before, on one host.
 | **bupulse.com** | The public site, the **one client sign-in** (`/login`, `/signup`, `/forgot-password`, `/reset-password`, `/auth/*` incl. Google's `/auth/google`), the service chooser **`/apps`** and the sign-up step **`/apps/start`**, account pages (`/account/*`, `/suspended`, `/invite/*`), the creator portal (`/creator`, `/creators/signup`), and **every connection flow** (social, Canva, Shopify, WooCommerce, Composio, Zernio, Upload-Post) |
 | **marketing.bupulse.com** | The Marketing dashboard with clean addresses: `app/dashboard/*` is served at `/*` (`/` is the home, `/posts` is `/dashboard/posts`), and its signed-in set-up pages `/welcome`, `/onboarding`, `/start-trial`, `/book-demo`, `/custom-plan` |
 | **admin.bupulse.com** | The admin console with clean addresses (`/companies` is `/admin/companies`, `/` is the Overview, `/login` its own sign-in). Never a front page (`/industries` here is the admin page) |
+| **mail.bupulse.com** | B Mail with clean addresses (`/` is the inbox, `/settings`, `/t/<id>`, `/console/...`, `/sign-in`, `/welcome`). Switched on by `MAIL_APP_URL` (needs `CLIENT_COOKIE_DOMAIN`); shares the one client session, so nobody signs in again. See "B Mail host" below |
 | **support.bupulse.com** | The support app, unchanged (`lib/support/app-host.ts`) |
 | agency.bupulse.com | Agency OS, **phase 2**: reserved in `SERVICES` only, not routed, not in the tunnel |
 
@@ -127,3 +128,20 @@ work for routing. The screens are in a dev-only preview: `/apps-preview`, `/apps
 - Create the Agency workspace for everyone with `services_picked` containing `agency`.
 - Agency reads the shared connections: today they are keyed by `businessId`; Agency needs a mapping from its workspace
   (or its client companies) to BuPulse `Business` rows, and a read API on bupulse.com with the shared session.
+
+## B Mail host (mail.bupulse.com, owner 25 Nov 2026)
+
+B Mail is a client service like Marketing: it shares `bp-client-auth` (no new sign-in after the switch) and is never
+indexed. Old `bupulse.com/mail/...` links go (307, query kept) to the clean address; a POST and files (the background
+photos) are never moved. On the Mail host, `/apps`, `/account` and anything that is not a B Mail page go to their own
+host. The Email Worker keeps posting to `bupulse.com/api/mail/inbound` (an API path: served on every host, never moved).
+A new folder under `app/mail` must be added to `MAIL_ROUTES` (a test checks it).
+
+To switch it on (owner's OK needed for DNS):
+1. Cloudflare DNS: `mail` CNAME to the `bupulse-prod` tunnel (proxied), like `marketing` and `admin`. If the tunnel's
+   ingress lists hostnames, add `mail.bupulse.com` → the same local service. Email Routing is MX on the apex
+   (bupulse.com), so a `mail` CNAME does not touch mail delivery.
+2. Server environment on the PC and the Mac standby: `MAIL_APP_URL=https://mail.bupulse.com`, then restart.
+3. Check: `https://mail.bupulse.com/` shows the inbox (or B Mail's sign-in), `bupulse.com/mail` answers 307 to it.
+To switch it off: remove `MAIL_APP_URL` and restart (redirects are 307, so nobody is stuck).
+

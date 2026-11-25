@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { mailAppPath } from "@/lib/platform/app-hosts";
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -20,7 +21,7 @@ const NAV = [
 
 /** The console's own side menu (the Mail folders are not shown here). */
 export function ConsoleNav() {
-  const path = usePathname();
+  const path = mailAppPath(usePathname());
   const active = (href: string) => (href === "/mail/console" ? path === href || path === "/mail/console/new" : path.startsWith(href));
   return (
     <nav aria-label="Mail console" className="flex w-full shrink-0 flex-col gap-1 rounded-[26px] border border-white/75 bg-white/55 px-3 py-[18px] backdrop-blur-[26px] backdrop-saturate-[1.8] md:sticky md:top-[18px] md:w-[240px] dark:border-white/10 dark:bg-[rgba(28,28,34,0.7)]">

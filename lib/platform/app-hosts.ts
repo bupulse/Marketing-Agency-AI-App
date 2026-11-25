@@ -6,6 +6,9 @@
 // - marketing.bupulse.com (MARKETING_APP_URL): the Marketing dashboard with clean addresses (app/dashboard/* is served
 //   at /*: "/" is /dashboard, "/posts" is /dashboard/posts) and its signed-in onboarding pages (/welcome, /start-trial...).
 // - admin.bupulse.com (ADMIN_APP_URL): the admin console with clean addresses (app/admin/* at /*) and its own sign-in.
+// - mail.bupulse.com (MAIL_APP_URL): B Mail with clean addresses (app/mail/* at /*: "/" is the inbox, "/settings",
+//   "/console"...). A client service like Marketing (owner 25 Nov 2026): it shares the one client session, so it also
+//   needs CLIENT_COOKIE_DOMAIN. Old bupulse.com/mail/... links move there.
 // - agency.bupulse.com: Agency OS, phase 2. Only reserved here (SERVICES), never routed yet.
 // - support.bupulse.com: lib/support/app-host.ts, unchanged.
 //
@@ -61,6 +64,14 @@ export function marketingOrigin(env: Env = process.env): string | null {
   return origin;
 }
 
+/** The B Mail host's origin when set (MAIL_APP_URL, inside CLIENT_COOKIE_DOMAIN), else null. Never another host. */
+export function mailOrigin(env: Env = process.env): string | null {
+  const origin = originOf(env.MAIL_APP_URL);
+  const domain = clientCookieDomain(env);
+  if (!origin || !domain || origin === frontOrigin(env) || origin === marketingOrigin(env) || origin === originOf(env.ADMIN_APP_URL) || !withinDomain(hostnameOf(origin), domain)) return null;
+  return origin;
+}
+
 /** The admin host's origin (ADMIN_APP_URL), else null. Never the front or the Marketing host. */
 export function adminOrigin(env: Env = process.env): string | null {
   const origin = originOf(env.ADMIN_APP_URL);
@@ -92,7 +103,7 @@ export function serviceHome(id: ServiceId, env: Env = process.env): string | nul
 
 // ---- hosts -----------------------------------------------------------------------------------------------------
 
-export type HostKind = "front" | "marketing" | "admin" | "support";
+export type HostKind = "front" | "marketing" | "admin" | "mail" | "support";
 
 const cleanHost = (host: string | null | undefined) => (host ?? "").split(",")[0].trim().toLowerCase();
 
@@ -105,6 +116,8 @@ export function hostKind(host: string | null | undefined, env: Env = process.env
   if (m && sameHost(name, m)) return "marketing";
   const a = adminOrigin(env);
   if (a && sameHost(name, a)) return "admin";
+  const ml = mailOrigin(env);
+  if (ml && sameHost(name, ml)) return "mail";
   return "front";
 }
 
@@ -125,6 +138,11 @@ export const MARKETING_PAGES = ["/welcome", "/onboarding", "/start-trial", "/boo
 /** True for a path the Marketing host serves (app paths: /dashboard/... and the onboarding pages). */
 export const isMarketingPath = (path: string) => under(path, "/dashboard") || MARKETING_PAGES.some((p) => under(path, p));
 export const isAdminPath = (path: string) => under(path, "/admin");
+export const isMailPath = (path: string) => under(path, "/mail");
+
+/** B Mail's pages at their clean address on the Mail host ("/" is the inbox): the first path part of app/mail/**. */
+const MAIL_ROUTES = ["settings", "t", "console", "welcome", "sign-in", "verify", "password", "setup", "no-access"] as const;
+export const isMailRoute = (clean: string) => clean === "/" || (MAIL_ROUTES as readonly string[]).includes(clean.split("/")[1] ?? "");
 
 /**
  * Front-host pages a visitor may reach from the Marketing host (sign-in, the chooser, account and public pages): there
@@ -153,7 +171,7 @@ export const ADMIN_CALLBACKS = ["/api/admin/google-calendar/callback"] as const;
 
 /** An app path as its host shows it: /dashboard/posts -> /posts, /dashboard -> /, /admin/companies -> /companies. */
 export function cleanPath(path: string): string {
-  for (const prefix of ["/dashboard", "/admin"]) {
+  for (const prefix of ["/dashboard", "/admin", "/mail"]) {
     if (path === prefix) return "/";
     if (path.startsWith(`${prefix}/`)) return path.slice(prefix.length);
   }
@@ -169,10 +187,14 @@ export function marketingAppPath(clean: string): string {
 /** A clean admin-host path back to the app path: / -> /admin, /companies -> /admin/companies. */
 export const adminAppPath = (clean: string) => (under(clean, "/admin") ? clean : clean === "/" ? "/admin" : `/admin${clean}`);
 
+/** A clean Mail-host path back to the app path: / -> /mail, /settings -> /mail/settings, /mail/... stays. */
+export const mailAppPath = (clean: string) => (under(clean, "/mail") ? clean : clean === "/" ? "/mail" : `/mail${clean}`);
+
 /** The app path behind what the browser shows on a host (for active menu items and path rules). */
 export function appPathOn(kind: HostKind, shown: string): string {
   if (kind === "marketing") return marketingAppPath(shown);
   if (kind === "admin") return adminAppPath(shown);
+  if (kind === "mail") return mailAppPath(shown);
   return shown;
 }
 
@@ -195,6 +217,8 @@ export function appUrl(path: string, fallback: string = frontOrigin(), env: Env 
   if (m && isMarketingPath(pathname)) return `${m}${cleanPath(pathname)}${rest}`;
   const a = adminOrigin(env);
   if (a && isAdminPath(pathname)) return `${a}${cleanPath(pathname)}${rest}`;
+  const ml = mailOrigin(env);
+  if (ml && isMailPath(pathname)) return `${ml}${cleanPath(pathname)}${rest}`;
   return `${fallback.replace(/\/$/, "")}${p}`;
 }
 
@@ -262,12 +286,14 @@ export function hostRoute(method: string, path: string, search: string, host: st
   const read = method === "GET" || method === "HEAD";
   const m = marketingOrigin(env);
   const a = adminOrigin(env);
+  const ml = mailOrigin(env);
   const front = frontOrigin(env);
   const to = (origin: string, p: string): HostRoute => ({ action: "redirect", url: `${origin}${p}${search}` });
 
   if (kind === "front") {
     if (!read) return { action: "pass" };
     if (m && isMarketingPath(path)) return to(m, cleanPath(path));
+    if (ml && isMailPath(path) && !isPassThrough(path)) return to(ml, cleanPath(path));
     if (a && isAdminPath(path)) return to(a, cleanPath(path));
     if (a && (ADMIN_CALLBACKS as readonly string[]).includes(path)) return to(a, path);
     return { action: "pass" };
@@ -289,6 +315,18 @@ export function hostRoute(method: string, path: string, search: string, host: st
     if (read && isMarketingPath(path)) return to(m ?? front, m ? cleanPath(path) : path);
     // Everything else is the admin console (it has its own /login, and /industries is an admin page here).
     return isAdminPath(path) ? { action: "pass" } : { action: "rewrite", path: adminAppPath(path) };
+  }
+
+  if (kind === "mail") {
+    if (isPassThrough(path)) return { action: "pass" };
+    // /mail/... (a link inside B Mail, an old address): the clean form on this host. A POST is served where it is.
+    if (isMailPath(path)) return read ? to(ml!, cleanPath(path)) : { action: "pass" };
+    if (isMailRoute(path)) return { action: "rewrite", path: mailAppPath(path) };
+    // Everything else (the services chooser, the account, Marketing, admin, the public site) lives on another host.
+    if (!read) return { action: "pass" };
+    if (isMarketingPath(path)) return to(m ?? front, m ? cleanPath(path) : path);
+    if (isAdminPath(path)) return to(a ?? front, a ? cleanPath(path) : path);
+    return to(front, path);
   }
 
   return { action: "pass" };

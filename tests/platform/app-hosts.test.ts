@@ -19,7 +19,10 @@ import {
   hostRoute,
   hostsConfig,
   hrefOn,
+  isMailRoute,
   isSelfFetch,
+  mailAppPath,
+  mailOrigin,
   marketingAppPath,
   requestHost,
   marketingOrigin,
@@ -349,5 +352,76 @@ describe("Next.js's own fetch of a server action's redirect target", () => {
     expect(requestHost(h({ host: "localhost:3000", "x-forwarded-host": "localhost:3000" }))).toBe("localhost:3000");
     expect(requestHost(h({ host: "localhost:3000" }))).toBe("localhost:3000");
     expect(isSelfFetch(h({ host: "localhost:3000" }))).toBe(false);
+  });
+});
+
+// B Mail on mail.bupulse.com (owner 25 Nov 2026): a client service like Marketing, clean addresses, the shared session.
+
+describe("the Mail host", () => {
+  const MAIL = { ...PROD, MAIL_APP_URL: "https://mail.bupulse.com" };
+  const M = "mail.bupulse.com";
+
+  it("is off unless MAIL_APP_URL and CLIENT_COOKIE_DOMAIN are both set, and never repeats another host", () => {
+    expect(mailOrigin(PROD)).toBeNull();
+    expect(mailOrigin({ ...OFF, MAIL_APP_URL: "https://mail.bupulse.com" })).toBeNull();
+    expect(mailOrigin(MAIL)).toBe("https://mail.bupulse.com");
+    expect(mailOrigin({ ...PROD, MAIL_APP_URL: "https://admin.bupulse.com" })).toBeNull();
+    expect(mailOrigin({ ...PROD, MAIL_APP_URL: "https://mail.example.com" })).toBeNull();
+    expect(hostKind(M, MAIL)).toBe("mail");
+    expect(hostKind(M, PROD)).toBe("front");
+    expect(route("bupulse.com", "/mail/settings", PROD)).toEqual({ action: "pass" });
+  });
+
+  it("moves old bupulse.com/mail links to the clean address; never a POST or a file", () => {
+    expect(route("bupulse.com", "/mail", MAIL)).toEqual({ action: "redirect", url: "https://mail.bupulse.com/" });
+    expect(route("bupulse.com", "/mail/t/abc", MAIL, "GET", "?box=x")).toEqual({ action: "redirect", url: "https://mail.bupulse.com/t/abc?box=x" });
+    expect(route("bupulse.com", "/mail/settings", MAIL, "POST")).toEqual({ action: "pass" });
+    expect(route("bupulse.com", "/mail/backgrounds/kivu-sunset.jpg", MAIL)).toEqual({ action: "pass" });
+    expect(route("bupulse.com", "/api/mail/inbound", MAIL, "POST")).toEqual({ action: "pass" });
+    expect(route("bupulse.com", "/mailbox", MAIL)).toEqual({ action: "pass" });
+  });
+
+  it("serves B Mail at clean addresses and sends everything else to its own host", () => {
+    expect(route(M, "/", MAIL)).toEqual({ action: "rewrite", path: "/mail" });
+    expect(route(M, "/settings", MAIL)).toEqual({ action: "rewrite", path: "/mail/settings" });
+    expect(route(M, "/console/departments/d1", MAIL)).toEqual({ action: "rewrite", path: "/mail/console/departments/d1" });
+    expect(route(M, "/welcome", MAIL)).toEqual({ action: "rewrite", path: "/mail/welcome" });
+    expect(route(M, "/sign-in", MAIL, "POST")).toEqual({ action: "rewrite", path: "/mail/sign-in" });
+    expect(route(M, "/mail/settings", MAIL)).toEqual({ action: "redirect", url: "https://mail.bupulse.com/settings" });
+    expect(route(M, "/mail/settings", MAIL, "POST")).toEqual({ action: "pass" });
+    expect(route(M, "/apps", MAIL, "GET", "?all=1")).toEqual({ action: "redirect", url: "https://bupulse.com/apps?all=1" });
+    expect(route(M, "/account", MAIL)).toEqual({ action: "redirect", url: "https://bupulse.com/account" });
+    expect(route(M, "/dashboard/posts", MAIL)).toEqual({ action: "redirect", url: "https://marketing.bupulse.com/posts" });
+    expect(route(M, "/admin", MAIL)).toEqual({ action: "redirect", url: "https://admin.bupulse.com/" });
+    expect(route(M, "/pricing", MAIL)).toEqual({ action: "redirect", url: "https://bupulse.com/pricing" });
+    expect(route(M, "/api/mail/inbound", MAIL, "POST")).toEqual({ action: "pass" });
+    expect(route(M, "/_next/static/x.js", MAIL)).toEqual({ action: "pass" });
+  });
+
+  it("knows every B Mail page (a new folder under app/mail must be added to MAIL_ROUTES)", () => {
+    const firsts = new Set<string>();
+    const walk = (dir: string, rel: string[]) => {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name);
+        if (!statSync(full).isDirectory()) continue;
+        const parts = /^\(.*\)$/.test(name) ? rel : [...rel, name];
+        if (parts.length === 1) firsts.add(parts[0]);
+        walk(full, parts);
+      }
+    };
+    walk(join(process.cwd(), "app/mail"), []);
+    for (const f of firsts) expect(isMailRoute(`/${f}`), f).toBe(true);
+    expect(isMailRoute("/pricing")).toBe(false);
+  });
+
+  it("shares the one client session, maps paths both ways, and builds clean absolute links", () => {
+    expect(authCookieFor(M, MAIL)).toEqual({ name: CLIENT_AUTH_COOKIE, domain: ".bupulse.com" });
+    expect(mailAppPath("/")).toBe("/mail");
+    expect(mailAppPath("/settings")).toBe("/mail/settings");
+    expect(mailAppPath("/mail/t/1")).toBe("/mail/t/1");
+    expect(cleanPath("/mail/console")).toBe("/console");
+    expect(appPathOn("mail", "/console")).toBe("/mail/console");
+    expect(appUrl("/mail/t/abc", "https://bupulse.com", MAIL)).toBe("https://mail.bupulse.com/t/abc");
+    expect(appUrl("/mail/t/abc", "https://bupulse.com", PROD)).toBe("https://bupulse.com/mail/t/abc");
   });
 });
