@@ -8,7 +8,7 @@ $config = Join-Path $env:USERPROFILE ".cloudflared\bupulse-prod.yml"
 # they show the main site, and nothing links to them. agency. is phase 2: not here yet.
 # pc. is only for the Mac's failover watcher (scripts/self-host/mac-failover): it always reaches this PC, wherever the
 # public hostnames point, so the Mac can tell when the PC answers again.
-$hosts = @("bupulse.com", "www.bupulse.com", "support.bupulse.com", "marketing.bupulse.com", "admin.bupulse.com", "pc.bupulse.com")
+$hosts = @("bupulse.com", "www.bupulse.com", "support.bupulse.com", "marketing.bupulse.com", "admin.bupulse.com", "mail.bupulse.com", "pc.bupulse.com")
 # protocol http2 (TCP), not QUIC (UDP): on the office network the PC's QUIC connections kept timing out ("failed to
 # accept QUIC stream: timeout: no recent network activity"), so the tunnel dropped every few minutes (17 November 2026).
 $lines = @("tunnel: $tunnelId", "credentials-file: $credFile", "protocol: http2", "ingress:")

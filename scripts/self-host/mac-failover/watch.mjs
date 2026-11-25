@@ -17,7 +17,7 @@ import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const HOSTS = ["bupulse.com", "www.bupulse.com", "marketing.bupulse.com", "admin.bupulse.com", "support.bupulse.com"];
+export const HOSTS = ["bupulse.com", "www.bupulse.com", "marketing.bupulse.com", "admin.bupulse.com", "support.bupulse.com", "mail.bupulse.com"];
 export const TARGET = {
   pc: "cf9eb6ae-8290-4e87-8c8e-fc6e0c3375d0.cfargotunnel.com",
   mac: "b89e6e54-6a63-427c-b348-0e6a2dbdd37f.cfargotunnel.com",
