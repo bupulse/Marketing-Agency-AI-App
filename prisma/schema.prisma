@@ -3879,6 +3879,7 @@ model MailMessage {
   // The composer's state on a draft (and on the first message of a send, for Undo): recipients as typed (departments
   // included), the body without the signature, the message answered or forwarded and the mode (lib/mail/drafts.ts).
   draft       Json?
+  agentKeyId  String? // sent through the agent API with this MailAgentKey (docs/mail-crm/AGENT_API.md)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   attachments MailAttachment[]
@@ -3887,6 +3888,28 @@ model MailMessage {
   @@index([threadId, date])
   @@index([status, sendAt])
   @@index([fromAddress])
+  @@index([mailboxId, createdAt])
+  @@index([agentKeyId, createdAt])
+}
+
+// A key an outreach agent (Sellbird) uses to send from one mailbox and read what arrives in it
+// (docs/mail-crm/AGENT_API.md). Only the peppered hash is stored; the key is shown once.
+model MailAgentKey {
+  id         String    @id @default(cuid())
+  name       String
+  prefix     String // the first characters, to tell keys apart
+  hash       String    @unique // hashApiKey(key) (lib/api/keys.ts)
+  mailboxId  String
+  memberId   String? // whose signature goes on the mail: the admin who made the key
+  fromName   String? // the sender name; empty: as the composer would ("Sales · BuPulse")
+  signature  Boolean   @default(true) // add the B Mail signature below each email
+  dailyLimit Int       @default(50) // of the team's daily sends (MAIL_DAILY_LIMIT)
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+
+  @@index([mailboxId])
 }
 
 model MailAttachment {

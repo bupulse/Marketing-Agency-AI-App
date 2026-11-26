@@ -7,6 +7,8 @@ import { logError } from "@/lib/errors";
 import { cleanAddress, isOurAddress, MAIL_DOMAIN } from "@/lib/mail/addresses";
 import { addressProblem, bytesToMb, DEPT_COLORS, isHexColor, isQuota, LOCAL_PART, ourAddressFrom, senderPattern } from "@/lib/mail/console-rules";
 import { requireMailAdmin } from "@/lib/mail/session";
+import { createAgentKey, revokeAgentKey } from "@/lib/mail/agent";
+import { parseDailyLimit } from "@/lib/mail/agent-rules";
 import { isSignatureLook } from "@/lib/mail/signature-render";
 import { toE164 } from "@/lib/phone";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -15,7 +17,7 @@ import { TEMP_PASSWORD_KEY } from "@/lib/mail/temp-password";
 
 // The Mail console (docs/MAIL_CRM.md "Mail console"): mail admins only. Every action checks again.
 
-export type ConsoleState = { ok?: string; error?: string; password?: string; email?: string };
+export type ConsoleState = { ok?: string; error?: string; password?: string; email?: string; key?: string };
 
 /** Every console page shows counts from the others (users per department, forwards per user): refresh them all. */
 const refreshConsole = () => revalidatePath("/mail/console", "layout");
@@ -391,4 +393,35 @@ export async function resetMailAuthenticator(memberId: string): Promise<ConsoleS
   for (const f of data?.factors ?? []) await admin.auth.admin.mfa.deleteFactor({ userId: rows[0].id, id: f.id });
   await admin.auth.admin.updateUserById(rows[0].id, { app_metadata: { [SETUP_GRANT_KEY]: setupGrantUntil() } });
   return { ok: `${member.email} adds a new authenticator at the next sign-in (within 7 days).` };
+}
+
+// ---- Agent keys (docs/mail-crm/AGENT_API.md): an outreach agent sends from one mailbox and reads what arrives ----
+
+/** Makes an agent key. The key is in the answer once (state.key) and never again: only its hash is stored. */
+export async function createAgentKeyAction(_prev: ConsoleState, form: FormData): Promise<ConsoleState> {
+  const me = await requireMailAdmin();
+  const name = String(form.get("name") ?? "").trim().replace(/\s+/g, " ");
+  if (!name) return { error: "Give the key a name, for example \"Sellbird\"." };
+  if (name.length > 60) return { error: "That name is too long." };
+  const dailyLimit = parseDailyLimit(form.get("dailyLimit"));
+  if (dailyLimit === null) return { error: "Daily sends must be a whole number from 1 to 100." };
+  const fromName = String(form.get("fromName") ?? "").replace(/[\r\n<>"]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || null;
+  const r = await createAgentKey({
+    name,
+    mailboxId: String(form.get("mailboxId") ?? ""),
+    dailyLimit,
+    fromName,
+    signature: form.get("signature") === "on",
+    memberId: me.memberId,
+    createdBy: me.email,
+  });
+  if (!r.ok) return { error: r.error };
+  refreshConsole();
+  return { ok: "Key made. Copy it now: it is shown only once.", key: r.key };
+}
+
+export async function revokeAgentKeyAction(id: string): Promise<void> {
+  await requireMailAdmin();
+  await revokeAgentKey(id);
+  refreshConsole();
 }

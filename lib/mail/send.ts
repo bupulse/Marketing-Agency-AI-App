@@ -59,6 +59,9 @@ export type Outgoing = {
   draftId?: string | null;
   /** The composer as it was, kept on the first message so Undo can put it back. */
   composer?: DraftMeta;
+  /** Agent API sends (docs/mail-crm/AGENT_API.md): the key that sent it, no undo window, the key's own sender name
+   *  and its signature choice. */
+  agent?: { keyId: string; fromName?: string | null; signature: boolean };
 };
 
 export type QueueResult = { ok: true; messageId: string; threadId: string; sendAt: string; count: number } | { ok: false; error: string };
@@ -125,7 +128,7 @@ export async function queueMessage(me: MailMe, o: Outgoing): Promise<QueueResult
     ? await prisma.mailMessage.findFirst({ where: { id: parentId, mailboxId: { in: me.mailboxIds }, status: { not: "draft" } }, include: { attachments: true } })
     : null;
   const forward = o.mode === "forward";
-  const sig = await signatureFor(me, mailbox.address);
+  const sig = o.agent && !o.agent.signature ? { text: "", html: "" } : await signatureFor(me, mailbox.address);
   const words = o.text.trim();
   const body = o.html && o.html.trim() ? sanitizeComposerHtml(o.html) : textToHtml(words);
   const quote = parent && o.includeQuote !== false
@@ -137,8 +140,8 @@ export async function queueMessage(me: MailMe, o: Outgoing): Promise<QueueResult
   const build = (first: string | null, greet: boolean) => {
     const fill = (s: string, html = false) => (first === null ? s : fillFirstName(s, first, { html }));
     const hello = greet && first !== null ? greetingFor(first) : null;
-    const text = `${hello ? `${hello}\n\n` : ""}${fill(words)}\n\n${sig.text}${quote ? `\n\n${quote.text}` : ""}`;
-    const html = `<div style="font:15px/1.6 Arial,Helvetica,sans-serif;color:#1d1d1f">${hello ? `<p style="margin:0 0 1em">${escapeHtml(hello)}</p>` : ""}${fill(body, true)}<br>${sig.html}${quote ? `<br>${quote.html}` : ""}</div>`;
+    const text = `${hello ? `${hello}\n\n` : ""}${fill(words)}${sig.text ? `\n\n${sig.text}` : ""}${quote ? `\n\n${quote.text}` : ""}`;
+    const html = `<div style="font:15px/1.6 Arial,Helvetica,sans-serif;color:#1d1d1f">${hello ? `<p style="margin:0 0 1em">${escapeHtml(hello)}</p>` : ""}${fill(body, true)}${sig.html ? `<br>${sig.html}` : ""}${quote ? `<br>${quote.html}` : ""}</div>`;
     return { text, html, subject: fill(o.subject).slice(0, 500), snippet: makeSnippet(`${hello ? `${hello} ` : ""}${fill(words)}`) };
   };
   // {first_name} in an ordinary email: the one person in To, else "everyone".
@@ -148,8 +151,8 @@ export async function queueMessage(me: MailMe, o: Outgoing): Promise<QueueResult
     : [{ to: o.to, cc: o.cc, bcc: o.bcc, ...build(single, false) }];
 
   const references = parent && !forward ? replyReferences({ messageId: parent.messageId, references: parent.references }) : [];
-  const sendAt = new Date(Date.now() + UNDO_SECONDS * 1000);
-  const fromName = mailbox.kind === "personal" ? me.name : `${mailbox.name} · BuPulse`;
+  const sendAt = new Date(Date.now() + (o.agent ? 0 : UNDO_SECONDS) * 1000);
+  const fromName = o.agent?.fromName?.trim() || (mailbox.kind === "personal" ? me.name : `${mailbox.name} · BuPulse`);
   const everyone = copies.flatMap((c) => [...c.to, ...c.cc, ...c.bcc]);
   const files = draft ? draft.attachments : parent && forward ? parent.attachments.filter((a) => !a.inline) : [];
   const fileBytes = files.reduce((n, a) => n + a.size, 0);
@@ -169,6 +172,7 @@ export async function queueMessage(me: MailMe, o: Outgoing): Promise<QueueResult
       inReplyTo: parent && !forward ? parent.messageId : null, references,
       fromAddress: mailbox.address!, fromName, to: c.to, cc: c.cc, bcc: c.bcc, subject: c.subject,
       text: c.text, html: c.html, snippet: c.snippet, date: new Date(), sendAt, authorEmail: me.email,
+      agentKeyId: o.agent?.keyId ?? null,
     });
     // The first message carries the size (shared files count once) and the composer, for Undo.
     const first = await tx.mailMessage.create({

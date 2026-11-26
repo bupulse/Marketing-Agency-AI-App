@@ -68,13 +68,15 @@ export function Note({ s }: { s: ConsoleState }) {
   const [copied, setCopied] = useState(false);
   if (s.error) return <p role="alert" className="rounded-xl bg-[#fdecec] px-4 py-2.5 text-[13.5px] font-medium text-[#b42318] dark:bg-[#b42318]/25 dark:text-[#ffb4ab]">{s.error}</p>;
   if (!s.ok) return null;
+  // A new user's password, or a new agent key: shown once, with a copy button.
+  const secret = s.password ?? s.key;
   return (
     <div role="status" className="flex flex-col gap-2 rounded-xl bg-[#e9f7ef] px-4 py-2.5 text-[13.5px] text-[#11633a] dark:bg-[#11633a]/30 dark:text-[#9fe0bb]">
       <span>{s.ok}</span>
-      {s.password && (
+      {secret && (
         <span className="flex flex-wrap items-center gap-2">
-          <code className="select-all rounded-lg bg-white px-3 py-1.5 font-mono text-[15px] text-[#1d1d1f]">{s.password}</code>
-          <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(s.password!); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* the text stays selectable */ } }} className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full bg-[#11633a] px-3 text-[12.5px] font-semibold text-white">
+          <code className="select-all break-all rounded-lg bg-white px-3 py-1.5 font-mono text-[15px] text-[#1d1d1f]">{secret}</code>
+          <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(secret); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* the text stays selectable */ } }} className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full bg-[#11633a] px-3 text-[12.5px] font-semibold text-white">
             {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}{copied ? "Copied" : "Copy"}
           </button>
           <span className="text-[12.5px]">Shown only this once.</span>
