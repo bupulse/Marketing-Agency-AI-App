@@ -395,6 +395,8 @@ describe("the Mail host", () => {
     expect(route(M, "/admin", MAIL)).toEqual({ action: "redirect", url: "https://admin.bupulse.com/" });
     expect(route(M, "/pricing", MAIL)).toEqual({ action: "redirect", url: "https://bupulse.com/pricing" });
     expect(route(M, "/api/mail/inbound", MAIL, "POST")).toEqual({ action: "pass" });
+    expect(route(M, "/api/mail/agent/v1/send", MAIL, "POST")).toEqual({ action: "pass" });
+    expect(route(M, "/api/mail/agent/v1/messages", MAIL)).toEqual({ action: "pass" });
     expect(route(M, "/_next/static/x.js", MAIL)).toEqual({ action: "pass" });
   });
 
