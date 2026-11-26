@@ -48,6 +48,6 @@ Base: `https://mail.bupulse.com/api/mail/agent/v1` (any host works: `/api/*` pas
 ## Tests
 
 - `tests/mail/agent.test.ts`: key format, bearer parsing, the cursor, send input checks, the daily limit.
-- `tests/mail/agent.db.test.ts`: the real route handlers against the TEST database (after the migration
-  `20261126120000_mail_agent_keys` is applied there):
+- `tests/mail/agent.db.test.ts`: the real route handlers against the TEST database (after the migrations
+  `20261126120000_mail_agent_keys` and `20261126130000_mail_agent_keys_grants` are applied there):
   `RUN_DB_TESTS=1 node --env-file=.env node_modules/vitest/vitest.mjs run tests/mail/agent.db.test.ts`
