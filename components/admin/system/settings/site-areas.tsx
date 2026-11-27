@@ -1,6 +1,6 @@
-import { CircleOff, Gift, LoaderCircle, MoveRight } from "lucide-react";
-import { ExpandCard } from "@/components/admin/kit";
-import { RadioChips } from "@/components/admin/kit/form-choices";
+import { CircleOff, Gift, Hourglass, LoaderCircle, MoveRight } from "lucide-react";
+import { ExpandCard, StatusPill } from "@/components/admin/kit";
+import { RadioChips, SwitchRow } from "@/components/admin/kit/form-choices";
 import { Panel } from "@/components/admin/ui";
 import { Button, Field, Input } from "@/components/ui";
 import { saveSettingsAction } from "@/app/admin/(console)/(system)/settings/actions";
@@ -9,10 +9,38 @@ import { SETTINGS_TITLE } from "../settings-areas";
 
 type Msg = { ok?: string; bad?: string };
 
-/** /admin/settings/trial: how long a new client's free trial lasts. */
-export function TrialArea({ trialDays, ok, bad }: Msg & { trialDays: number }) {
+/** /admin/settings/trial: the pre-launch waiting list (lib/waitlist.ts) and how long a new client's free trial lasts. */
+export function TrialArea({ trialDays, waitlistOn, waitlistLaunchDate, ok, bad }: Msg & { trialDays: number; waitlistOn: boolean; waitlistLaunchDate: string }) {
   return (
-    <AreaFrame icon={Gift} tone="slate" title={SETTINGS_TITLE.trial} description="How long a new client tries BuPulse for free." ok={ok} bad={bad}>
+    <AreaFrame icon={Gift} tone="slate" title={SETTINGS_TITLE.trial} description="The waiting list before launch, and how long a new client tries BuPulse for free." ok={ok} bad={bad}>
+      <Panel
+        id="waitlist"
+        icon={Hourglass}
+        tone="pink"
+        title="Waiting list before launch"
+        description="A Christmas banner with a countdown on every public page. Visitors in every country can only reserve a spot; each one gets a thank-you email and shows in Quotes with a Telegram alert."
+        action={waitlistOn ? <StatusPill tone="good" dot>On</StatusPill> : <StatusPill tone="muted" dot>Off</StatusPill>}
+      >
+        <form action={saveSettingsAction} className="flex flex-col gap-4">
+          <input type="hidden" name="waitlistPanel" value="1" />
+          <SwitchRow name="waitlistOn" defaultChecked={waitlistOn} label="Show the waiting list" hint="While on, nobody can create an account or start a trial by themselves. Logging in still works." />
+          <Field label="Launch day" hint="The countdown runs to 00:00 Kigali time on this day." required>
+            <Input name="waitlistLaunchDate" type="date" defaultValue={waitlistLaunchDate} required className="w-48" />
+          </Field>
+          <div>
+            <Button type="submit">Save</Button>
+          </div>
+        </form>
+        <ExpandCard title="On launch day" summary="Nothing switches off by itself.">
+          <HowItWorks
+            items={[
+              "When the countdown reaches zero the banner says BuPulse is launching, and the waiting list stays on until you switch it off here.",
+              "Switching it off removes the banner and opens sign-up and free trials again. Visitors see the change on their next page.",
+              "You can still add companies yourself (Admin → Companies) and start their trials while the list is on.",
+            ]}
+          />
+        </ExpandCard>
+      </Panel>
       <Panel title="Trial length" description="A trial starts when the client picks the plan to try (right after onboarding, no demo needed).">
         <form action={saveSettingsAction} className="flex flex-wrap items-end gap-3">
           <Field label="Days" required>

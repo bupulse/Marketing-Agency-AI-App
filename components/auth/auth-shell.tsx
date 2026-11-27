@@ -1,19 +1,30 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { CalendarCheck, CreditCard, Sparkles } from "lucide-react";
+import { CalendarCheck, CreditCard, Gift, PhoneCall, Sparkles, type LucideIcon } from "lucide-react";
 import { BackgroundBlobs } from "@/components/motion";
 import { ThemeToggle } from "@/components/theme";
 import { GlassCard } from "@/components/ui";
 
-const FACTS = [
+type Fact = { icon: LucideIcon; text: string };
+
+const FACTS: Fact[] = [
   { icon: CalendarCheck, text: "Your free trial starts when you choose a plan" },
   { icon: CreditCard, text: "No credit card needed to start" },
   { icon: Sparkles, text: "Posts, images and ads in your brand voice" },
 ];
 
+/** The side panel while the pre-launch waiting list is on (lib/waitlist.ts): no trial promises. */
+export function waitlistFacts(dateLabel: string): Fact[] {
+  return [
+    { icon: Gift, text: `Launching on ${dateLabel}` },
+    { icon: PhoneCall, text: "Our team calls you before launch" },
+    { icon: Sparkles, text: "Posts, videos and an AI influencer in your brand voice" },
+  ];
+}
+
 /** Split layout shared by /login, /signup, /forgot-password and /reset-password: brand side + glass card. */
-export function AuthShell({ children, wide }: { children: ReactNode; wide?: boolean }) {
+export function AuthShell({ children, wide, facts = FACTS }: { children: ReactNode; wide?: boolean; facts?: Fact[] }) {
   return (
     <div className="relative grid min-h-dvh w-full lg:grid-cols-[1.05fr_1fr]">
       <BackgroundBlobs />
@@ -32,7 +43,7 @@ export function AuthShell({ children, wide }: { children: ReactNode; wide?: bool
             The marketing team for every small business.
           </p>
           <ul className="flex flex-col gap-3">
-            {FACTS.map(({ icon: Icon, text }) => (
+            {facts.map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3 text-[15px] font-medium">
                 <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/20">
                   <Icon aria-hidden className="size-[18px]" />

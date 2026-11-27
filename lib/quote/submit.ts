@@ -10,6 +10,9 @@ import { currentTrackedLinkId, linkTagFor } from "@/lib/links/service";
 import { publicLimited } from "@/lib/request-limits";
 import { QUOTE_FIELDS, QUOTE_KIND, quoteSchema, type QuoteFields, type QuoteFormState, type QuoteRequest } from "./schema";
 import { appUrl } from "@/lib/platform/app-hosts";
+import { runInBackground } from "@/lib/leads/background";
+import { getWaitlist } from "@/lib/waitlist-server";
+import { sendWaitlistThankYou } from "@/lib/waitlist-email";
 
 // Stores a "Get a free quote" request (the pop-up and /quote) and alerts the owner at once (lib/lead-alerts), with the
 // same protections as the contact form (lib/contact.ts): a honeypot field, a per-address limit, and the same person
@@ -75,6 +78,14 @@ export async function submitQuoteRequest(formData: FormData): Promise<QuoteFormS
       await alertInBackground(quoteAlert(q, row.createdAt, row.id, link), "quote lead alert");
       // Reminders on Telegram every 2 minutes until "✅ Called" is pressed; a failure here never fails the form.
       await scheduleLeadReminder(row.id).catch((error) => logError(error, { source: "quote.reminder", level: "warn" }));
+      // While the pre-launch waiting list is on (lib/waitlist.ts) the person gets the thank-you email, after the response.
+      const waitlist = await getWaitlist();
+      if (waitlist) {
+        const first = q.name.split(/\s+/)[0] || null;
+        await runInBackground(async () => {
+          if (!(await sendWaitlistThankYou(q.email, first, waitlist))) await logError(new Error("The waiting-list thank-you email was not sent"), { source: "waitlist.email", level: "warn" });
+        }, "waitlist thank-you");
+      }
     }
   } catch (error) {
     await logError(error, { source: "quote.submit" });

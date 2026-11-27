@@ -33,6 +33,11 @@ export async function saveSettingsAction(f: FormData) {
     if (f.has("dailyPanel")) await setSetting(ctx, "dailyPosts", f.get("dailyPosts") === "on");
     // Talking skit videos (paid Higgsfield calls): off until the owner's lip-sync test.
     if (f.has("skitPanel")) await setSetting(ctx, "skitVideos", f.get("skitVideos") === "on");
+    // The pre-launch waiting list (lib/waitlist.ts): the day first, so a bad date leaves the switch as it was.
+    if (f.has("waitlistPanel")) {
+      await setSetting(ctx, "waitlistLaunchDate", text(f, "waitlistLaunchDate"));
+      await setSetting(ctx, "waitlistOn", f.get("waitlistOn") === "on");
+    }
     // BuPulse's TIN (the VAT rate itself is per region, Admin -> Regions). Receipts use the new TIN at once.
     if (f.has("vatPanel") || f.has("vatTin")) clearVatSettingsCache();
   });

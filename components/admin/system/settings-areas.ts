@@ -25,7 +25,7 @@ export const SETTINGS_TITLE: Record<SettingsSlug, string> = {
   "google-calendar": "Google Calendar",
   calls: "Demo calls",
   availability: "When clients can book you",
-  trial: "Free trial",
+  trial: "Waiting list and free trial",
   loading: "Loading animation",
 };
 
@@ -75,6 +75,7 @@ export function settingsBackFor(has: (field: string) => boolean): string {
   if (has("currencyPanel") || has("usdToRwf") || has("cardMarginPercent") || has("displayCurrency") || has("usdToEur")) return settingsHref("currency");
   if (has("revenueGoalRwf") || has("goalStartMonth")) return settingsHref("goal");
   if (has("meetingLink") || has("organizerEmail") || has("slotMinutes") || has("bufferMinutes") || has("demoDailyCap") || has("blockedDates")) return settingsHref("calls");
+  if (has("waitlistPanel")) return settingsHref("trial", "waitlist");
   if (has("trialDays")) return settingsHref("trial");
   if (has("pageLoader")) return settingsHref("loading");
   return SETTINGS_BASE;

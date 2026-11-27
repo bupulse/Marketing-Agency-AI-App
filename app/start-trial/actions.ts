@@ -7,6 +7,7 @@ import { demoLimited } from "@/lib/demo/limits";
 import { logError } from "@/lib/errors";
 import { requestIp } from "@/lib/request-limits";
 import { startOwnTrial, TrialError } from "@/lib/trial/start";
+import { signupsClosed } from "@/lib/waitlist-server";
 
 export type StartTrialState = { error?: string };
 
@@ -19,6 +20,8 @@ const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
  */
 export async function startTrialAction(_prev: StartTrialState, formData: FormData): Promise<StartTrialState> {
   const user = await requireActiveUser("settings");
+  // Before launch (the waiting list is on) trials start on launch day; a page opened earlier cannot start one.
+  if (await signupsClosed()) return { error: "Free trials start on launch day. Reload the page." };
   const limited = await demoLimited(user.businessId, "trial");
   if (limited) return { error: limited };
   try {

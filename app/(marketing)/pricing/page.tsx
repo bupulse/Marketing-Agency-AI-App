@@ -18,6 +18,7 @@ import { currencyNote, paymentBadges } from "@/lib/region-format";
 import { getRegionPlans } from "@/lib/region-prices";
 import { CtaButton } from "@/components/marketing/quote/cta";
 import { ctaModeForRegion } from "@/lib/quote/cta";
+import { getWaitlist } from "@/lib/waitlist-server";
 
 // Plans and prices depend on where the visitor is (lib/region.ts) and change in the admin console, so the page is
 // rendered per request (the plan, price and region catalogs are cached for 30 seconds).
@@ -39,7 +40,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const days = `${trialDays} ${trialDays === 1 ? "day" : "days"}`;
   // Rwanda visitors ask for a free quote instead of starting a trial (lib/quote/cta.ts): the steps, the custom plan
   // card and the FAQ say so, and no line here sends them to the trial.
-  const quote = ctaModeForRegion(region.key) === "quote";
+  const quote = (await getWaitlist()) !== null || ctaModeForRegion(region.key) === "quote";
   const pricingFaqs = fillFaq(faqs, trialDays, quote ? "quote" : "trial").filter((f) => /get started|marketing experience|type of business|done-for-you/i.test(f.q));
   return (
     <>

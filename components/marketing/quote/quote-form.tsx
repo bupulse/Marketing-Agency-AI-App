@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useActionState, type ReactNode } from "react";
 import { Button, Field, GlassCard, Input, PhoneInput, Textarea } from "@/components/ui";
 import type { QuoteFormState } from "@/lib/quote/schema";
+import type { WaitlistInfo } from "@/lib/waitlist";
 import { submitQuoteForm } from "./quote-action";
 
 const initial: QuoteFormState = { status: "idle" };
@@ -18,6 +19,8 @@ type QuoteFormProps = {
   framed?: boolean;
   /** The pop-up's "Close" after the thank-you. */
   onClose?: () => void;
+  /** While the pre-launch waiting list is on (lib/waitlist.ts): "Reserve my spot" and the waiting-list thank-you. */
+  waitlist?: WaitlistInfo | null;
 };
 
 /**
@@ -25,7 +28,7 @@ type QuoteFormProps = {
  * important part: Rwanda (+250) is picked for them and "0788 123 456" drops its 0, another country is one tap away;
  * the server stores it as +250...
  */
-export function QuoteForm({ source, pageUrl, framed = false, onClose }: QuoteFormProps) {
+export function QuoteForm({ source, pageUrl, framed = false, onClose, waitlist = null }: QuoteFormProps) {
   const [state, action, pending] = useActionState(submitQuoteForm, initial);
   const errors = state.errors ?? {};
   const values = state.values ?? {};
@@ -43,10 +46,19 @@ export function QuoteForm({ source, pageUrl, framed = false, onClose }: QuoteFor
     return frame(
       <div role="status" className="flex flex-col items-start gap-3">
         <CircleCheck aria-hidden className="size-9 text-success" />
-        <h3 className="text-2xl font-bold tracking-tight">Thank you{state.firstName ? `, ${state.firstName}` : ""}!</h3>
-        <p className="text-muted">
-          We got your request. Someone from BuPulse will call you shortly on the number you gave us to understand your business and prepare your quote.
-        </p>
+        <h3 className="text-2xl font-bold tracking-tight">
+          {waitlist ? "You're on the list" : "Thank you"}
+          {state.firstName ? `, ${state.firstName}` : ""}!
+        </h3>
+        {waitlist ? (
+          <p className="text-muted">
+            BuPulse launches on {waitlist.dateLabel}. Before then, someone from our team will call you to learn what your business needs. We also sent a confirmation to your email.
+          </p>
+        ) : (
+          <p className="text-muted">
+            We got your request. Someone from BuPulse will call you shortly on the number you gave us to understand your business and prepare your quote.
+          </p>
+        )}
         {onClose && (
           <Button type="button" variant="outline" onClick={onClose}>
             Close
@@ -93,10 +105,10 @@ export function QuoteForm({ source, pageUrl, framed = false, onClose }: QuoteFor
         )}
 
         <Button type="submit" size="lg" disabled={pending} trailing={<Send aria-hidden className="size-4" />}>
-          {pending ? "Sending..." : "Get my free quote"}
+          {pending ? "Sending..." : waitlist ? "Reserve my spot" : "Get my free quote"}
         </Button>
         <p className="text-[13px] text-muted">
-          We only use your details to call you about your quote. See our{" "}
+          {waitlist ? "We only use your details to contact you about BuPulse." : "We only use your details to call you about your quote."} See our{" "}
           <Link className="underline" href="/privacy">
             privacy policy
           </Link>

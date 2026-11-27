@@ -160,7 +160,7 @@ export function AvatarHero() {
 
           <div className="ah-cta">
             <div className="ah-actions">
-              <CtaButton size="lg" trailing={<ArrowRight aria-hidden className="size-[18px]" />} />
+              <CtaButton size="lg" animated trailing={<ArrowRight aria-hidden className="size-[18px]" />} />
               <Button href="#how" variant="outline" size="lg" className="ah-ghost">
                 See how it works
               </Button>

@@ -1,5 +1,6 @@
 "use server";
 
+import { signupsClosed } from "@/lib/waitlist-server";
 import { redirect } from "next/navigation";
 import { ensureAccount, findAccountByEmail } from "@/lib/account";
 import { refFromCookie } from "@/lib/sales/referral";
@@ -92,6 +93,8 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     terms: formData.get("terms") === "true",
   });
   if (!parsed.success) return { status: "error", fieldErrors: fieldErrors(parsed.error) };
+  // Before launch (the waiting list is on) no new accounts, even from a page that was open before it was switched on.
+  if (await signupsClosed()) return { status: "error", message: "New accounts open on launch day. Reload the page to join the waiting list." };
   const v = parsed.data;
   const ip = await requestIp();
   const limited = await publicLimited("signUp", v.email, ip);

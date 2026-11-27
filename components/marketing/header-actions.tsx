@@ -25,6 +25,7 @@ export function HeaderActions({ links }: { links: { label: string; href: string 
       ) : (
         <CtaButton
           size="sm"
+          animated
           className="hidden whitespace-nowrap sm:inline-flex"
           trialLabel={
             <>

@@ -4,7 +4,7 @@ import { recordServiceUse } from "@/lib/admin/usage-counter";
 import { logError } from "@/lib/errors";
 
 /** `attachments` are base64 file bodies (Resend's shape), used for the demo calendar invites. */
-export type Email = { to: string; subject: string; html: string; text: string; attachments?: { filename: string; content: string }[] };
+export type Email = { to: string; subject: string; html: string; text: string; attachments?: { filename: string; content: string }[]; /** Where replies go, when not the From address. */ replyTo?: string };
 
 const DEFAULT_FROM = "BuPulse <register@bupulse.com>";
 
@@ -42,6 +42,7 @@ async function deliver(email: Email): Promise<boolean> {
         html: email.html,
         text: email.text,
         ...(email.attachments?.length ? { attachments: email.attachments } : {}),
+        ...(email.replyTo ? { reply_to: email.replyTo } : {}),
       }),
     });
     if (!response.ok) {

@@ -15,6 +15,7 @@ import { ChatSection, DailyPostFacts, Numbers, PlansTeaser } from "@/components/
 import { Testimonials } from "@/components/marketing/home/testimonials";
 import { WeekOfPosts } from "@/components/marketing/home/week-of-posts";
 import { ctaModeForRegion } from "@/lib/quote/cta";
+import { getWaitlist } from "@/lib/waitlist-server";
 import { displayRegion } from "@/lib/region";
 import { getRegionPlans } from "@/lib/region-prices";
 
@@ -40,7 +41,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function HomePage() {
   const region = await displayRegion();
   const plans = await getRegionPlans(region.key, { withVat: true });
-  const mode = ctaModeForRegion(region.key);
+  const mode = (await getWaitlist()) ? "quote" : ctaModeForRegion(region.key);
   return (
     <>
       {/* The light of the page: dark hero, night, deep blue, violet, then light (docs/design/front-page-motion.md). */}

@@ -89,7 +89,7 @@ export function SettingsHub({ d, ok, bad }: { d: SettingsHubData; ok?: string; b
 
       <Section title="The site" description="Sign-ups, the look while pages load, and the version that runs.">
         <SectionGrid>
-          <SectionCard row href={settingsHref("trial")} icon={Gift} tone="slate" title={SETTINGS_TITLE.trial} hint="How long a new client tries BuPulse for free." value={`${d.trialDays} days`} valueLabel="free" />
+          <SectionCard row href={settingsHref("trial")} icon={Gift} tone="slate" title={SETTINGS_TITLE.trial} hint="The waiting list before launch, and how long a new client tries BuPulse for free." value={`${d.trialDays} days`} valueLabel="free" />
           <SectionCard row href={settingsHref("loading")} icon={LoaderCircle} tone="slate" title={SETTINGS_TITLE.loading} hint="What visitors see while a page loads." value={LOADER[d.pageLoader] ?? d.pageLoader} valueLabel="on every page" />
           <SectionCard row href="/admin/settings/updates" icon={CloudDownload} tone="slate" title="Updates" hint="The version running now, new releases, install or roll back." />
         </SectionGrid>

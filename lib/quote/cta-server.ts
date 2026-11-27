@@ -1,5 +1,6 @@
 import "server-only";
 import { displayRegion } from "@/lib/region";
+import { getWaitlist } from "@/lib/waitlist-server";
 import { ctaModeForRegion, type CtaMode } from "./cta";
 
 /**
@@ -9,5 +10,7 @@ import { ctaModeForRegion, type CtaMode } from "./cta";
  * and displayRegion already falls back (cached regions, then the seeds) when the database cannot be read.
  */
 export async function visitorCtaMode(): Promise<CtaMode> {
+  // While the waiting list is on (lib/waitlist.ts) every visitor, in any country, gets the quote form, never the trial.
+  if (await getWaitlist()) return "quote";
   return ctaModeForRegion((await displayRegion()).key);
 }

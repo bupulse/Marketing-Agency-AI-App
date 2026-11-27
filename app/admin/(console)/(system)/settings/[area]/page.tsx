@@ -82,7 +82,10 @@ export default async function SettingsAreaPage({ params, searchParams }: PagePro
     case "availability":
       return <AvailabilityArea {...msg} windows={await listAvailability()} weekdays={WEEKDAY_NAMES} timeZone={TZ} />;
     case "trial":
-      return <TrialArea {...msg} trialDays={(await getSettings()).trialDays} />;
+    {
+      const s = await getSettings();
+      return <TrialArea {...msg} trialDays={s.trialDays} waitlistOn={s.waitlistOn} waitlistLaunchDate={s.waitlistLaunchDate} />;
+    }
     case "loading":
       return <LoadingArea {...msg} pageLoader={(await getSettings()).pageLoader} />;
   }

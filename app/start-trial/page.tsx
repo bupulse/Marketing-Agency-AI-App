@@ -11,6 +11,7 @@ import { companyPlans } from "@/lib/region-prices";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { resolveCompany } from "@/lib/team/company";
 import { can } from "@/lib/team/roles";
+import { getWaitlist } from "@/lib/waitlist-server";
 
 export const metadata: Metadata = {
   title: "Start your free trial",
@@ -39,6 +40,21 @@ export default async function StartTrialPage() {
   if (!sub || sub.status !== "PENDING_DEMO") redirect("/dashboard");
   // An admin sent an invoice instead of a trial (docs/INVOICES.md): the dashboard shows it and how to pay.
   if (await prisma.invoice.findFirst({ where: { businessId: business.id, status: "sent" }, select: { id: true } })) redirect("/dashboard");
+
+  // Before launch (the waiting list is on, lib/waitlist.ts) trials do not start yet; an admin can still start one.
+  const waitlist = await getWaitlist();
+  if (waitlist) {
+    return (
+      <OnboardingShell>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-2xl font-semibold tracking-[-0.03em]">BuPulse opens on {waitlist.dateLabel} 🎄</h1>
+          <p className="text-[15px] text-muted">
+            {business.name} is on the list. Free trials start on launch day, and our team will call you before then to learn what your business needs.
+          </p>
+        </div>
+      </OnboardingShell>
+    );
+  }
 
   const settings = await getSettings();
   const days = `${settings.trialDays} ${settings.trialDays === 1 ? "day" : "days"}`;
