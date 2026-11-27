@@ -1,4 +1,7 @@
+import { AgentKeys } from "@/components/mail/console-agent-keys";
 import { card, h1, panel, sub } from "@/components/mail/console-styles";
+import { prisma } from "@/lib/db";
+import { keySentToday, listAgentKeys } from "@/lib/mail/agent";
 import { cn } from "@/lib/cn";
 import { loadSendWeek } from "@/lib/mail/console-data";
 import { DAILY_LIMIT, UNDO_SECONDS } from "@/lib/mail/send";
@@ -6,10 +9,18 @@ import { requireMailAdmin } from "@/lib/mail/session";
 
 export const metadata = { title: "Sending and limits" };
 
-// Mail console: Sending and limits (read only): the free Resend plan's daily sends, today's count, the undo window.
+// Mail console: Sending and limits: the free Resend plan's daily sends, today's count, the undo window, and the agent
+// keys an outreach agent sends with (docs/mail-crm/AGENT_API.md).
 export default async function MailConsoleSendingPage() {
   await requireMailAdmin();
-  const week = await loadSendWeek();
+  const [week, keys, boxes] = await Promise.all([
+    loadSendWeek(),
+    listAgentKeys(),
+    prisma.mailbox.findMany({ where: { address: { not: null } }, orderBy: [{ sortOrder: "asc" }, { address: "asc" }], select: { id: true, address: true } }),
+  ]);
+  const boxAddress = new Map(boxes.map((b) => [b.id, b.address!]));
+  const sentByKey = new Map(await Promise.all(keys.filter((k) => !k.revokedAt).map(async (k) => [k.id, await keySentToday(k.id)] as const)));
+  const when = (d: Date) => d.toLocaleString("en-GB", { timeZone: "Africa/Kigali", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const days = week.map((w) => w.day);
   const sent = new Map(week.map((w) => [w.day, w.sent]));
   const todayCount = week[6].sent;
@@ -20,6 +31,7 @@ export default async function MailConsoleSendingPage() {
     ["Each copy is one send", "An email to 6 people, or to a department of 6, uses 6 sends."],
     ["Forwarding is free", "Inside forwarding is a copy in B Mail, and outside forwarding goes through Cloudflare: neither uses a send."],
     ["Undo send", `Every email waits ${UNDO_SECONDS} seconds before it goes, so Undo can stop it.`],
+    ["Agent keys", "An agent's emails go out at once, with no undo, and each key stops at its own daily limit."],
     ["More later", "A paid Resend plan raises the limit. Nothing is bought yet."],
   ];
   return (
@@ -54,6 +66,11 @@ export default async function MailConsoleSendingPage() {
           <div key={t} className="flex flex-col gap-1"><span className="text-[14.5px] font-bold">{t}</span><span className="text-[13.5px] leading-normal text-[#3c3c43] dark:text-white/70">{x}</span></div>
         ))}
       </section>
+      <AgentKeys
+        keys={keys.map((k) => ({ id: k.id, name: k.name, prefix: k.prefix, mailbox: boxAddress.get(k.mailboxId) ?? "a removed mailbox", fromName: k.fromName, signature: k.signature, dailyLimit: k.dailyLimit, sentToday: sentByKey.get(k.id) ?? 0, lastUsed: k.lastUsedAt ? when(k.lastUsedAt) : null, revoked: !!k.revokedAt }))}
+        mailboxes={boxes.map((b) => ({ id: b.id, address: b.address! }))}
+        defaultMailboxId={boxes.find((b) => b.address?.startsWith("sales@"))?.id ?? null}
+      />
     </>
   );
 }
