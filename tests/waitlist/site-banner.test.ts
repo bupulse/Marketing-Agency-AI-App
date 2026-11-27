@@ -92,5 +92,7 @@ describe("colours", () => {
     expect(bannerPaint({ color: "red", customColor: "#000000" })).toEqual({ bg: "#d91f26", fg: "#ffffff" });
     expect(bannerPaint({ color: "orange", customColor: "#000000" }).fg).toBe("#1a1006");
     expect(bannerPaint({ color: "custom", customColor: "#ffee00" })).toEqual({ bg: "#ffee00", fg: "#111111" });
+    expect(bannerPaint({ color: "gold-metal", customColor: "#000000" }).bg).toContain("linear-gradient");
+    expect(bannerPaint({ color: "black-gold", customColor: "#000000" }).fg).toBe("#f3d36b");
   });
 });

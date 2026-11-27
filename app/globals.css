@@ -820,3 +820,112 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
   background: linear-gradient(120deg, #2f6bff, #7b5cff) !important;
   color: #ffffff !important;
 }
+
+/* Luxury banner styles (Admin -> Settings -> Site banner): gold with light, shadow and movement (owner, 27 Nov 2026). */
+@keyframes gold-flow {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+@keyframes gold-sheen {
+  0%, 55% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+@keyframes gold-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.gold-fill {
+  background-image: linear-gradient(100deg, #8a5a00 0%, #c9971c 14%, #f7e08a 30%, #d4a52a 44%, #fff3c4 54%, #c38f1a 66%, #f3d36b 82%, #9c6a06 100%);
+  background-size: 220% 100%;
+  animation: gold-flow 9s ease-in-out infinite alternate;
+}
+/* Gold letters: a vertical metal gradient clipped to the text, with a soft glow under it. */
+.gold-text {
+  background-image: linear-gradient(180deg, #fff6d0 0%, #f3d36b 38%, #d4a52a 58%, #a87410 78%, #f3d36b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.55));
+}
+/* A gold button: polished metal with a bright top edge and a deep shadow. */
+.gold-button {
+  background-image: linear-gradient(180deg, #fff1b8 0%, #f3d36b 30%, #d4a52a 62%, #a87410 100%);
+  color: #2b1a00;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.75), inset 0 -2px 3px rgb(110 70 0 / 0.45), 0 3px 10px rgb(0 0 0 / 0.35);
+  text-shadow: 0 1px 0 rgb(255 245 205 / 0.6);
+}
+.gold-ring-chip {
+  border: 1px solid rgb(243 211 107 / 0.7);
+  box-shadow: inset 0 0 8px rgb(243 211 107 / 0.18);
+}
+
+/* 1. Gold metal: the whole bar is polished gold that slowly flows, with a light sweeping across. */
+.banner-lux-gold-metal {
+  background-image: linear-gradient(100deg, #8a5a00 0%, #c9971c 14%, #f7e08a 30%, #d4a52a 44%, #fff3c4 54%, #c38f1a 66%, #f3d36b 82%, #9c6a06 100%);
+  background-size: 220% 100%;
+  animation: gold-flow 9s ease-in-out infinite alternate;
+  color: #2b1a00;
+  text-shadow: 0 1px 0 rgb(255 245 205 / 0.65);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7), inset 0 -3px 6px rgb(100 62 0 / 0.35), 0 6px 18px rgb(140 95 10 / 0.35);
+}
+.banner-lux-gold-metal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 35%, rgb(255 255 255 / 0.6) 50%, transparent 65%);
+  animation: gold-sheen 6s ease-in-out infinite;
+}
+
+/* 2. Black and gold: a black bar with gold letters, gold rings and shiny gold orbs, and a gold line under it. */
+.banner-lux-black-gold {
+  background:
+    radial-gradient(circle at 10% 140%, rgb(212 165 42 / 0.28), transparent 42%),
+    radial-gradient(circle at 92% -40%, rgb(247 224 138 / 0.22), transparent 46%),
+    linear-gradient(180deg, #1a1a1a 0%, #070707 100%);
+  color: #f3d36b;
+  box-shadow: inset 0 -1px 0 rgb(243 211 107 / 0.55), 0 6px 18px rgb(0 0 0 / 0.45);
+}
+.banner-lux-black-gold::before,
+.banner-lux-red-gold::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* Rings (thin gold circles) and orbs (gold balls with a white highlight) at both ends. */
+  background:
+    radial-gradient(circle at 4% 70%, transparent 13px, #a87410 14px, #f7e08a 15.5px, #c9971c 17px, transparent 18px),
+    radial-gradient(circle at 8.5% 18%, transparent 6px, #c9971c 7px, #fff3c4 7.8px, transparent 9px),
+    radial-gradient(circle at 96% 32%, transparent 15px, #a87410 16px, #f7e08a 17.5px, #c9971c 19px, transparent 20px),
+    radial-gradient(circle at 1.6% 22%, #fffbe6 0 1.5px, #f3d36b 3px, #b8860b 6px, #6b4500 8px, transparent 8.5px),
+    radial-gradient(circle at 91.5% 78%, #fffbe6 0 1.5px, #f3d36b 3.5px, #b8860b 7px, #6b4500 9px, transparent 9.5px),
+    radial-gradient(circle at 99% 85%, #fffbe6 0 1px, #f3d36b 2px, #b8860b 4px, transparent 4.5px);
+  animation: gold-float 5s ease-in-out infinite;
+}
+.banner-lux-black-gold::after,
+.banner-lux-red-gold::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 40%, rgb(255 236 170 / 0.18) 50%, transparent 60%);
+  animation: gold-sheen 7s ease-in-out infinite;
+}
+
+/* 3. Red and gold: deep Christmas velvet with gold letters, rings and orbs, and gold edges. */
+.banner-lux-red-gold {
+  background:
+    radial-gradient(ellipse at 50% -60%, rgb(255 120 120 / 0.35), transparent 60%),
+    linear-gradient(180deg, #c4161c 0%, #8e0c12 60%, #5e050a 100%);
+  color: #f7e08a;
+  box-shadow: inset 0 1px 0 rgb(247 224 138 / 0.6), inset 0 -1px 0 rgb(247 224 138 / 0.6), 0 6px 18px rgb(80 0 0 / 0.4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gold-fill,
+  .banner-lux-gold-metal,
+  .banner-lux-gold-metal::before,
+  .banner-lux-black-gold::before,
+  .banner-lux-black-gold::after,
+  .banner-lux-red-gold::before,
+  .banner-lux-red-gold::after { animation: none; }
+}

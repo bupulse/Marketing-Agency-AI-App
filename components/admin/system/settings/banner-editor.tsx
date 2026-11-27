@@ -21,6 +21,13 @@ const SWATCHES: { value: SiteBanner["color"]; label: string; bg: string }[] = [
   { value: "custom", label: "Your own", bg: "conic-gradient(#d91f26,#f5b70a,#0f7a3d,#2f6bff,#7b5cff,#d91f26)" },
 ];
 
+/** The luxury styles (moving metallic gold, app/globals.css .banner-lux-*): bigger tiles that show the real effect. */
+const LUXURY: { value: SiteBanner["color"]; label: string; hint: string }[] = [
+  { value: "gold-metal", label: "Gold metal", hint: "Polished gold that flows, with a light sweeping across." },
+  { value: "black-gold", label: "Black and gold", hint: "Black with gold letters, gold rings and orbs." },
+  { value: "red-gold", label: "Red and gold", hint: "Christmas red velvet with gold letters and rings." },
+];
+
 /** The preview from what the form holds now: invalid or half-typed parts keep the last good value. */
 function previewFrom(form: HTMLFormElement, last: SiteBanner): SiteBanner {
   const raw = bannerFromForm((k) => {
@@ -79,8 +86,23 @@ export function BannerEditor({ banner, action }: { banner: SiteBanner; action: (
       </Section>
 
       <Section icon={Palette} title="Colour">
+        <fieldset className="m-0 grid gap-3 border-0 p-0 sm:grid-cols-3">
+          <legend className="mb-2 text-[13px] font-semibold text-muted">Luxury styles (they move)</legend>
+          {LUXURY.map((l) => (
+            <label key={l.value} className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-line p-2 has-[:checked]:border-transparent has-[:checked]:ring-2 has-[:checked]:ring-pulse-blue">
+              <input type="radio" name="color" value={l.value} defaultChecked={banner.color === l.value} className="sr-only" />
+              <span aria-hidden className={`banner-lux-${l.value} relative flex h-12 items-center justify-center overflow-hidden rounded-xl text-sm font-bold`}>
+                <span className="relative">
+                  <span className={cn(l.value !== "gold-metal" && "gold-text")}>BuPulse</span> 🎄
+                </span>
+              </span>
+              <span className="px-1 text-sm font-semibold">{l.label}</span>
+              <span className="px-1 text-[12px] leading-snug text-muted">{l.hint}</span>
+            </label>
+          ))}
+        </fieldset>
         <fieldset className="m-0 flex flex-wrap gap-2 border-0 p-0">
-          <legend className="sr-only">Banner colour</legend>
+          <legend className="mb-2 text-[13px] font-semibold text-muted">Plain colours</legend>
           {SWATCHES.map((s) => (
             <label key={s.value} className="flex cursor-pointer items-center gap-2 rounded-full border border-line py-1.5 pr-3 pl-1.5 text-sm font-medium has-[:checked]:border-transparent has-[:checked]:ring-2 has-[:checked]:ring-pulse-blue">
               <input type="radio" name="color" value={s.value} defaultChecked={banner.color === s.value} className="sr-only" />

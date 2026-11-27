@@ -4,7 +4,9 @@
 // button counts down too. It is separate from the waiting list (lib/waitlist.ts), which closes sign-ups: the banner
 // can announce anything. Stored as one AdminSetting (`site.banner`). Pure, so Admin, the public pages and the tests agree.
 
-export const BANNER_COLORS = ["brand", "red", "orange", "black", "green", "gold", "custom"] as const;
+// The last three are "luxury" styles (owner, 27 Nov 2026: gold with life in it): metallic gradients with highlights,
+// shadows and slow movement; black-gold also has gold rings and orbs. Their CSS is in app/globals.css (.banner-lux-*).
+export const BANNER_COLORS = ["brand", "red", "orange", "black", "green", "gold", "custom", "gold-metal", "black-gold", "red-gold"] as const;
 export type BannerColor = (typeof BANNER_COLORS)[number];
 
 export const BANNER_FONTS = ["default", "bold", "elegant", "handwritten", "mono"] as const;
@@ -65,8 +67,8 @@ export const DEFAULT_BANNER: SiteBanner = {
   on: false,
   text: "This Christmas, your business gets its own AI marketing team. Launching 15 Dec.",
   mobileText: "Your own AI marketing team this Christmas. Launching 15 Dec.",
-  // Gold, to feel like Christmas (owner, 27 Nov 2026), with the big tree and gift.
-  color: "gold",
+  // Metallic gold, to feel like Christmas (owner, 27 Nov 2026), with the big tree and two gifts.
+  color: "gold-metal",
   customColor: "#d91f26",
   font: "default",
   animation: "none",
@@ -177,6 +179,9 @@ export function bannerShowing(b: SiteBanner, now: number = Date.now()): boolean 
   return true;
 }
 
+/** Polished gold: dark and light bands like light on metal. */
+export const GOLD_METAL = "linear-gradient(100deg, #8a5a00 0%, #c9971c 14%, #f7e08a 30%, #d4a52a 44%, #fff3c4 54%, #c38f1a 66%, #f3d36b 82%, #9c6a06 100%)";
+
 /** The banner's background and text colour as CSS values (for the main button that wears the banner's colour). */
 export function bannerPaint(b: Pick<SiteBanner, "color" | "customColor">): { bg: string; fg: string } {
   switch (b.color) {
@@ -194,6 +199,12 @@ export function bannerPaint(b: Pick<SiteBanner, "color" | "customColor">): { bg:
       return { bg: "#f5b70a", fg: "#1a1206" };
     case "custom":
       return { bg: b.customColor, fg: textOn(b.customColor) === "light" ? "#ffffff" : "#111111" };
+    case "gold-metal":
+      return { bg: GOLD_METAL, fg: "#2b1a00" };
+    case "black-gold":
+      return { bg: "linear-gradient(180deg, #1c1c1c, #050505)", fg: "#f3d36b" };
+    case "red-gold":
+      return { bg: "linear-gradient(180deg, #b3121a, #6e070c)", fg: "#f7e08a" };
   }
 }
 

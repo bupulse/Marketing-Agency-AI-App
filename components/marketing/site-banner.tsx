@@ -14,7 +14,8 @@ import { useCountdown } from "./waitlist-label";
 // draws it from the settings and is also the live preview in Admin; SiteBannerBar is the public one, whose "quote"
 // button opens the quote pop-up.
 
-type Look = { bar: string; chip: string; button: string };
+/** `text` styles the words (the gold letters of the luxury styles). */
+type Look = { bar: string; chip: string; button: string; text?: string };
 
 const LOOK: Record<Exclude<BannerColor, "custom">, Look> = {
   brand: { bar: "bg-brand-gradient text-white", chip: "bg-white/15", button: "bg-white text-ink" },
@@ -23,6 +24,9 @@ const LOOK: Record<Exclude<BannerColor, "custom">, Look> = {
   black: { bar: "bg-[#0b0b0f] text-white", chip: "bg-white/12", button: "bg-[#ff7a1a] text-[#1a1006]" },
   green: { bar: "bg-[#0f7a3d] text-white", chip: "bg-black/15", button: "bg-white text-[#0b5f2f]" },
   gold: { bar: "bg-[#f5b70a] text-[#1a1206]", chip: "bg-black/10", button: "bg-[#1a1206] text-white" },
+  "gold-metal": { bar: "banner-lux-gold-metal", chip: "bg-[#2b1a00]/12 shadow-[inset_0_1px_2px_rgba(80,50,0,0.35)]", button: "bg-[#1a1206] text-[#f7e08a] shadow-[0_3px_10px_rgba(60,35,0,0.45),inset_0_1px_0_rgba(255,255,255,0.15)]" },
+  "black-gold": { bar: "banner-lux-black-gold", chip: "gold-ring-chip bg-black/40 text-[#f3d36b]", button: "gold-button", text: "gold-text" },
+  "red-gold": { bar: "banner-lux-red-gold", chip: "gold-ring-chip bg-black/25 text-[#f7e08a]", button: "gold-button", text: "gold-text" },
 };
 
 /** The big icons: before the message and beside the timer (owner: the tree and two gifts, easy to see). */
@@ -64,8 +68,8 @@ export function BannerBar({ banner, onQuote, preview = false }: { banner: SiteBa
 
   const message: ReactNode = (
     <>
-      <span className="sm:hidden">{phone}</span>
-      <span className="hidden sm:inline">{desktop}</span>
+      <span className={cn("sm:hidden", look.text)}>{phone}</span>
+      <span className={cn("hidden sm:inline", look.text)}>{desktop}</span>
     </>
   );
 
@@ -105,10 +109,11 @@ export function BannerBar({ banner, onQuote, preview = false }: { banner: SiteBa
       style={style}
       className={cn(
         "relative z-40 overflow-hidden",
+        // The luxury styles keep their own light sweep; "shimmer" would replace it, so it is left off for them.
         look.bar,
         banner.animation === "slide" && "banner-anim-slide",
         banner.animation === "pulse" && "banner-anim-pulse",
-        banner.animation === "shimmer" && "banner-anim-shimmer",
+        banner.animation === "shimmer" && !banner.color.includes("-") && "banner-anim-shimmer",
       )}
     >
       <BannerFontLink font={banner.font} />
