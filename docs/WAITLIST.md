@@ -14,8 +14,8 @@ animation (none, slide in, shimmer, glow, scrolling text), an optional countdown
 site's main button (unchanged, count down, glow; and whether it wears the banner's colour, BuPulse blue on hover).
 Default: the gold Christmas banner counting down to 15 Dec, off until switched on.
 
-The main button's countdown (`components/marketing/waitlist-label.tsx`) swaps the countdown and "Get started" every
-4 seconds; hover or keyboard focus shows "Get a free quote" (or "Start your free trial" where the trial is offered).
+The main button's countdown (`components/marketing/waitlist-label.tsx`) swaps the countdown and "Get a free quote" every
+4 seconds and stays on "Get a free quote" on hover (owner, 27 Nov 2026: never "Get started").
 
 ## What the waiting list does while it is on
 - **Every visitor, any country**, gets the quote pop-up, titled "Reserve your spot" (`lib/quote/cta-server.ts`). The

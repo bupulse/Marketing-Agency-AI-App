@@ -113,7 +113,7 @@ export function CtaButton({ trialHref = "/signup", trialLabel = "Start your free
     return (
       <CountdownCtaButton
         until={banner.countdownAt}
-        hoverLabel={mode === "quote" ? QUOTE_LABEL : "Start your free trial"}
+        label={mode === "quote" ? QUOTE_LABEL : "Start your free trial"}
         onClick={mode === "quote" ? openQuote : onTrialClick}
         href={mode === "quote" ? undefined : trialHref}
         look={look}
@@ -141,19 +141,19 @@ export function ForCta({ trial, quote }: { trial: ReactNode; quote: ReactNode })
 }
 
 /**
- * The main button counting down (CountdownLabel): the countdown and "Get started" take turns, and hovering or focusing
- * it shows the usual action ("Get a free quote", or "Start your free trial" where the trial is offered). It opens the
- * quote pop-up, or links to the trial.
+ * The main button counting down (CountdownLabel): the countdown and its words ("Get a free quote", or "Start your free
+ * trial" where the trial is offered) take turns; hovering or focusing it keeps the words. It opens the quote pop-up,
+ * or links to the trial.
  */
 function CountdownCtaButton({
   until,
-  hoverLabel,
+  label: words,
   onClick,
   href,
   look,
 }: {
   until: string;
-  hoverLabel: string;
+  label: string;
   onClick?: () => void;
   href?: string;
   look: Pick<CtaButtonProps, "size" | "variant" | "className" | "leading" | "trailing" | "style">;
@@ -167,16 +167,16 @@ function CountdownCtaButton({
     onFocus: () => setActive(true),
     onBlur: () => setActive(false),
   };
-  const label = <CountdownLabel until={until} active={active} hoverLabel={hoverLabel} />;
+  const label = <CountdownLabel until={until} active={active} label={words} />;
   if (href) {
     return (
-      <Button href={href} onClick={onClick} aria-label={hoverLabel} leading={leading} size={size} variant={variant} className={className} style={style} {...events}>
+      <Button href={href} onClick={onClick} aria-label={words} leading={leading} size={size} variant={variant} className={className} style={style} {...events}>
         {label}
       </Button>
     );
   }
   return (
-    <Button type="button" aria-haspopup="dialog" aria-label={`Get started: ${hoverLabel}`} onClick={onClick} leading={leading} size={size} variant={variant} className={className} style={style} {...events}>
+    <Button type="button" aria-haspopup="dialog" aria-label={words} onClick={onClick} leading={leading} size={size} variant={variant} className={className} style={style} {...events}>
       {label}
     </Button>
   );

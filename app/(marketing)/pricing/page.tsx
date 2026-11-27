@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = pageMetadata({
   title: "Pricing",
-  description: "Simple plans priced for where you are. Start your free trial, no card needed, then pay monthly or yearly with a discount. Marketing help for every small business.",
+  description: "Simple plans priced for where you are. Pay monthly or yearly with a discount, by Mobile Money or card. Marketing help for every small business.",
   path: "/pricing",
 });
 

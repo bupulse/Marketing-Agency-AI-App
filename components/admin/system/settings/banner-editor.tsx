@@ -199,7 +199,7 @@ export function BannerEditor({ banner, action }: { banner: SiteBanner; action: (
           defaultValue={banner.headerButton}
           options={[
             { value: "normal", label: "Unchanged", hint: "“Get a free quote” as usual." },
-            { value: "countdown", label: "Count down", hint: "Countdown and “Get started” take turns; “Get a free quote” on hover. Needs the countdown on." },
+            { value: "countdown", label: "Count down", hint: "Countdown and “Get a free quote” take turns; it stays on “Get a free quote” on hover. Needs the countdown on." },
             { value: "pulse", label: "Glow", hint: "Usual words with a soft pulsing glow." },
           ]}
         />
