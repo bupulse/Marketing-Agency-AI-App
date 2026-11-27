@@ -21,8 +21,15 @@ export default async function MarketingLayout({ children }: { children: React.Re
       <CtaProvider mode={mode} waitlist={waitlist}>
         <div className="relative flex min-h-full flex-1 flex-col overflow-x-clip">
           <BackgroundBlobs />
-          {waitlist && <WaitlistBanner info={waitlist} />}
-          <SiteHeader />
+          {waitlist ? (
+            // The banner stays in view while scrolling (owner, 27 Nov 2026): it and the floating menu stick together.
+            <div className="sticky top-0 z-40">
+              <WaitlistBanner info={waitlist} />
+              <SiteHeader />
+            </div>
+          ) : (
+            <SiteHeader />
+          )}
           <main id="main" className="flex-1">
             {children}
           </main>

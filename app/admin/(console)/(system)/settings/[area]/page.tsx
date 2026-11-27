@@ -84,7 +84,7 @@ export default async function SettingsAreaPage({ params, searchParams }: PagePro
     case "trial":
     {
       const s = await getSettings();
-      return <TrialArea {...msg} trialDays={s.trialDays} waitlistOn={s.waitlistOn} waitlistLaunchDate={s.waitlistLaunchDate} />;
+      return <TrialArea {...msg} trialDays={s.trialDays} waitlistOn={s.waitlistOn} waitlistLaunchDate={s.waitlistLaunchDate} waitlistBannerColor={s.waitlistBannerColor} />;
     }
     case "loading":
       return <LoadingArea {...msg} pageLoader={(await getSettings()).pageLoader} />;

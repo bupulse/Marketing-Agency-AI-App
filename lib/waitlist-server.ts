@@ -11,7 +11,7 @@ import { DEFAULT_LAUNCH_DATE, waitlistInfo, type WaitlistInfo } from "./waitlist
 export const getWaitlist = cache(async (): Promise<WaitlistInfo | null> => {
   let rows: { key: string; value: unknown }[] = [];
   try {
-    rows = await prisma.adminSetting.findMany({ where: { key: { in: [SETTING_KEYS.waitlistOn, SETTING_KEYS.waitlistLaunchDate] } } });
+    rows = await prisma.adminSetting.findMany({ where: { key: { in: [SETTING_KEYS.waitlistOn, SETTING_KEYS.waitlistLaunchDate, SETTING_KEYS.waitlistBannerColor] } } });
   } catch {
     rows = [];
   }
@@ -24,7 +24,7 @@ export const getWaitlist = cache(async (): Promise<WaitlistInfo | null> => {
   } catch {
     // A bad stored day falls back to the default.
   }
-  return waitlistInfo(on, day);
+  return waitlistInfo(on, day, byKey.get(SETTING_KEYS.waitlistBannerColor));
 });
 
 /** True while new accounts are closed (the waiting list is on). */

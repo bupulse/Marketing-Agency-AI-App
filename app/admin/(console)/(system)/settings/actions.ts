@@ -36,6 +36,7 @@ export async function saveSettingsAction(f: FormData) {
     // The pre-launch waiting list (lib/waitlist.ts): the day first, so a bad date leaves the switch as it was.
     if (f.has("waitlistPanel")) {
       await setSetting(ctx, "waitlistLaunchDate", text(f, "waitlistLaunchDate"));
+      if (f.has("waitlistBannerColor")) await setSetting(ctx, "waitlistBannerColor", text(f, "waitlistBannerColor"));
       await setSetting(ctx, "waitlistOn", f.get("waitlistOn") === "on");
     }
     // BuPulse's TIN (the VAT rate itself is per region, Admin -> Regions). Receipts use the new TIN at once.

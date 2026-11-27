@@ -13,6 +13,12 @@ const KIGALI_OFFSET_MS = 2 * 3_600_000;
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+/** The banner's background (owner wants to try bright ones, 27 Nov 2026). "brand" is the BuPulse blue-violet gradient. */
+export const BANNER_COLORS = ["brand", "red", "orange", "black"] as const;
+export type BannerColor = (typeof BANNER_COLORS)[number];
+export const DEFAULT_BANNER_COLOR: BannerColor = "brand";
+export const isBannerColor = (v: unknown): v is BannerColor => typeof v === "string" && (BANNER_COLORS as readonly string[]).includes(v);
+
 /** What the public pages need: when the countdown ends and how to name the day. Null while the waiting list is off. */
 export type WaitlistInfo = {
   /** 00:00 Africa/Kigali on the launch day, as an ISO instant. */
@@ -21,6 +27,8 @@ export type WaitlistInfo = {
   dateLabel: string;
   /** "15 Dec", for the narrow banner and button. */
   shortLabel: string;
+  /** The banner's background. */
+  bannerColor: BannerColor;
 };
 
 /** True for a real calendar day written YYYY-MM-DD. */
@@ -38,12 +46,12 @@ export function launchInstant(ymd: string): Date {
 }
 
 /** The public pages' view of the setting, or null when the waiting list is off. */
-export function waitlistInfo(on: boolean, ymd: string): WaitlistInfo | null {
+export function waitlistInfo(on: boolean, ymd: string, color: unknown = DEFAULT_BANNER_COLOR): WaitlistInfo | null {
   if (!on) return null;
   const day = isLaunchDate(ymd) ? ymd : DEFAULT_LAUNCH_DATE;
   const [, m, d] = day.split("-").map(Number);
   const month = MONTHS[m - 1];
-  return { launchAt: launchInstant(day).toISOString(), dateLabel: `${d} ${month}`, shortLabel: `${d} ${month.slice(0, 3)}` };
+  return { launchAt: launchInstant(day).toISOString(), dateLabel: `${d} ${month}`, shortLabel: `${d} ${month.slice(0, 3)}`, bannerColor: isBannerColor(color) ? color : DEFAULT_BANNER_COLOR };
 }
 
 export type Countdown = { days: number; hours: number; minutes: number; seconds: number; done: boolean };

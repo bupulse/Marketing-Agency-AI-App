@@ -1,4 +1,4 @@
-import { CircleOff, Gift, Hourglass, LoaderCircle, MoveRight } from "lucide-react";
+import { CircleOff, Gift, Hourglass, LoaderCircle, MoveRight, Palette } from "lucide-react";
 import { ExpandCard, StatusPill } from "@/components/admin/kit";
 import { RadioChips, SwitchRow } from "@/components/admin/kit/form-choices";
 import { Panel } from "@/components/admin/ui";
@@ -10,7 +10,7 @@ import { SETTINGS_TITLE } from "../settings-areas";
 type Msg = { ok?: string; bad?: string };
 
 /** /admin/settings/trial: the pre-launch waiting list (lib/waitlist.ts) and how long a new client's free trial lasts. */
-export function TrialArea({ trialDays, waitlistOn, waitlistLaunchDate, ok, bad }: Msg & { trialDays: number; waitlistOn: boolean; waitlistLaunchDate: string }) {
+export function TrialArea({ trialDays, waitlistOn, waitlistLaunchDate, waitlistBannerColor, ok, bad }: Msg & { trialDays: number; waitlistOn: boolean; waitlistLaunchDate: string; waitlistBannerColor: string }) {
   return (
     <AreaFrame icon={Gift} tone="slate" title={SETTINGS_TITLE.trial} description="The waiting list before launch, and how long a new client tries BuPulse for free." ok={ok} bad={bad}>
       <Panel
@@ -27,6 +27,18 @@ export function TrialArea({ trialDays, waitlistOn, waitlistLaunchDate, ok, bad }
           <Field label="Launch day" hint="The countdown runs to 00:00 Kigali time on this day." required>
             <Input name="waitlistLaunchDate" type="date" defaultValue={waitlistLaunchDate} required className="w-48" />
           </Field>
+          <RadioChips
+            name="waitlistBannerColor"
+            legend="Banner colour"
+            required
+            defaultValue={waitlistBannerColor}
+            options={[
+              { value: "brand", label: "BuPulse blue", hint: "The brand gradient.", icon: Palette, tone: "blue" },
+              { value: "red", label: "Red", hint: "Christmas red, white text.", icon: Palette, tone: "red" },
+              { value: "orange", label: "Orange", hint: "Bright orange, dark text.", icon: Palette, tone: "orange" },
+              { value: "black", label: "Black", hint: "Black, white text.", icon: Palette, tone: "slate" },
+            ]}
+          />
           <div>
             <Button type="submit">Save</Button>
           </div>

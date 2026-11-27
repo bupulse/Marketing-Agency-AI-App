@@ -147,7 +147,7 @@ function SettingsAreaPreview({ slug, ok }: { slug: SettingsSlug; ok?: string }) 
         />
       );
     case "trial":
-      return <TrialArea ok={ok} trialDays={14} waitlistOn waitlistLaunchDate="2026-12-15" />;
+      return <TrialArea ok={ok} trialDays={14} waitlistOn waitlistLaunchDate="2026-12-15" waitlistBannerColor="red" />;
     case "loading":
       return <LoadingArea ok={ok} pageLoader="bar" />;
   }

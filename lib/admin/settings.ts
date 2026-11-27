@@ -6,7 +6,7 @@ import { DEFAULT_BUFFER_MINUTES, DEFAULT_SLOT_MINUTES, isValidYmd } from "@/lib/
 import { isPageLoader, type PageLoader } from "@/lib/ui/page-loader";
 import { isDisplayCurrency, type DisplayCurrency } from "@/lib/money/display";
 import { DEFAULT_VAT_SETTINGS, VAT_SETTING_KEYS, vatTinProblem } from "@/lib/billing/vat";
-import { DEFAULT_LAUNCH_DATE, isLaunchDate } from "@/lib/waitlist";
+import { DEFAULT_BANNER_COLOR, DEFAULT_LAUNCH_DATE, isBannerColor, isLaunchDate, type BannerColor } from "@/lib/waitlist";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -76,6 +76,8 @@ export type Settings = {
   waitlistOn: boolean;
   /** The launch day the countdown runs to, YYYY-MM-DD (00:00 Africa/Kigali). Reaching it does not switch the list off. */
   waitlistLaunchDate: string;
+  /** The waiting-list banner's background: brand gradient, red, orange or black. */
+  waitlistBannerColor: BannerColor;
 };
 export type SettingName = keyof Settings;
 
@@ -104,6 +106,7 @@ const KEYS: Record<SettingName, string> = {
   vatTin: VAT_SETTING_KEYS.tin,
   waitlistOn: "site.waitlistOn",
   waitlistLaunchDate: "site.waitlistLaunchDate",
+  waitlistBannerColor: "site.waitlistBannerColor",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -131,6 +134,7 @@ export const DEFAULT_SETTINGS: Settings = {
   vatTin: DEFAULT_VAT_SETTINGS.tin,
   waitlistOn: false,
   waitlistLaunchDate: DEFAULT_LAUNCH_DATE,
+  waitlistBannerColor: DEFAULT_BANNER_COLOR,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -199,6 +203,11 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   waitlistLaunchDate: (value) => {
     const v = String(value ?? "").trim();
     if (!isLaunchDate(v)) throw new AdminError("invalid", "The launch day must be a date like 2026-12-15.");
+    return v;
+  },
+  waitlistBannerColor: (value) => {
+    const v = String(value ?? "").trim();
+    if (!isBannerColor(v)) throw new AdminError("invalid", "Choose a banner colour: brand, red, orange or black.");
     return v;
   },
   goalStartMonth: (value) => {
