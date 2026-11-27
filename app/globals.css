@@ -766,3 +766,57 @@ html:not([data-support-chat-off]) body:has(.bp-whatsapp-fab) {
   .bmail-root > header, .bmail-root nav, .bmail-root aside, .bmail-root [role="toolbar"], .bmail-root #bmail-reply, .bmail-noprint { display: none !important; }
   .bmail-print { position: static !important; box-shadow: none !important; border: 0 !important; background: #fff !important; backdrop-filter: none !important; }
 }
+
+/* The site banner's animations (components/marketing/site-banner.tsx, Admin -> Settings -> Site banner). */
+@keyframes banner-slide {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes banner-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+@keyframes banner-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.18); }
+}
+@keyframes banner-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes cta-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(47 107 255 / 0.55); }
+  60% { box-shadow: 0 0 0 12px rgb(47 107 255 / 0); }
+}
+.banner-anim-slide { animation: banner-slide 600ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.banner-anim-pulse { animation: banner-pulse 2.6s ease-in-out infinite; }
+.banner-anim-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.28) 50%, transparent 70%);
+  animation: banner-shimmer 3.2s ease-in-out infinite;
+}
+.banner-scroll-track { animation: banner-scroll 22s linear infinite; }
+.banner-scroll-track:hover { animation-play-state: paused; }
+.cta-anim-pulse { animation: cta-pulse 2s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .banner-anim-slide,
+  .banner-anim-pulse,
+  .banner-anim-shimmer::after,
+  .banner-scroll-track,
+  .cta-anim-pulse { animation: none; }
+}
+
+/* The main button in the site banner's colour, the BuPulse gradient on hover (Admin -> Settings -> Site banner). */
+.cta-banner-paint {
+  background: var(--cta-bg) !important;
+  color: var(--cta-fg) !important;
+  transition: background 300ms ease, color 300ms ease, transform 300ms ease, border-radius 300ms ease;
+}
+.cta-banner-paint:hover,
+.cta-banner-paint:focus-visible {
+  background: linear-gradient(120deg, #2f6bff, #7b5cff) !important;
+  color: #ffffff !important;
+}

@@ -24,7 +24,7 @@ import { ContentArea, VoicesArea } from "@/components/admin/system/settings/cont
 import { AdBrainArea } from "@/components/admin/system/settings/ad-brain-area";
 import { monthSpentUsd } from "@/lib/ad-brain/pipeline";
 import { AvailabilityArea, CallsArea, GoogleCalendarArea, LeadAlertsArea } from "@/components/admin/system/settings/calls-areas";
-import { LoadingArea, TrialArea } from "@/components/admin/system/settings/site-areas";
+import { BannerArea, LoadingArea, TrialArea } from "@/components/admin/system/settings/site-areas";
 
 export const dynamic = "force-dynamic";
 
@@ -84,8 +84,10 @@ export default async function SettingsAreaPage({ params, searchParams }: PagePro
     case "trial":
     {
       const s = await getSettings();
-      return <TrialArea {...msg} trialDays={s.trialDays} waitlistOn={s.waitlistOn} waitlistLaunchDate={s.waitlistLaunchDate} waitlistBannerColor={s.waitlistBannerColor} />;
+      return <TrialArea {...msg} trialDays={s.trialDays} waitlistOn={s.waitlistOn} waitlistLaunchDate={s.waitlistLaunchDate} />;
     }
+    case "banner":
+      return <BannerArea {...msg} banner={(await getSettings()).siteBanner} />;
     case "loading":
       return <LoadingArea {...msg} pageLoader={(await getSettings()).pageLoader} />;
   }

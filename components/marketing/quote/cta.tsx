@@ -1,11 +1,13 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Button, Dialog, type ButtonSize, type ButtonVariant } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { QUOTE_LABEL, type CtaMode } from "@/lib/quote/cta";
 import { cleanPagePath, cleanQuoteSource } from "@/lib/quote/source";
+import { bannerPaint, type SiteBanner } from "@/lib/site-banner";
 import type { WaitlistInfo } from "@/lib/waitlist";
-import { WaitlistLabel } from "../waitlist-label";
+import { CountdownLabel } from "../waitlist-label";
 import { QuoteForm } from "./quote-form";
 
 // The marketing site's main call to action (lib/quote/cta.ts): "Start your free trial" for most visitors, "Get a free
@@ -13,11 +15,12 @@ import { QuoteForm } from "./quote-form";
 // request from the visitor's region and provides it here, so every button on the page agrees and nothing flickers.
 
 // While the pre-launch waiting list is on (lib/waitlist.ts) the mode is "quote" for every visitor and `waitlist` says
-// when the launch is: the pop-up becomes "Reserve your spot" and the animated buttons count down.
+// when the launch is: the pop-up becomes "Reserve your spot". `banner` is the site banner showing now (lib/site-banner.ts):
+// its "main button" setting makes the header and hero buttons count down or pulse.
 
-type CtaValue = { mode: CtaMode; openQuote: () => void; waitlist: WaitlistInfo | null };
+type CtaValue = { mode: CtaMode; openQuote: () => void; waitlist: WaitlistInfo | null; banner: SiteBanner | null };
 
-const CtaContext = createContext<CtaValue>({ mode: "trial", openQuote: () => {}, waitlist: null });
+const CtaContext = createContext<CtaValue>({ mode: "trial", openQuote: () => {}, waitlist: null, banner: null });
 
 /** The mode for this visitor; "trial" outside the marketing layout. */
 export function useCtaMode(): CtaMode {
@@ -30,7 +33,7 @@ export function useQuoteCta(): CtaValue {
 }
 
 /** Provides the mode and, for Rwanda visitors, the pop-up quote form. */
-export function CtaProvider({ mode, waitlist = null, children }: { mode: CtaMode; waitlist?: WaitlistInfo | null; children: ReactNode }) {
+export function CtaProvider({ mode, waitlist = null, banner = null, children }: { mode: CtaMode; waitlist?: WaitlistInfo | null; banner?: SiteBanner | null; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState({ source: "website", pageUrl: "/" });
   // A new form after a request was sent and the thank-you closed, so a second quote starts empty.
@@ -45,12 +48,13 @@ export function CtaProvider({ mode, waitlist = null, children }: { mode: CtaMode
     });
     setOpen(true);
   }, []);
-  const value = useMemo(() => ({ mode, openQuote, waitlist }), [mode, openQuote, waitlist]);
+  const value = useMemo(() => ({ mode, openQuote, waitlist, banner }), [mode, openQuote, waitlist, banner]);
 
   return (
     <CtaContext.Provider value={value}>
       {children}
-      {mode === "quote" && (
+      {/* The banner's "quote" button opens it too, also for visitors who otherwise get the trial. */}
+      {(mode === "quote" || banner?.button === "quote") && (
         <Dialog
           open={open}
           onOpenChange={setOpen}
@@ -89,17 +93,34 @@ type CtaButtonProps = {
   onTrialClick?: () => void;
   /** The quote button's label (default "Get a free quote"). */
   quoteLabel?: ReactNode;
-  /** While the waiting list is on: the label swaps between the countdown and "Get started" (the header and hero). */
+  /** The header and hero buttons: they follow the site banner's "main button" setting (count down, pulse or normal). */
   animated?: boolean;
+  style?: CSSProperties;
 };
 
 /**
  * The main button: a link to the free trial, or for Rwanda visitors a button that opens the quote pop-up. Same size,
  * colours and icon either way, so the page looks the same.
  */
-export function CtaButton({ trialHref = "/signup", trialLabel = "Start your free trial", onTrialClick, quoteLabel = QUOTE_LABEL, animated = false, ...look }: CtaButtonProps) {
-  const { mode, openQuote, waitlist } = useContext(CtaContext);
-  if (mode === "quote" && waitlist && animated) return <AnimatedWaitlistButton info={waitlist} onClick={openQuote} look={look} />;
+export function CtaButton({ trialHref = "/signup", trialLabel = "Start your free trial", onTrialClick, quoteLabel = QUOTE_LABEL, animated = false, ...rest }: CtaButtonProps) {
+  let look = rest;
+  const { mode, openQuote, banner } = useContext(CtaContext);
+  const style = animated && banner ? banner.headerButton : "normal";
+  // The banner's colour on the main button, the BuPulse gradient on hover (lib/site-banner.ts matchButton).
+  const paint = animated && banner?.matchButton ? bannerPaint(banner) : null;
+  if (paint) look = { ...look, className: cn(look.className, "cta-banner-paint"), style: { "--cta-bg": paint.bg, "--cta-fg": paint.fg } as CSSProperties };
+  if (style === "countdown" && banner?.countdownAt) {
+    return (
+      <CountdownCtaButton
+        until={banner.countdownAt}
+        hoverLabel={mode === "quote" ? QUOTE_LABEL : "Start your free trial"}
+        onClick={mode === "quote" ? openQuote : onTrialClick}
+        href={mode === "quote" ? undefined : trialHref}
+        look={look}
+      />
+    );
+  }
+  if (style === "pulse") look = { ...look, className: cn(look.className, "cta-anim-pulse") };
   if (mode === "quote") {
     return (
       <Button type="button" aria-haspopup="dialog" onClick={openQuote} {...look}>
@@ -119,27 +140,44 @@ export function ForCta({ trial, quote }: { trial: ReactNode; quote: ReactNode })
   return <>{useCtaMode() === "quote" ? quote : trial}</>;
 }
 
-/** The waiting list's main button: hovering or focusing it shows "Get a free quote" (WaitlistLabel). */
-function AnimatedWaitlistButton({ info, onClick, look }: { info: WaitlistInfo; onClick: () => void; look: Pick<CtaButtonProps, "size" | "variant" | "className" | "leading" | "trailing"> }) {
+/**
+ * The main button counting down (CountdownLabel): the countdown and "Get started" take turns, and hovering or focusing
+ * it shows the usual action ("Get a free quote", or "Start your free trial" where the trial is offered). It opens the
+ * quote pop-up, or links to the trial.
+ */
+function CountdownCtaButton({
+  until,
+  hoverLabel,
+  onClick,
+  href,
+  look,
+}: {
+  until: string;
+  hoverLabel: string;
+  onClick?: () => void;
+  href?: string;
+  look: Pick<CtaButtonProps, "size" | "variant" | "className" | "leading" | "trailing" | "style">;
+}) {
   const [active, setActive] = useState(false);
   // The label brings its own arrows, so a passed `trailing` icon is not used.
-  const { leading, size, variant, className } = look;
+  const { leading, size, variant, className, style } = look;
+  const events = {
+    onMouseEnter: () => setActive(true),
+    onMouseLeave: () => setActive(false),
+    onFocus: () => setActive(true),
+    onBlur: () => setActive(false),
+  };
+  const label = <CountdownLabel until={until} active={active} hoverLabel={hoverLabel} />;
+  if (href) {
+    return (
+      <Button href={href} onClick={onClick} aria-label={hoverLabel} leading={leading} size={size} variant={variant} className={className} style={style} {...events}>
+        {label}
+      </Button>
+    );
+  }
   return (
-    <Button
-      type="button"
-      aria-haspopup="dialog"
-      aria-label={`Get started: reserve your spot, BuPulse launches on ${info.dateLabel}`}
-      onClick={onClick}
-      onMouseEnter={() => setActive(true)}
-      onMouseLeave={() => setActive(false)}
-      onFocus={() => setActive(true)}
-      onBlur={() => setActive(false)}
-      leading={leading}
-      size={size}
-      variant={variant}
-      className={className}
-    >
-      <WaitlistLabel info={info} active={active} />
+    <Button type="button" aria-haspopup="dialog" aria-label={`Get started: ${hoverLabel}`} onClick={onClick} leading={leading} size={size} variant={variant} className={className} style={style} {...events}>
+      {label}
     </Button>
   );
 }

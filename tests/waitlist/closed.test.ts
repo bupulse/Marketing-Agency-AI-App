@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 
 const m = vi.hoisted(() => ({
   prisma: { contactRequest: { findFirst: vi.fn(), create: vi.fn() }, user: { findUnique: vi.fn() } },
-  waitlist: null as null | { launchAt: string; dateLabel: string; shortLabel: string; bannerColor: "brand" },
+  waitlist: null as null | { launchAt: string; dateLabel: string; shortLabel: string },
   sendWaitlistThankYou: vi.fn(async () => true),
   ensureAccount: vi.fn(async () => true),
   allowGoogleSignIn: vi.fn(async () => true),
@@ -24,7 +24,7 @@ vi.mock("@/lib/account", () => ({ ensureAccount: m.ensureAccount, allowGoogleSig
 import { submitQuoteRequest } from "@/lib/quote/submit";
 import { afterGoogleSignIn } from "@/lib/auth/after-google";
 
-const ON = { launchAt: "2026-12-14T22:00:00.000Z", dateLabel: "15 December", shortLabel: "15 Dec", bannerColor: "brand" as const };
+const ON = { launchAt: "2026-12-14T22:00:00.000Z", dateLabel: "15 December", shortLabel: "15 Dec" };
 
 const form = () => {
   const f = new FormData();

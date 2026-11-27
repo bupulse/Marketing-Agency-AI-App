@@ -4,6 +4,7 @@ import { addAvailability, removeAvailability } from "@/lib/admin/availability";
 import { actionMessage, adminAction, finish } from "@/lib/admin/console";
 import { recomputeCardPrices } from "@/lib/admin/regions-service";
 import { setSetting, type SettingName } from "@/lib/admin/settings";
+import { bannerFromForm } from "@/lib/site-banner";
 import { refreshEurRate } from "@/lib/money/display-server";
 import { clearVatSettingsCache } from "@/lib/billing/vat-server";
 import { disconnectGoogleCalendar, setGoogleCalendarId, testGoogleCalendar } from "@/lib/google-calendar/calendar";
@@ -36,11 +37,25 @@ export async function saveSettingsAction(f: FormData) {
     // The pre-launch waiting list (lib/waitlist.ts): the day first, so a bad date leaves the switch as it was.
     if (f.has("waitlistPanel")) {
       await setSetting(ctx, "waitlistLaunchDate", text(f, "waitlistLaunchDate"));
-      if (f.has("waitlistBannerColor")) await setSetting(ctx, "waitlistBannerColor", text(f, "waitlistBannerColor"));
       await setSetting(ctx, "waitlistOn", f.get("waitlistOn") === "on");
     }
     // BuPulse's TIN (the VAT rate itself is per region, Admin -> Regions). Receipts use the new TIN at once.
     if (f.has("vatPanel") || f.has("vatTin")) clearVatSettingsCache();
+  });
+}
+
+/** Admin -> Settings -> Site banner: the whole banner (lib/site-banner.ts) in one audited setting. */
+export async function saveBannerAction(f: FormData) {
+  const ctx = await adminAction("system");
+  await finish(settingsHref("banner"), "Banner saved. Visitors see it on their next page.", async () => {
+    const raw = bannerFromForm((k) => {
+      const v = f.get(k);
+      return typeof v === "string" ? v : null;
+    });
+    for (const [k, label] of [["countdownAt", "The countdown"], ["showFrom", "Show from"], ["hideAfter", "Hide after"]] as const) {
+      if (raw[k] === "invalid") throw new AdminError("invalid", `${label} is not a date and time.`);
+    }
+    await setSetting(ctx, "siteBanner", raw);
   });
 }
 

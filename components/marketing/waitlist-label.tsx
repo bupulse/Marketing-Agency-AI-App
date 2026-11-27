@@ -3,10 +3,11 @@
 import { ArrowRight, Hourglass } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
-import { countdown, formatCountdown, type Countdown, type WaitlistInfo } from "@/lib/waitlist";
+import { countdown, formatCountdown, type Countdown } from "@/lib/waitlist";
 
-// The main button's label while the pre-launch waiting list is on (lib/waitlist.ts, docs/WAITLIST.md): it swaps
-// between the countdown and "Get started" every 4 seconds and says "Get a free quote" while the pointer is on it.
+// The main button's label when the site banner's "main button" is set to count down (lib/site-banner.ts): it swaps
+// between the countdown and "Get started" every 4 seconds and shows `hoverLabel` ("Get a free quote") while the
+// pointer or keyboard focus is on it.
 
 /** How long the button shows each label before it flips. */
 export const SWAP_MS = 4_000;
@@ -28,8 +29,8 @@ export function useCountdown(launchAt: string): Countdown | null {
  * (stacked in one grid cell, so the button keeps the width of the longest), and "Get a free quote" shows while the
  * pointer or keyboard focus is on the button. After the launch moment it stays on "Get started".
  */
-export function WaitlistLabel({ info, active }: { info: WaitlistInfo; active: boolean }) {
-  const left = useCountdown(info.launchAt);
+export function CountdownLabel({ until, active, hoverLabel }: { until: string; active: boolean; hoverLabel: string }) {
+  const left = useCountdown(until);
   const [showTime, setShowTime] = useState(true);
   useEffect(() => {
     const id = window.setInterval(() => setShowTime((v) => !v), SWAP_MS);
@@ -54,7 +55,7 @@ export function WaitlistLabel({ info, active }: { info: WaitlistInfo; active: bo
         <ArrowRight aria-hidden className="size-4" />
       </span>
       <span className={layer("quote")} aria-hidden={shown !== "quote"}>
-        Get a free quote
+        {hoverLabel}
         <ArrowRight aria-hidden className="size-4" />
       </span>
     </span>

@@ -8,9 +8,7 @@ describe("waiting list dates", () => {
 
   it("is null while off, and names the day while on", () => {
     expect(waitlistInfo(false, "2026-12-15")).toBeNull();
-    expect(waitlistInfo(true, "2026-12-15")).toEqual({ launchAt: "2026-12-14T22:00:00.000Z", dateLabel: "15 December", shortLabel: "15 Dec", bannerColor: "brand" });
-    expect(waitlistInfo(true, "2026-12-15", "red")?.bannerColor).toBe("red");
-    expect(waitlistInfo(true, "2026-12-15", "pink")?.bannerColor).toBe("brand");
+    expect(waitlistInfo(true, "2026-12-15")).toEqual({ launchAt: "2026-12-14T22:00:00.000Z", dateLabel: "15 December", shortLabel: "15 Dec" });
   });
 
   it("falls back to the default day for a bad stored date", () => {

@@ -9,7 +9,8 @@ import { CurrencyArea, GoalArea, MomoArea, PaddleArea, VatArea } from "@/compone
 import { ContentArea, VoicesArea } from "@/components/admin/system/settings/content-areas";
 import { AdBrainArea } from "@/components/admin/system/settings/ad-brain-area";
 import { AvailabilityArea, CallsArea, GoogleCalendarArea, LeadAlertsArea } from "@/components/admin/system/settings/calls-areas";
-import { LoadingArea, TrialArea } from "@/components/admin/system/settings/site-areas";
+import { BannerArea, LoadingArea, TrialArea } from "@/components/admin/system/settings/site-areas";
+import { DEFAULT_BANNER } from "@/lib/site-banner";
 import { isSettingsSlug, type SettingsSlug } from "@/components/admin/system/settings-areas";
 import { ServicesGrid, type ServiceCardData } from "@/components/admin/system/services/services-grid";
 import { ServiceDetail } from "@/components/admin/system/services/service-detail";
@@ -147,7 +148,9 @@ function SettingsAreaPreview({ slug, ok }: { slug: SettingsSlug; ok?: string }) 
         />
       );
     case "trial":
-      return <TrialArea ok={ok} trialDays={14} waitlistOn waitlistLaunchDate="2026-12-15" waitlistBannerColor="red" />;
+      return <TrialArea ok={ok} trialDays={14} waitlistOn waitlistLaunchDate="2026-12-15" />;
+    case "banner":
+      return <BannerArea ok={ok} banner={{ ...DEFAULT_BANNER, on: true }} />;
     case "loading":
       return <LoadingArea ok={ok} pageLoader="bar" />;
   }
@@ -157,7 +160,7 @@ function SettingsAreaPreview({ slug, ok }: { slug: SettingsSlug; ok?: string }) 
 export function SystemPreview({ which, sp }: { which: SystemScreen; sp: SearchParamsLike }) {
   const ok = first(sp.notice) || undefined;
   if (which === "settings") {
-    return <SettingsHub ok={ok} d={{ momoReady: true, paddleReady: false, paddleLive: false, vatEnabled: true, vatRatePercent: 18, vatTin: "", usdToRwf: 1450, displayCurrency: "RWF", revenueGoalRwf: 9_000_000, dailyPosts: true, skitVideos: false, voicesApproved: 1, voicesTotal: 2, telegram: "not_connected", google: "reconnect", slotMinutes: 30, windows: 3, trialDays: 14, pageLoader: "bar", adBrainPerAdUsd: 3, adBrainMonthlyUsd: 30, canRegions: true }} />;
+    return <SettingsHub ok={ok} d={{ momoReady: true, paddleReady: false, paddleLive: false, vatEnabled: true, vatRatePercent: 18, vatTin: "", usdToRwf: 1450, displayCurrency: "RWF", revenueGoalRwf: 9_000_000, dailyPosts: true, skitVideos: false, voicesApproved: 1, voicesTotal: 2, telegram: "not_connected", google: "reconnect", slotMinutes: 30, windows: 3, trialDays: 14, pageLoader: "bar", bannerOn: true, adBrainPerAdUsd: 3, adBrainMonthlyUsd: 30, canRegions: true }} />;
   }
   if (which === "settings-area") {
     const area = first(sp.area) || "momo";

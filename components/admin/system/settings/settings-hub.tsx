@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BellRing, CalendarDays, Clapperboard, Clock3, CloudDownload, CreditCard, Gift, Globe, LoaderCircle, Mic, Percent, PhoneCall, Settings, Smartphone, Sparkles, Target } from "lucide-react";
+import { ArrowLeftRight, BellRing, Megaphone, CalendarDays, Clapperboard, Clock3, CloudDownload, CreditCard, Gift, Globe, LoaderCircle, Mic, Percent, PhoneCall, Settings, Smartphone, Sparkles, Target } from "lucide-react";
 import { PageHeader, SectionCard, SectionGrid } from "@/components/admin/kit";
 import { Section } from "@/components/admin/ui";
 import { HashRedirect } from "../hash-redirect";
@@ -25,6 +25,8 @@ export type SettingsHubData = {
   windows: number;
   trialDays: number;
   pageLoader: string;
+  /** The site banner is switched on (Admin -> Settings -> Site banner). */
+  bannerOn: boolean;
   /** The Ad Brain limits (BuPulse own ads). */
   adBrainPerAdUsd: number;
   adBrainMonthlyUsd: number;
@@ -90,6 +92,7 @@ export function SettingsHub({ d, ok, bad }: { d: SettingsHubData; ok?: string; b
       <Section title="The site" description="Sign-ups, the look while pages load, and the version that runs.">
         <SectionGrid>
           <SectionCard row href={settingsHref("trial")} icon={Gift} tone="slate" title={SETTINGS_TITLE.trial} hint="The waiting list before launch, and how long a new client tries BuPulse for free." value={`${d.trialDays} days`} valueLabel="free" />
+          <SectionCard row href={settingsHref("banner")} icon={Megaphone} tone="pink" title={SETTINGS_TITLE.banner} hint="The announcement above the menu: words, colour, countdown and dates." value={d.bannerOn ? "On" : "Off"} valueLabel="on public pages" />
           <SectionCard row href={settingsHref("loading")} icon={LoaderCircle} tone="slate" title={SETTINGS_TITLE.loading} hint="What visitors see while a page loads." value={LOADER[d.pageLoader] ?? d.pageLoader} valueLabel="on every page" />
           <SectionCard row href="/admin/settings/updates" icon={CloudDownload} tone="slate" title="Updates" hint="The version running now, new releases, install or roll back." />
         </SectionGrid>
